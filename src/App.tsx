@@ -326,9 +326,9 @@ export default function App() {
 
   // --- Interactive Plugin Widget States ---
   const [ideaNotes, setIdeaNotes] = useState<string[]>([
-    'Исправить Fernet 32-byte URL-safe base64 key',
-    'Убрать желтые рамки (#AARRGGBB в Flet)',
-    'Сделать старт таймера с 00:00 по запуску приложения',
+    'Криптоядро SecurityKernel.cs: AES-256-GCM + PBKDF2-SHA512',
+    'Адаптивная плиточная оболочка: Android 15 Tiles & Windows 11 Live Tiles',
+    'Старт таймера сессий с 00:00 (SessionTrackerPlugin.cs)',
   ]);
   const [newIdeaText, setNewIdeaText] = useState<string>('');
   const [pomodoroSeconds, setPomodoroSeconds] = useState<number>(25 * 60);
@@ -590,13 +590,10 @@ export default function App() {
     return () => clearInterval(timer);
   }, [sessionTrackerEnabled, pomodoroRunning, islandTimerRunning, islandStopwatchRunning]);
 
-  // Load selected C# 3.0 or Python file from /LauncherHab3.0_CSharp/, /Luma_Core/, or /launcher_hab2.4/
+  // Load selected C# 3.0 file from /LauncherHab3.0_CSharp/
   useEffect(() => {
     let cancelled = false;
-    const targetUrl =
-      selectedPyFile.startsWith('LauncherHab3.0_CSharp/') || selectedPyFile.startsWith('Luma_Core/')
-        ? `/${selectedPyFile}`
-        : `/launcher_hab2.4/${selectedPyFile}`;
+    const targetUrl = `/${selectedPyFile}`;
     fetch(targetUrl)
       .then((res) => (res.ok ? res.text() : Promise.reject('Failed')))
       .then((text) => {
@@ -695,7 +692,7 @@ export default function App() {
     const clamped = Math.max(0, Math.min(100, newVol));
     setVolume(clamped);
     if (clamped > 0 && isMuted) setIsMuted(false);
-    setAudioBgStatus(`pycaw SetMasterVolumeScalar(${(clamped / 100).toFixed(2)}) [Daemon Thread]`);
+    setAudioBgStatus(`AudioControllerWasapi.SetMasterVolumeScalar(${(clamped / 100).toFixed(2)}) [C# Background Worker]`);
     try {
       if (!audioCtxRef.current && typeof window !== 'undefined') {
         const AudioCtx =
@@ -1130,7 +1127,7 @@ export default function App() {
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
-              Плитки 3.0
+              Оболочка: Плитки (Android / Win)
             </button>
             <button
               onClick={() => {
@@ -1171,7 +1168,7 @@ export default function App() {
               }`}
             >
               <Code2 className="w-3.5 h-3.5" />
-              Код C# 3.0 / Luma 1.0
+              Ядро C# и Защита (18 файлов .cs)
             </button>
           </nav>
         </div>
@@ -3883,13 +3880,13 @@ export default function App() {
                           <div className="flex justify-between gap-2">
                             <span className="text-slate-400">Шина IPC и транспорт:</span>
                             <span className="font-mono font-semibold text-blue-300 text-right">
-                              127.0.0.1:45890 • JSON-RPC 2.0 (NDJSON)
+                              127.0.0.1:49215 • JSON-RPC 2.0 (NDJSON C#)
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Модули ядра Luma:</span>
+                            <span className="text-slate-400">Модули ядра Luma C#:</span>
                             <span className="font-mono text-[11px] text-slate-200 text-right">
-                              ProcessManager, ConfigManager, WidgetService, HotkeyManager
+                              LumaSystemKernel, SecurityKernel, WidgetEngine, PluginApiV3
                             </span>
                           </div>
                         </div>
@@ -3899,7 +3896,7 @@ export default function App() {
                       <div className="p-4 rounded-2xl bg-[#141d2e] border border-emerald-500/40 space-y-2.5">
                         <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                           <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                            🛡️ Версия ядра и безопасность
+                            🛡️ Версия ядра и безопасность (C#)
                           </span>
                           <span className="text-[10px] font-mono text-emerald-300">LumaGuard Enforcing</span>
                         </div>
@@ -3907,19 +3904,19 @@ export default function App() {
                           <div className="flex justify-between gap-2">
                             <span className="text-slate-400">Версия ядра (Kernel Version):</span>
                             <span className="font-mono font-bold text-emerald-300 text-right">
-                              6.8.0-luma-beta-x86_64 #1 SMP PREEMPT
+                              LumaOS 1.0.0-csharp-net8-x64
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
                             <span className="text-slate-400">Версия ядра безопасности:</span>
                             <span className="font-mono font-semibold text-white text-right">
-                              Luma Security Core v2.6.4 (PBKDF2-SHA256)
+                              SecurityKernel.cs v1.0 (PBKDF2-HMAC-SHA512)
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Обновление безопасности:</span>
+                            <span className="text-slate-400">Криптозащита контейнеров:</span>
                             <span className="font-mono font-semibold text-teal-300 text-right">
-                              1 ноября 2026 г. (Fernet AES-128 + HMAC)
+                              AES-256-GCM (128-bit AuthTag) + HMAC-SHA256
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
@@ -3935,9 +3932,9 @@ export default function App() {
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Сборка Luma Beta:</span>
+                            <span className="text-slate-400">Сборка системы Luma C#:</span>
                             <span className="font-mono text-[11px] text-slate-300 text-right">
-                              LUMA_0.9.4.20261102.HEADLESS_RELEASE
+                              LUMA_1.0.0.CSHARP_NET8_RELEASE
                             </span>
                           </div>
                         </div>
@@ -3950,10 +3947,10 @@ export default function App() {
                         <div>
                           <h5 className="text-xs font-bold text-white flex items-center gap-2">
                             <Terminal className="w-4 h-4 text-teal-400" />
-                            Живой IPC-контракт JSON-RPC 2.0 (Тест WidgetEngine раз в 1 секунду)
+                            Живой IPC-контракт JSON-RPC 2.0 (Тест WidgetEngine.cs раз в 1 секунду)
                           </h5>
                           <p className="text-[11px] text-slate-400">
-                            Нажмите на метод ниже, чтобы отправить JSON-RPC запрос в ядро <code className="text-teal-300">luma_core.py</code> и получить актуальный JSON:
+                            Нажмите на метод ниже, чтобы отправить JSON-RPC запрос в C#-ядро <code className="text-teal-300">LumaCoreDaemon.cs</code> и получить актуальный JSON:
                           </p>
                         </div>
 
@@ -4459,7 +4456,7 @@ export default function App() {
                             setDiagnosticsTime(new Date().toLocaleTimeString('ru-RU'));
                             pushToast(
                               'Диагностика завершена',
-                              'Все 6 подсистем (Python Runtime, Crypto 2.5, Dynamic Island, Audio, Plugins, Storage) работают идеально (100%).',
+                              'Все 6 подсистем (.NET 8 Runtime, SecurityKernel AES-256-GCM, Dynamic Island, Audio WASAPI, Plugins V3, Storage VFS) работают идеально (100%).',
                               'success'
                             );
                           }}
@@ -4471,12 +4468,12 @@ export default function App() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                         {[
-                          ['Python 3.11 + Flet Desktop Engine', 'OK • Инициализировано без ошибок'],
-                          ['Crypto 2.5 (PBKDF2-HMAC-SHA256 + Fernet)', `OK • Ключ ревизии #${cryptoKeyVersion} (32 байта)`],
-                          ['Dynamic Island 2.6 & DND Engine', `OK • Активен, уведомлений: ${windowsNotifications.length}`],
-                          ['CoreAudio / pycaw Фоновый контроллер', `OK • Громкость ${volume}%, ${audioBgStatus}`],
-                          ['Plugin API 2.6 & Трекер сессий', `OK • Плагинов активно: ${plugins.filter((p) => p.enabled).length}`],
-                          ['Хранилище и Адаптивная тема День/Ночь', `OK • Тема: ${currentTheme.name}`],
+                          ['C# .NET 8 Runtime + LumaSystemKernel.cs', 'OK • Инициализировано без ошибок'],
+                          ['SecurityKernel.cs (AES-256-GCM + PBKDF2-SHA512)', `OK • Ключ ревизии #${cryptoKeyVersion} (32 байта)`],
+                          ['DynamicIslandService.cs & DND Engine', `OK • Активен, уведомлений: ${windowsNotifications.length}`],
+                          ['AudioControllerWasapi.cs (CoreAudio WASAPI)', `OK • Громкость ${volume}%, ${audioBgStatus}`],
+                          ['PluginApiV3.cs & SessionTrackerPlugin.cs', `OK • Плагинов активно: ${plugins.filter((p) => p.enabled).length}`],
+                          ['TileShellDashboardWindow.cs (Android / Windows Tiles)', `OK • Тема: ${currentTheme.name}`],
                         ].map(([name, detail]) => (
                           <div
                             key={name}

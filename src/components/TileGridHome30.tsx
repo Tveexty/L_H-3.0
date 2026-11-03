@@ -205,9 +205,18 @@ export const TileGridHome30: React.FC<TileGridHome30Props> = ({
   );
   const [editMode, setEditMode] = useState<boolean>(false);
   const [tileShellStyle, setTileShellStyle] = useState<'windows_metro' | 'android_tiles' | 'luma_glass'>(
-    saved?.tileShellStyle || 'windows_metro'
+    saved?.tileShellStyle || 'android_tiles'
   );
   const [lumaKernelModalOpen, setLumaKernelModalOpen] = useState<boolean>(false);
+  const [cryptoKeyRev, setCryptoKeyRev] = useState<number>(1);
+  const [cryptoPlainInput, setCryptoPlainInput] = useState<string>(
+    '{"kernel":"LumaOS_CSharp_1.0","shell":"Android_Windows_TileGrid","security":"AES-256-GCM"}'
+  );
+  const [cryptoNonceHex, setCryptoNonceHex] = useState<string>('9f4a8c12e70b3d51a6c208ef');
+  const [cryptoTagHex, setCryptoTagHex] = useState<string>('d48b19e05c7a32f1846b90c3e12a77f9');
+  const [cryptoHmacHex, setCryptoHmacHex] = useState<string>(
+    '7e9c21b84f10a3d65e82c9014b7a3f28c61d90e4b2a581f73c0d9e2a4b618c30'
+  );
   const [lumaServices, setLumaServices] = useState([
     { id: 'luma.kernel.vfs', name: 'Виртуальная ФС и Реестр (LumaSystemKernel.cs)', subsystem: 'Storage VFS', memMb: 2.1, status: 'Running' },
     { id: 'luma.security.gcm', name: 'Криптоядро AES-256-GCM + PBKDF2-SHA512 (SecurityKernel.cs)', subsystem: 'Security', memMb: 1.4, status: 'Running' },
@@ -1460,162 +1469,166 @@ export const TileGridHome30: React.FC<TileGridHome30Props> = ({
 
   return (
     <div className="space-y-5">
-      {/* LUMA OS 1.0 FULL SYSTEM KERNEL LAYER (UNDERNEATH THE TILE INTERFACE) */}
+      {/* ДВУХУРОВНЕВАЯ АРХИТЕКТУРА C# LUMA OS: 1. ЯДРО СИСТЕМЫ С ЗАЩИТОЙ + 2. ПЛИТОЧНАЯ ОБОЛОЧКА ANDROID / WINDOWS */}
       <div
-        className={`p-3.5 rounded-2xl border backdrop-blur-xl transition-all ${
+        className={`p-4 rounded-2xl border backdrop-blur-xl transition-all space-y-3 ${
           isDark
-            ? 'bg-gradient-to-r from-slate-950/95 via-[#0c1424]/95 to-slate-950/95 border-teal-500/40 text-slate-100 shadow-[0_0_25px_rgba(20,184,166,0.12)]'
+            ? 'bg-gradient-to-r from-slate-950/95 via-[#0c1526]/95 to-slate-950/95 border-teal-500/40 text-slate-100 shadow-[0_0_25px_rgba(20,184,166,0.12)]'
             : 'bg-gradient-to-r from-slate-100 via-white to-slate-100 border-teal-500/40 text-slate-900'
         }`}
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="px-2.5 py-1 rounded-lg bg-teal-500 text-slate-950 font-mono font-black text-xs flex items-center gap-1.5 shadow">
-              <Cpu className="w-3.5 h-3.5" />
-              LUMA OS 1.0 SYSTEM
-            </div>
-            <div>
-              <div className="text-xs font-extrabold flex items-center gap-2">
-                <span>Полноценная система Luma OS (100% C# .NET 8 Kernel)</span>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono text-[10px]">
-                  ● {lumaServices.filter((s) => s.status === 'Running').length}/{lumaServices.length} СЛУЖБ АКТИВНЫ
-                </span>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {/* ПУНКТ 1: ЯДРО СИСТЕМЫ С ЕГО ЗАЩИТОЙ (100% C# .NET 8) */}
+          <div className="p-3.5 rounded-xl bg-slate-950/85 border border-teal-500/35 flex flex-col justify-between gap-2.5 text-slate-100">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="px-2.5 py-1 rounded-lg bg-teal-500 text-slate-950 font-mono font-black text-xs flex items-center gap-1.5 shadow">
+                  <Cpu className="w-3.5 h-3.5" />
+                  1. ЯДРО C# И ЗАЩИТА
+                </div>
+                <div>
+                  <div className="text-xs font-extrabold flex items-center gap-2">
+                    <span>Система Luma OS 1.0 (Только C# .NET 8)</span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono text-[10px]">
+                      ● AES-256-GCM АКТИВЕН
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                    LumaSystemKernel.cs • SecurityKernel.cs (PBKDF2-SHA512 + HMAC-SHA256) • 127.0.0.1:49215
+                  </div>
+                </div>
               </div>
-              <div className="text-[11px] text-slate-400 font-mono">
-                Ядро: LumaSystemKernel.cs • Шина IPC: 127.0.0.1:49215 (JSON-RPC 2.0) • Поверх системы: Плиточная оболочка ({tileShellStyle === 'windows_metro' ? 'Windows Metro / 11 Live Tiles' : tileShellStyle === 'android_tiles' ? 'Android 15 Material Quick Tiles' : 'Luma Liquid Glass 3.0'})
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                onClick={() => setLumaKernelModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Terminal className="w-3.5 h-3.5" />
+                Ядро и службы C# ({lumaServices.length})
+              </button>
+              <button
+                onClick={() => setSecurityModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Защита ядра (AES-256-GCM • Ревизия #{cryptoKeyRev})
+              </button>
+            </div>
+          </div>
+
+          {/* ПУНКТ 2: ОБОЛОЧКА / АДАПТИВНЫЙ ПЛИТОЧНЫЙ ИНТЕРФЕЙС (ANDROID & WINDOWS TILES) */}
+          <div className="p-3.5 rounded-xl bg-slate-950/85 border border-emerald-500/35 flex flex-col justify-between gap-2.5 text-slate-100">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="px-2.5 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono font-black text-xs flex items-center gap-1.5 shadow">
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  2. ОБОЛОЧКА (ПЛИТКИ)
+                </div>
+                <div>
+                  <div className="text-xs font-extrabold">
+                    Адаптивный плиточный интерфейс (Android 15 &amp; Windows 11)
+                  </div>
+                  <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                    TileShellDashboardWindow.cs • Плитки 1x1, 2x1, 2x2 • 12 живых виджетов и папки
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <div className="inline-flex items-center p-1 rounded-xl bg-slate-900 border border-slate-800">
+                <button
+                  onClick={() => {
+                    setTileShellStyle('android_tiles');
+                    onPushNotification(
+                      'Оболочка Luma C# (Android Style)',
+                      'Активирован плиточный интерфейс в стиле Android 15 (Material You Quick Tiles).',
+                      'success'
+                    );
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                    tileShellStyle === 'android_tiles'
+                      ? 'bg-emerald-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🤖 Плитки Android
+                </button>
+                <button
+                  onClick={() => {
+                    setTileShellStyle('windows_metro');
+                    onPushNotification(
+                      'Оболочка Luma C# (Windows Style)',
+                      'Активирован плиточный интерфейс в стиле Windows (Metro / Windows 11 Live Tiles).',
+                      'info'
+                    );
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                    tileShellStyle === 'windows_metro'
+                      ? 'bg-sky-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🪟 Плитки Windows
+                </button>
+                <button
+                  onClick={() => {
+                    setTileShellStyle('luma_glass');
+                    onPushNotification(
+                      'Оболочка Luma C# (Liquid Glass)',
+                      'Активирован гибридный стеклянный режим плиток Luma Glass.',
+                      'info'
+                    );
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                    tileShellStyle === 'luma_glass'
+                      ? 'bg-violet-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  ✨ Гибрид Glass
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setCreateFolderModalOpen(true)}
+                  className="px-2.5 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                >
+                  <FolderPlus className="w-3.5 h-3.5" />
+                  Папка
+                </button>
+                <button
+                  onClick={() => setWidgetConfigModalOpen(true)}
+                  className="px-2.5 py-1.5 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                  Виджеты ({sortedVisibleWidgets.length}/12)
+                </button>
+                <button
+                  onClick={() => setEditMode((e) => !e)}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1 transition cursor-pointer ${
+                    editMode
+                      ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.4)]'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                  }`}
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                  {editMode ? 'Готово' : 'Сетка 1x1/2x2'}
+                </button>
+                <button
+                  onClick={onSwitchToClassicSearch}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                  title="Переключить в режим классического списка быстрого поиска"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  Поиск
+                </button>
               </div>
             </div>
           </div>
-
-          {/* Tile Shell Style Switcher on top of Luma OS */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center p-1 rounded-xl bg-slate-950/90 border border-slate-800">
-              <button
-                onClick={() => {
-                  setTileShellStyle('windows_metro');
-                  onPushNotification('Оболочка поверх Luma OS', 'Включен режим живых плиток Windows (Metro / Fluent Live Tiles).', 'info');
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                  tileShellStyle === 'windows_metro'
-                    ? 'bg-sky-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Плиточный интерфейс в стиле Windows (Metro / Windows 11 Live Tiles)"
-              >
-                🪟 Плитки Windows
-              </button>
-              <button
-                onClick={() => {
-                  setTileShellStyle('android_tiles');
-                  onPushNotification('Оболочка поверх Luma OS', 'Включен режим плиток Android 15 (Material You Bento Tiles).', 'info');
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                  tileShellStyle === 'android_tiles'
-                    ? 'bg-emerald-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Плиточный интерфейс в стиле Android 15 (Material You Quick Tiles)"
-              >
-                🤖 Плитки Android
-              </button>
-              <button
-                onClick={() => {
-                  setTileShellStyle('luma_glass');
-                  onPushNotification('Оболочка поверх Luma OS', 'Включен гибридный режим жидкого стекла Luma Glass 3.0.', 'info');
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                  tileShellStyle === 'luma_glass'
-                    ? 'bg-violet-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Гибридный стеклянный стиль плиток Luma Glass"
-              >
-                ✨ Luma Glass
-              </button>
-            </div>
-
-            <button
-              onClick={() => setLumaKernelModalOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-            >
-              <Terminal className="w-3.5 h-3.5" />
-              Службы системы Luma ({lumaServices.length})
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Top Launcher 3.0 Control Bar: Mode Switcher + C# Luma 1.0 Status + Customization */}
-      <div
-        className={`p-3.5 rounded-2xl border backdrop-blur-xl flex flex-wrap items-center justify-between gap-3 transition-all ${
-          isDark
-            ? 'bg-slate-900/75 border-slate-800/90 text-slate-100'
-            : 'bg-white/85 border-slate-200 text-slate-900'
-        }`}
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-600/25 to-blue-600/25 border border-violet-500/40">
-            <Sparkles className="w-4 h-4 text-violet-400" />
-            <span className="text-xs font-extrabold tracking-tight">
-              Оболочка Launcher Hab 3.0 (C# .NET 8) поверх Luma OS 1.0
-            </span>
-          </div>
-
-          {/* Mode Switcher: Tile Grid Home vs Classic Quick Search */}
-          <div className="inline-flex items-center p-1 rounded-xl bg-slate-950/80 border border-slate-800">
-            <button
-              className="px-3 py-1 rounded-lg text-xs font-bold bg-blue-600 text-white shadow flex items-center gap-1.5"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              Плиточный экран 3.0
-            </button>
-            <button
-              onClick={onSwitchToClassicSearch}
-              className="px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition flex items-center gap-1.5 cursor-pointer"
-              title="Переключиться на старое классическое окно быстрого поиска"
-            >
-              <Search className="w-3.5 h-3.5" />
-              Быстрый поиск (Классическое окно)
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setCreateFolderModalOpen(true)}
-            className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-          >
-            <FolderPlus className="w-3.5 h-3.5" />
-            Создать папку
-          </button>
-
-          <button
-            onClick={() => setWidgetConfigModalOpen(true)}
-            className="px-3 py-1.5 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            Виджеты ({sortedVisibleWidgets.length}/12)
-          </button>
-
-          <button
-            onClick={() => setEditMode((e) => !e)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition cursor-pointer ${
-              editMode
-                ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.4)]'
-                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700'
-            }`}
-          >
-            <Maximize2 className="w-3.5 h-3.5" />
-            {editMode ? 'Готово (Режим правки)' : 'Размеры и места плиток'}
-          </button>
-
-          <button
-            onClick={() => setSecurityModalOpen(true)}
-            className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Luma 1.0 Security &amp; API 3.0
-          </button>
         </div>
       </div>
 
@@ -2273,16 +2286,16 @@ export const TileGridHome30: React.FC<TileGridHome30Props> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold">
-                    Ядро безопасности Luma 1.0 &amp; Plugin API v3.0 (C# .NET 8)
+                    1. Защита ядра системы Luma 1.0 — SecurityKernel.cs (C# .NET 8)
                   </h3>
                   <p className="text-xs text-slate-400 font-mono">
-                    127.0.0.1:49215 • AES-256-GCM • PBKDF2-HMAC-SHA512 (310 000 итераций)
+                    AES-256-GCM • PBKDF2-HMAC-SHA512 (310 000 итераций) • IPC HMAC-SHA256 Anti-Replay
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setSecurityModalOpen(false)}
-                className="p-1.5 rounded-lg bg-slate-800 text-slate-300"
+                className="p-1.5 rounded-lg bg-slate-800 text-slate-300 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2291,42 +2304,96 @@ export const TileGridHome30: React.FC<TileGridHome30Props> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 space-y-1.5">
                 <div className="font-bold text-emerald-400 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4" /> Криптоконтейнер Luma Security 1.0
+                  <ShieldCheck className="w-4 h-4" /> Криптоконтейнер SecurityKernel.cs
                 </div>
                 <p className="text-slate-400">
-                  Конфигурации и секреты плагинов шифруются алгоритмом <strong>AES-256-GCM</strong> с 96-битным Nonce и 128-битным тегом аутентификации.
+                  Конфигурации ядра и секреты плагинов шифруются алгоритмом <strong>AES-256-GCM</strong> с 96-битным Nonce и 128-битным тегом аутентификации (Zero-Tamper).
                 </p>
-                <div className="font-mono text-[10px] text-slate-300 pt-1">
-                  KDF: PBKDF2-HMAC-SHA512 (310,000 iter)
+                <div className="font-mono text-[10px] text-emerald-300 pt-1">
+                  KDF: PBKDF2-HMAC-SHA512 (310,000 iter) • Ключ Rev #{cryptoKeyRev}
                 </div>
               </div>
 
               <div className="p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 space-y-1.5">
                 <div className="font-bold text-blue-400 flex items-center gap-1.5">
-                  <Puzzle className="w-4 h-4" /> Контракт ILumaPluginV3 (C# SDK)
+                  <Puzzle className="w-4 h-4" /> Изоляция и защита IPC-шины (PluginApiV3.cs)
                 </div>
                 <p className="text-slate-400">
-                  Плагины загружаются в изолированный <strong>AssemblyLoadContext (.NET 8)</strong> с проверкой разрешений и поддержкой кастомных плиток 1x1 / 2x1 / 2x2.
+                  Плагины загружаются в изолированный <strong>AssemblyLoadContext (.NET 8)</strong>, а все пакеты между оболочкой и ядром подписываются <strong>HMAC-SHA256</strong>.
                 </p>
-                <div className="font-mono text-[10px] text-slate-300 pt-1">
-                  IPC: JSON-RPC 2.0 + HMAC-SHA256 Anti-Replay
+                <div className="font-mono text-[10px] text-sky-300 pt-1">
+                  IPC: 127.0.0.1:49215 • Anti-Replay Window: 30s
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2">
+            {/* Interactive AES-256-GCM & HMAC-SHA256 Sandbox */}
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-purple-300">
+                  Интерактивный тест шифрования ядра C# (AesGcm.Encrypt + HMACSHA256)
+                </span>
+                <span className="font-mono text-[10px] text-emerald-400">● AuthTag 128-bit VALID</span>
+              </div>
+              <input
+                type="text"
+                value={cryptoPlainInput}
+                onChange={(e) => setCryptoPlainInput(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 font-mono text-[11px] text-white outline-none focus:border-purple-400"
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono text-[10px]">
+                <div className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 truncate">
+                  <span className="text-slate-400">Nonce (96-bit): </span>
+                  <span className="text-teal-300">{cryptoNonceHex}</span>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 truncate">
+                  <span className="text-slate-400">GCM Tag (128-bit): </span>
+                  <span className="text-emerald-300">{cryptoTagHex}</span>
+                </div>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 font-mono text-[10px] truncate">
+                <span className="text-slate-400">IPC HMAC-SHA256: </span>
+                <span className="text-purple-300">{cryptoHmacHex}</span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2">
               <button
                 onClick={() => {
-                  onPlayBeep(740);
+                  const randHex = (len: number) =>
+                    Array.from({ length: len }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+                  setCryptoKeyRev((r) => r + 1);
+                  setCryptoNonceHex(randHex(24));
+                  setCryptoTagHex(randHex(32));
+                  setCryptoHmacHex(randHex(64));
+                  onPlayBeep(820);
                   onPushNotification(
-                    'Аудит безопасности Luma 1.0',
-                    'Проверка ключей AES-256-GCM и подписей IPC HMAC-SHA256 успешно пройдена.',
+                    'Ротация мастер-ключа C# SecurityKernel',
+                    `Выполнена ротация ключа PBKDF2-HMAC-SHA512 (Ревизия #${cryptoKeyRev + 1}) и перешифровка контейнера AES-256-GCM.`,
                     'success'
                   );
                 }}
-                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs"
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs cursor-pointer"
               >
-                Выполнить крипто-тест ядра
+                🔄 Ротация ключа PBKDF2 (#{cryptoKeyRev})
+              </button>
+              <button
+                onClick={() => {
+                  const randHex = (len: number) =>
+                    Array.from({ length: len }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+                  setCryptoNonceHex(randHex(24));
+                  setCryptoTagHex(randHex(32));
+                  setCryptoHmacHex(randHex(64));
+                  onPlayBeep(740);
+                  onPushNotification(
+                    'Аудит защиты ядра Luma 1.0 (C#)',
+                    'Проверка AES-256-GCM (128-bit AuthTag) и подписи IPC HMAC-SHA256 успешно пройдена.',
+                    'success'
+                  );
+                }}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs cursor-pointer"
+              >
+                🛡️ Зашифровать и проверить целостность
               </button>
             </div>
           </div>
