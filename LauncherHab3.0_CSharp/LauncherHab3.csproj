@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>LauncherHab3</AssemblyName>
+    <RootNamespace>LauncherHab3</RootNamespace>
+    <Version>3.0.0</Version>
+    <Authors>LauncherHab Architecture Team</Authors>
+    <Product>Launcher Hab 3.0 &amp; Luma Core 1.0 (C# Edition)</Product>
+    <Description>Модульный десктопный лаунчер на C# (.NET 8) с независимым фоновым ядром Luma 1.0, плиточным главным экраном, быстрым поиском, 12 интерактивными виджетами, защитой AES-256-GCM и Plugin API 3.0.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+  </ItemGroup>
+
+</Project>

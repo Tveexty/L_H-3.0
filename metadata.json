@@ -1,0 +1,6 @@
+{
+  "name": "Luma OS 1.0 & Launcher Hab 3.0 (C# .NET 8 Tile System)",
+  "description": "Полноценная операционная подсистема Luma OS 1.0 на языке C# (.NET 8) с плиточной оболочкой в стиле Windows Live Tiles и Android 15 Quick Tiles, 12 живыми системными виджетами, папками 1x1/2x1/2x2 и Dynamic Island.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
