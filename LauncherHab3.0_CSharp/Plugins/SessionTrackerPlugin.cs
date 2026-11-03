@@ -1,6 +1,6 @@
 // ============================================================================
-// ПРОЕКТ: Luma System OS 1.0 & Launcher Hab 3.0 (C# .NET 8)
-// ФАЙЛ: Plugins/SessionTrackerPlugin.cs (Перевод plugins/session_tracker_plugin.py)
+// ПРОЕКТ: LauncherHub 3.0 & Luma System OS 1.0 (C# .NET 8 Windows)
+// ФАЙЛ: Plugins/SessionTrackerPlugin.cs
 // ОПИСАНИЕ: Плагин посекундного учета времени приложений и игр с 00:00 (Zero-Start),
 //           живой индикации на плитках (🟢 00:00:15) и контроля лимитов детокса.
 // ============================================================================
@@ -30,7 +30,7 @@ namespace LauncherHab3.Plugins
             PreferredTileSize: TileSize.Wide2x1
         );
 
-        public Task OnInitializeAsync(ILumaPluginContextV3 context, CancellationToken ct)
+        public Task OnInitializeAsync(ILumaPluginContextV3 context, CancellationToken ct = default)
         {
             _context = context;
             return Task.CompletedTask;
@@ -42,7 +42,12 @@ namespace LauncherHab3.Plugins
             _activeElapsedSeconds[appId] = 0;
         }
 
-        public Task OnTickAsync(CancellationToken ct)
+        public void SetDailyDetoxLimit(string appId, int limitMinutes)
+        {
+            _dailyLimitMinutes[appId] = Math.Max(1, limitMinutes);
+        }
+
+        public Task OnTickAsync(CancellationToken ct = default)
         {
             foreach (var key in _activeElapsedSeconds.Keys)
             {

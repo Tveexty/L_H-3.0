@@ -1,24 +1,30 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <OutputType>Exe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <RootNamespace>LauncherHab3</RootNamespace>
+    <AssemblyName>LauncherHab3.0</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
-    <AssemblyName>LauncherHab3</AssemblyName>
-    <RootNamespace>LauncherHab3</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>12.0</LangVersion>
     <Version>3.0.0</Version>
-    <Authors>LauncherHab Architecture Team</Authors>
-    <Product>Launcher Hab 3.0 &amp; Luma Core 1.0 (C# Edition)</Product>
-    <Description>Модульный десктопный лаунчер на C# (.NET 8) с независимым фоновым ядром Luma 1.0, плиточным главным экраном, быстрым поиском, 12 интерактивными виджетами, защитой AES-256-GCM и Plugin API 3.0.</Description>
+    <Title>LauncherHub 3.0 — Luma Core 1.0 (C# .NET 8)</Title>
+    <Company>Luma Core Architecture</Company>
+    <Product>LauncherHub 3.0 + Luma System 1.0</Product>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
   </PropertyGroup>
 
+  <!-- Исключаем дублирующиеся и внешние директории из компиляции MSBuild -->
   <ItemGroup>
-    <PackageReference Include="System.Management" Version="8.0.0" />
-    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <Compile Remove="public\**;..\public\**;bin\**;obj\**" />
+    <EmbeddedResource Remove="public\**;..\public\**;bin\**;obj\**" />
+    <None Remove="public\**;..\public\**;bin\**;obj\**" />
+    <Page Remove="public\**;..\public\**;bin\**;obj\**" />
   </ItemGroup>
 
 </Project>

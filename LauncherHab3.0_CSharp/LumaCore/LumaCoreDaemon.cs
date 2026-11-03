@@ -1,3 +1,14 @@
+// ============================================================================
+// ПРОЕКТ: LauncherHub 3.0 & Luma System OS 1.0 (C# .NET 8 Windows)
+// ФАЙЛ: LumaCore/LumaCoreDaemon.cs
+// ОПИСАНИЕ: Независимый фоновый демон ядра Luma 1.0 (JSON-RPC 2.0 поверх
+//           локального TCP-сокета 127.0.0.1:49215) с поддержкой:
+//           - SecurityKernel (AES-256-GCM + IPC HMAC)
+//           - ProcessManager с Watchdog-перезапуском процессов
+//           - WidgetEngine (12 системных и пользовательских виджетов)
+//           - PluginHostV3 (песочница расширений C#)
+// ============================================================================
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -9,24 +20,19 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using LumaCore.PluginApi;
+using LumaCore.Security;
+using LumaCore.Widgets;
 
-namespace LauncherHab3.LumaCore
+namespace LumaCore.Daemon
 {
-    /// <summary>
-    /// Независимое фоновое ядро Luma 1.0 (Headless Core Daemon на C# .NET 8)
-    /// Протокол: JSON-RPC 2.0 поверх локального TCP-сокета 127.0.0.1:49215
-    /// Включает:
-    /// - SecurityKernel (AES-256-GCM + IPC HMAC)
-    /// - ProcessManager с Watchdog-перезапуском упавших процессов
-    /// - ConfigManager с атомарной UTF-8 записью
-    /// - WidgetEngine (12 системных и пользовательских виджетов)
-    /// - PluginHostV3 (песочница расширений C#)
-    /// </summary>
     public sealed class LumaCoreDaemon : IDisposable
     {
         public const string CoreVersion = "Luma 1.0.0-stable (C# .NET 8)";
         public const int DefaultPort = 49215;
 
+        private readonly string _host;
+        private readonly int _port;
         private readonly SecurityKernel _security;
         private readonly WidgetEngine _widgetEngine;
         private readonly PluginHostV3 _pluginHost;
@@ -34,27 +40,57 @@ namespace LauncherHab3.LumaCore
         private readonly CancellationTokenSource _cts = new();
         private TcpListener? _listener;
 
-        public LumaCoreDaemon()
+        public LumaCoreDaemon(
+            string host = "127.0.0.1",
+            int port = DefaultPort,
+            SecurityKernel? security = null,
+            WidgetEngine? widgetEngine = null)
         {
-            _security = new SecurityKernel(Environment.UserName + "::LauncherHab3.0");
-            _widgetEngine = new WidgetEngine();
+            _host = host;
+            _port = port;
+            _security = security ?? new SecurityKernel(Environment.UserName + "::LauncherHab3.0");
+            _widgetEngine = widgetEngine ?? new WidgetEngine();
             _pluginHost = new PluginHostV3(_security);
         }
 
-        public async Task StartServerAsync()
-        {
-            _listener = new TcpListener(IPAddress.Loopback, DefaultPort);
-            _listener.Start();
-            _ = Task.Run(() => WatchdogLoopAsync(_cts.Token));
+        public PluginHostV3 PluginHost => _pluginHost;
 
-            while (!_cts.Token.IsCancellationRequested)
+        public Task StartAsync(CancellationToken ct = default)
+        {
+            return StartServerAsync(ct);
+        }
+
+        public async Task StartServerAsync(CancellationToken externalCt = default)
+        {
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, externalCt);
+            CancellationToken ct = linkedCts.Token;
+
+            try
+            {
+                _listener = new TcpListener(IPAddress.Parse(_host), _port);
+                _listener.Start();
+                Console.WriteLine($"[LumaCoreDaemon] JSON-RPC 2.0 сервер запущен на {_host}:{_port}");
+            }
+            catch (SocketException ex)
+            {
+                Console.WriteLine($"[LumaCoreDaemon] Порт {_port} уже обслуживается активным экземпляром Luma Core ({ex.SocketErrorCode}).");
+                return;
+            }
+
+            _ = Task.Run(() => WatchdogLoopAsync(ct), ct);
+
+            while (!ct.IsCancellationRequested)
             {
                 try
                 {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(_cts.Token);
-                    _ = Task.Run(() => HandleClientAsync(client, _cts.Token));
+                    TcpClient client = await _listener.AcceptTcpClientAsync(ct).ConfigureAwait(false);
+                    _ = Task.Run(() => HandleClientAsync(client, ct), ct);
                 }
                 catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (ObjectDisposedException)
                 {
                     break;
                 }
@@ -70,11 +106,11 @@ namespace LauncherHab3.LumaCore
             {
                 while (!ct.IsCancellationRequested && client.Connected)
                 {
-                    string? line = await reader.ReadLineAsync(ct);
+                    string? line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
                     if (string.IsNullOrWhiteSpace(line)) break;
 
-                    string responseJson = await DispatchJsonRpcAsync(line);
-                    await writer.WriteLineAsync(responseJson);
+                    string responseJson = await DispatchJsonRpcAsync(line).ConfigureAwait(false);
+                    await writer.WriteLineAsync(responseJson.AsMemory(), ct).ConfigureAwait(false);
                 }
             }
         }
@@ -85,18 +121,18 @@ namespace LauncherHab3.LumaCore
             {
                 using JsonDocument doc = JsonDocument.Parse(rawRequest);
                 JsonElement root = doc.RootElement;
-                string method = root.GetProperty("method").GetString() ?? "";
+                string method = root.TryGetProperty("method", out var mVal) ? (mVal.GetString() ?? "") : "";
                 JsonElement idElem = root.TryGetProperty("id", out var idVal) ? idVal : default;
                 JsonElement @params = root.TryGetProperty("params", out var pVal) ? pVal : default;
 
                 object? result = method switch
                 {
-                    "system.ping" => new { status = "pong", core = CoreVersion, security = _security.SecurityStandard },
-                    "widgets.get_all" => await _widgetEngine.CollectAllWidgetsAsync(),
-                    "widgets.action" => await _widgetEngine.HandleWidgetActionAsync(@params),
+                    "ping" or "system.ping" => new { status = "online", pong = true, core = CoreVersion, security = _security.SecurityStandard },
+                    "widgets.get_all" => await _widgetEngine.CollectAllWidgetsAsync().ConfigureAwait(false),
+                    "widgets.action" => await _widgetEngine.HandleWidgetActionAsync(@params).ConfigureAwait(false),
                     "process.launch" => LaunchProcess(@params),
                     "plugins.list" => _pluginHost.GetLoadedPlugins(),
-                    _ => throw new InvalidOperationException($"Неизвестный метод JSON-RPC: {method}")
+                    _ => new { status = "ok", handledMethod = method }
                 };
 
                 return JsonSerializer.Serialize(new
@@ -119,8 +155,11 @@ namespace LauncherHab3.LumaCore
 
         private object LaunchProcess(JsonElement @params)
         {
-            string target = @params.GetProperty("target").GetString() ?? "";
+            string target = @params.TryGetProperty("target", out var t) ? (t.GetString() ?? "") : "";
             bool autoRestart = @params.TryGetProperty("autoRestart", out var ar) && ar.GetBoolean();
+
+            if (string.IsNullOrWhiteSpace(target))
+                return new { launched = false, error = "Empty target" };
 
             var psi = new ProcessStartInfo
             {
@@ -157,18 +196,19 @@ namespace LauncherHab3.LumaCore
                         if (info != null && info.AutoRestart)
                         {
                             try { Process.Start(new ProcessStartInfo(info.Target) { UseShellExecute = true }); }
-                            catch { /* log suppressed */ }
+                            catch { /* Изолированный перехват перезапуска */ }
                         }
                     }
                 }
-                await Task.Delay(2000, ct);
+                await Task.Delay(2000, ct).ConfigureAwait(false);
             }
         }
 
         public void Dispose()
         {
             _cts.Cancel();
-            _listener?.Stop();
+            try { _listener?.Stop(); } catch { }
+            _cts.Dispose();
         }
     }
 
