@@ -159,6 +159,26 @@ export interface LiveSystemTelemetry {
 }
 
 export const THEMES: Record<string, CustomThemeConfig> = {
+  nothing_mono: {
+    id: 'nothing_mono',
+    name: 'Luma Mono (Тёмная)',
+    isDark: true,
+    bgGradient: '#09090b',
+    surfaceRgba: 'rgba(18, 18, 21, 0.92)',
+    cardHex: '#121215',
+    accent: 'red',
+    accentHex: '#d71921',
+  },
+  nothing_paper: {
+    id: 'nothing_paper',
+    name: 'Luma Paper (Светлая)',
+    isDark: false,
+    bgGradient: '#f3f3f1',
+    surfaceRgba: 'rgba(255, 255, 255, 0.94)',
+    cardHex: '#ffffff',
+    accent: 'red',
+    accentHex: '#d71921',
+  },
   m3_expressive: {
     id: 'm3_expressive',
     name: 'Luma Expressive (Глубокий Индиго)',

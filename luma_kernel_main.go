@@ -38,12 +38,12 @@ import (
 //go:embed dist
 var embeddedDist embed.FS
 
-//go:embed luma_kernel_main.go system_types.go system_windows.go system_unix.go Luma_Core LauncherHab3.0_CSharp src/components/LumaGrid20x30Window.tsx
+//go:embed luma_kernel_main.go system_types.go system_windows.go system_unix.go Luma_Core LauncherHab3.0_CSharp src/components/LumaDesktopCanvas.tsx src/components/LumaGrid20x30Window.tsx
 var embeddedSources embed.FS
 
 const (
-	KernelVersion   = "1.0.2-flagship"
-	KernelCodename  = "Nebula M3 Expressive"
+	KernelVersion   = "1.0.2b"
+	KernelCodename  = "Mono Desktop"
 	DefaultRpcPort  = 49215
 	DefaultHttpPort = 49216
 )
@@ -573,19 +573,19 @@ func isLumaAlreadyRunning(httpPort int) bool {
 }
 
 func main() {
-	httpPort := flag.Int("port", DefaultHttpPort, "HTTP port for Luma OS 1.0.2 Shell UI")
-	rpcPort := flag.Int("rpc-port", DefaultRpcPort, "TCP JSON-RPC 2.0 port for Luma Core 1.0.2")
-	headless := flag.Bool("headless", false, "Run Luma Core 1.0.2 daemon without auto-opening desktop windows")
-	dualBoot := flag.Bool("dual-windows", true, "Open both Window 1 (Grouped List) and Window 2 (20x30 Grid) on startup")
+	httpPort := flag.Int("port", DefaultHttpPort, "HTTP port for Luma OS 1.0.2b Desktop")
+	rpcPort := flag.Int("rpc-port", DefaultRpcPort, "TCP JSON-RPC 2.0 port for Luma Core 1.0.2b")
+	headless := flag.Bool("headless", false, "Run Luma Core 1.0.2b daemon without auto-opening desktop window")
+	dualBoot := flag.Bool("dual-windows", false, "Optionally open a second desktop window on startup")
 	flag.Parse()
 
 	if isLumaAlreadyRunning(*httpPort) {
-		log.Printf("[LumaOS 1.0.2] Existing kernel daemon detected on 127.0.0.1:%d — opening desktop windows...", *httpPort)
+		log.Printf("[LumaOS 1.0.2b] Existing kernel daemon detected on 127.0.0.1:%d — opening desktop...", *httpPort)
 		if !*headless && runtime.GOOS == "windows" {
-			openNativeDesktopWindow(fmt.Sprintf("http://127.0.0.1:%d/?window=1", *httpPort), 1440, 900, 40, 40)
+			openNativeDesktopWindow(fmt.Sprintf("http://127.0.0.1:%d/", *httpPort), 1440, 900, 40, 40)
 			if *dualBoot {
 				time.Sleep(300 * time.Millisecond)
-				openNativeDesktopWindow(fmt.Sprintf("http://127.0.0.1:%d/?window=2", *httpPort), 1480, 920, 140, 70)
+				openNativeDesktopWindow(fmt.Sprintf("http://127.0.0.1:%d/", *httpPort), 1440, 900, 100, 70)
 			}
 		}
 		return
@@ -751,12 +751,12 @@ func main() {
 		})
 	})
 
-	// Serve standalone executable download for LumaOS_1.0.2.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.0.2b.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.2.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.2b.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -764,12 +764,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.2.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.2b.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.0.2b.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.2.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.exe", serveExe)
@@ -797,9 +798,8 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.0.2 (FLAGSHIP EDITION) — KERNEL & SHELL")
-	log.Printf("  - Window 1 (Grouped List):     http://%s/?window=1", addr)
-	log.Printf("  - Window 2 (20x30 Matrix):     http://%s/?window=2", addr)
+	log.Printf("  LUMA OS 1.0.2b — MONO DESKTOP & KERNEL")
+	log.Printf("  - Desktop Environment:         http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:  tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Media API:  http://%s/api/kernel/system", addr)
 	log.Printf("=================================================================")
@@ -807,12 +807,11 @@ func main() {
 	if !*headless && runtime.GOOS == "windows" {
 		go func() {
 			time.Sleep(450 * time.Millisecond)
-			win1URL := fmt.Sprintf("http://127.0.0.1:%d/?window=1", *httpPort)
-			openNativeDesktopWindow(win1URL, 1440, 900, 40, 40)
+			winURL := fmt.Sprintf("http://127.0.0.1:%d/", *httpPort)
+			openNativeDesktopWindow(winURL, 1440, 900, 40, 40)
 			if *dualBoot {
 				time.Sleep(350 * time.Millisecond)
-				win2URL := fmt.Sprintf("http://127.0.0.1:%d/?window=2", *httpPort)
-				openNativeDesktopWindow(win2URL, 1480, 920, 140, 70)
+				openNativeDesktopWindow(winURL, 1440, 900, 100, 70)
 			}
 		}()
 	}
