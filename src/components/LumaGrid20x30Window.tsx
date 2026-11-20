@@ -170,7 +170,7 @@ export interface LumaGrid20x30Props {
 
 const STORAGE_KEY_GRID_20X30 = 'luma_os_1_0_1_grid_20x30_v3';
 
-// 18 Original Flagship Luma OS 1.0.1 Widgets across 3 Signature Suites:
+// 18 Original Flagship Luma OS 1.0.2 Widgets across 3 Signature Suites:
 // Luma Pulse (pulse), Luma Aura (aura), Luma Core (core)
 // Placed cleanly onto a 30 columns x 20 rows (600 cells) matrix!
 export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
@@ -370,7 +370,7 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
   },
   {
     id: 'luma_security_shield',
-    title: 'Luma Core — Криптоядро LumaGuard 1.0.1',
+    title: 'Luma Core — Криптоядро LumaGuard 1.0.2',
     subtitle: 'AES-256-GCM • PBKDF2-SHA512 • Zero-Trust IPC HMAC',
     ecosystem: 'core',
     col: 23,
@@ -554,15 +554,15 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
   // Luma Notes & Tasks
   const [todoItems, setTodoItems] = useState<TodoItem[]>(
     saved?.todoItems || [
-      { id: 't1', text: 'Проверить реальную телеметрию и регион Luma 1.0.1', done: true },
+      { id: 't1', text: 'Проверить реальную телеметрию и регион Luma 1.0.2', done: true },
       { id: 't2', text: 'Протестировать переключение треков и Luma Island', done: true },
-      { id: 't3', text: 'Запустить LumaOS_1.0.1.exe в 1 клик', done: false },
+      { id: 't3', text: 'Запустить LumaOS_1.0.2.exe в 1 клик', done: false },
     ]
   );
   const [newTodoText, setNewTodoText] = useState<string>('');
   const [quickNote, setQuickNote] = useState<string>(
     saved?.quickNote ||
-      'Luma OS 1.0.1 • Патч первого дня: реальные ресурсы ПК, авто-регион, живые треки и 18 фирменных виджетов.'
+      'Luma OS 1.0.2 • Flagship Edition 1.0.2: реальные ресурсы ПК, авто-регион, живые треки и 18 фирменных виджетов.'
   );
   const [keepTab, setKeepTab] = useState<'todo' | 'note'>('todo');
 
@@ -878,7 +878,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
     [realLocation, fetchWeatherByCoords, onRefreshLocation]
   );
 
-  // Automatically trigger live weather when realLocation arrives from Luma Core 1.0.1
+  // Automatically trigger live weather when realLocation arrives from Luma Core 1.0.2
   useEffect(() => {
     if (manualCitySelected) return;
     if (realLocation?.detected && (realLocation.latitude !== 0 || realLocation.longitude !== 0)) {
@@ -1089,7 +1089,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
     setFolders(DEFAULT_GRID_FOLDERS);
     setPinnedApps(DEFAULT_PINNED_APPS);
     setSelectedItemId(null);
-    onPushNotification('Матрица 20×30', 'Восстановлена эталонная раскладка 18 виджетов Luma 1.0.1.', 'success');
+    onPushNotification('Матрица 20×30', 'Восстановлена эталонная раскладка 18 виджетов Luma 1.0.2.', 'success');
   };
 
   const renderAppIcon = (iconName: string, className = 'w-5 h-5') => {
@@ -1150,7 +1150,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
             <div className="flex items-center justify-between">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-400/35">
                 <Sparkles className="w-3 h-3" />
-                Luma Pulse 1.0.1
+                Luma Pulse 1.0.2
               </span>
               <span className={`text-[10px] font-mono ${mutedTextCls}`}>:{secs}</span>
             </div>
@@ -2274,7 +2274,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
             <div className="flex items-center justify-between">
               <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
                 <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                Криптоядро LumaGuard 1.0.1
+                Криптоядро LumaGuard 1.0.2
               </span>
               <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-500 text-[9px] font-mono font-bold">
                 AES-256-GCM
@@ -2309,65 +2309,62 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
   };
 
   return (
-    <div className="space-y-4">
-      {/* ==================== TOP CONTROL BAR FOR WINDOW 2 (20x30 CELL MATRIX) ==================== */}
+    <div className="space-y-4 w-full max-w-full min-w-0">
+      {/* ==================== TOP CONTROL BAR FOR WINDOW 2 (20x30 CELL MATRIX • LUMA OS 1.0.2) ==================== */}
       <div
-        className={`p-4 rounded-[28px] border shadow-xl flex flex-wrap items-center justify-between gap-3 transition-all ${
+        className={`px-4 py-3 rounded-[24px] border flex flex-wrap items-center justify-between gap-3 transition-all ${
           isDark
-            ? 'bg-[#101624]/92 border-indigo-500/30 text-white'
-            : 'bg-white/95 border-slate-300 text-slate-900'
+            ? 'bg-[#0e1422]/90 border-white/[0.08] text-white luma-specular'
+            : 'bg-white/92 border-slate-300 text-slate-900 luma-specular-light'
         }`}
         style={{ backdropFilter: 'blur(24px)' }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div
-            className="w-11 h-11 rounded-[18px] flex items-center justify-center text-white font-black shadow-lg shrink-0"
+            className="w-9 h-9 rounded-2xl flex items-center justify-center text-white font-black shadow-md shrink-0"
             style={{
               background: 'linear-gradient(135deg, #6366f1 0%, #10b981 100%)',
             }}
           >
-            <Grid className="w-5 h-5" />
+            <Grid className="w-4 h-4" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-extrabold tracking-tight">
-                Окно 2: Матрица Ячеек {gridOrientation} (600 ячеек) • Luma OS 1.0.1
+              <h2 className="text-sm sm:text-base font-extrabold tracking-tight truncate">
+                Матрица {gridOrientation}
               </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-500 border border-emerald-400/40">
-                🟢 LUMA PULSE • AURA • CORE
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-400/30 whitespace-nowrap">
+                600 ячеек · 18 виджетов
               </span>
               {hoveredCell && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-400/40">
-                  Ячейка [X:{hoveredCell.col}, Y:{hoveredCell.row}]
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-400/35 whitespace-nowrap">
+                  [X:{hoveredCell.col}, Y:{hoveredCell.row}]
                 </span>
               )}
             </div>
-            <p className={`text-xs mt-0.5 ${mutedTextCls}`}>
-              Координатная матрица <strong>20×30 (600 ячеек)</strong> с 18 живыми виджетами, реальными ресурсами вашего ПК, авто-регионом погоды и управлением музыкой.
-            </p>
           </div>
         </div>
 
-        {/* Right Controls: Suite Filter, Orientation, Grid Lines, Edit Mode, Widget Catalog, Separate Window */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Right Controls: Suite Filter, Orientation, Grid Lines, Edit Mode, Widget Catalog */}
+        <div className="flex flex-wrap items-center gap-1.5">
           {/* Luma Suite Filter Pills */}
           <div
-            className={`flex items-center gap-1 p-1 rounded-full border ${
-              isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-100 border-slate-300'
+            className={`flex items-center gap-0.5 p-0.5 rounded-xl border ${
+              isDark ? 'bg-white/[0.03] border-white/[0.08]' : 'bg-slate-100 border-slate-300'
             }`}
           >
             {(
               [
                 ['all', 'Все (18)'],
-                ['pulse', '⚡ Luma Pulse'],
-                ['aura', '✨ Luma Aura'],
-                ['core', '🧠 Luma Core'],
+                ['pulse', 'Pulse'],
+                ['aura', 'Aura'],
+                ['core', 'Core'],
               ] as const
             ).map(([ek, el]) => (
               <button
                 key={ek}
                 onClick={() => setEcosystemFilter(ek)}
-                className={`px-3 py-1 rounded-full text-[11px] font-bold transition cursor-pointer ${
+                className={`px-2.5 py-1 rounded-[10px] text-[11px] font-bold transition cursor-pointer whitespace-nowrap ${
                   ecosystemFilter === ek
                     ? 'bg-indigo-600 text-white shadow-sm'
                     : isDark
@@ -2382,23 +2379,23 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
 
           <button
             onClick={() => setGridOrientation((o) => (o === '30x20' ? '20x30' : '30x20'))}
-            className={`px-3 py-1.5 rounded-full border text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer ${innerBtnCls}`}
+            className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-mono font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${innerBtnCls}`}
             title="Переключить ориентацию матрицы 30×20 / 20×30"
           >
             <Layers className="w-3.5 h-3.5 text-indigo-400" />
-            Сетка: {gridOrientation}
+            {gridOrientation}
           </button>
 
           <button
             onClick={() => setShowCellGridLines((v) => !v)}
-            className={`px-3 py-1.5 rounded-full border text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition ${
+            className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition whitespace-nowrap ${
               showCellGridLines
-                ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-500'
+                ? 'bg-emerald-500/15 border-emerald-400/50 text-emerald-400'
                 : innerBtnCls
             }`}
           >
             {showCellGridLines ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-            Ячейки 20×30
+            Сетка
           </button>
 
           <button
@@ -2408,41 +2405,32 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                 setSelectedItemId('luma_sculpt_clock');
               }
             }}
-            className={`px-3.5 py-1.5 rounded-full border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition ${
+            className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition whitespace-nowrap ${
               editGridMode
                 ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-lg'
                 : 'bg-indigo-600/20 hover:bg-indigo-600/30 border-indigo-500/40 text-indigo-400'
             }`}
           >
             <Move className="w-3.5 h-3.5" />
-            {editGridMode ? '✓ Готово (Ячейки)' : 'Редактор 20×30'}
+            {editGridMode ? 'Готово' : 'Редактор'}
           </button>
 
           <button
             onClick={() => setWidgetCatalogModalOpen(true)}
-            className={`px-3 py-1.5 rounded-full border text-xs font-semibold flex items-center gap-1.5 cursor-pointer ${innerBtnCls}`}
+            className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${innerBtnCls}`}
           >
             <Plus className="w-3.5 h-3.5 text-emerald-500" />
-            Виджеты и Папки
+            Виджеты
           </button>
 
-          {!isStandaloneWindow && (
+          {isStandaloneWindow && (
             <button
-              onClick={onOpenSeparateWindow2}
-              className="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
-              title="Открыть Окно 2 (20×30) в отдельном независимом окне"
+              onClick={onSwitchToWindow1}
+              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${innerBtnCls}`}
             >
-              <ExternalLink className="w-3.5 h-3.5" />
-              В отдельном окне
+              ← Окно 1
             </button>
           )}
-
-          <button
-            onClick={onSwitchToWindow1}
-            className={`px-3 py-1.5 rounded-full border text-xs font-semibold flex items-center gap-1.5 cursor-pointer ${innerBtnCls}`}
-          >
-            ← Окно 1 (По группам)
-          </button>
         </div>
       </div>
 
@@ -2586,10 +2574,10 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                   zIndex: isSelected ? 20 : 10,
                   backdropFilter: 'blur(22px)',
                 }}
-                className={`group relative rounded-[26px] border p-3.5 transition-all duration-200 flex flex-col justify-between overflow-hidden ${
+                className={`group luma-card-lift relative rounded-[24px] border p-3.5 flex flex-col justify-between overflow-hidden ${
                   isDark
-                    ? 'bg-[#121929]/92 text-slate-100 shadow-[0_12px_32px_rgba(0,0,0,0.45)]'
-                    : 'bg-white/95 text-slate-900 shadow-md'
+                    ? 'bg-[#101726]/92 text-slate-100 luma-specular'
+                    : 'bg-white/95 text-slate-900 luma-specular-light'
                 } ${ecoMeta.border} ${
                   isSelected && editGridMode ? 'ring-2 ring-amber-400 scale-[1.01]' : ''
                 }`}
@@ -2735,7 +2723,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
             <div className={`flex items-center justify-between pb-3 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <div>
                 <h3 className="text-lg font-extrabold">
-                  Каталог 18 Виджетов Luma OS 1.0.1 (Pulse • Aura • Core)
+                  Каталог 18 Виджетов Luma OS 1.0.2 (Pulse • Aura • Core)
                 </h3>
                 <p className={`text-xs ${mutedTextCls}`}>
                   Включайте/выключайте виджеты или создавайте папки на матрице 20×30
@@ -2988,7 +2976,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
             </div>
           )}
           <div className="mt-8 px-6 py-2.5 rounded-full bg-white/10 border border-white/20 text-xs font-semibold">
-            🔒 Экран заблокирован LumaGuard 1.0.1 • Нажмите в любом месте или Esc для разблокировки
+            🔒 Экран заблокирован LumaGuard 1.0.2 • Нажмите в любом месте или Esc для разблокировки
           </div>
         </div>
       )}

@@ -1,9 +1,9 @@
-// Luma OS 1.0.1 (Day-One Patch) — Native Kernel & Material 3 Expressive Dual-Window Shell
+// Luma OS 1.0.2 (Flagship Edition) — Native Kernel & Material 3 Expressive Dual-Window Shell
 // Architecture: Modular OS Kernel (HAL Hardware Probe, Activity/Process Manager,
 // Binder / JSON-RPC 2.0 IPC on 127.0.0.1:49215, LumaGuard AES-256-GCM + PBKDF2-HMAC-SHA512
 // SecurityKernel, Encrypted Virtual File System, Real Media/Audio Controller, Region Auto-Detection,
 // and 18-Widget Engine across Luma Pulse, Luma Aura, and Luma Core suites).
-// Compiles to a zero-dependency standalone executable: LumaOS_1.0.1.exe
+// Compiles to a zero-dependency standalone executable: LumaOS_1.0.2.exe
 
 package main
 
@@ -42,7 +42,7 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion   = "1.0.1-day1-patch"
+	KernelVersion   = "1.0.2-flagship"
 	KernelCodename  = "Nebula M3 Expressive"
 	DefaultRpcPort  = 49215
 	DefaultHttpPort = 49216
@@ -115,7 +115,7 @@ func resolveVfsDir() string {
 	if err != nil || base == "" {
 		base = os.TempDir()
 	}
-	dir := filepath.Join(base, "LumaOS_1.0.1")
+	dir := filepath.Join(base, "LumaOS_1.0.2")
 	_ = os.MkdirAll(dir, 0o700)
 	return dir
 }
@@ -123,8 +123,8 @@ func resolveVfsDir() string {
 func NewLumaKernel() *LumaKernel {
 	vfsDir := resolveVfsDir()
 	host, _ := os.Hostname()
-	pass := []byte("LumaOS_1.0.1_Hardware_Root_" + host + "_" + runtime.GOOS)
-	salt := []byte("LumaGuard_PBKDF2_SHA512_Salt_v1.0.1")
+	pass := []byte("LumaOS_1.0.2_Hardware_Root_" + host + "_" + runtime.GOOS)
+	salt := []byte("LumaGuard_PBKDF2_SHA512_Salt_v1.0.2")
 	derived := pbkdf2HMACSHA512(pass, salt, 25000, 64)
 
 	k := &LumaKernel{
@@ -464,7 +464,7 @@ func (k *LumaKernel) HandleJSONRPC(raw []byte) []byte {
 	case "system.ping":
 		result = map[string]interface{}{
 			"pong":       true,
-			"engine":     "Luma OS 1.0.1 Kernel",
+			"engine":     "Luma OS 1.0.2 Kernel",
 			"version":    KernelVersion,
 			"ipc_socket": fmt.Sprintf("tcp://127.0.0.1:%d", DefaultRpcPort),
 			"timestamp":  float64(time.Now().UnixMilli()) / 1000.0,
@@ -476,7 +476,7 @@ func (k *LumaKernel) HandleJSONRPC(raw []byte) []byte {
 	case "widgets.get_data":
 		snap := k.TelemetrySnapshot()
 		result = map[string]interface{}{
-			"engine":        "Luma WidgetEngine 1.0.1 (Luma Pulse + Luma Aura + Luma Core)",
+			"engine":        "Luma WidgetEngine 1.0.2 (Luma Pulse + Luma Aura + Luma Core)",
 			"grid_matrix":   "20x30 (600 coordinate cells)",
 			"widgets_total": len(k.widgets),
 			"interval_sec":  1,
@@ -484,9 +484,9 @@ func (k *LumaKernel) HandleJSONRPC(raw []byte) []byte {
 			"widgets":       k.widgets,
 		}
 	case "security.status":
-		sampleCipher, _ := k.SealAES256GCM([]byte("LumaOS_1.0.1_Verified_Container"))
+		sampleCipher, _ := k.SealAES256GCM([]byte("LumaOS_1.0.2_Verified_Container"))
 		result = map[string]interface{}{
-			"engine":            "LumaGuard SecurityKernel 1.0.1",
+			"engine":            "LumaGuard SecurityKernel 1.0.2",
 			"cipher":            "AES-256-GCM (96-bit Nonce + 128-bit AuthTag)",
 			"kdf":               "PBKDF2-HMAC-SHA512",
 			"ipc_mac":           "HMAC-SHA256",
@@ -573,14 +573,14 @@ func isLumaAlreadyRunning(httpPort int) bool {
 }
 
 func main() {
-	httpPort := flag.Int("port", DefaultHttpPort, "HTTP port for Luma OS 1.0.1 Shell UI")
-	rpcPort := flag.Int("rpc-port", DefaultRpcPort, "TCP JSON-RPC 2.0 port for Luma Core 1.0.1")
-	headless := flag.Bool("headless", false, "Run Luma Core 1.0.1 daemon without auto-opening desktop windows")
+	httpPort := flag.Int("port", DefaultHttpPort, "HTTP port for Luma OS 1.0.2 Shell UI")
+	rpcPort := flag.Int("rpc-port", DefaultRpcPort, "TCP JSON-RPC 2.0 port for Luma Core 1.0.2")
+	headless := flag.Bool("headless", false, "Run Luma Core 1.0.2 daemon without auto-opening desktop windows")
 	dualBoot := flag.Bool("dual-windows", true, "Open both Window 1 (Grouped List) and Window 2 (20x30 Grid) on startup")
 	flag.Parse()
 
 	if isLumaAlreadyRunning(*httpPort) {
-		log.Printf("[LumaOS 1.0.1] Existing kernel daemon detected on 127.0.0.1:%d — opening desktop windows...", *httpPort)
+		log.Printf("[LumaOS 1.0.2] Existing kernel daemon detected on 127.0.0.1:%d — opening desktop windows...", *httpPort)
 		if !*headless && runtime.GOOS == "windows" {
 			openNativeDesktopWindow(fmt.Sprintf("http://127.0.0.1:%d/?window=1", *httpPort), 1440, 900, 40, 40)
 			if *dualBoot {
@@ -593,7 +593,7 @@ func main() {
 
 	kernel := NewLumaKernel()
 
-	// 1. Start Luma Core 1.0.1 TCP JSON-RPC 2.0 Server (127.0.0.1:49215)
+	// 1. Start Luma Core 1.0.2 TCP JSON-RPC 2.0 Server (127.0.0.1:49215)
 	go startTcpRpcServer(kernel, *rpcPort)
 
 	// 2. Prepare embedded dist/ filesystem
@@ -751,12 +751,12 @@ func main() {
 		})
 	})
 
-	// Serve standalone executable download for both LumaOS_1.0.1.exe and LumaOS_1.0.exe
+	// Serve standalone executable download for LumaOS_1.0.2.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.1.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.2.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -764,12 +764,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.1.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.2.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.0.2.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.exe", serveExe)
 
@@ -796,7 +797,7 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.0.1 (DAY-ONE PATCH) — KERNEL & SHELL")
+	log.Printf("  LUMA OS 1.0.2 (FLAGSHIP EDITION) — KERNEL & SHELL")
 	log.Printf("  - Window 1 (Grouped List):     http://%s/?window=1", addr)
 	log.Printf("  - Window 2 (20x30 Matrix):     http://%s/?window=2", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:  tcp://127.0.0.1:%d", *rpcPort)
