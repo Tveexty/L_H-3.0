@@ -42,10 +42,11 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion   = "1.0.2b"
-	KernelCodename  = "Mono Desktop"
-	DefaultRpcPort  = 49215
-	DefaultHttpPort = 49216
+	KernelVersion       = "1.0.3"
+	KernelCodename      = "Hydrogen"
+	KernelEngineVersion = "1.0"
+	DefaultRpcPort      = 49215
+	DefaultHttpPort     = 49216
 )
 
 type WidgetDescriptor struct {
@@ -339,11 +340,14 @@ func (k *LumaKernel) TelemetrySnapshot() map[string]interface{} {
 	rssMB := math.Round((float64(memStats.Sys)/(1024.0*1024.0))*10) / 10
 
 	return map[string]interface{}{
-		"kernel":          "LumaCore",
-		"version":         KernelVersion,
-		"codename":        KernelCodename,
-		"os":              hw.OSName,
-		"hostname":        hw.Hostname,
+		"kernel":                "LumaCore",
+		"version":               KernelVersion,
+		"codename":              KernelCodename,
+		"kernel_engine_version": KernelEngineVersion,
+		"device_model":          hw.DeviceModel,
+		"manufacturer":          hw.Manufacturer,
+		"os":                    hw.OSName,
+		"hostname":              hw.Hostname,
 		"arch":            hw.Arch,
 		"cpu_model":       hw.CPUModel,
 		"cpu_cores":       hw.CPUCores,
@@ -791,7 +795,7 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "processes": procs})
 	})
 
-	// Safe Host Filesystem Inspector (for Terminal `ls` / `cat`)
+	// Safe Host Filesystem Inspector (for Terminal `ls`/`cat` AND Settings -> Память и Файлы)
 	mux.HandleFunc("/api/kernel/fs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		var payload struct {
@@ -806,6 +810,10 @@ func main() {
 		if strings.HasPrefix(target, "~/") {
 			home, _ := os.UserHomeDir()
 			target = filepath.Join(home, target[2:])
+		}
+		// Normalize Windows drive roots like "C:" -> "C:\"
+		if len(target) == 2 && target[1] == ':' {
+			target = target + `\`
 		}
 		if strings.EqualFold(payload.Action, "cat") {
 			data, err := os.ReadFile(target)
@@ -828,20 +836,108 @@ func main() {
 		for _, e := range entries {
 			info, _ := e.Info()
 			var sz int64
+			mod := ""
 			if info != nil {
 				sz = info.Size()
+				mod = info.ModTime().Format("02.01.2006 15:04")
 			}
 			out = append(out, FsEntry{
-				Name:  e.Name(),
-				Path:  filepath.Join(target, e.Name()),
-				IsDir: e.IsDir(),
-				Size:  sz,
+				Name:    e.Name(),
+				Path:    filepath.Join(target, e.Name()),
+				IsDir:   e.IsDir(),
+				Size:    sz,
+				ModTime: mod,
 			})
-			if len(out) >= 60 {
+			if len(out) >= 120 {
 				break
 			}
 		}
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": target, "entries": out})
+		parent := filepath.Dir(target)
+		if parent == target {
+			parent = ""
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":      true,
+			"path":    target,
+			"parent":  parent,
+			"entries": out,
+		})
+	})
+
+	// Real File / Path Properties Inspector (Size, Modified/Download Date, Exists)
+	mux.HandleFunc("/api/kernel/stat", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Path string `json:"path"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		target := strings.TrimSpace(payload.Path)
+		if target == "" {
+			_ = json.NewEncoder(w).Encode(FileStatInfo{Exists: false})
+			return
+		}
+		if strings.HasPrefix(target, "~/") {
+			home, _ := os.UserHomeDir()
+			target = filepath.Join(home, target[2:])
+		}
+		info, err := os.Stat(target)
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(FileStatInfo{Exists: false, Path: target, Name: filepath.Base(target)})
+			return
+		}
+		sz := info.Size()
+		var human string
+		switch {
+		case sz >= 1024*1024*1024:
+			human = fmt.Sprintf("%.2f ГБ", float64(sz)/(1024*1024*1024))
+		case sz >= 1024*1024:
+			human = fmt.Sprintf("%.1f МБ", float64(sz)/(1024*1024))
+		case sz >= 1024:
+			human = fmt.Sprintf("%.1f КБ", float64(sz)/1024)
+		default:
+			human = fmt.Sprintf("%d Б", sz)
+		}
+		absPath, _ := filepath.Abs(target)
+		_ = json.NewEncoder(w).Encode(FileStatInfo{
+			Exists:     true,
+			Path:       absPath,
+			Name:       info.Name(),
+			IsDir:      info.IsDir(),
+			SizeBytes:  sz,
+			SizeHuman:  human,
+			ModifiedAt: info.ModTime().Format("02.01.2006 15:04"),
+		})
+	})
+
+	// Real Host Bluetooth Hardware Detection & Radio Control API
+	mux.HandleFunc("/api/kernel/bluetooth", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodPost {
+			var payload struct {
+				Enabled *bool `json:"enabled"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			if payload.Enabled != nil {
+				st := kernel.probe.SetBluetoothEnabled(*payload.Enabled)
+				_ = json.NewEncoder(w).Encode(st)
+				return
+			}
+		}
+		_ = json.NewEncoder(w).Encode(kernel.probe.GetBluetoothStatus())
+	})
+
+	// Real Power Plan / Battery Saver API (performance | balanced | saver)
+	mux.HandleFunc("/api/kernel/power-plan", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Plan string `json:"plan"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		if payload.Plan == "" {
+			payload.Plan = "balanced"
+		}
+		err := kernel.probe.SetPowerPlan(payload.Plan)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": err == nil, "plan": payload.Plan})
 	})
 
 	// Host Shell Execution (for Pro Luma Terminal)
@@ -879,12 +975,12 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "fullscreen": isNativeFullscreen()})
 	})
 
-	// Serve standalone executable download for LumaOS_1.0.2b.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.0.3.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.2b.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.3.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -892,12 +988,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.2b.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.3.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.0.3.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.2b.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.2.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.1.exe", serveExe)

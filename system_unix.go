@@ -297,13 +297,80 @@ func (p *platformProbe) Collect(loc LocationInfo) HostHardwareSnapshot {
 		BatteryPresent:  battPresent,
 		BatteryPercent:  battPct,
 		BatteryCharging: battCharging,
-		NetDownMbps:     downMbps,
-		NetUpMbps:       upMbps,
-		Disks:           readLinuxDisks(),
-		Media:           media,
-		Location:        loc,
-		RealTelemetry:   true,
+		NetDownMbps:         downMbps,
+		NetUpMbps:           upMbps,
+		Disks:               readLinuxDisks(),
+		Media:               media,
+		Location:            loc,
+		DeviceModel:         readLinuxDMI("/sys/devices/virtual/dmi/id/product_name", "Luma Linux Workstation"),
+		Manufacturer:        readLinuxDMI("/sys/devices/virtual/dmi/id/sys_vendor", "Linux x64"),
+		KernelEngineVersion: "1.0",
+		RealTelemetry:       true,
 	}
+}
+
+func readLinuxDMI(path, fallback string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return fallback
+	}
+	s := strings.TrimSpace(string(b))
+	if s == "" {
+		return fallback
+	}
+	return s
+}
+
+func (p *platformProbe) GetBluetoothStatus() BluetoothStatus {
+	entries, err := os.ReadDir("/sys/class/bluetooth")
+	if err != nil || len(entries) == 0 {
+		return BluetoothStatus{
+			Available:   false,
+			Enabled:     false,
+			AdapterName: "",
+			Devices:     []BluetoothDevice{},
+		}
+	}
+	st := BluetoothStatus{
+		Available:   true,
+		Enabled:     true,
+		AdapterName: entries[0].Name(),
+		Devices:     []BluetoothDevice{},
+	}
+	if _, err := exec.LookPath("bluetoothctl"); err == nil {
+		if out, err := exec.Command("bluetoothctl", "show").Output(); err == nil {
+			st.Enabled = strings.Contains(string(out), "Powered: yes")
+		}
+		if out, err := exec.Command("bluetoothctl", "devices").Output(); err == nil {
+			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+				parts := strings.SplitN(line, " ", 3)
+				if len(parts) == 3 {
+					st.Devices = append(st.Devices, BluetoothDevice{
+						Name:      strings.TrimSpace(parts[2]),
+						Status:    "OK",
+						Connected: false,
+						Class:     "Bluetooth",
+					})
+				}
+			}
+		}
+	}
+	return st
+}
+
+func (p *platformProbe) SetBluetoothEnabled(enabled bool) BluetoothStatus {
+	if _, err := exec.LookPath("bluetoothctl"); err == nil {
+		arg := "off"
+		if enabled {
+			arg = "on"
+		}
+		_ = exec.Command("bluetoothctl", "power", arg).Run()
+	}
+	return p.GetBluetoothStatus()
+}
+
+func (p *platformProbe) SetPowerPlan(plan string) error {
+	return nil
 }
 
 func (p *platformProbe) ControlMedia(action string) (MediaSessionInfo, error) {

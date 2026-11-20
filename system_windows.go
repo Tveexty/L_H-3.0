@@ -78,6 +78,8 @@ type platformProbe struct {
 	cpuModel     string
 	gpuName      string
 	osCaption    string
+	deviceModel  string
+	manufacturer string
 	netDownMbps  float64
 	netUpMbps    float64
 	prevRxBytes  uint64
@@ -88,9 +90,11 @@ type platformProbe struct {
 
 func newPlatformProbe() *platformProbe {
 	p := &platformProbe{
-		cpuModel:  fmt.Sprintf("%s (%d потоков)", runtime.GOARCH, runtime.NumCPU()),
-		gpuName:   "Графический ускоритель Luma HAL",
-		osCaption: "Рабочая станция x64",
+		cpuModel:     fmt.Sprintf("%s (%d потоков)", runtime.GOARCH, runtime.NumCPU()),
+		gpuName:      "Графический ускоритель Luma HAL",
+		osCaption:    "Рабочая станция x64",
+		deviceModel:  "PC Workstation x64",
+		manufacturer: "Generic",
 	}
 	p.sampleCPUTimes()
 	go p.fetchStaticSpecs()
@@ -107,16 +111,20 @@ func runHiddenPowerShell(script string) (string, error) {
 
 func (p *platformProbe) fetchStaticSpecs() {
 	script := `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name
 $gpu = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name
 $os  = (Get-CimInstance Win32_OperatingSystem | Select-Object -First 1).Caption
-@{ cpu = $cpu; gpu = $gpu; os = $os } | ConvertTo-Json -Compress
+$cs  = Get-CimInstance Win32_ComputerSystem | Select-Object -First 1
+@{ cpu = $cpu; gpu = $gpu; os = $os; model = $cs.Model; mfg = $cs.Manufacturer } | ConvertTo-Json -Compress
 `
 	if out, err := runHiddenPowerShell(script); err == nil && out != "" {
 		var info struct {
-			CPU string `json:"cpu"`
-			GPU string `json:"gpu"`
-			OS  string `json:"os"`
+			CPU   string `json:"cpu"`
+			GPU   string `json:"gpu"`
+			OS    string `json:"os"`
+			Model string `json:"model"`
+			Mfg   string `json:"mfg"`
 		}
 		if json.Unmarshal([]byte(out), &info) == nil {
 			p.mu.Lock()
@@ -128,6 +136,12 @@ $os  = (Get-CimInstance Win32_OperatingSystem | Select-Object -First 1).Caption
 			}
 			if strings.TrimSpace(info.OS) != "" {
 				p.osCaption = strings.TrimSpace(info.OS)
+			}
+			if strings.TrimSpace(info.Model) != "" {
+				p.deviceModel = strings.TrimSpace(info.Model)
+			}
+			if strings.TrimSpace(info.Mfg) != "" {
+				p.manufacturer = strings.TrimSpace(info.Mfg)
 			}
 			p.mu.Unlock()
 		}
@@ -346,34 +360,130 @@ func (p *platformProbe) Collect(loc LocationInfo) HostHardwareSnapshot {
 	cpuModel := p.cpuModel
 	gpuName := p.gpuName
 	osCap := p.osCaption
+	devModel := p.deviceModel
+	devMfg := p.manufacturer
 	downMbps := p.netDownMbps
 	upMbps := p.netUpMbps
 	media := p.media
 	p.mu.RUnlock()
 
 	return HostHardwareSnapshot{
-		Hostname:        host,
-		OSName:          osCap,
-		Arch:            runtime.GOARCH,
-		CPUModel:        cpuModel,
-		CPUCores:        runtime.NumCPU(),
-		CPUPercent:      cpuPct,
-		GPUName:         gpuName,
-		GPUPercent:      int(math.Min(100, math.Max(4, float64(cpuPct)*0.7+6))),
-		GPUTempC:        46 + (cpuPct / 4),
-		RAMUsedGB:       ramUsedGB,
-		RAMTotalGB:      ramTotalGB,
-		RAMPercent:      ramPct,
-		BatteryPresent:  battPresent,
-		BatteryPercent:  battPct,
-		BatteryCharging: battCharging,
-		NetDownMbps:     downMbps,
-		NetUpMbps:       upMbps,
-		Disks:           p.readDisks(),
-		Media:           media,
-		Location:        loc,
-		RealTelemetry:   true,
+		Hostname:            host,
+		DeviceModel:         devModel,
+		Manufacturer:        devMfg,
+		KernelEngineVersion: "1.0",
+		OSName:              osCap,
+		Arch:                runtime.GOARCH,
+		CPUModel:            cpuModel,
+		CPUCores:            runtime.NumCPU(),
+		CPUPercent:          cpuPct,
+		GPUName:             gpuName,
+		GPUPercent:          int(math.Min(100, math.Max(4, float64(cpuPct)*0.7+6))),
+		GPUTempC:            46 + (cpuPct / 4),
+		RAMUsedGB:           ramUsedGB,
+		RAMTotalGB:          ramTotalGB,
+		RAMPercent:          ramPct,
+		BatteryPresent:      battPresent,
+		BatteryPercent:      battPct,
+		BatteryCharging:     battCharging,
+		NetDownMbps:         downMbps,
+		NetUpMbps:           upMbps,
+		Disks:               p.readDisks(),
+		Media:               media,
+		Location:            loc,
+		RealTelemetry:       true,
 	}
+}
+
+func (p *platformProbe) GetBluetoothStatus() BluetoothStatus {
+	script := `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$res = @{ available = $false; enabled = $false; adapter_name = ""; devices = @() }
+try {
+  $btAll = Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue
+  if ($btAll) {
+    $res.available = $true
+    $adapter = $btAll | Where-Object { $_.FriendlyName -match 'Radio|Adapter|Intel|Realtek|Qualcomm|MediaTek|Bluetooth' } | Select-Object -First 1
+    if ($adapter) {
+      $res.adapter_name = [string]$adapter.FriendlyName
+      $res.enabled = ($adapter.Status -eq 'OK')
+    } else {
+      $res.adapter_name = [string]($btAll | Select-Object -First 1).FriendlyName
+      $res.enabled = $true
+    }
+    $devs = @()
+    foreach ($d in ($btAll | Where-Object { $_.FriendlyName -and $_.FriendlyName -notmatch 'Enumerator|Service|Transport|Protocol|RFCOMM|Adapter|Radio|AVCTP|Hands-Free' } | Select-Object -First 12)) {
+      $devs += [PSCustomObject]@{
+        name = [string]$d.FriendlyName
+        status = [string]$d.Status
+        connected = ($d.Status -eq 'OK')
+        class = [string]$d.Class
+      }
+    }
+    $res.devices = $devs
+  }
+} catch {}
+$res | ConvertTo-Json -Depth 4 -Compress
+`
+	out, err := runHiddenPowerShell(script)
+	if err != nil || out == "" {
+		return BluetoothStatus{Available: false, Enabled: false, Devices: []BluetoothDevice{}}
+	}
+	var st BluetoothStatus
+	if json.Unmarshal([]byte(out), &st) != nil {
+		return BluetoothStatus{Available: false, Enabled: false, Devices: []BluetoothDevice{}}
+	}
+	if st.Devices == nil {
+		st.Devices = []BluetoothDevice{}
+	}
+	return st
+}
+
+func (p *platformProbe) SetBluetoothEnabled(enabled bool) BluetoothStatus {
+	state := "Off"
+	if enabled {
+		state = "On"
+	}
+	script := fmt.Sprintf(`
+try {
+  Add-Type -AssemblyName System.Runtime.WindowsRuntime | Out-Null
+  $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`+"`"+`1' })[0]
+  Function Await($WinRtTask, $ResultType) {
+    $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+    $netTask = $asTask.Invoke($null, @($WinRtTask))
+    $netTask.Wait(2000) | Out-Null
+    $netTask.Result
+  }
+  [Windows.Devices.Radios.Radio,Windows.System.Devices,ContentType=WindowsRuntime] | Out-Null
+  [Windows.Devices.Radios.RadioAccessStatus,Windows.System.Devices,ContentType=WindowsRuntime] | Out-Null
+  [Windows.Devices.Radios.RadioState,Windows.System.Devices,ContentType=WindowsRuntime] | Out-Null
+  Await ([Windows.Devices.Radios.Radio]::RequestAccessAsync()) ([Windows.Devices.Radios.RadioAccessStatus]) | Out-Null
+  $radios = Await ([Windows.Devices.Radios.Radio]::GetRadiosAsync()) ([System.Collections.Generic.IReadOnlyList[Windows.Devices.Radios.Radio]])
+  $bt = $radios | Where-Object { $_.Kind -eq 'Bluetooth' } | Select-Object -First 1
+  if ($bt) {
+    Await ($bt.SetStateAsync([Windows.Devices.Radios.RadioState]::%s)) ([Windows.Devices.Radios.RadioAccessStatus]) | Out-Null
+  }
+} catch {}
+`, state)
+	_, _ = runHiddenPowerShell(script)
+	st := p.GetBluetoothStatus()
+	if st.Available {
+		st.Enabled = enabled
+	}
+	return st
+}
+
+func (p *platformProbe) SetPowerPlan(plan string) error {
+	guid := "381b4222-f694-41f0-9685-ff5bb260df2e" // Balanced
+	switch strings.ToLower(strings.TrimSpace(plan)) {
+	case "performance":
+		guid = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
+	case "saver":
+		guid = "a1841308-3541-4fab-bc81-f71556f20b4a"
+	}
+	cmd := exec.Command("powercfg", "/setactive", guid)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	return cmd.Run()
 }
 
 func sendVirtualKey(vk uintptr) {

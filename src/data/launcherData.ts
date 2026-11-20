@@ -53,6 +53,9 @@ export interface AppItem {
   detoxGroup: string;
   isRunning?: boolean;
   pluginId?: string;
+  sizeMb?: number;
+  installedAt?: string;
+  version?: string;
 }
 
 export interface DetoxGroup {
@@ -136,6 +139,9 @@ export interface LiveLocationInfo {
 
 export interface LiveSystemTelemetry {
   hostname: string;
+  device_model?: string;
+  manufacturer?: string;
+  kernel_engine_version?: string;
   os_name: string;
   arch: string;
   cpu_model: string;
@@ -171,11 +177,11 @@ export const THEMES: Record<string, CustomThemeConfig> = {
   },
   nothing_paper: {
     id: 'nothing_paper',
-    name: 'Luma Paper (Светлая)',
+    name: 'Luma Paper (Мягкая светлая)',
     isDark: false,
-    bgGradient: '#f3f3f1',
-    surfaceRgba: 'rgba(255, 255, 255, 0.94)',
-    cardHex: '#ffffff',
+    bgGradient: '#dcddd7',
+    surfaceRgba: 'rgba(232, 233, 228, 0.92)',
+    cardHex: '#e7e8e3',
     accent: 'red',
     accentHex: '#d71921',
   },
@@ -214,12 +220,12 @@ export const THEMES: Record<string, CustomThemeConfig> = {
   },
   light: {
     id: 'light',
-    name: 'Luma Светлый Кристалл',
+    name: 'Luma Светлый Камень',
     isDark: false,
     bgGradient:
-      'radial-gradient(circle at 20% 15%, rgba(99, 102, 241, 0.14), transparent 45%), radial-gradient(circle at 80% 85%, rgba(14, 165, 233, 0.12), transparent 45%), linear-gradient(145deg, #eef2ff 0%, #f8fafc 60%, #e2e8f0 100%)',
-    surfaceRgba: 'rgba(255, 255, 255, 0.88)',
-    cardHex: '#ffffff',
+      'radial-gradient(circle at 20% 15%, rgba(99, 102, 241, 0.10), transparent 45%), radial-gradient(circle at 80% 85%, rgba(14, 165, 233, 0.09), transparent 45%), linear-gradient(145deg, #d8dee9 0%, #e1e5ed 60%, #cfd7e3 100%)',
+    surfaceRgba: 'rgba(232, 235, 241, 0.90)',
+    cardHex: '#e6e9ef',
     accent: 'indigo',
     accentHex: '#4f46e5',
   },
@@ -1099,8 +1105,18 @@ export const PYTHON_PROJECT_FILES: { path: string; title: string; badge: string;
   },
 ];
 
-// Полная история версий Luma OS и всех предыдущих веток (с акцентом на релиз 1.0.2)
+// Полная история версий Luma OS и всех предыдущих веток
 export const VERSION_HISTORY: Record<string, string[]> = {
+  '1.0.3 (Hydrogen)': [
+    'LUMA OS 1.0.3 (HYDROGEN) — ЯДРО UI, BLUETOOTH, ПАМЯТЬ И ПРОВОДНИК, ЭНЕРГОСБЕРЕЖЕНИЕ, МУЛЬТИВЫБОР, ЖИВАЯ ПРОЗРАЧНОСТЬ, АНИМАЦИИ И ПАНЕЛЬ ЗАДАЧ КАК В ОС',
+    'Ядро UI (раздел в Настройках) — отдельная карточка устройства с именем ПК (редактируемым), реальной моделью устройства (Win32/DMI), версией ПО 1.0.3 (Hydrogen) и версией Ядра 1.0',
+    'Расширенные Настройки + Поиск по настройкам — добавлены разделы: Ядро UI, Bluetooth (автоопределение адаптера и устройств ПК), Энергосбережение (планы питания и затемнение экрана), Память и Файлы (RAM, диски и встроенный проводник файлов), Приложения и Уведомления',
+    'Мягкая светлая тема — снижена яркость белой палитры до спокойного матового камня/бумаги без слепящего белого фона',
+    'Исправлена залипающая красная подсветка ячейки — очистка hover-состояния при выходе курсора, отмене перетаскивания и закрытии режима сетки',
+    'Работающая прозрачность, размытие и 4 режима анимаций — ползунки Прозрачность, Blur и Скругление в реальном времени управляют окнами, панелью задач и виджетами; добавлен выбор анимаций: Стандарт, Пружина (Spring), Плавный поток (Glide) и Выкл',
+    'ПКМ «Свойства» и «Удалить» + Мультивыбор приложений — просмотр веса файла, даты скачивания/изменения, пути и времени; выбор нескольких приложений разом (режим выбора или Ctrl+клик) для массового запуска, отправки на стол или удаления',
+    'Панель задач как в полноценной ОС — все запущенные приложения и открытые окна отображаются в панели задач с живым статусом, превью-управлением и общим списком «Открытые задачи»',
+  ],
   '1.0.2': [
     '✨ LUMA OS 1.0.2 — ФЛАГМАНСКИЙ РЕДИЗАЙН, ZERO-OVERLAP ШАПКА, LUMA SPOTLIGHT (CTRL+K), ЖИВОЙ ЭКВАЛАЙЗЕР НА ОСТРОВЕ И ПРЕМИАЛЬНАЯ ПОЛИРОВКА КАЖДОЙ ДЕТАЛИ',
     '🧭 ПОЛНОЕ ИСПРАВЛЕНИЕ ВЕРХНЕЙ ПАНЕЛИ (ZERO-COLLISION LAYOUT) — убрано наложение кнопок, Luma Island, часов и навигации на любых экранах (1024px–4K): внедрена сбалансированная 3-зонная шапка + отдельная элегантная панель переключения окон и телеметрии под ней',

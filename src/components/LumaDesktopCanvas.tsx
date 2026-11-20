@@ -219,6 +219,9 @@ export interface LumaDesktopCanvasProps {
   onPowerAction: (action: 'lock' | 'sleep' | 'recycle_bin') => void;
   onRotateKey: () => void;
   onPushToast: (title: string, msg: string, type?: 'info' | 'warning' | 'success') => void;
+  pendingPinItems?: { id: number; items: { kind: DesktopShortcut['kind']; label: string; icon: string; target: string }[] } | null;
+  onConsumePendingPin?: () => void;
+  onInspectProperties?: (info: { label: string; path: string; kind: string; app?: AppItem; onDelete?: () => void }) => void;
 }
 
 export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
@@ -267,6 +270,9 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   onPowerAction,
   onRotateKey,
   onPushToast,
+  pendingPinItems,
+  onConsumePendingPin,
+  onInspectProperties,
 }) => {
   const totalRows = 10;
   const totalCells = gridCols * totalRows; // 220 (22x10) or 200 (20x10)
@@ -300,12 +306,67 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredCell, setHoveredCell] = useState<{ col: number; row: number } | null>(null);
   const [draggingId, setDraggingId] = useState<{ kind: 'widget' | 'shortcut'; id: string } | null>(null);
+  const [externalFileDrag, setExternalFileDrag] = useState<boolean>(false);
 
-  // Desktop right-click Context Menu & Custom Item / File / Note Modals
+  // Desktop right-click Context Menu & Shortcut Context Menu & Modals
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; col: number; row: number } | null>(null);
+  const [shortcutCtxMenu, setShortcutCtxMenu] = useState<{ x: number; y: number; sc: DesktopShortcut } | null>(null);
   const [pickerModal, setPickerModal] = useState<null | { mode: 'widget' | 'app' | 'item'; col: number; row: number }>(null);
   const [openFolder, setOpenFolder] = useState<DesktopShortcut | null>(null);
   const [openNoteItem, setOpenNoteItem] = useState<DesktopShortcut | null>(null);
+
+  // Guaranteed fix for stuck red cell highlight: clear hoveredCell whenever not editing/dragging and on window dragend/drop/blur
+  useEffect(() => {
+    if (!editMode && !draggingId && !externalFileDrag) {
+      setHoveredCell(null);
+    }
+  }, [editMode, draggingId, externalFileDrag]);
+
+  useEffect(() => {
+    const clearDragState = () => {
+      setHoveredCell(null);
+      setDraggingId(null);
+      setExternalFileDrag(false);
+    };
+    window.addEventListener('dragend', clearDragState);
+    window.addEventListener('drop', clearDragState);
+    window.addEventListener('blur', clearDragState);
+    return () => {
+      window.removeEventListener('dragend', clearDragState);
+      window.removeEventListener('drop', clearDragState);
+      window.removeEventListener('blur', clearDragState);
+    };
+  }, []);
+
+  // Pin batch of apps / files onto open desktop cells
+  useEffect(() => {
+    if (!pendingPinItems || !pendingPinItems.items.length) return;
+    setShortcuts((prev) => {
+      const occupied = new Set(prev.map((s) => `${s.col},${s.row}`));
+      const next = [...prev];
+      let c = 2;
+      let r = 1;
+      for (const item of pendingPinItems.items) {
+        while (occupied.has(`${c},${r}`) && c <= gridCols) {
+          r += 1;
+          if (r > totalRows) {
+            r = 1;
+            c += 1;
+          }
+        }
+        occupied.add(`${c},${r}`);
+        next.push({
+          ...item,
+          id: `sc_pin_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          col: Math.min(gridCols, c),
+          row: Math.min(totalRows, r),
+        });
+      }
+      return next;
+    });
+    onConsumePendingPin?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPinItems?.id]);
 
   // Add Any Item (PC File / PC Folder / URL / Terminal Command / Note) Form State
   const [customItemTab, setCustomItemTab] = useState<'file' | 'disk_folder' | 'url' | 'command' | 'note'>('file');
@@ -413,14 +474,20 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
     }
   }, [liveSystem?.location]);
 
-  // Close context menu on Escape or click anywhere
+  // Close context menus on Escape or click anywhere
   useEffect(() => {
-    const close = () => setCtxMenu(null);
+    const close = () => {
+      setCtxMenu(null);
+      setShortcutCtxMenu(null);
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setCtxMenu(null);
+        setShortcutCtxMenu(null);
         setPickerModal(null);
         setOpenFolder(null);
+        setOpenNoteItem(null);
+        setHoveredCell(null);
         if (editMode) onSetEditMode(false);
       }
     };
@@ -729,24 +796,24 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   const runningAppsCount = useMemo(() => apps.filter((a) => a.isRunning).length, [apps]);
   const isPixel = designStyle === 'pixelbook';
 
-  // Design-Adaptive Surface Tokens (Nothing vs Pixelbook / Googlebook)
+  // Design-Adaptive Surface Tokens (Real Live Opacity/Blur + Soft Matte Light Theme)
   const cardCls = isPixel
     ? isDark
-      ? 'bg-[#171e2b]/88 border-blue-300/[0.14] text-slate-100 hover:border-blue-400/40 shadow-[0_8px_28px_rgba(0,0,0,0.28)]'
-      : 'bg-white/90 border-blue-900/[0.11] text-slate-900 hover:border-blue-500/35 shadow-[0_4px_20px_rgba(25,55,109,0.08)]'
+      ? 'luma-widget-pixel-dark border-blue-300/[0.14] text-slate-100 hover:border-blue-400/40 shadow-[0_8px_28px_rgba(0,0,0,0.28)]'
+      : 'luma-widget-pixel-light border-blue-900/[0.14] text-slate-900 hover:border-blue-500/40 shadow-[0_4px_20px_rgba(25,55,109,0.08)]'
     : isDark
-    ? 'bg-[#121215]/88 border-white/[0.09] text-zinc-100 hover:border-white/[0.18]'
-    : 'bg-white/92 border-zinc-900/[0.11] text-zinc-900 hover:border-zinc-900/[0.24] shadow-[0_2px_12px_rgba(0,0,0,0.04)]';
+    ? 'luma-widget-dark border-white/[0.09] text-zinc-100 hover:border-white/[0.18]'
+    : 'luma-widget-light border-zinc-900/[0.14] text-zinc-900 hover:border-zinc-900/[0.28] shadow-[0_2px_12px_rgba(0,0,0,0.05)]';
 
-  const mutedCls = isDark ? 'text-zinc-400' : 'text-zinc-500';
+  const mutedCls = isDark ? 'text-zinc-400' : 'text-zinc-600';
   const subBtnCls = isPixel
     ? isDark
       ? 'bg-blue-400/[0.08] hover:bg-blue-400/[0.15] border-blue-300/[0.14] text-slate-100'
-      : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
+      : 'bg-[#d4dce8]/85 hover:bg-[#c8d2e2] border-slate-400/50 text-slate-900'
     : isDark
     ? 'bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.09] text-zinc-200'
-    : 'bg-zinc-100 hover:bg-zinc-200 border-zinc-300 text-zinc-800';
-  const railTrackCls = isDark ? 'bg-white/[0.09]' : 'bg-zinc-200';
+    : 'bg-[#d5d6d0]/85 hover:bg-[#c8c9c2] border-zinc-400/60 text-zinc-900';
+  const railTrackCls = isDark ? 'bg-white/[0.09]' : 'bg-zinc-400/40';
 
   const wallpaperCls = isPixel
     ? isDark
@@ -762,7 +829,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
       : 'luma-bg-grid-light'
     : isDark
     ? 'bg-[#09090b]'
-    : 'bg-[#f3f3f1]';
+    : 'bg-[#dcddd7]';
 
   const renderWeatherIcon = (code: number) => {
     const k = wmoToRu(code).kind;
@@ -1409,6 +1476,16 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
       {/* FULL-VIEWPORT 22x10 (220 CELLS) OR 20x10 (200 CELLS) DESKTOP MATRIX */}
       <div
         className={`w-full h-full ${gridPadCls}`}
+        onMouseLeave={() => setHoveredCell(null)}
+        onDragEnter={(e) => {
+          if (e.dataTransfer?.types?.includes('Files')) setExternalFileDrag(true);
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget === e.target) {
+            setHoveredCell(null);
+            setExternalFileDrag(false);
+          }
+        }}
         style={{
           display: 'grid',
           gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`,
@@ -1416,44 +1493,55 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           gap: '6px',
         }}
       >
-        {/* 1. Interactive 200–220 Desktop Coordinate Cells (Supports dragging widgets, shortcuts, AND real OS files!) */}
+        {/* 1. Interactive 200–220 Desktop Coordinate Cells (Zero Stuck Highlight!) */}
         {Array.from({ length: totalRows }).map((_, rIdx) =>
           Array.from({ length: gridCols }).map((__, cIdx) => {
             const col = cIdx + 1;
             const row = rIdx + 1;
             const isHovered = hoveredCell?.col === col && hoveredCell?.row === row;
+            const showActiveHighlight = (editMode || Boolean(draggingId) || externalFileDrag) && isHovered;
             return (
               <div
                 key={`c_${col}_${row}`}
                 style={{ gridColumn: `${col} / span 1`, gridRow: `${row} / span 1` }}
-                onMouseEnter={() => editMode && setHoveredCell({ col, row })}
+                onMouseEnter={() => {
+                  if (editMode) setHoveredCell({ col, row });
+                }}
+                onMouseLeave={() => {
+                  if (hoveredCell?.col === col && hoveredCell?.row === row) setHoveredCell(null);
+                }}
                 onClick={() => handleCellClick(col, row)}
-                onContextMenu={(e) => handleDesktopContextMenu(e, col, row)}
+                onContextMenu={(e) => {
+                  setShortcutCtxMenu(null);
+                  handleDesktopContextMenu(e, col, row);
+                }}
                 onDragOver={(e) => {
                   e.preventDefault();
-                  setHoveredCell({ col, row });
+                  if (draggingId || e.dataTransfer?.types?.includes('Files')) {
+                    setHoveredCell({ col, row });
+                  }
                 }}
                 onDrop={(e) => {
                   e.preventDefault();
+                  setHoveredCell(null);
+                  setExternalFileDrag(false);
                   if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
                     handleFilesAdded(e.dataTransfer.files, col, row);
-                    setHoveredCell(null);
                     return;
                   }
                   if (draggingId) {
                     moveItemToCell(draggingId.kind, draggingId.id, col, row);
                     setDraggingId(null);
-                    setHoveredCell(null);
                   }
                 }}
                 className={`rounded-lg transition-colors flex items-center justify-center ${
                   editMode
-                    ? isHovered
+                    ? showActiveHighlight
                       ? 'border border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] cursor-pointer'
                       : isDark
                       ? 'border border-white/[0.06] hover:border-white/[0.15] cursor-pointer'
-                      : 'border border-zinc-900/[0.08] hover:border-zinc-900/[0.2] cursor-pointer'
-                    : isHovered
+                      : 'border border-zinc-900/[0.1] hover:border-zinc-900/[0.24] cursor-pointer'
+                    : showActiveHighlight
                     ? 'border border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
                     : ''
                 }`}
@@ -1485,6 +1573,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 setCtxMenu(null);
+                setShortcutCtxMenu(null);
                 if (editMode) setSelectedId(w.id);
               }}
               onContextMenu={(e) => {
@@ -1497,9 +1586,9 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 gridColumn: `${clampedCol} / span ${Math.min(w.w, gridCols)}`,
                 gridRow: `${clampedRow} / span ${Math.min(w.h, totalRows)}`,
                 zIndex: isSelected ? 15 : 5,
-                backdropFilter: 'blur(20px)',
+                borderRadius: isPixel ? '22px' : 'var(--luma-radius)',
               }}
-              className={`relative ${isPixel ? 'rounded-[22px]' : 'rounded-[18px]'} border p-3.5 overflow-hidden luma-card-lift ${cardCls} ${
+              className={`relative border p-3.5 overflow-hidden luma-card-lift ${cardCls} ${
                 editMode ? 'cursor-grab active:cursor-grabbing' : ''
               } ${isSelected && editMode ? 'ring-2 ring-[var(--luma-accent)]' : ''}`}
             >
@@ -1544,6 +1633,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 setCtxMenu(null);
+                setShortcutCtxMenu(null);
                 if (editMode) {
                   setSelectedId(sc.id);
                   return;
@@ -1553,8 +1643,11 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                setCtxMenu(null);
                 setSelectedId(sc.id);
-                onSetEditMode(true);
+                const x = Math.min(e.clientX, window.innerWidth - 220);
+                const y = Math.min(e.clientY, window.innerHeight - 210);
+                setShortcutCtxMenu({ x: Math.max(12, x), y: Math.max(12, y), sc });
               }}
               style={{
                 gridColumn: `${clampedCol} / span 1`,
@@ -1563,7 +1656,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
               }}
               title={sc.target ? `${sc.label}\n${sc.target}` : sc.label}
               className={`group relative flex flex-col items-center justify-center gap-1 rounded-2xl p-1 transition cursor-pointer ${
-                isDark ? 'hover:bg-white/[0.07] text-zinc-200' : 'hover:bg-zinc-900/[0.06] text-zinc-900'
+                isDark ? 'hover:bg-white/[0.07] text-zinc-200' : 'hover:bg-zinc-900/[0.07] text-zinc-900'
               } ${isSelected && editMode ? 'ring-2 ring-[var(--luma-accent)] bg-[var(--luma-accent-soft)]' : ''}`}
             >
               <div
@@ -1571,10 +1664,10 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                   isPixel
                     ? isDark
                       ? 'bg-[#1a2232]/92 border-blue-300/[0.16] group-hover:border-blue-400/50 text-slate-100'
-                      : 'bg-white/95 border-blue-900/[0.12] group-hover:border-blue-500/40 text-slate-900 shadow-xs'
+                      : 'bg-[#e6ecf5]/92 border-blue-900/[0.15] group-hover:border-blue-500/45 text-slate-900 shadow-xs'
                     : isDark
                     ? 'bg-[#141418]/90 border-white/[0.1] group-hover:border-white/25 text-zinc-100'
-                    : 'bg-white/95 border-zinc-900/[0.12] group-hover:border-zinc-900/30 text-zinc-900 shadow-xs'
+                    : 'bg-[#e7e8e3]/92 border-zinc-900/[0.15] group-hover:border-zinc-900/35 text-zinc-900 shadow-xs'
                 }`}
               >
                 {renderShortcutIcon(sc.icon, 'w-4 h-4')}
@@ -1591,6 +1684,75 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           );
         })}
       </div>
+
+      {/* SHORTCUT RIGHT-CLICK CONTEXT MENU (OPEN, PROPERTIES, MOVE, DELETE) */}
+      {shortcutCtxMenu && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{ left: shortcutCtxMenu.x, top: shortcutCtxMenu.y }}
+          className={`luma-animate-in fixed z-50 w-52 border p-1.5 shadow-2xl text-xs ${modalShellCls}`}
+        >
+          <div className={`px-2.5 py-1.5 border-b font-bold truncate ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
+            {shortcutCtxMenu.sc.label}
+          </div>
+          <button
+            onClick={() => {
+              handleOpenShortcut(shortcutCtxMenu.sc);
+              setShortcutCtxMenu(null);
+            }}
+            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left cursor-pointer ${
+              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+            }`}
+          >
+            <Play className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+            <span>Открыть</span>
+          </button>
+          <button
+            onClick={() => {
+              const sc = shortcutCtxMenu.sc;
+              const matchedApp = sc.kind === 'app' ? apps.find((a) => a.id === sc.target) : undefined;
+              onInspectProperties?.({
+                label: sc.label,
+                path: matchedApp?.url || sc.target,
+                kind: sc.kind,
+                app: matchedApp,
+                onDelete: () => setShortcuts((prev) => prev.filter((x) => x.id !== sc.id)),
+              });
+              setShortcutCtxMenu(null);
+            }}
+            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left cursor-pointer ${
+              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Свойства</span>
+          </button>
+          <button
+            onClick={() => {
+              setSelectedId(shortcutCtxMenu.sc.id);
+              onSetEditMode(true);
+              setShortcutCtxMenu(null);
+            }}
+            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left cursor-pointer ${
+              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+            }`}
+          >
+            <Move className="w-3.5 h-3.5" />
+            <span>Переместить</span>
+          </button>
+          <button
+            onClick={() => {
+              const id = shortcutCtxMenu.sc.id;
+              setShortcuts((prev) => prev.filter((x) => x.id !== id));
+              setShortcutCtxMenu(null);
+            }}
+            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-[var(--luma-accent)] hover:bg-[var(--luma-accent-soft)] cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Удалить со стола</span>
+          </button>
+        </div>
+      )}
 
       {/* FLOATING EDIT-MODE TOOLBAR (ONLY VISIBLE WHEN EDITING THE 200-220 CELL DESKTOP) */}
       {editMode && (

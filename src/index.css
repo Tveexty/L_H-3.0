@@ -32,6 +32,11 @@
   --luma-accent-hover: #b9151c;
   --luma-accent-soft: rgba(215, 25, 33, 0.14);
   --luma-accent-border: rgba(215, 25, 33, 0.45);
+  /* Live Opacity, Blur & Radius Engine (controlled from Settings -> Темы и Стол) */
+  --luma-glass-alpha: 0.90;
+  --luma-card-alpha: 0.86;
+  --luma-blur: 24px;
+  --luma-radius: 18px;
 }
 
 html[data-design="pixelbook"] {
@@ -52,16 +57,17 @@ html.dark[data-design="pixelbook"] {
   font-variant-numeric: tabular-nums;
 }
 
-/* ==================== NOTHING × PIXELBOOK DESKTOP WALLPAPER PATTERNS ==================== */
+/* ==================== NOTHING × PIXELBOOK DESKTOP WALLPAPERS (SOFT MATTE LIGHT) ==================== */
 .luma-bg-dots-dark {
   background-color: #09090b;
   background-image: radial-gradient(rgba(255, 255, 255, 0.11) 1px, transparent 1px);
   background-size: 22px 22px;
 }
 
+/* Soft, eye-friendly muted paper tone (replaces harsh pure white) */
 .luma-bg-dots-light {
-  background-color: #f3f3f1;
-  background-image: radial-gradient(rgba(17, 17, 19, 0.14) 1px, transparent 1px);
+  background-color: #dcddd7;
+  background-image: radial-gradient(rgba(24, 24, 27, 0.16) 1px, transparent 1px);
   background-size: 22px 22px;
 }
 
@@ -74,30 +80,166 @@ html.dark[data-design="pixelbook"] {
 }
 
 .luma-bg-grid-light {
-  background-color: #f3f3f1;
+  background-color: #dcddd7;
   background-image:
-    linear-gradient(to right, rgba(17, 17, 19, 0.06) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(17, 17, 19, 0.06) 1px, transparent 1px);
+    linear-gradient(to right, rgba(24, 24, 27, 0.075) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(24, 24, 27, 0.075) 1px, transparent 1px);
   background-size: 32px 32px;
 }
 
 .luma-bg-pixel-dark {
   background-color: #0f141e;
   background-image:
-    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(66, 133, 244, 0.14), transparent 60%),
+    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(66, 133, 244, 0.15), transparent 60%),
     radial-gradient(ellipse 70% 55% at 88% 85%, rgba(52, 168, 83, 0.08), transparent 55%),
     linear-gradient(160deg, #0d121b 0%, #131a26 55%, #0f1520 100%);
 }
 
 .luma-bg-pixel-light {
-  background-color: #eef3fa;
+  background-color: #d6dde8;
   background-image:
-    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(26, 115, 232, 0.11), transparent 60%),
+    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(26, 115, 232, 0.12), transparent 60%),
     radial-gradient(ellipse 70% 55% at 88% 85%, rgba(52, 168, 83, 0.07), transparent 55%),
-    linear-gradient(160deg, #f5f8fc 0%, #eaf0f8 55%, #e3ebf6 100%);
+    linear-gradient(160deg, #dde3ec 0%, #d4dce8 55%, #ccd5e3 100%);
 }
 
-/* ==================== INDUSTRIAL MOTION & ELEVATION ==================== */
+/* ==================== REAL WORKING TRANSPARENCY & BLUR SURFACES ==================== */
+.dex-window-dark {
+  background: rgba(16, 16, 19, var(--luma-glass-alpha));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.78), 0 0 0 1px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(var(--luma-blur)) saturate(135%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(135%);
+}
+
+.dex-window-light {
+  background: rgba(232, 233, 228, var(--luma-glass-alpha));
+  border: 1px solid rgba(24, 24, 27, 0.14);
+  box-shadow: 0 20px 54px -16px rgba(17, 17, 19, 0.2), 0 2px 8px rgba(17, 17, 19, 0.06);
+  backdrop-filter: blur(var(--luma-blur)) saturate(125%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(125%);
+}
+
+.dex-window-pixel-dark {
+  background: rgba(22, 28, 39, var(--luma-glass-alpha));
+  border: 1px solid rgba(138, 180, 248, 0.18);
+  box-shadow: 0 24px 64px -14px rgba(3, 8, 18, 0.74), 0 2px 12px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(var(--luma-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(150%);
+}
+
+.dex-window-pixel-light {
+  background: rgba(232, 237, 245, var(--luma-glass-alpha));
+  border: 1px solid rgba(26, 115, 232, 0.18);
+  box-shadow: 0 20px 54px -14px rgba(20, 42, 82, 0.18), 0 2px 10px rgba(20, 42, 82, 0.06);
+  backdrop-filter: blur(var(--luma-blur)) saturate(145%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(145%);
+}
+
+.luma-widget-dark {
+  background: rgba(18, 18, 22, var(--luma-card-alpha));
+  backdrop-filter: blur(var(--luma-blur)) saturate(130%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(130%);
+}
+
+.luma-widget-light {
+  background: rgba(236, 237, 232, var(--luma-card-alpha));
+  backdrop-filter: blur(var(--luma-blur)) saturate(120%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(120%);
+}
+
+.luma-widget-pixel-dark {
+  background: rgba(23, 30, 43, var(--luma-card-alpha));
+  backdrop-filter: blur(var(--luma-blur)) saturate(145%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(145%);
+}
+
+.luma-widget-pixel-light {
+  background: rgba(234, 239, 247, var(--luma-card-alpha));
+  backdrop-filter: blur(var(--luma-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(140%);
+}
+
+.luma-taskbar-dark {
+  background: rgba(11, 11, 14, var(--luma-glass-alpha));
+  backdrop-filter: blur(var(--luma-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(140%);
+}
+
+.luma-taskbar-light {
+  background: rgba(231, 232, 227, var(--luma-glass-alpha));
+  backdrop-filter: blur(var(--luma-blur)) saturate(125%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(125%);
+}
+
+.luma-taskbar-pixel-dark {
+  background: rgba(18, 24, 36, var(--luma-glass-alpha));
+  backdrop-filter: blur(var(--luma-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(150%);
+}
+
+.luma-taskbar-pixel-light {
+  background: rgba(230, 236, 245, var(--luma-glass-alpha));
+  backdrop-filter: blur(var(--luma-blur)) saturate(145%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(145%);
+}
+
+/* ==================== 4 SELECTABLE ANIMATION PRESETS (STANDARD / SPRING / GLIDE / NONE) ==================== */
+@keyframes lumaFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes lumaSpringIn {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.93);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.015);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes lumaGlideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.luma-animate-in {
+  animation: lumaFadeUp 0.16s cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+html[data-anim="spring"] .luma-animate-in {
+  animation: lumaSpringIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+html[data-anim="glide"] .luma-animate-in {
+  animation: lumaGlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+html[data-anim="none"] .luma-animate-in {
+  animation: none !important;
+}
+
 .m3-spring {
   transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1),
     background-color 0.16s ease,
@@ -114,59 +256,27 @@ html.dark[data-design="pixelbook"] {
   transform: translateY(-1px);
 }
 
-.dex-window-dark {
-  background: rgba(16, 16, 19, 0.94);
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.78), 0 0 0 1px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(28px) saturate(130%);
-  -webkit-backdrop-filter: blur(28px) saturate(130%);
+html[data-anim="spring"] .luma-card-lift {
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.dex-window-light {
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(17, 17, 19, 0.12);
-  box-shadow: 0 24px 60px -16px rgba(17, 17, 19, 0.18), 0 2px 8px rgba(17, 17, 19, 0.05);
-  backdrop-filter: blur(28px) saturate(130%);
-  -webkit-backdrop-filter: blur(28px) saturate(130%);
+html[data-anim="spring"] .luma-card-lift:hover {
+  transform: translateY(-3px) scale(1.008);
 }
 
-.dex-window-pixel-dark {
-  background: rgba(22, 28, 39, 0.93);
-  border: 1px solid rgba(138, 180, 248, 0.16);
-  box-shadow: 0 24px 64px -14px rgba(3, 8, 18, 0.74), 0 2px 12px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(32px) saturate(150%);
-  -webkit-backdrop-filter: blur(32px) saturate(150%);
+html[data-anim="glide"] .luma-card-lift {
+  transition: border-color 0.24s ease, background-color 0.24s ease, transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.dex-window-pixel-light {
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(26, 115, 232, 0.16);
-  box-shadow: 0 20px 54px -14px rgba(20, 42, 82, 0.18), 0 2px 10px rgba(20, 42, 82, 0.06);
-  backdrop-filter: blur(32px) saturate(150%);
-  -webkit-backdrop-filter: blur(32px) saturate(150%);
+html[data-anim="glide"] .luma-card-lift:hover {
+  transform: translateY(-2px);
 }
 
-.luma-specular {
-  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
-}
-
-.luma-specular-light {
-  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
-}
-
-@keyframes lumaFadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(6px) scale(0.99);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.luma-animate-in {
-  animation: lumaFadeUp 0.16s cubic-bezier(0.2, 0, 0, 1) forwards;
+html[data-anim="none"] *,
+html[data-anim="none"] *::before,
+html[data-anim="none"] *::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
 }
 
 /* Precision Minimal Audio Bars */
@@ -200,7 +310,7 @@ input[type='range'] {
   appearance: none;
   height: 4px;
   border-radius: 9999px;
-  background: rgba(161, 161, 170, 0.28);
+  background: rgba(161, 161, 170, 0.32);
   outline: none;
 }
 
@@ -211,7 +321,7 @@ input[type='range']::-webkit-slider-thumb {
   height: 13px;
   border-radius: 9999px;
   background: var(--luma-accent);
-  border: 2px solid #fafafa;
+  border: 2px solid #e5e5e5;
   cursor: pointer;
   transition: transform 0.12s ease;
 }
@@ -229,7 +339,7 @@ input[type='range']::-webkit-slider-thumb:hover {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(161, 161, 170, 0.28);
+  background: rgba(161, 161, 170, 0.3);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {

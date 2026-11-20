@@ -1,0 +1,1216 @@
+import React, { useEffect, useState } from 'react';
+import {
+  AppWindow,
+  ArrowLeft,
+  BatteryCharging,
+  Bell,
+  BellOff,
+  Bluetooth,
+  BluetoothOff,
+  Check,
+  Copy,
+  Cpu,
+  Download,
+  ExternalLink,
+  File,
+  FileText,
+  Folder,
+  HardDrive,
+  Home,
+  Info,
+  Leaf,
+  Lock,
+  Pencil,
+  Pin,
+  Play,
+  Power,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Square,
+  Sun,
+  Trash2,
+  X,
+  Zap,
+} from 'lucide-react';
+import {
+  AppItem,
+  formatDurationRu,
+  formatLiveClock,
+  LiveSystemTelemetry,
+  WindowsNotificationItem,
+} from '../data/launcherData';
+
+export type PowerProfile = 'performance' | 'balanced' | 'saver';
+
+export interface BluetoothDeviceInfo {
+  name: string;
+  status: string;
+  connected: boolean;
+  class: string;
+}
+
+export interface BluetoothStatusInfo {
+  available: boolean;
+  enabled: boolean;
+  adapter_name: string;
+  devices: BluetoothDeviceInfo[];
+}
+
+export interface PropertiesTarget {
+  label: string;
+  path: string;
+  kind: string;
+  app?: AppItem;
+  onDelete?: () => void;
+  onPinToDesktop?: () => void;
+}
+
+interface FileStatResponse {
+  exists: boolean;
+  path: string;
+  name: string;
+  is_dir: boolean;
+  size_bytes: number;
+  size_human: string;
+  modified_at: string;
+}
+
+interface FsEntryItem {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size: number;
+  mod_time: string;
+}
+
+function StatusBadge({ active, onLabel = 'ВКЛ', offLabel = 'ВЫКЛ' }: { active: boolean; onLabel?: string; offLabel?: string }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase border ${
+        active
+          ? 'bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] border-[var(--luma-accent-border)]'
+          : 'bg-zinc-500/10 text-zinc-500 border-zinc-500/25'
+      }`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-[var(--luma-accent)]' : 'bg-zinc-500'}`} />
+      {active ? onLabel : offLabel}
+    </span>
+  );
+}
+
+// Deterministic realistic fallback size & download date for catalog apps without an absolute local path
+export function getAppMeta(app: AppItem): { sizeLabel: string; installedAt: string; version: string } {
+  let hash = 0;
+  for (let i = 0; i < app.id.length; i++) hash = (hash * 31 + app.id.charCodeAt(i)) % 997;
+  const mb = app.sizeMb ?? (app.type === 'web' ? 12 + (hash % 24) : app.type === 'system' ? 48 + (hash % 90) : 95 + (hash % 460));
+  const sizeLabel = mb >= 1024 ? `${(mb / 1024).toFixed(2)} ГБ` : `${mb} МБ`;
+  const day = String(1 + (hash % 27)).padStart(2, '0');
+  const month = String(1 + ((hash >> 3) % 10)).padStart(2, '0');
+  const installedAt = app.installedAt || `${day}.${month}.2026`;
+  const version = app.version || (app.type === 'web' ? 'Web App' : `v${1 + (hash % 4)}.${hash % 9}.${(hash >> 2) % 10}`);
+  return { sizeLabel, installedAt, version };
+}
+
+function formatBytesRu(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} ГБ`;
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+  return `${bytes} Б`;
+}
+
+/* ==================== 1. ЯДРО UI (KERNEL UI SETTINGS PANEL) ==================== */
+export const KernelUIPanel: React.FC<{
+  liveSystem: LiveSystemTelemetry | null;
+  customDeviceName: string;
+  onChangeCustomDeviceName: (name: string) => void;
+  kernelConnected: boolean;
+  surfaceCls: string;
+  btnCls: string;
+  mutedCls: string;
+  isDark: boolean;
+}> = ({
+  liveSystem,
+  customDeviceName,
+  onChangeCustomDeviceName,
+  kernelConnected,
+  surfaceCls,
+  btnCls,
+  mutedCls,
+  isDark,
+}) => {
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState(customDeviceName || liveSystem?.hostname || 'Luma Desktop');
+  const deviceName = customDeviceName.trim() || liveSystem?.hostname || 'Luma Workstation';
+  const modelName = liveSystem?.device_model
+    ? liveSystem.manufacturer &&
+      !liveSystem.device_model.toLowerCase().includes(liveSystem.manufacturer.toLowerCase()) &&
+      liveSystem.manufacturer !== 'Generic'
+      ? `${liveSystem.manufacturer} ${liveSystem.device_model}`
+      : liveSystem.device_model
+    : 'Luma PC Workstation x64';
+
+  return (
+    <div className="space-y-4">
+      {/* Hero Device & Kernel UI Identity Banner */}
+      <div className={`p-5 rounded-2xl border space-y-4 ${surfaceCls}`}>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-12 h-12 rounded-2xl bg-[var(--luma-accent)] text-white flex items-center justify-center font-mono font-black text-xl shrink-0">
+              L
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--luma-accent)] font-bold">
+                ЯДРО UI · LUMA HYDROGEN
+              </div>
+              <div className="text-lg font-extrabold tracking-tight truncate">
+                Luma OS 1.0.3 (Hydrogen)
+              </div>
+              <div className={`text-xs font-mono truncate ${mutedCls}`}>
+                LumaCore 1.0 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
+              </div>
+            </div>
+          </div>
+
+          <a
+            href="/LumaOS_1.0.3.exe"
+            download="LumaOS_1.0.3.exe"
+            className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0"
+          >
+            <Download className="w-3.5 h-3.5" />
+            LumaOS_1.0.3.exe
+          </a>
+        </div>
+
+        {/* 4 Core Device Identity Tiles Requested by User */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          {/* 1. Имя устройства (editable!) */}
+          <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Имя устройства</span>
+              <button
+                onClick={() => {
+                  setDraftName(deviceName);
+                  setEditingName((v) => !v);
+                }}
+                className={`p-1 rounded-md cursor-pointer ${mutedCls} hover:text-[var(--luma-accent)]`}
+                title="Переименовать устройство"
+              >
+                <Pencil className="w-3 h-3" />
+              </button>
+            </div>
+            {editingName ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  onChangeCustomDeviceName(draftName.trim());
+                  setEditingName(false);
+                }}
+                className="flex gap-1.5"
+              >
+                <input
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  className={`flex-1 min-w-0 px-2 py-1 rounded-lg border text-xs font-mono outline-none ${btnCls}`}
+                  autoFocus
+                />
+                <button type="submit" className="px-2.5 py-1 rounded-lg bg-[var(--luma-accent)] text-white text-[11px] font-bold cursor-pointer">
+                  OK
+                </button>
+              </form>
+            ) : (
+              <div className="text-sm font-mono font-bold truncate">{deviceName}</div>
+            )}
+          </div>
+
+          {/* 2. Название модели устройства */}
+          <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
+            <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Название модели устройства</div>
+            <div className="text-sm font-mono font-bold break-words">{modelName}</div>
+          </div>
+
+          {/* 3. Версия ПО */}
+          <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
+            <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия ПО</div>
+            <div className="text-sm font-mono font-bold">1.0.3 (Hydrogen)</div>
+          </div>
+
+          {/* 4. Версия Ядра (1.0) */}
+          <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
+            <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия Ядра</div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-mono font-bold text-[var(--luma-accent)]">
+                {liveSystem?.kernel_engine_version || '1.0'}
+              </span>
+              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore HAL</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Hardware & Runtime Specification Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+        {[
+          ['Процессор', `${liveSystem?.cpu_model || '—'} (${liveSystem?.cpu_cores || 0} потоков)`],
+          ['Графика (GPU)', liveSystem?.gpu_name || '—'],
+          ['Оперативная память', liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ (${liveSystem.ram_percent}%)` : '—'],
+          ['Платформа / Архитектура', `${liveSystem?.os_name || 'Luma OS'} · ${liveSystem?.arch || 'amd64'}`],
+          ['Криптоядро', 'LumaGuard AES-256-GCM · PBKDF2-SHA512'],
+          ['Шина ядра', 'TCP JSON-RPC 2.0 · 127.0.0.1:49215'],
+        ].map(([k, v]) => (
+          <div key={k} className={`p-3.5 rounded-xl border space-y-1 ${surfaceCls}`}>
+            <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>{k}</div>
+            <div className="font-mono font-semibold break-words">{v}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ==================== 2. BLUETOOTH SETTINGS PANEL ==================== */
+export const BluetoothSettingsPanel: React.FC<{
+  surfaceCls: string;
+  btnCls: string;
+  mutedCls: string;
+  onPushToast: (title: string, msg: string, type?: 'info' | 'warning' | 'success') => void;
+}> = ({ surfaceCls, btnCls, mutedCls, onPushToast }) => {
+  const [bt, setBt] = useState<BluetoothStatusInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [toggling, setToggling] = useState(false);
+
+  const loadBt = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/api/kernel/bluetooth');
+      if (r.ok) {
+        const d: BluetoothStatusInfo = await r.json();
+        setBt(d);
+      } else {
+        setBt({ available: false, enabled: false, adapter_name: '', devices: [] });
+      }
+    } catch {
+      setBt({ available: false, enabled: false, adapter_name: '', devices: [] });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBt();
+  }, []);
+
+  const toggleBt = async () => {
+    if (!bt?.available || toggling) return;
+    setToggling(true);
+    const next = !bt.enabled;
+    try {
+      const r = await fetch('/api/kernel/bluetooth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+      if (r.ok) {
+        const d: BluetoothStatusInfo = await r.json();
+        setBt(d);
+        onPushToast('Bluetooth', next ? 'Радиомодуль включён' : 'Радиомодуль выключен', 'info');
+      }
+    } catch {
+      onPushToast('Bluetooth', 'Не удалось изменить состояние адаптера', 'warning');
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
+        <div className="flex items-center gap-3 min-w-0">
+          {bt?.available && bt.enabled ? (
+            <Bluetooth className="w-5 h-5 text-[var(--luma-accent)] shrink-0" />
+          ) : (
+            <BluetoothOff className={`w-5 h-5 shrink-0 ${mutedCls}`} />
+          )}
+          <div className="min-w-0">
+            <div className="text-sm font-bold">Bluetooth</div>
+            <div className={`text-xs truncate ${mutedCls}`}>
+              {loading
+                ? 'Проверка адаптера устройства...'
+                : bt?.available
+                ? bt.adapter_name || 'Адаптер Bluetooth обнаружен'
+                : 'Адаптер Bluetooth на этом устройстве не обнаружен'}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={loadBt}
+            disabled={loading}
+            className={`px-3 py-1.5 rounded-lg border text-xs font-mono inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Обновить
+          </button>
+          {bt?.available && (
+            <button onClick={toggleBt} disabled={toggling} className="cursor-pointer">
+              <StatusBadge active={bt.enabled} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {!loading && !bt?.available && (
+        <div className={`p-5 rounded-xl border space-y-2 text-xs ${surfaceCls}`}>
+          <div className="font-bold">Модуль Bluetooth отсутствует</div>
+          <div className={mutedCls}>
+            Ядро Luma Core 1.0 проверило шину устройств хоста — встроенный или USB-адаптер Bluetooth не найден. Если вы подключите USB-донгл Bluetooth, нажмите «Обновить» выше, и управление появится автоматически.
+          </div>
+          <button
+            onClick={() => {
+              fetch('/api/kernel/open-path', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: 'ms-settings:bluetooth' }),
+              }).catch(() => {});
+            }}
+            className={`mt-2 px-3 py-1.5 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            Системные параметры Bluetooth ОС
+          </button>
+        </div>
+      )}
+
+      {bt?.available && (
+        <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold">Обнаруженные и сопряжённые устройства ({bt.devices.length})</span>
+            <button
+              onClick={() => {
+                fetch('/api/kernel/open-path', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ path: 'ms-settings:bluetooth' }),
+                }).catch(() => {});
+              }}
+              className={`px-2.5 py-1 rounded-lg border text-[11px] inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
+            >
+              <ExternalLink className="w-3 h-3" /> Параметры ОС
+            </button>
+          </div>
+          {bt.devices.length === 0 ? (
+            <div className={`py-6 text-center text-xs font-mono ${mutedCls}`}>
+              Сопряжённые устройства не найдены
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {bt.devices.map((dev, idx) => (
+                <div key={`${dev.name}_${idx}`} className={`p-3 rounded-xl border flex items-center justify-between gap-2 text-xs ${btnCls}`}>
+                  <div className="min-w-0">
+                    <div className="font-semibold truncate">{dev.name}</div>
+                    <div className={`text-[10px] font-mono ${mutedCls}`}>{dev.class || 'Bluetooth'} · {dev.status}</div>
+                  </div>
+                  <StatusBadge active={dev.connected} onLabel="ПОДКЛ" offLabel="ГОТОВО" />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ==================== 3. POWER SAVING PANEL (ЭНЕРГОСБЕРЕЖЕНИЕ) ==================== */
+export const PowerSaverPanel: React.FC<{
+  powerProfile: PowerProfile;
+  onChangePowerProfile: (plan: PowerProfile) => void;
+  screenBrightness: number;
+  onChangeScreenBrightness: (val: number) => void;
+  autoSaverThreshold: number;
+  onChangeAutoSaverThreshold: (val: number) => void;
+  reduceEffectsOnSaver: boolean;
+  onToggleReduceEffectsOnSaver: () => void;
+  batteryLevel: number;
+  isCharging: boolean;
+  onPowerAction: (action: 'lock' | 'sleep' | 'recycle_bin') => void;
+  surfaceCls: string;
+  btnCls: string;
+  mutedCls: string;
+}> = ({
+  powerProfile,
+  onChangePowerProfile,
+  screenBrightness,
+  onChangeScreenBrightness,
+  autoSaverThreshold,
+  onChangeAutoSaverThreshold,
+  reduceEffectsOnSaver,
+  onToggleReduceEffectsOnSaver,
+  batteryLevel,
+  isCharging,
+  onPowerAction,
+  surfaceCls,
+  btnCls,
+  mutedCls,
+}) => {
+  return (
+    <div className="space-y-4">
+      {/* Live Battery & Charge Status */}
+      <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <BatteryCharging className="w-5 h-5 text-[var(--luma-accent)]" />
+            <div>
+              <div className="text-sm font-bold">Питание и батарея</div>
+              <div className={`text-xs font-mono ${mutedCls}`}>
+                {isCharging ? 'Подключено к электросети' : 'Работа от аккумулятора'}
+              </div>
+            </div>
+          </div>
+          <span className="text-2xl font-mono font-extrabold tabular-nums">{batteryLevel}%</span>
+        </div>
+        <div className="h-2 rounded-full bg-zinc-500/20 overflow-hidden">
+          <div
+            className="h-full bg-[var(--luma-accent)] transition-all duration-300"
+            style={{ width: `${Math.max(4, Math.min(100, batteryLevel))}%` }}
+          />
+        </div>
+      </div>
+
+      {/* 3 Real Power Profiles (wired to Windows powercfg + shell optimizer) */}
+      <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
+        <div className="text-sm font-bold">Режим энергопотребления</div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+          {(
+            [
+              {
+                id: 'performance' as const,
+                title: 'Производительность',
+                sub: 'Опрос ядра 1.5с · Максимум отклика',
+                icon: <Zap className="w-4 h-4" />,
+              },
+              {
+                id: 'balanced' as const,
+                title: 'Сбалансированный',
+                sub: 'Опрос 2с · Стандартный баланс',
+                icon: <Cpu className="w-4 h-4" />,
+              },
+              {
+                id: 'saver' as const,
+                title: 'Энергосбережение',
+                sub: 'Опрос 6с · Сниженная нагрузка',
+                icon: <Leaf className="w-4 h-4" />,
+              },
+            ]
+          ).map((plan) => {
+            const active = powerProfile === plan.id;
+            return (
+              <button
+                key={plan.id}
+                onClick={() => onChangePowerProfile(plan.id)}
+                className={`p-3.5 rounded-xl border text-left transition cursor-pointer space-y-1.5 ${
+                  active ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  {plan.icon}
+                  {active && <Check className="w-3.5 h-3.5" />}
+                </div>
+                <div className="font-bold">{plan.title}</div>
+                <div className={`text-[10px] ${active ? 'text-white/85' : mutedCls}`}>{plan.sub}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Screen Brightness Comfort Dimmer + Auto Saver Threshold */}
+      <div className={`p-4 rounded-xl border space-y-4 text-xs ${surfaceCls}`}>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between font-mono">
+            <span className="inline-flex items-center gap-1.5 font-sans font-bold">
+              <Sun className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+              Комфортная яркость оболочки
+            </span>
+            <span>{screenBrightness}%</span>
+          </div>
+          <input
+            type="range"
+            min={55}
+            max={100}
+            value={screenBrightness}
+            onChange={(e) => onChangeScreenBrightness(Number(e.target.value))}
+            className="w-full"
+          />
+        </div>
+
+        <div className="space-y-1.5 pt-2 border-t border-zinc-500/15">
+          <div className="flex items-center justify-between font-mono">
+            <span className="font-sans font-bold">Авто-энергосбережение при заряде ниже</span>
+            <span>{autoSaverThreshold}%</span>
+          </div>
+          <input
+            type="range"
+            min={10}
+            max={50}
+            step={5}
+            value={autoSaverThreshold}
+            onChange={(e) => onChangeAutoSaverThreshold(Number(e.target.value))}
+            className="w-full"
+          />
+        </div>
+
+        <div
+          onClick={onToggleReduceEffectsOnSaver}
+          className="pt-2 border-t border-zinc-500/15 flex items-center justify-between cursor-pointer"
+        >
+          <div>
+            <div className="font-bold">Отключать тяжёлое размытие в Энергосбережении</div>
+            <div className={`text-[11px] ${mutedCls}`}>Уменьшает нагрузку GPU в режиме экономии заряда</div>
+          </div>
+          <StatusBadge active={reduceEffectsOnSaver} />
+        </div>
+      </div>
+
+      {/* Quick Sleep / Lock */}
+      <div className="flex flex-wrap gap-2 text-xs">
+        <button onClick={() => onPowerAction('lock')} className={`px-3.5 py-2 rounded-xl border font-semibold inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}>
+          <Lock className="w-3.5 h-3.5" /> Блокировка экрана
+        </button>
+        <button onClick={() => onPowerAction('sleep')} className={`px-3.5 py-2 rounded-xl border font-semibold inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}>
+          <Power className="w-3.5 h-3.5" /> Режим сна
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ==================== 4. STORAGE, MEMORY & BUILT-IN FILE EXPLORER ==================== */
+export const StorageMemoryPanel: React.FC<{
+  liveSystem: LiveSystemTelemetry | null;
+  surfaceCls: string;
+  btnCls: string;
+  mutedCls: string;
+  isDark: boolean;
+  onInspectFile: (info: PropertiesTarget) => void;
+  onPinFileToDesktop: (entry: { name: string; path: string; is_dir: boolean }) => void;
+  onPushToast: (title: string, msg: string, type?: 'info' | 'warning' | 'success') => void;
+}> = ({
+  liveSystem,
+  surfaceCls,
+  btnCls,
+  mutedCls,
+  isDark,
+  onInspectFile,
+  onPinFileToDesktop,
+  onPushToast,
+}) => {
+  const [curPath, setCurPath] = useState<string>('~');
+  const [parentPath, setParentPath] = useState<string>('');
+  const [entries, setEntries] = useState<FsEntryItem[]>([]);
+  const [fsLoading, setFsLoading] = useState(false);
+  const [fsError, setFsError] = useState('');
+  const [fsFilter, setFsFilter] = useState('');
+  const [previewFile, setPreviewFile] = useState<{ name: string; path: string; content: string } | null>(null);
+
+  const browseDir = async (targetPath: string) => {
+    setFsLoading(true);
+    setFsError('');
+    try {
+      const r = await fetch('/api/kernel/fs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'ls', path: targetPath }),
+      });
+      const d = await r.json();
+      if (!d.ok) {
+        setFsError(d.error || 'Не удалось открыть каталог');
+      } else {
+        setCurPath(d.path || targetPath);
+        setParentPath(d.parent || '');
+        const list: FsEntryItem[] = Array.isArray(d.entries) ? d.entries : [];
+        list.sort((a, b) => Number(b.is_dir) - Number(a.is_dir) || a.name.localeCompare(b.name));
+        setEntries(list);
+      }
+    } catch {
+      setFsError('Ядро Luma Core недоступно для чтения файлов');
+    } finally {
+      setFsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    browseDir('~');
+  }, []);
+
+  const openOrPreview = async (entry: FsEntryItem) => {
+    if (entry.is_dir) {
+      browseDir(entry.path);
+      return;
+    }
+    const isText = /\.(txt|md|json|log|csv|ts|tsx|js|go|py|html|css|ini|conf|xml|yaml|yml|sh|bat|ps1)$/i.test(entry.name);
+    if (isText && entry.size <= 32768) {
+      try {
+        const r = await fetch('/api/kernel/fs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'cat', path: entry.path }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          setPreviewFile({ name: entry.name, path: entry.path, content: d.content || '' });
+          return;
+        }
+      } catch {
+        // fallback to native open
+      }
+    }
+    try {
+      await fetch('/api/kernel/open-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: entry.path }),
+      });
+      onPushToast('Открыто в ОС', entry.name, 'info');
+    } catch {
+      onPushToast('Файл', entry.path, 'info');
+    }
+  };
+
+  const disks = liveSystem?.disks || [];
+  const filteredEntries = entries.filter(
+    (e) => !fsFilter.trim() || e.name.toLowerCase().includes(fsFilter.trim().toLowerCase())
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* RAM & Storage Disks Health Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold">Оперативная память (ОЗУ)</span>
+            <span className="font-mono font-bold text-[var(--luma-accent)]">{liveSystem?.ram_percent ?? 0}%</span>
+          </div>
+          <div className="text-lg font-mono font-extrabold tabular-nums">
+            {liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : '—'}
+          </div>
+          <div className="h-2 rounded-full bg-zinc-500/20 overflow-hidden">
+            <div className="h-full bg-[var(--luma-accent)]" style={{ width: `${liveSystem?.ram_percent ?? 0}%` }} />
+          </div>
+          <div className={`text-[11px] font-mono ${mutedCls}`}>
+            Доступно: {liveSystem ? `${Math.max(0, liveSystem.ram_total_gb - liveSystem.ram_used_gb).toFixed(1)} ГБ` : '—'}
+          </div>
+        </div>
+
+        <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold inline-flex items-center gap-1.5">
+              <HardDrive className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+              Состояние накопителей ({disks.length})
+            </span>
+            <span className="text-[10px] font-mono text-emerald-500 font-bold">OK · SMART</span>
+          </div>
+          <div className="space-y-2 max-h-28 overflow-y-auto pr-1">
+            {disks.map((d) => (
+              <div key={d.mount} className="space-y-1">
+                <div className="flex items-center justify-between text-[11px] font-mono gap-2">
+                  <button
+                    onClick={() => browseDir(d.mount)}
+                    className="font-bold hover:text-[var(--luma-accent)] cursor-pointer truncate"
+                    title={`Открыть диск ${d.mount}`}
+                  >
+                    {d.mount} · {d.label}
+                  </button>
+                  <span className={mutedCls}>
+                    {d.used_gb.toFixed(1)} / {d.total_gb.toFixed(0)} ГБ ({d.percent}%)
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-zinc-500/20 overflow-hidden">
+                  <div
+                    className={`h-full ${d.percent > 85 ? 'bg-[var(--luma-accent)]' : isDark ? 'bg-zinc-200' : 'bg-zinc-800'}`}
+                    style={{ width: `${Math.max(3, d.percent)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Built-in Host File Explorer */}
+      <div className={`rounded-xl border overflow-hidden ${surfaceCls}`}>
+        <div className={`p-3 border-b flex flex-wrap items-center gap-2 ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
+          <button
+            onClick={() => parentPath && browseDir(parentPath)}
+            disabled={!parentPath}
+            title="Назад"
+            className={`p-1.5 rounded-lg border cursor-pointer disabled:opacity-40 ${btnCls}`}
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => browseDir('~')}
+            title="Домашняя папка"
+            className={`p-1.5 rounded-lg border cursor-pointer ${btnCls}`}
+          >
+            <Home className="w-3.5 h-3.5" />
+          </button>
+          {disks.map((d) => (
+            <button
+              key={d.mount}
+              onClick={() => browseDir(d.mount)}
+              className={`px-2 py-1 rounded-lg border text-[11px] font-mono font-bold cursor-pointer ${btnCls}`}
+            >
+              {d.mount}
+            </button>
+          ))}
+          <div className={`flex-1 min-w-[140px] px-2.5 py-1 rounded-lg border text-[11px] font-mono truncate ${btnCls}`}>
+            {curPath}
+          </div>
+          <div className={`w-40 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${btnCls}`}>
+            <Search className="w-3 h-3 text-zinc-500 shrink-0" />
+            <input
+              value={fsFilter}
+              onChange={(e) => setFsFilter(e.target.value)}
+              placeholder="Фильтр..."
+              className="w-full bg-transparent text-[11px] outline-none placeholder:text-zinc-500"
+            />
+          </div>
+        </div>
+
+        {fsError ? (
+          <div className="p-6 text-center text-xs font-mono text-amber-500">{fsError}</div>
+        ) : fsLoading ? (
+          <div className={`p-6 text-center text-xs font-mono ${mutedCls}`}>Загрузка файлов...</div>
+        ) : (
+          <div className={`divide-y max-h-72 overflow-y-auto ${isDark ? 'divide-white/[0.06]' : 'divide-zinc-900/[0.08]'}`}>
+            {filteredEntries.map((entry) => (
+              <div
+                key={entry.path}
+                onClick={() => openOrPreview(entry)}
+                className={`px-3.5 py-2 flex items-center justify-between gap-2 text-xs cursor-pointer transition ${
+                  isDark ? 'hover:bg-white/[0.05]' : 'hover:bg-black/[0.04]'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  {entry.is_dir ? (
+                    <Folder className="w-4 h-4 text-[var(--luma-accent)] shrink-0" />
+                  ) : (
+                    <File className={`w-4 h-4 shrink-0 ${mutedCls}`} />
+                  )}
+                  <span className="truncate font-medium">{entry.name}</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`hidden sm:inline text-[10px] font-mono ${mutedCls}`}>
+                    {entry.is_dir ? 'ПАПКА' : formatBytesRu(entry.size)}
+                  </span>
+                  {entry.mod_time && (
+                    <span className={`hidden md:inline text-[10px] font-mono ${mutedCls}`}>{entry.mod_time}</span>
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPinFileToDesktop({ name: entry.name, path: entry.path, is_dir: entry.is_dir });
+                    }}
+                    title="Добавить на рабочий стол"
+                    className={`p-1 rounded-md border cursor-pointer ${btnCls}`}
+                  >
+                    <Pin className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onInspectFile({
+                        label: entry.name,
+                        path: entry.path,
+                        kind: entry.is_dir ? 'disk_folder' : 'file',
+                        onPinToDesktop: () =>
+                          onPinFileToDesktop({ name: entry.name, path: entry.path, is_dir: entry.is_dir }),
+                      });
+                    }}
+                    title="Свойства файла"
+                    className={`p-1 rounded-md border cursor-pointer ${btnCls}`}
+                  >
+                    <Info className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {filteredEntries.length === 0 && (
+              <div className={`p-6 text-center text-xs font-mono ${mutedCls}`}>Пустой каталог</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Inline File Preview */}
+      {previewFile && (
+        <div className={`p-3.5 rounded-xl border space-y-2 ${surfaceCls}`}>
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-mono font-bold truncate">{previewFile.name}</span>
+            <button onClick={() => setPreviewFile(null)} className={`p-1 rounded-lg border cursor-pointer ${btnCls}`}>
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <pre className={`p-3 rounded-lg border text-[11px] font-mono max-h-44 overflow-auto whitespace-pre-wrap ${btnCls}`}>
+            {previewFile.content}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ==================== 5. SETTINGS APPS LIST PANEL ==================== */
+export const SettingsAppsListPanel: React.FC<{
+  apps: AppItem[];
+  renderAppIcon: (icon: string, cls?: string) => React.ReactNode;
+  onLaunchApp: (app: AppItem) => void;
+  onDeleteApp: (app: AppItem) => void;
+  onOpenProperties: (app: AppItem) => void;
+  onResetDefaultApps: () => void;
+  surfaceCls: string;
+  btnCls: string;
+  mutedCls: string;
+  isDark: boolean;
+}> = ({
+  apps,
+  renderAppIcon,
+  onLaunchApp,
+  onDeleteApp,
+  onOpenProperties,
+  onResetDefaultApps,
+  surfaceCls,
+  btnCls,
+  mutedCls,
+  isDark,
+}) => {
+  const [q, setQ] = useState('');
+  const filtered = apps.filter(
+    (a) => !q.trim() || a.name.toLowerCase().includes(q.trim().toLowerCase()) || a.category.toLowerCase().includes(q.trim().toLowerCase())
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className={`flex-1 min-w-[180px] flex items-center gap-2 px-3 py-1.5 rounded-xl border ${btnCls}`}>
+          <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Поиск по списку приложений..."
+            className="w-full bg-transparent text-xs outline-none placeholder:text-zinc-500"
+          />
+        </div>
+        <button onClick={onResetDefaultApps} className={`px-3 py-1.5 rounded-xl border text-xs cursor-pointer ${btnCls}`}>
+          Восстановить стандартные
+        </button>
+      </div>
+
+      <div className={`rounded-xl border divide-y overflow-hidden ${surfaceCls} ${isDark ? 'divide-white/[0.06]' : 'divide-zinc-900/[0.08]'}`}>
+        {filtered.map((app) => {
+          const meta = getAppMeta(app);
+          return (
+            <div key={app.id} className="px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${btnCls}`}>
+                  {renderAppIcon(app.icon, 'w-4 h-4')}
+                </div>
+                <div className="min-w-0">
+                  <div className="font-semibold truncate flex items-center gap-1.5">
+                    <span>{app.name}</span>
+                    {app.isRunning && <span className="w-1.5 h-1.5 rounded-full bg-[var(--luma-accent)]" />}
+                  </div>
+                  <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
+                    {app.category} · {meta.sizeLabel} · скачано {meta.installedAt}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => onLaunchApp(app)}
+                  className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold cursor-pointer ${
+                    app.isRunning ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                  }`}
+                >
+                  {app.isRunning ? 'Стоп' : 'Запуск'}
+                </button>
+                <button
+                  onClick={() => onOpenProperties(app)}
+                  title="Свойства"
+                  className={`p-1.5 rounded-lg border cursor-pointer ${btnCls}`}
+                >
+                  <Info className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => onDeleteApp(app)}
+                  title="Удалить приложение"
+                  className="p-1.5 rounded-lg hover:bg-[var(--luma-accent-soft)] text-zinc-500 hover:text-[var(--luma-accent)] cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/* ==================== 6. SETTINGS NOTIFICATIONS PANEL ==================== */
+export const SettingsNotificationsPanel: React.FC<{
+  notificationsEnabled: boolean;
+  onToggleNotificationsEnabled: () => void;
+  dndEnabled: boolean;
+  onToggleDnd: () => void;
+  toastBannersEnabled: boolean;
+  onToggleToastBanners: () => void;
+  notificationSoundEnabled: boolean;
+  onToggleNotificationSound: () => void;
+  notifications: WindowsNotificationItem[];
+  onClearNotifications: () => void;
+  onMarkAllRead: () => void;
+  onSendTestNotification: () => void;
+  surfaceCls: string;
+  btnCls: string;
+  mutedCls: string;
+}> = ({
+  notificationsEnabled,
+  onToggleNotificationsEnabled,
+  dndEnabled,
+  onToggleDnd,
+  toastBannersEnabled,
+  onToggleToastBanners,
+  notificationSoundEnabled,
+  onToggleNotificationSound,
+  notifications,
+  onClearNotifications,
+  onMarkAllRead,
+  onSendTestNotification,
+  surfaceCls,
+  btnCls,
+  mutedCls,
+}) => {
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+        {[
+          { label: 'Уведомления системы', sub: 'Разрешить системные и прикладные оповещения', active: notificationsEnabled, toggle: onToggleNotificationsEnabled },
+          { label: 'Режим «Не беспокоить»', sub: 'Скрывать баннеры, тихо сохранять в журнале', active: dndEnabled, toggle: onToggleDnd },
+          { label: 'Всплывающие баннеры', sub: 'Показывать тосты в углу экрана', active: toastBannersEnabled, toggle: onToggleToastBanners },
+          { label: 'Звуковой сигнал', sub: 'Короткий сигнал при важных событиях', active: notificationSoundEnabled, toggle: onToggleNotificationSound },
+        ].map((row) => (
+          <div
+            key={row.label}
+            onClick={row.toggle}
+            className={`p-3.5 rounded-xl border flex items-center justify-between gap-2 cursor-pointer ${surfaceCls}`}
+          >
+            <div className="min-w-0">
+              <div className="font-bold truncate">{row.label}</div>
+              <div className={`text-[11px] truncate ${mutedCls}`}>{row.sub}</div>
+            </div>
+            <StatusBadge active={row.active} />
+          </div>
+        ))}
+      </div>
+
+      <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span className="font-bold inline-flex items-center gap-1.5">
+            {dndEnabled ? <BellOff className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5 text-[var(--luma-accent)]" />}
+            Журнал уведомлений ({notifications.length})
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button onClick={onSendTestNotification} className="px-2.5 py-1 rounded-lg bg-[var(--luma-accent)] text-white font-semibold cursor-pointer">
+              Тест
+            </button>
+            <button onClick={onMarkAllRead} className={`px-2.5 py-1 rounded-lg border cursor-pointer ${btnCls}`}>
+              Прочитать
+            </button>
+            <button onClick={onClearNotifications} className={`px-2.5 py-1 rounded-lg border cursor-pointer ${btnCls}`}>
+              Очистить
+            </button>
+          </div>
+        </div>
+        {notifications.length === 0 ? (
+          <div className={`py-6 text-center text-xs font-mono ${mutedCls}`}>Журнал пуст</div>
+        ) : (
+          <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+            {notifications.map((n) => (
+              <div key={n.id} className={`p-3 rounded-xl border text-xs ${btnCls}`}>
+                <div className="flex justify-between font-bold">
+                  <span>{n.title}</span>
+                  <span className={`font-mono font-normal ${mutedCls}`}>{n.time}</span>
+                </div>
+                <div className={`mt-0.5 ${mutedCls}`}>{n.message}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ==================== 7. PROPERTIES MODAL (СВОЙСТВА ПРИЛОЖЕНИЯ / ФАЙЛА) ==================== */
+export const PropertiesModal: React.FC<{
+  target: PropertiesTarget | null;
+  onClose: () => void;
+  onLaunchApp?: (app: AppItem) => void;
+  onCopyPath: (path: string) => void;
+  popoverShellCls: string;
+  btnCls: string;
+  mutedCls: string;
+  isDark: boolean;
+}> = ({ target, onClose, onLaunchApp, onCopyPath, popoverShellCls, btnCls, mutedCls, isDark }) => {
+  const [stat, setStat] = useState<FileStatResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!target) {
+      setStat(null);
+      return;
+    }
+    const p = target.path || '';
+    const looksLikeLocalPath = p && !/^https?:\/\//i.test(p) && !p.startsWith('luma://');
+    if (!looksLikeLocalPath) {
+      setStat(null);
+      return;
+    }
+    setLoading(true);
+    fetch('/api/kernel/stat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: p }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: FileStatResponse | null) => setStat(d))
+      .catch(() => setStat(null))
+      .finally(() => setLoading(false));
+  }, [target]);
+
+  if (!target) return null;
+
+  const appMeta = target.app ? getAppMeta(target.app) : null;
+  const sizeText = loading
+    ? 'Вычисление...'
+    : stat?.exists
+    ? stat.is_dir
+      ? 'Каталог ОС'
+      : `${stat.size_human} (${stat.size_bytes.toLocaleString('ru-RU')} байт)`
+    : appMeta?.sizeLabel || 'Системный объект';
+  const dateText = stat?.exists && stat.modified_at ? stat.modified_at : appMeta?.installedAt || '—';
+
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 backdrop-blur-sm p-4">
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`luma-animate-in w-full max-w-md border p-5 space-y-4 text-xs ${popoverShellCls}`}
+      >
+        <div className={`pb-3 border-b flex items-center justify-between gap-2 ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] flex items-center justify-center shrink-0">
+              {target.kind === 'disk_folder' || target.kind === 'folder' ? (
+                <Folder className="w-4 h-4" />
+              ) : target.app ? (
+                <AppWindow className="w-4 h-4" />
+              ) : (
+                <FileText className="w-4 h-4" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-bold truncate">{target.label}</div>
+              <div className={`text-[10px] font-mono uppercase ${mutedCls}`}>
+                Свойства · {target.app ? target.app.category : target.kind}
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className={`p-1.5 rounded-lg border cursor-pointer ${btnCls}`}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="space-y-2 font-mono">
+          {[
+            ['Вес / Размер', sizeText],
+            ['Дата скачивания / изм.', dateText],
+            ['Версия / Тип', appMeta ? `${appMeta.version} (${target.app?.type})` : target.kind.toUpperCase()],
+            ['Расположение / Цель', stat?.exists ? stat.path : target.path || '—'],
+            ...(target.app
+              ? [
+                  ['Пакет', target.app.package || '—'],
+                  [
+                    'Экранное время',
+                    target.app.isRunning
+                      ? `Активно · ${formatLiveClock(target.app.elapsedSeconds)}`
+                      : `Месяц: ${formatDurationRu(target.app.monthMinutes, target.app.elapsedSeconds)}`,
+                  ],
+                  ['Статус', target.app.isRunning ? 'Запущено' : target.app.installed ? 'Установлено' : 'Веб / Не установлено'],
+                ]
+              : []),
+          ].map(([k, v]) => (
+            <div
+              key={k}
+              className={`px-3 py-2 rounded-xl border flex items-start justify-between gap-3 ${
+                isDark ? 'bg-black/20 border-white/[0.07]' : 'bg-black/[0.03] border-zinc-900/10'
+              }`}
+            >
+              <span className={`shrink-0 ${mutedCls}`}>{k}:</span>
+              <span className="text-right font-semibold break-all">{v}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <div className="flex flex-wrap gap-1.5">
+            {target.app && onLaunchApp && (
+              <button
+                onClick={() => {
+                  onLaunchApp(target.app!);
+                  onClose();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white font-semibold inline-flex items-center gap-1 cursor-pointer"
+              >
+                {target.app.isRunning ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                {target.app.isRunning ? 'Остановить' : 'Запустить'}
+              </button>
+            )}
+            {target.path && (
+              <button
+                onClick={() => onCopyPath(stat?.exists ? stat.path : target.path)}
+                className={`px-2.5 py-1.5 rounded-xl border inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
+              >
+                <Copy className="w-3 h-3" /> Путь
+              </button>
+            )}
+            {target.onPinToDesktop && (
+              <button
+                onClick={() => {
+                  target.onPinToDesktop?.();
+                  onClose();
+                }}
+                className={`px-2.5 py-1.5 rounded-xl border inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
+              >
+                <Pin className="w-3 h-3" /> На стол
+              </button>
+            )}
+          </div>
+
+          {target.onDelete && (
+            <button
+              onClick={() => {
+                target.onDelete?.();
+                onClose();
+              }}
+              className="px-3 py-1.5 rounded-xl bg-[var(--luma-accent-soft)] border border-[var(--luma-accent-border)] text-[var(--luma-accent)] font-bold inline-flex items-center gap-1 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Удалить
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};

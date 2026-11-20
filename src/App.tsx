@@ -12,9 +12,11 @@ import {
   BatteryCharging,
   Bell,
   BellOff,
+  Bluetooth,
   Calculator,
   Check,
   CheckCircle2,
+  CheckSquare,
   Clipboard,
   ClipboardCheck,
   Clock,
@@ -22,6 +24,7 @@ import {
   Code2,
   Compass,
   Copy,
+  Cpu,
   Disc3,
   Download,
   ExternalLink,
@@ -35,10 +38,14 @@ import {
   Github,
   Globe,
   Grid,
+  HardDrive,
   Headphones,
   Info,
+  Layers,
   LayoutGrid,
   LayoutPanelLeft,
+  Leaf,
+  ListChecks,
   Lock,
   MapPin,
   Maximize,
@@ -79,6 +86,7 @@ import {
   VolumeX,
   Wifi,
   X,
+  Zap,
 } from 'lucide-react';
 import {
   AppItem,
@@ -111,7 +119,18 @@ import {
 } from './data/launcherData';
 import { DesignStyle, DexWindow, TaskbarPosition } from './components/DexWindow';
 import { LumaClockRenderer } from './components/LumaClockRenderer';
-import { DesktopGridCols, LumaDesktopCanvas, WallpaperStyle } from './components/LumaDesktopCanvas';
+import { DesktopGridCols, DesktopShortcut, LumaDesktopCanvas, WallpaperStyle } from './components/LumaDesktopCanvas';
+import {
+  BluetoothSettingsPanel,
+  KernelUIPanel,
+  PowerProfile,
+  PowerSaverPanel,
+  PropertiesModal,
+  PropertiesTarget,
+  SettingsAppsListPanel,
+  SettingsNotificationsPanel,
+  StorageMemoryPanel,
+} from './components/LumaSettingsExtra';
 import { LumaSpotlight } from './components/LumaSpotlight';
 import { LumaTerminalWindow } from './components/LumaTerminalWindow';
 
@@ -142,10 +161,26 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 
 const ICON_NAMES = Object.keys(ICON_MAP);
 const WEEKDAYS_RU = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-const STORAGE_KEY = 'luma_os_1_0_2b_shell_state';
-const LEGACY_KEYS = ['luma_os_1_0_2_shell_state', 'luma_os_1_0_1_shell_state'];
+const STORAGE_KEY = 'luma_os_1_0_3_shell_state';
+const LEGACY_KEYS = ['luma_os_1_0_2b_shell_state', 'luma_os_1_0_2_shell_state', 'luma_os_1_0_1_shell_state'];
 
 type DexWinId = 'apps' | 'terminal' | 'tracker' | 'kernel' | 'settings' | 'plugins' | 'island' | 'spaces';
+type AnimationPreset = 'standard' | 'spring' | 'glide' | 'none';
+type SettingsTabId =
+  | 'kernel_ui'
+  | 'luma'
+  | 'bluetooth'
+  | 'power'
+  | 'storage'
+  | 'apps_list'
+  | 'notifications'
+  | 'island'
+  | 'appearance'
+  | 'clock'
+  | 'navigation'
+  | 'plugins'
+  | 'updater'
+  | 'about';
 
 interface DexWinState {
   open: boolean;
@@ -216,8 +251,21 @@ export default function App() {
   );
   const [glassEnabled, setGlassEnabled] = useState<boolean>(savedState?.glassEnabled ?? true);
   const [glassIntensity, setGlassIntensity] = useState<GlassIntensity>(savedState?.glassIntensity || 'medium');
-  const [glassOpacity, setGlassOpacity] = useState<number>(savedState?.glassOpacity ?? 90);
-  const [smoothAnimations, setSmoothAnimations] = useState<boolean>(savedState?.smoothAnimations ?? true);
+  const [glassOpacity, setGlassOpacity] = useState<number>(savedState?.glassOpacity ?? 88);
+  const [animationPreset, setAnimationPreset] = useState<AnimationPreset>(
+    savedState?.animationPreset === 'spring' ||
+      savedState?.animationPreset === 'glide' ||
+      savedState?.animationPreset === 'none'
+      ? savedState.animationPreset
+      : savedState?.smoothAnimations === false
+      ? 'none'
+      : 'standard'
+  );
+  const smoothAnimations = animationPreset !== 'none';
+  const setSmoothAnimations = (updater: boolean | ((v: boolean) => boolean)) => {
+    const next = typeof updater === 'function' ? updater(animationPreset !== 'none') : updater;
+    setAnimationPreset(next ? 'standard' : 'none');
+  };
   const [uiDensity, setUiDensity] = useState<'comfortable' | 'compact'>(savedState?.uiDensity || 'comfortable');
   const [cardBorderRadius, setCardBorderRadius] = useState<number>(savedState?.cardBorderRadius ?? 18);
   const [cardColumns, setCardColumns] = useState<number>(savedState?.cardColumns ?? 4);
@@ -232,6 +280,24 @@ export default function App() {
     savedState?.designStyle === 'pixelbook' ? 'pixelbook' : 'nothing'
   );
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
+  // --- Kernel UI, Power Saver & Notification Preferences (1.0.3 Hydrogen) ---
+  const [customDeviceName, setCustomDeviceName] = useState<string>(savedState?.customDeviceName || '');
+  const [powerProfile, setPowerProfile] = useState<PowerProfile>(
+    savedState?.powerProfile === 'performance' || savedState?.powerProfile === 'saver'
+      ? savedState.powerProfile
+      : 'balanced'
+  );
+  const [screenBrightness, setScreenBrightness] = useState<number>(
+    typeof savedState?.screenBrightness === 'number' ? Math.max(55, Math.min(100, savedState.screenBrightness)) : 100
+  );
+  const [autoSaverThreshold, setAutoSaverThreshold] = useState<number>(savedState?.autoSaverThreshold ?? 20);
+  const [reduceEffectsOnSaver, setReduceEffectsOnSaver] = useState<boolean>(savedState?.reduceEffectsOnSaver ?? true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(savedState?.notificationsEnabled ?? true);
+  const [toastBannersEnabled, setToastBannersEnabled] = useState<boolean>(savedState?.toastBannersEnabled ?? true);
+  const [notificationSoundEnabled, setNotificationSoundEnabled] = useState<boolean>(
+    savedState?.notificationSoundEnabled ?? false
+  );
 
   // --- 18 Clock Styles & Fine Clock Customization (ALL Preserved!) ---
   const [clockStyle, setClockStyle] = useState<ClockStyleKey>(savedState?.clockStyle || 'nothing_dot');
@@ -256,17 +322,26 @@ export default function App() {
     savedState?.rightClickBackEnabled ?? true
   );
 
-  // --- DeX Window Manager & Real Start Menu State ---
+  // --- DeX Window Manager, Real Start Menu & OS Taskbar Popovers ---
   const [windows, setWindows] = useState<Record<DexWinId, DexWinState>>(INITIAL_WINDOWS);
   const zCounterRef = useRef<number>(25);
   const [spotlightOpen, setSpotlightOpen] = useState<boolean>(false);
   const [startMenuOpen, setStartMenuOpen] = useState<boolean>(false);
   const [startSearch, setStartSearch] = useState<string>('');
   const [controlCenterOpen, setControlCenterOpen] = useState<boolean>(false);
+  const [taskListOpen, setTaskListOpen] = useState<boolean>(false);
+  const [taskbarAppMenuId, setTaskbarAppMenuId] = useState<string | null>(null);
   const [pendingTermCommand, setPendingTermCommand] = useState<{ id: number; command: string } | null>(null);
+  const [pendingPinItems, setPendingPinItems] = useState<{
+    id: number;
+    items: { kind: DesktopShortcut['kind']; label: string; icon: string; target: string }[];
+  } | null>(null);
 
-  // --- Apps Window (Window 1 Grouped Structure), Tracker, Plugins, Spaces ---
+  // --- Apps Window (Window 1 Grouped Structure + Multi-Select), Tracker, Plugins, Spaces ---
   const [apps, setApps] = useState<AppItem[]>(savedState?.apps || INITIAL_APPS);
+  const [multiSelectMode, setMultiSelectMode] = useState<boolean>(false);
+  const [selectedAppIds, setSelectedAppIds] = useState<string[]>([]);
+  const [lastSelectedAppId, setLastSelectedAppId] = useState<string | null>(null);
   const [detoxGroups] = useState<DetoxGroup[]>(savedState?.detoxGroups || INITIAL_DETOX_GROUPS);
   const [groupedViewStyle, setGroupedViewStyle] = useState<'list_and_cards' | 'list' | 'cards'>(
     savedState?.groupedViewStyle || 'list_and_cards'
@@ -312,7 +387,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.0.2b — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.0.3 (Hydrogen) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -337,16 +412,15 @@ export default function App() {
   const [islandStopwatchRunning, setIslandStopwatchRunning] = useState<boolean>(false);
   const [islandStopwatchLaps, setIslandStopwatchLaps] = useState<string[]>([]);
 
-  // --- Settings, Kernel IPC, Code Viewer & Sub-Modals ---
-  const [settingsTab, setSettingsTab] = useState<
-    'luma' | 'island' | 'appearance' | 'clock' | 'navigation' | 'plugins' | 'updater' | 'about'
-  >('luma');
+  // --- Settings, Search, Kernel IPC, Code Viewer & Sub-Modals ---
+  const [settingsTab, setSettingsTab] = useState<SettingsTabId>('kernel_ui');
+  const [settingsSearch, setSettingsSearch] = useState<string>('');
   const [changelogFilter, setChangelogFilter] = useState<string>('all');
   const [githubAutoUpdate, setGithubAutoUpdate] = useState<boolean>(savedState?.githubAutoUpdate ?? true);
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.0.2b');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.0.3 (Hydrogen)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -362,6 +436,7 @@ export default function App() {
   const [addAppModalOpen, setAddAppModalOpen] = useState<boolean>(false);
   const [customThemeModalOpen, setCustomThemeModalOpen] = useState<boolean>(false);
   const [contextMenuApp, setContextMenuApp] = useState<AppItem | null>(null);
+  const [propertiesTarget, setPropertiesTarget] = useState<PropertiesTarget | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Add App form
@@ -391,16 +466,38 @@ export default function App() {
   const currentTheme = allThemesMap[themeKey] || THEMES.nothing_mono;
 
   const pushToast = (title: string, message: string, type: 'info' | 'warning' | 'success' = 'info') => {
+    if (!notificationsEnabled && type !== 'warning') return;
     if (dndEnabled && type !== 'warning') return;
+    if (!toastBannersEnabled && type !== 'warning') return;
     const id = `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     setToasts((prev) => [...prev.slice(-2), { id, title, message, type }]);
+    if (notificationSoundEnabled && !isMuted) {
+      try {
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = type === 'warning' ? 620 : 880;
+          gain.gain.setValueAtTime(0.05, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.14);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.15);
+        }
+      } catch {
+        // ignore audio autoplay restriction
+      }
+    }
     window.setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 3200);
   };
 
   // --- DeX Window Controls ---
-  const openWindow = (id: DexWinId, tab?: typeof settingsTab) => {
+  const openWindow = (id: DexWinId, tab?: SettingsTabId) => {
     if (id === 'settings' && tab) setSettingsTab(tab);
     zCounterRef.current += 1;
     const nextZ = zCounterRef.current;
@@ -410,6 +507,8 @@ export default function App() {
     }));
     setControlCenterOpen(false);
     setStartMenuOpen(false);
+    setTaskListOpen(false);
+    setTaskbarAppMenuId(null);
   };
 
   const openIslandTab = (tab: typeof islandTab) => {
@@ -571,7 +670,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [islandAutoClipboard]);
 
-  // --- Sync dark mode & Nothing/Pixelbook design style on <html> ---
+  // --- Sync dark mode, design style, animation preset & REAL working opacity/blur/radius on <html> ---
   useEffect(() => {
     document.documentElement.classList.toggle('dark', currentTheme.isDark);
   }, [currentTheme.isDark]);
@@ -579,6 +678,29 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.design = designStyle;
   }, [designStyle]);
+
+  useEffect(() => {
+    document.documentElement.dataset.anim = animationPreset;
+  }, [animationPreset]);
+
+  useEffect(() => {
+    const root = document.documentElement.style;
+    const saverReduce = powerProfile === 'saver' && reduceEffectsOnSaver;
+    const clampedOpacity = Math.max(30, Math.min(100, glassOpacity));
+    const glassAlpha = glassEnabled ? clampedOpacity / 100 : 0.99;
+    const cardAlpha = glassEnabled ? Math.max(0.24, (clampedOpacity - 5) / 100) : 0.99;
+    const blurPx = !glassEnabled || saverReduce
+      ? '0px'
+      : glassIntensity === 'light'
+      ? '10px'
+      : glassIntensity === 'strong'
+      ? '34px'
+      : '20px';
+    root.setProperty('--luma-glass-alpha', glassAlpha.toFixed(2));
+    root.setProperty('--luma-card-alpha', cardAlpha.toFixed(2));
+    root.setProperty('--luma-blur', blurPx);
+    root.setProperty('--luma-radius', `${cardBorderRadius}px`);
+  }, [glassEnabled, glassOpacity, glassIntensity, cardBorderRadius, powerProfile, reduceEffectsOnSaver]);
 
   // --- Persist state cleanly ---
   useEffect(() => {
@@ -592,6 +714,15 @@ export default function App() {
           glassIntensity,
           glassOpacity,
           smoothAnimations,
+          animationPreset,
+          customDeviceName,
+          powerProfile,
+          screenBrightness,
+          autoSaverThreshold,
+          reduceEffectsOnSaver,
+          notificationsEnabled,
+          toastBannersEnabled,
+          notificationSoundEnabled,
           uiDensity,
           cardBorderRadius,
           cardColumns,
@@ -648,6 +779,15 @@ export default function App() {
     glassIntensity,
     glassOpacity,
     smoothAnimations,
+    animationPreset,
+    customDeviceName,
+    powerProfile,
+    screenBrightness,
+    autoSaverThreshold,
+    reduceEffectsOnSaver,
+    notificationsEnabled,
+    toastBannersEnabled,
+    notificationSoundEnabled,
     uiDensity,
     cardBorderRadius,
     cardColumns,
@@ -697,7 +837,7 @@ export default function App() {
   // --- Single Persistent BroadcastChannel ---
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
-    const bc = new BroadcastChannel('luma_os_1_0_2b_sync');
+    const bc = new BroadcastChannel('luma_os_1_0_3_sync');
     bcRef.current = bc;
     bc.onmessage = (ev) => {
       const msg = ev.data;
@@ -733,19 +873,38 @@ export default function App() {
         return;
       }
       if (e.key === 'Escape') {
-        if (spotlightOpen) setSpotlightOpen(false);
+        if (propertiesTarget) setPropertiesTarget(null);
+        else if (spotlightOpen) setSpotlightOpen(false);
         else if (startMenuOpen) setStartMenuOpen(false);
         else if (controlCenterOpen) setControlCenterOpen(false);
+        else if (taskListOpen) setTaskListOpen(false);
+        else if (taskbarAppMenuId) setTaskbarAppMenuId(null);
         else if (contextMenuApp) setContextMenuApp(null);
         else if (addAppModalOpen) setAddAppModalOpen(false);
         else if (customThemeModalOpen) setCustomThemeModalOpen(false);
-        else if (desktopEditMode) setDesktopEditMode(false);
+        else if (selectedAppIds.length > 0) {
+          setSelectedAppIds([]);
+          setMultiSelectMode(false);
+        } else if (desktopEditMode) setDesktopEditMode(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spotlightOpen, startMenuOpen, controlCenterOpen, contextMenuApp, addAppModalOpen, customThemeModalOpen, desktopEditMode, isFullscreen]);
+  }, [
+    propertiesTarget,
+    spotlightOpen,
+    startMenuOpen,
+    controlCenterOpen,
+    taskListOpen,
+    taskbarAppMenuId,
+    contextMenuApp,
+    addAppModalOpen,
+    customThemeModalOpen,
+    selectedAppIds.length,
+    desktopEditMode,
+    isFullscreen,
+  ]);
 
   // --- Single 1s System Ticker (Clock, Running App Timers, Island Timer/Stopwatch, Adaptive Day/Night) ---
   useEffect(() => {
@@ -800,7 +959,7 @@ export default function App() {
     }
   }, [adaptiveThemeEnabled, dayStartTime, nightStartTime, dayThemeKey, nightThemeKey, now, themeKey, allThemesMap]);
 
-  // --- Poll REAL Host Telemetry from Luma Core 1.0.2b (/api/kernel/system) ---
+  // --- Poll REAL Host Telemetry from Luma Core 1.0 (OS 1.0.3 Hydrogen) ---
   const pollSystemTelemetry = async () => {
     try {
       const res = await fetch('/api/kernel/system');
@@ -819,9 +978,19 @@ export default function App() {
 
   useEffect(() => {
     pollSystemTelemetry();
-    const id = window.setInterval(pollSystemTelemetry, 2000);
+    const intervalMs = powerProfile === 'saver' ? 6000 : powerProfile === 'performance' ? 1500 : 2000;
+    const id = window.setInterval(pollSystemTelemetry, intervalMs);
     return () => window.clearInterval(id);
-  }, []);
+  }, [powerProfile]);
+
+  // Auto-enable power saver when battery drops below threshold on battery power
+  useEffect(() => {
+    if (!isCharging && batteryLevel > 0 && batteryLevel <= autoSaverThreshold && powerProfile !== 'saver') {
+      setPowerProfile('saver');
+      pushToast('Энергосбережение', `Заряд ${batteryLevel}% — включён режим экономии`, 'info');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batteryLevel, isCharging, autoSaverThreshold]);
 
   // --- Load source file when Kernel window is open ---
   useEffect(() => {
@@ -937,8 +1106,28 @@ export default function App() {
         pushToast('Питание', d?.detail || `Выполнено: ${action}`, 'info');
       }
     } catch {
-      pushToast('Питание', 'Доступно при запуске LumaOS_1.0.2b.exe', 'info');
+      pushToast('Питание', 'Доступно при запуске LumaOS_1.0.3.exe', 'info');
     }
+  };
+
+  const handleChangePowerProfile = async (plan: PowerProfile) => {
+    setPowerProfile(plan);
+    const label = plan === 'performance' ? 'Производительность' : plan === 'saver' ? 'Энергосбережение' : 'Сбалансированный';
+    try {
+      const r = await fetch('/api/kernel/power-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        pushToast('Профиль питания', d?.detail || label, 'success');
+        return;
+      }
+    } catch {
+      // fallback to shell-only power saver
+    }
+    pushToast('Профиль питания', label, 'info');
   };
 
   const callLumaKernelRpc = async (method: string) => {
@@ -968,18 +1157,69 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: app.id, name: app.name, url: app.url, type: app.type, args: app.args || '' }),
       }).catch(() => {});
-      pushToast('Запуск', `${app.name} — отсчёт сессии с 00:00`, 'info');
+      pushToast('Запуск', `${app.name} — добавлено на панель задач`, 'info');
+    } else if (taskbarAppMenuId === app.id) {
+      setTaskbarAppMenuId(null);
     }
+  };
+
+  const handleFocusOrRelaunchApp = (app: AppItem) => {
+    fetch('/api/kernel/launch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: app.id, name: app.name, url: app.url, type: app.type, args: app.args || '' }),
+    }).catch(() => {});
+    setApps((prev) => prev.map((a) => (a.id === app.id ? { ...a, isRunning: true } : a)));
+    setTaskbarAppMenuId(null);
+    setTaskListOpen(false);
+    pushToast('Активная задача', `${app.name} выведено на передний план`, 'info');
+  };
+
+  const handleStopApp = (appId: string) => {
+    setApps((prev) => prev.map((a) => (a.id === appId ? { ...a, isRunning: false } : a)));
+    if (taskbarAppMenuId === appId) setTaskbarAppMenuId(null);
   };
 
   const handleToggleFavorite = (app: AppItem) => {
     setApps((prev) => prev.map((a) => (a.id === app.id ? { ...a, favorite: !a.favorite } : a)));
   };
 
+  const pinAppsToDesktop = (list: AppItem[]) => {
+    if (list.length === 0) return;
+    setPendingPinItems({
+      id: Date.now(),
+      items: list.map((a) => ({
+        kind: 'app',
+        label: a.name,
+        icon: a.icon || 'AppWindow',
+        target: a.id,
+      })),
+    });
+  };
+
+  const handleDeleteApp = (app: AppItem) => {
+    setApps((prev) => prev.filter((a) => a.id !== app.id));
+    setSelectedAppIds((prev) => prev.filter((id) => id !== app.id));
+    if (taskbarAppMenuId === app.id) setTaskbarAppMenuId(null);
+    pushToast('Удалено', `«${app.name}» удалено из списка приложений`, 'info');
+  };
+
+  const handleOpenAppProperties = (app: AppItem) => {
+    setPropertiesTarget({
+      label: app.name,
+      path: app.url || app.package,
+      kind: app.type,
+      app,
+      onDelete: () => handleDeleteApp(app),
+      onPinToDesktop: () => pinAppsToDesktop([app]),
+    });
+  };
+
   const handleAddCustomApp = (e: React.FormEvent) => {
     e.preventDefault();
     const clean = newAppName.trim();
     if (!clean) return;
+    const nowStr = new Date().toLocaleDateString('ru-RU');
     const created: AppItem = {
       id: `custom_${Date.now()}`,
       name: clean,
@@ -998,6 +1238,8 @@ export default function App() {
       isRunning: false,
       dailyLimitMinutes: 120,
       detoxGroup: 'Браузеры',
+      installedAt: nowStr,
+      version: '1.0.0',
     };
     setApps((prev) => [created, ...prev]);
     setNewAppName('');
@@ -1065,6 +1307,88 @@ export default function App() {
     });
   }, [combinedApps, currentFilter, searchQuery]);
 
+  // --- Multi-Select Interaction & Batch Operations (Apps Window) ---
+  const toggleSelectApp = (app: AppItem, shiftKey = false) => {
+    if (shiftKey && lastSelectedAppId) {
+      const idxA = filteredApps.findIndex((a) => a.id === lastSelectedAppId);
+      const idxB = filteredApps.findIndex((a) => a.id === app.id);
+      if (idxA !== -1 && idxB !== -1) {
+        const [start, end] = idxA < idxB ? [idxA, idxB] : [idxB, idxA];
+        const rangeIds = filteredApps.slice(start, end + 1).map((a) => a.id);
+        setSelectedAppIds((prev) => Array.from(new Set([...prev, ...rangeIds])));
+        setLastSelectedAppId(app.id);
+        return;
+      }
+    }
+    setSelectedAppIds((prev) =>
+      prev.includes(app.id) ? prev.filter((id) => id !== app.id) : [...prev, app.id]
+    );
+    setLastSelectedAppId(app.id);
+  };
+
+  const handleAppCardClick = (app: AppItem, e: React.MouseEvent) => {
+    if (multiSelectMode || e.ctrlKey || e.metaKey || e.shiftKey) {
+      e.preventDefault();
+      if (!multiSelectMode) setMultiSelectMode(true);
+      toggleSelectApp(app, e.shiftKey);
+      return;
+    }
+    handleLaunchApp(app);
+  };
+
+  const selectedAppsList = useMemo(
+    () => combinedApps.filter((a) => selectedAppIds.includes(a.id)),
+    [combinedApps, selectedAppIds]
+  );
+
+  const handleBatchLaunch = () => {
+    const ids = new Set(selectedAppIds);
+    const targets = apps.filter((a) => ids.has(a.id));
+    setApps((prev) => prev.map((a) => (ids.has(a.id) ? { ...a, isRunning: true } : a)));
+    targets.forEach((app) => {
+      fetch('/api/kernel/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: app.id, name: app.name, url: app.url, type: app.type, args: app.args || '' }),
+      }).catch(() => {});
+    });
+    pushToast('Пакетный запуск', `Запущено приложений: ${targets.length}`, 'success');
+    setSelectedAppIds([]);
+    setMultiSelectMode(false);
+  };
+
+  const handleBatchStop = () => {
+    const ids = new Set(selectedAppIds);
+    setApps((prev) => prev.map((a) => (ids.has(a.id) ? { ...a, isRunning: false } : a)));
+    pushToast('Остановка', `Остановлено приложений: ${ids.size}`, 'info');
+    setSelectedAppIds([]);
+    setMultiSelectMode(false);
+  };
+
+  const handleBatchFavorite = () => {
+    const ids = new Set(selectedAppIds);
+    const allFav = apps.filter((a) => ids.has(a.id)).every((a) => a.favorite);
+    setApps((prev) => prev.map((a) => (ids.has(a.id) ? { ...a, favorite: !allFav } : a)));
+    pushToast('Избранное', allFav ? 'Убрано из избранного' : `Добавлено в избранное: ${ids.size}`, 'info');
+    setSelectedAppIds([]);
+    setMultiSelectMode(false);
+  };
+
+  const handleBatchPinDesktop = () => {
+    pinAppsToDesktop(selectedAppsList);
+    setSelectedAppIds([]);
+    setMultiSelectMode(false);
+  };
+
+  const handleBatchDelete = () => {
+    const ids = new Set(selectedAppIds);
+    const count = apps.filter((a) => ids.has(a.id)).length;
+    setApps((prev) => prev.filter((a) => !ids.has(a.id)));
+    setSelectedAppIds([]);
+    setMultiSelectMode(false);
+    pushToast('Удалено', `Удалено приложений: ${count}`, 'info');
+  };
+
   const groupedApps = useMemo(() => {
     const map: Record<string, AppItem[]> = {};
     filteredApps.forEach((a) => {
@@ -1075,7 +1399,8 @@ export default function App() {
   }, [filteredApps]);
 
   const favoriteApps = useMemo(() => filteredApps.filter((a) => a.favorite), [filteredApps]);
-  const runningAppsCount = useMemo(() => apps.filter((a) => a.isRunning).length, [apps]);
+  const runningApps = useMemo(() => apps.filter((a) => a.isRunning), [apps]);
+  const runningAppsCount = runningApps.length;
   const unreadNotifCount = useMemo(() => notifications.filter((n) => n.unread).length, [notifications]);
 
   const currentIslandPlayer = islandPlayers[activePlayerIndex] || islandPlayers[0];
@@ -1093,24 +1418,24 @@ export default function App() {
   const colon = clockBlinkColon && now.getSeconds() % 2 === 1 ? ' ' : ':';
   const dateShort = `${WEEKDAYS_RU[now.getDay()]} ${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-  // Adaptive Surface Tokens (Nothing vs Pixelbook / Googlebook)
+  // Adaptive Surface Tokens (Nothing vs Pixelbook / Soft Matte Light in 1.0.3 Hydrogen)
   const isDark = currentTheme.isDark;
   const isPixel = designStyle === 'pixelbook';
   const surfaceCls = isPixel
     ? isDark
-      ? 'bg-[#192130] border-blue-300/[0.14] text-slate-100'
-      : 'bg-white border-blue-900/[0.11] text-slate-900'
+      ? 'bg-[#192130]/85 border-blue-300/[0.14] text-slate-100'
+      : 'bg-[#e6ecf5]/90 border-blue-900/[0.14] text-slate-900'
     : isDark
-    ? 'bg-[#141418] border-white/[0.09] text-zinc-100'
-    : 'bg-white border-zinc-900/[0.1] text-zinc-900';
+    ? 'bg-[#141418]/85 border-white/[0.09] text-zinc-100'
+    : 'bg-[#e7e8e3]/90 border-zinc-900/[0.13] text-zinc-900';
   const btnCls = isPixel
     ? isDark
       ? 'bg-blue-400/[0.08] hover:bg-blue-400/[0.15] border-blue-300/[0.15] text-slate-100'
-      : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
+      : 'bg-[#d5deeb]/85 hover:bg-[#c8d4e5] border-slate-400/50 text-slate-900'
     : isDark
     ? 'bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.09] text-zinc-200'
-    : 'bg-zinc-100 hover:bg-zinc-200 border-zinc-300 text-zinc-800';
-  const mutedCls = isDark ? 'text-zinc-400' : 'text-zinc-500';
+    : 'bg-[#d9dad4]/85 hover:bg-[#cccdc6] border-zinc-400/60 text-zinc-900';
+  const mutedCls = isDark ? 'text-zinc-400' : 'text-zinc-600';
   const popoverShellCls = isPixel
     ? isDark
       ? 'dex-window-pixel-dark text-slate-100 rounded-[24px]'
@@ -1118,6 +1443,13 @@ export default function App() {
     : isDark
     ? 'dex-window-dark text-zinc-100 rounded-2xl'
     : 'dex-window-light text-zinc-900 rounded-2xl';
+  const taskbarGlassCls = isPixel
+    ? isDark
+      ? 'luma-taskbar-pixel-dark border-blue-300/[0.16] text-slate-100'
+      : 'luma-taskbar-pixel-light border-blue-900/[0.14] text-slate-900'
+    : isDark
+    ? 'luma-taskbar-dark border-white/[0.09] text-zinc-100'
+    : 'luma-taskbar-light border-zinc-900/[0.13] text-zinc-900';
 
   const renderAppIcon = (iconName: string, className = 'w-4 h-4') => {
     const Comp = ICON_MAP[iconName] || AppWindow;
@@ -1136,6 +1468,8 @@ export default function App() {
     { id: 'spaces', label: 'Пространства', icon: <Rocket className="w-4 h-4" />, pinned: false },
   ];
 
+  const openSystemWindowsList = taskbarApps.filter((w) => windows[w.id].open);
+  const totalActiveTasksCount = openSystemWindowsList.length + runningAppsCount;
   const topVisibleZ = Math.max(0, ...Object.values(windows).map((w) => (w.open && !w.minimized ? w.z : 0)));
 
   // Smart Island vertical placement so it never overlaps top or bottom taskbar
@@ -1155,6 +1489,8 @@ export default function App() {
       onClick={() => {
         if (startMenuOpen) setStartMenuOpen(false);
         if (controlCenterOpen) setControlCenterOpen(false);
+        if (taskListOpen) setTaskListOpen(false);
+        if (taskbarAppMenuId) setTaskbarAppMenuId(null);
       }}
       className={`relative w-screen h-screen overflow-hidden select-none ${
         isDark ? 'text-zinc-100' : 'text-zinc-900'
@@ -1213,6 +1549,17 @@ export default function App() {
         onPowerAction={handleExecutePowerAction}
         onRotateKey={() => callLumaKernelRpc('security.rotate_key')}
         onPushToast={pushToast}
+        pendingPinItems={pendingPinItems}
+        onConsumePendingPin={() => setPendingPinItems(null)}
+        onInspectProperties={(info) =>
+          setPropertiesTarget({
+            label: info.label,
+            path: info.path,
+            kind: info.kind,
+            app: info.app,
+            onDelete: info.onDelete,
+          })
+        }
       />
 
       {/* ==================== LAYER 2: SUPERCHARGED FLOATING LUMA ISLAND PILL (MEDIA + CLIPBOARD + TIMER) ==================== */}
@@ -1308,12 +1655,16 @@ export default function App() {
 
       {/* ==================== LAYER 3: REAL DRAGGABLE & RESIZABLE DEX WINDOWS ==================== */}
 
-      {/* WINDOW 1: APPS & GROUPED LIBRARY */}
+      {/* WINDOW 1: APPS & GROUPED LIBRARY (WITH MULTI-SELECT & PROPERTIES) */}
       {windows.apps.open && !windows.apps.minimized && (
         <DexWindow
           id="apps"
           title="Приложения"
-          subtitle={`${filteredApps.length} элементов`}
+          subtitle={
+            selectedAppIds.length > 0
+              ? `Выбрано: ${selectedAppIds.length} из ${filteredApps.length}`
+              : `${filteredApps.length} элементов · ПКМ: свойства и удаление`
+          }
           icon={<AppWindow className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -1329,7 +1680,7 @@ export default function App() {
             {/* Left Sidebar */}
             <aside
               className={`w-60 shrink-0 border-r p-3.5 flex flex-col gap-3 ${
-                isDark ? 'border-white/[0.08] bg-white/[0.015]' : 'border-zinc-200 bg-zinc-50/70'
+                isDark ? 'border-white/[0.08] bg-white/[0.015]' : 'border-zinc-900/[0.1] bg-[#dedfd9]/65'
               }`}
             >
               <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border ${btnCls}`}>
@@ -1360,7 +1711,7 @@ export default function App() {
                         ? 'bg-[var(--luma-accent)] text-white font-semibold'
                         : isDark
                         ? 'text-zinc-300 hover:bg-white/[0.06]'
-                        : 'text-zinc-700 hover:bg-zinc-200/70'
+                        : 'text-zinc-700 hover:bg-zinc-900/[0.06]'
                     }`}
                   >
                     <span>{fl}</span>
@@ -1371,10 +1722,14 @@ export default function App() {
                 ))}
               </div>
 
+              <div className={`text-[10px] leading-relaxed px-1 ${mutedCls}`}>
+                Ctrl+Клик или кнопка «Выбор» — выделить сразу несколько приложений. ПКМ — свойства и удаление.
+              </div>
+
               <div className="mt-auto space-y-2">
                 <button
                   onClick={() => setAddAppModalOpen(true)}
-                  className="w-full py-2 px-3 rounded-xl bg-[var(--luma-accent)] hover:bg-[#b9151c] text-white text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full py-2 px-3 rounded-xl bg-[var(--luma-accent)] hover:bg-[var(--luma-accent-hover)] text-white text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Добавить
@@ -1389,156 +1744,299 @@ export default function App() {
               </div>
             </aside>
 
-            {/* Right Grouped Apps Content */}
-            <div className="flex-1 min-w-0 overflow-y-auto p-4 space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-xs font-mono uppercase tracking-wider text-zinc-500">
-                  Библиотека по группам · Активно: {runningAppsCount}
-                </div>
-                <div className={`flex items-center gap-0.5 p-0.5 rounded-lg border ${btnCls}`}>
-                  {(
-                    [
-                      ['list_and_cards', 'Избранное + Список'],
-                      ['list', 'Список'],
-                      ['cards', 'Сетка'],
-                    ] as const
-                  ).map(([m, label]) => (
+            {/* Right Grouped Apps Content + Floating Multi-Select Bar */}
+            <div className="flex-1 min-w-0 flex flex-col min-h-0">
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs font-mono uppercase tracking-wider text-zinc-500">
+                    Библиотека по группам · Активно: {runningAppsCount}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <button
-                      key={m}
-                      onClick={() => setGroupedViewStyle(m)}
-                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer ${
-                        groupedViewStyle === m ? 'bg-[var(--luma-accent)] text-white' : ''
+                      onClick={() => {
+                        setMultiSelectMode((v) => {
+                          if (v) setSelectedAppIds([]);
+                          return !v;
+                        });
+                      }}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1.5 cursor-pointer transition ${
+                        multiSelectMode || selectedAppIds.length > 0
+                          ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                          : btnCls
                       }`}
                     >
-                      {label}
+                      <ListChecks className="w-3.5 h-3.5" />
+                      {multiSelectMode ? `Выбор (${selectedAppIds.length})` : 'Выбрать несколько'}
                     </button>
-                  ))}
-                </div>
-              </div>
 
-              {/* Favorites */}
-              {groupedViewStyle !== 'list' && favoriteApps.length > 0 && (
-                <section className="space-y-2">
-                  <div className={`text-[10px] font-mono uppercase tracking-[0.14em] ${mutedCls}`}>
-                    Избранное ({favoriteApps.length})
-                  </div>
-                  <div
-                    className="grid gap-2"
-                    style={{ gridTemplateColumns: `repeat(${Math.min(cardColumns, 5)}, minmax(0, 1fr))` }}
-                  >
-                    {favoriteApps.map((app) => (
-                      <div
-                        key={app.id}
-                        onClick={() => handleLaunchApp(app)}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setContextMenuApp(app);
-                        }}
-                        className={`p-3 rounded-xl border cursor-pointer transition flex flex-col gap-2 ${surfaceCls} ${
-                          app.isRunning ? 'border-[#d71921]/70' : 'hover:border-zinc-500'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          {renderAppIcon(app.icon, 'w-4 h-4')}
-                          {app.isRunning && <span className="w-2 h-2 rounded-full bg-[var(--luma-accent)]" />}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-xs font-semibold truncate">{app.name}</div>
-                          <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                            {formatMonthBadge(app.monthMinutes, app.elapsedSeconds, app.isRunning)}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {/* Categories */}
-              <div className="space-y-4">
-                {groupedApps.map(([cat, list]) => (
-                  <section key={cat} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className={`text-[10px] font-mono uppercase tracking-[0.14em] ${mutedCls}`}>
-                        {cat} ({list.length})
-                      </span>
+                    <div className={`flex items-center gap-0.5 p-0.5 rounded-lg border ${btnCls}`}>
+                      {(
+                        [
+                          ['list_and_cards', 'Избранное + Список'],
+                          ['list', 'Список'],
+                          ['cards', 'Сетка'],
+                        ] as const
+                      ).map(([m, label]) => (
+                        <button
+                          key={m}
+                          onClick={() => setGroupedViewStyle(m)}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer ${
+                            groupedViewStyle === m ? 'bg-[var(--luma-accent)] text-white' : ''
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
                     </div>
-                    {groupedViewStyle === 'cards' ? (
-                      <div
-                        className="grid gap-2"
-                        style={{ gridTemplateColumns: `repeat(${Math.min(cardColumns, 5)}, minmax(0, 1fr))` }}
-                      >
-                        {list.map((app) => (
+                  </div>
+                </div>
+
+                {/* Favorites */}
+                {groupedViewStyle !== 'list' && favoriteApps.length > 0 && (
+                  <section className="space-y-2">
+                    <div className={`text-[10px] font-mono uppercase tracking-[0.14em] ${mutedCls}`}>
+                      Избранное ({favoriteApps.length})
+                    </div>
+                    <div
+                      className="grid gap-2"
+                      style={{ gridTemplateColumns: `repeat(${Math.min(cardColumns, 5)}, minmax(0, 1fr))` }}
+                    >
+                      {favoriteApps.map((app) => {
+                        const isSel = selectedAppIds.includes(app.id);
+                        return (
                           <div
                             key={app.id}
-                            onClick={() => handleLaunchApp(app)}
+                            onClick={(e) => handleAppCardClick(app, e)}
                             onContextMenu={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
                               setContextMenuApp(app);
                             }}
-                            className={`p-3 rounded-xl border cursor-pointer transition flex items-center gap-2.5 ${surfaceCls} ${
-                              app.isRunning ? 'border-[#d71921]/70' : 'hover:border-zinc-500'
+                            className={`p-3 rounded-xl border cursor-pointer transition flex flex-col gap-2 ${surfaceCls} ${
+                              isSel
+                                ? 'border-[var(--luma-accent)] ring-1 ring-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                                : app.isRunning
+                                ? 'border-[var(--luma-accent-border)]'
+                                : 'hover:border-zinc-500'
                             }`}
                           >
-                            {renderAppIcon(app.icon, 'w-4 h-4 shrink-0')}
-                            <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between">
+                              {renderAppIcon(app.icon, 'w-4 h-4')}
+                              <div className="flex items-center gap-1.5">
+                                {app.isRunning && <span className="w-2 h-2 rounded-full bg-[var(--luma-accent)]" />}
+                                {(multiSelectMode || isSel) && (
+                                  <span
+                                    className={`w-4 h-4 rounded flex items-center justify-center border ${
+                                      isSel
+                                        ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                                        : 'border-zinc-500/60'
+                                    }`}
+                                  >
+                                    {isSel && <Check className="w-2.5 h-2.5" />}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="min-w-0">
                               <div className="text-xs font-semibold truncate">{app.name}</div>
                               <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
                                 {formatMonthBadge(app.monthMinutes, app.elapsedSeconds, app.isRunning)}
                               </div>
                             </div>
                           </div>
-                        ))}
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+
+                {/* Categories */}
+                <div className="space-y-4">
+                  {groupedApps.map(([cat, list]) => (
+                    <section key={cat} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-[10px] font-mono uppercase tracking-[0.14em] ${mutedCls}`}>
+                          {cat} ({list.length})
+                        </span>
                       </div>
-                    ) : (
-                      <div className={`rounded-xl border divide-y overflow-hidden ${surfaceCls} ${isDark ? 'divide-white/[0.06]' : 'divide-zinc-200'}`}>
-                        {list.map((app) => (
-                          <div
-                            key={app.id}
-                            onClick={() => handleLaunchApp(app)}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setContextMenuApp(app);
-                            }}
-                            className={`px-3.5 ${uiDensity === 'compact' ? 'py-2' : 'py-2.5'} flex items-center justify-between gap-3 cursor-pointer transition ${
-                              isDark ? 'hover:bg-white/[0.04]' : 'hover:bg-zinc-50'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              {renderAppIcon(app.icon, 'w-4 h-4 shrink-0')}
-                              <div className="min-w-0">
-                                <div className="text-xs font-semibold truncate">{app.name}</div>
-                                <div className={`text-[10px] font-mono truncate ${mutedCls}`}>{app.package}</div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span
-                                className={`text-[11px] font-mono ${
-                                  app.isRunning ? 'text-[var(--luma-accent)] font-bold' : mutedCls
-                                }`}
-                              >
-                                {formatMonthBadge(app.monthMinutes, app.elapsedSeconds, app.isRunning)}
-                              </span>
-                              <button
-                                onClick={(e) => {
+                      {groupedViewStyle === 'cards' ? (
+                        <div
+                          className="grid gap-2"
+                          style={{ gridTemplateColumns: `repeat(${Math.min(cardColumns, 5)}, minmax(0, 1fr))` }}
+                        >
+                          {list.map((app) => {
+                            const isSel = selectedAppIds.includes(app.id);
+                            return (
+                              <div
+                                key={app.id}
+                                onClick={(e) => handleAppCardClick(app, e)}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
                                   e.stopPropagation();
                                   setContextMenuApp(app);
                                 }}
-                                className={`p-1 rounded-md cursor-pointer ${mutedCls} hover:text-current`}
+                                className={`p-3 rounded-xl border cursor-pointer transition flex items-center gap-2.5 ${surfaceCls} ${
+                                  isSel
+                                    ? 'border-[var(--luma-accent)] ring-1 ring-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                                    : app.isRunning
+                                    ? 'border-[var(--luma-accent-border)]'
+                                    : 'hover:border-zinc-500'
+                                }`}
                               >
-                                <MoreVertical className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                ))}
+                                {(multiSelectMode || isSel) && (
+                                  <span
+                                    className={`w-4 h-4 rounded shrink-0 flex items-center justify-center border ${
+                                      isSel
+                                        ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                                        : 'border-zinc-500/60'
+                                    }`}
+                                  >
+                                    {isSel && <Check className="w-2.5 h-2.5" />}
+                                  </span>
+                                )}
+                                {renderAppIcon(app.icon, 'w-4 h-4 shrink-0')}
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-xs font-semibold truncate">{app.name}</div>
+                                  <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
+                                    {formatMonthBadge(app.monthMinutes, app.elapsedSeconds, app.isRunning)}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className={`rounded-xl border divide-y overflow-hidden ${surfaceCls} ${isDark ? 'divide-white/[0.06]' : 'divide-zinc-900/[0.08]'}`}>
+                          {list.map((app) => {
+                            const isSel = selectedAppIds.includes(app.id);
+                            return (
+                              <div
+                                key={app.id}
+                                onClick={(e) => handleAppCardClick(app, e)}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setContextMenuApp(app);
+                                }}
+                                className={`px-3.5 ${uiDensity === 'compact' ? 'py-2' : 'py-2.5'} flex items-center justify-between gap-3 cursor-pointer transition ${
+                                  isSel
+                                    ? 'bg-[var(--luma-accent-soft)]'
+                                    : isDark
+                                    ? 'hover:bg-white/[0.04]'
+                                    : 'hover:bg-zinc-900/[0.04]'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  {(multiSelectMode || isSel) && (
+                                    <span
+                                      className={`w-4 h-4 rounded shrink-0 flex items-center justify-center border ${
+                                        isSel
+                                          ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                                          : 'border-zinc-500/60'
+                                      }`}
+                                    >
+                                      {isSel && <Check className="w-2.5 h-2.5" />}
+                                    </span>
+                                  )}
+                                  {renderAppIcon(app.icon, 'w-4 h-4 shrink-0')}
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-semibold truncate">{app.name}</div>
+                                    <div className={`text-[10px] font-mono truncate ${mutedCls}`}>{app.package}</div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span
+                                    className={`text-[11px] font-mono ${
+                                      app.isRunning ? 'text-[var(--luma-accent)] font-bold' : mutedCls
+                                    }`}
+                                  >
+                                    {formatMonthBadge(app.monthMinutes, app.elapsedSeconds, app.isRunning)}
+                                  </span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setContextMenuApp(app);
+                                    }}
+                                    className={`p-1 rounded-md cursor-pointer ${mutedCls} hover:text-current`}
+                                  >
+                                    <MoreVertical className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
+                  ))}
+                </div>
               </div>
+
+              {/* Sticky Batch Action Bar when 1+ apps selected */}
+              {(multiSelectMode || selectedAppIds.length > 0) && (
+                <div
+                  className={`luma-animate-in shrink-0 px-4 py-2.5 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
+                    isDark ? 'border-white/10 bg-[#121216]/95' : 'border-zinc-900/10 bg-[#dcddd7]/95'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 font-mono">
+                    <CheckSquare className="w-4 h-4 text-[var(--luma-accent)]" />
+                    <span className="font-bold">Выбрано: {selectedAppIds.length}</span>
+                    <button
+                      onClick={() => setSelectedAppIds(filteredApps.map((a) => a.id))}
+                      className={`px-2 py-0.5 rounded-md border text-[11px] cursor-pointer ${btnCls}`}
+                    >
+                      Выбрать все
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedAppIds([]);
+                        setMultiSelectMode(false);
+                      }}
+                      className={`px-2 py-0.5 rounded-md border text-[11px] cursor-pointer ${btnCls}`}
+                    >
+                      Снять
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      disabled={selectedAppIds.length === 0}
+                      onClick={handleBatchLaunch}
+                      className="px-2.5 py-1 rounded-lg bg-[var(--luma-accent)] text-white font-semibold disabled:opacity-40 cursor-pointer inline-flex items-center gap-1"
+                    >
+                      <Play className="w-3 h-3" /> Запустить
+                    </button>
+                    <button
+                      disabled={selectedAppIds.length === 0}
+                      onClick={handleBatchStop}
+                      className={`px-2.5 py-1 rounded-lg border disabled:opacity-40 cursor-pointer inline-flex items-center gap-1 ${btnCls}`}
+                    >
+                      <Square className="w-3 h-3" /> Стоп
+                    </button>
+                    <button
+                      disabled={selectedAppIds.length === 0}
+                      onClick={handleBatchFavorite}
+                      className={`px-2.5 py-1 rounded-lg border disabled:opacity-40 cursor-pointer inline-flex items-center gap-1 ${btnCls}`}
+                    >
+                      <Star className="w-3 h-3" /> Избранное
+                    </button>
+                    <button
+                      disabled={selectedAppIds.length === 0}
+                      onClick={handleBatchPinDesktop}
+                      className={`px-2.5 py-1 rounded-lg border disabled:opacity-40 cursor-pointer inline-flex items-center gap-1 ${btnCls}`}
+                    >
+                      <Pin className="w-3 h-3" /> На стол
+                    </button>
+                    <button
+                      disabled={selectedAppIds.length === 0}
+                      onClick={handleBatchDelete}
+                      className="px-2.5 py-1 rounded-lg border border-[var(--luma-accent-border)] bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold disabled:opacity-40 cursor-pointer inline-flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3 h-3" /> Удалить
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </DexWindow>
@@ -1690,7 +2188,7 @@ export default function App() {
       {windows.kernel.open && !windows.kernel.minimized && (
         <DexWindow
           id="kernel"
-          title="Ядро Luma Core 1.0.2b"
+          title="Ядро LumaCore 1.0 (OS 1.0.3 Hydrogen)"
           subtitle={kernelConnected ? 'CONNECTED · 127.0.0.1:49215' : 'STANDALONE'}
           icon={<Code2 className="w-4 h-4" />}
           isDark={isDark}
@@ -1713,16 +2211,16 @@ export default function App() {
                   RAM: {liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)}/${liveSystem.ram_total_gb.toFixed(1)} GB` : `${ramLoad}%`}
                 </span>
                 <span className={`px-2.5 py-1 rounded-lg border ${surfaceCls}`}>
-                  KEY REV #{cryptoKeyVersion}
+                  CORE 1.0 · KEY #{cryptoKeyVersion}
                 </span>
               </div>
               <a
-                href="/LumaOS_1.0.2b.exe"
-                download="LumaOS_1.0.2b.exe"
+                href="/LumaOS_1.0.3.exe"
+                download="LumaOS_1.0.3.exe"
                 className="px-3.5 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
               >
                 <Download className="w-3.5 h-3.5" />
-                LumaOS_1.0.2b.exe
+                LumaOS_1.0.3.exe
               </a>
             </div>
 
@@ -1747,11 +2245,12 @@ export default function App() {
                   ))}
                 </div>
               </div>
-              <pre className={`p-3 rounded-lg border text-[11px] font-mono overflow-x-auto max-h-40 ${isDark ? 'bg-black/40 border-white/10' : 'bg-zinc-50 border-zinc-200'}`}>
+              <pre className={`p-3 rounded-lg border text-[11px] font-mono overflow-x-auto max-h-40 ${isDark ? 'bg-black/40 border-white/10' : 'bg-[#d8d9d3]/75 border-zinc-400/50'}`}>
                 {JSON.stringify(
                   lumaRpcLiveData || {
                     kernel: 'LumaCore',
-                    version: '1.0.2b',
+                    kernel_engine_version: '1.0',
+                    software_version: '1.0.3 (Hydrogen)',
                     ipc: 'tcp://127.0.0.1:49215',
                     real_telemetry: Boolean(liveSystem?.real_telemetry),
                   },
@@ -1780,7 +2279,7 @@ export default function App() {
                 ))}
               </div>
               <div className={`lg:col-span-8 rounded-xl border flex flex-col overflow-hidden ${surfaceCls}`}>
-                <div className={`px-3.5 py-2 border-b flex items-center justify-between text-xs font-mono ${isDark ? 'border-white/10' : 'border-zinc-200'}`}>
+                <div className={`px-3.5 py-2 border-b flex items-center justify-between text-xs font-mono ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
                   <span>{selectedCodePath}</span>
                   <button
                     onClick={async () => {
@@ -1803,68 +2302,219 @@ export default function App() {
         </DexWindow>
       )}
 
-      {/* WINDOW 5: SYSTEM SETTINGS (100% OF ALL EXISTING OPTIONS PRESERVED + DESKTOP CUSTOMIZATION) */}
+      {/* WINDOW 5: SYSTEM SETTINGS (1.0.3 HYDROGEN: SEARCH + KERNEL UI + BLUETOOTH + POWER + STORAGE/FILES + APPS + NOTIFICATIONS + ALL EXISTING OPTIONS) */}
       {windows.settings.open && !windows.settings.minimized && (
         <DexWindow
           id="settings"
           title="Настройки системы"
-          subtitle="Luma OS 1.0.2b"
+          subtitle="Luma OS 1.0.3 (Hydrogen)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
           zIndex={windows.settings.z}
-          initialWidth={1020}
-          initialHeight={660}
+          initialWidth={1060}
+          initialHeight={680}
           onFocus={() => focusWindow('settings')}
           onMinimize={() => minimizeWindow('settings')}
           onClose={() => closeWindow('settings')}
         >
           <div className="h-full flex min-h-0">
-            {/* Settings Sidebar */}
+            {/* Settings Sidebar with Live Search */}
             <aside
-              className={`w-56 shrink-0 border-r p-3 space-y-1 ${
-                isDark ? 'border-white/[0.08] bg-white/[0.015]' : 'border-zinc-200 bg-zinc-50/70'
+              className={`w-60 shrink-0 border-r p-3 flex flex-col gap-2 min-h-0 ${
+                isDark ? 'border-white/[0.08] bg-white/[0.015]' : 'border-zinc-900/[0.1] bg-[#dedfd9]/65'
               }`}
             >
-              {(
-                [
-                  ['luma', 'Система и Железо', <Activity className="w-4 h-4" />],
-                  ['island', 'Luma Island', <Disc3 className="w-4 h-4" />],
-                  ['appearance', 'Темы и Стол', <Sliders className="w-4 h-4" />],
-                  ['clock', '18 Циферблатов', <Clock className="w-4 h-4" />],
-                  ['navigation', 'Навигация', <MousePointerClick className="w-4 h-4" />],
-                  ['plugins', 'Окна и Плагины', <LayoutGrid className="w-4 h-4" />],
-                  ['updater', 'Обновления', <Stethoscope className="w-4 h-4" />],
-                  ['about', 'О системе', <Info className="w-4 h-4" />],
-                ] as const
-              ).map(([tabId, label, icon]) => (
-                <button
-                  key={tabId}
-                  onClick={() => setSettingsTab(tabId)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition cursor-pointer ${
-                    settingsTab === tabId
-                      ? 'bg-[var(--luma-accent)] text-white font-semibold'
-                      : isDark
-                      ? 'text-zinc-300 hover:bg-white/[0.06]'
-                      : 'text-zinc-700 hover:bg-zinc-200/70'
-                  }`}
-                >
-                  {icon}
-                  <span className="truncate">{label}</span>
-                </button>
-              ))}
+              <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border shrink-0 ${btnCls}`}>
+                <Search className="w-3.5 h-3.5 text-[var(--luma-accent)] shrink-0" />
+                <input
+                  value={settingsSearch}
+                  onChange={(e) => setSettingsSearch(e.target.value)}
+                  placeholder="Поиск настроек..."
+                  className="w-full bg-transparent text-xs outline-none placeholder:text-zinc-500"
+                />
+                {settingsSearch && (
+                  <button
+                    onClick={() => setSettingsSearch('')}
+                    className="text-zinc-500 hover:text-current cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-0.5">
+                {(
+                  [
+                    ['kernel_ui', 'Ядро UI', <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по ядра 1.0 hydrogen host kernel'],
+                    ['bluetooth', 'Bluetooth', <Bluetooth className="w-4 h-4 shrink-0" />, 'bluetooth блютуз беспроводные наушники адаптер устройства'],
+                    ['power', 'Энергосбережение', <Leaf className="w-4 h-4 shrink-0" />, 'энергосбережение питание батарея яркость производительность сбалансированный сон power battery'],
+                    ['storage', 'Память и Файлы', <HardDrive className="w-4 h-4 shrink-0" />, 'память озу ram диски накопители проводник просмотр файлов storage disk files'],
+                    ['apps_list', 'Приложения', <AppWindow className="w-4 h-4 shrink-0" />, 'приложения программы список удалить свойства вес размер дата скачивания apps'],
+                    ['notifications', 'Уведомления', <Bell className="w-4 h-4 shrink-0" />, 'уведомления оповещения звук баннеры dnd не беспокоить журнал notifications'],
+                    ['appearance', 'Темы и Стол', <Sliders className="w-4 h-4 shrink-0" />, 'темы светлая тёмная прозрачность blur размытие скругление анимации пружина поток стиль nothing pixelbook панель задач сетка обои'],
+                    ['island', 'Luma Island', <Disc3 className="w-4 h-4 shrink-0" />, 'luma island динамический остров буфер обмена заметка эквалайзер таймер'],
+                    ['clock', '18 Циферблатов', <Clock className="w-4 h-4 shrink-0" />, 'часы циферблат время секунды дата свечение формат clock'],
+                    ['luma', 'Система и Железо', <Activity className="w-4 h-4 shrink-0" />, 'система железо процессор видеокарта cpu gpu регион погода музыка'],
+                    ['navigation', 'Навигация', <MousePointerClick className="w-4 h-4 shrink-0" />, 'навигация пкм назад горячие клавиши spotlight'],
+                    ['plugins', 'Окна и Плагины', <LayoutGrid className="w-4 h-4 shrink-0" />, 'окна плагины колонки сетка расширения'],
+                    ['updater', 'Обновления', <Stethoscope className="w-4 h-4 shrink-0" />, 'обновления github диагностика тест ядро'],
+                    ['about', 'О системе', <Info className="w-4 h-4 shrink-0" />, 'о системе версия история изменений changelog hydrogen exe скачать'],
+                  ] as [SettingsTabId, string, React.ReactNode, string][]
+                )
+                  .filter(([, label, , keywords]) => {
+                    const q = settingsSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return label.toLowerCase().includes(q) || keywords.includes(q);
+                  })
+                  .map(([tabId, label, icon]) => (
+                    <button
+                      key={tabId}
+                      onClick={() => setSettingsTab(tabId)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition cursor-pointer ${
+                        settingsTab === tabId
+                          ? 'bg-[var(--luma-accent)] text-white font-semibold'
+                          : isDark
+                          ? 'text-zinc-300 hover:bg-white/[0.06]'
+                          : 'text-zinc-800 hover:bg-zinc-900/[0.07]'
+                      }`}
+                    >
+                      {icon}
+                      <span className="truncate">{label}</span>
+                    </button>
+                  ))}
+              </div>
             </aside>
 
             {/* Settings Content */}
             <div className="flex-1 min-w-0 overflow-y-auto p-5 space-y-4">
+              {settingsTab === 'kernel_ui' && (
+                <KernelUIPanel
+                  liveSystem={liveSystem}
+                  customDeviceName={customDeviceName}
+                  onChangeCustomDeviceName={setCustomDeviceName}
+                  kernelConnected={kernelConnected}
+                  surfaceCls={surfaceCls}
+                  btnCls={btnCls}
+                  mutedCls={mutedCls}
+                  isDark={isDark}
+                />
+              )}
+
+              {settingsTab === 'bluetooth' && (
+                <BluetoothSettingsPanel
+                  surfaceCls={surfaceCls}
+                  btnCls={btnCls}
+                  mutedCls={mutedCls}
+                  onPushToast={pushToast}
+                />
+              )}
+
+              {settingsTab === 'power' && (
+                <PowerSaverPanel
+                  powerProfile={powerProfile}
+                  onChangePowerProfile={handleChangePowerProfile}
+                  screenBrightness={screenBrightness}
+                  onChangeScreenBrightness={setScreenBrightness}
+                  autoSaverThreshold={autoSaverThreshold}
+                  onChangeAutoSaverThreshold={setAutoSaverThreshold}
+                  reduceEffectsOnSaver={reduceEffectsOnSaver}
+                  onToggleReduceEffectsOnSaver={() => setReduceEffectsOnSaver((v) => !v)}
+                  batteryLevel={batteryLevel}
+                  isCharging={isCharging}
+                  onPowerAction={handleExecutePowerAction}
+                  surfaceCls={surfaceCls}
+                  btnCls={btnCls}
+                  mutedCls={mutedCls}
+                />
+              )}
+
+              {settingsTab === 'storage' && (
+                <StorageMemoryPanel
+                  liveSystem={liveSystem}
+                  surfaceCls={surfaceCls}
+                  btnCls={btnCls}
+                  mutedCls={mutedCls}
+                  isDark={isDark}
+                  onInspectFile={(info) => setPropertiesTarget(info)}
+                  onPinFileToDesktop={(entry) =>
+                    setPendingPinItems({
+                      id: Date.now(),
+                      items: [
+                        {
+                          kind: entry.is_dir ? 'disk_folder' : 'file',
+                          label: entry.name,
+                          icon: entry.is_dir ? 'Folder' : 'FileText',
+                          target: entry.path,
+                        },
+                      ],
+                    })
+                  }
+                  onPushToast={pushToast}
+                />
+              )}
+
+              {settingsTab === 'apps_list' && (
+                <SettingsAppsListPanel
+                  apps={apps}
+                  renderAppIcon={renderAppIcon}
+                  onLaunchApp={handleLaunchApp}
+                  onDeleteApp={handleDeleteApp}
+                  onOpenProperties={handleOpenAppProperties}
+                  onResetDefaultApps={() => {
+                    setApps(INITIAL_APPS);
+                    pushToast('Приложения', 'Стандартный список приложений восстановлен', 'info');
+                  }}
+                  surfaceCls={surfaceCls}
+                  btnCls={btnCls}
+                  mutedCls={mutedCls}
+                  isDark={isDark}
+                />
+              )}
+
+              {settingsTab === 'notifications' && (
+                <SettingsNotificationsPanel
+                  notificationsEnabled={notificationsEnabled}
+                  onToggleNotificationsEnabled={() => setNotificationsEnabled((v) => !v)}
+                  dndEnabled={dndEnabled}
+                  onToggleDnd={() => setDndEnabled((v) => !v)}
+                  toastBannersEnabled={toastBannersEnabled}
+                  onToggleToastBanners={() => setToastBannersEnabled((v) => !v)}
+                  notificationSoundEnabled={notificationSoundEnabled}
+                  onToggleNotificationSound={() => setNotificationSoundEnabled((v) => !v)}
+                  notifications={notifications}
+                  onClearNotifications={() => setNotifications([])}
+                  onMarkAllRead={() => setNotifications((p) => p.map((x) => ({ ...x, unread: false })))}
+                  onSendTestNotification={() => {
+                    const tStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                    setNotifications((prev) => [
+                      {
+                        id: `notif_${Date.now()}`,
+                        app: 'LumaCore',
+                        icon: 'Bell',
+                        title: 'Проверка уведомлений Luma OS 1.0.3',
+                        message: 'Система оповещений Hydrogen работает штатно.',
+                        time: tStr,
+                        unread: true,
+                      },
+                      ...prev,
+                    ]);
+                    pushToast('Luma OS 1.0.3 (Hydrogen)', 'Тестовое уведомление доставлено', 'success');
+                  }}
+                  surfaceCls={surfaceCls}
+                  btnCls={btnCls}
+                  mutedCls={mutedCls}
+                />
+              )}
+
               {settingsTab === 'luma' && (
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma Core 1.0.2b</div>
+                      <div className="text-sm font-bold">Luma OS 1.0.3 (Hydrogen) · Ядро 1.0</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
-                        {liveSystem?.os_name || 'Luma Runtime'} · {liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
+                        {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
                     </div>
                     <button
@@ -2156,6 +2806,55 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* Selectable Animation Presets (Standard + 3 Variants) */}
+                  <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-bold flex items-center gap-2">
+                          <Zap className="w-4 h-4 text-[var(--luma-accent)]" />
+                          Анимации интерфейса
+                        </div>
+                        <div className={`text-xs ${mutedCls}`}>
+                          Выбор физики открытия окон, меню «Пуск», карточек и всплывающих панелей
+                        </div>
+                      </div>
+                      <span className="text-[11px] font-mono uppercase text-[var(--luma-accent)] font-bold">
+                        {animationPreset}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      {(
+                        [
+                          { id: 'standard', title: 'Стандарт', desc: 'Быстрый системный отклик' },
+                          { id: 'spring', title: 'Пружина', desc: 'Упругий импульс и отскок' },
+                          { id: 'glide', title: 'Плавный поток', desc: 'Мягкий выход с фокусом' },
+                          { id: 'none', title: 'Выкл', desc: 'Мгновенно без анимаций' },
+                        ] as { id: AnimationPreset; title: string; desc: string }[]
+                      ).map((preset) => (
+                        <button
+                          key={preset.id}
+                          onClick={() => {
+                            setAnimationPreset(preset.id);
+                            pushToast('Анимации', `Режим: ${preset.title}`, 'info');
+                          }}
+                          className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                            animationPreset === preset.id
+                              ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                              : btnCls
+                          }`}
+                        >
+                          <div className="font-bold flex items-center justify-between gap-1">
+                            <span>{preset.title}</span>
+                            {animationPreset === preset.id && (
+                              <span className="w-2 h-2 rounded-full bg-[var(--luma-accent)] shrink-0" />
+                            )}
+                          </div>
+                          <div className={`text-[10px] mt-0.5 ${mutedCls}`}>{preset.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Adaptive Day / Night */}
                   <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
                     <div
@@ -2192,7 +2891,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* All Themes Grid (Preserves EVERY Theme + New Luma Mono & Paper!) */}
+                  {/* All Themes Grid (Preserves EVERY Theme + Soft Matte Light!) */}
                   <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
                     <div className="flex items-center justify-between">
                       <div className="text-sm font-bold">Темы оформления</div>
@@ -2228,14 +2927,27 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Glass & Radius Sliders */}
+                  {/* LIVE WORKING Glass Opacity, Blur & Radius Sliders */}
                   <div className={`p-4 rounded-xl border grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs ${surfaceCls}`}>
                     <div className="space-y-1.5">
                       <div className="flex justify-between font-mono">
-                        <span className={mutedCls}>Прозрачность</span>
-                        <span>{glassOpacity}%</span>
+                        <span className={mutedCls}>Непрозрачность</span>
+                        <span className="font-bold text-[var(--luma-accent)]">{glassOpacity}%</span>
                       </div>
-                      <input type="range" min={50} max={100} value={glassOpacity} onChange={(e) => setGlassOpacity(Number(e.target.value))} className="w-full" />
+                      <input
+                        type="range"
+                        min={30}
+                        max={100}
+                        value={glassOpacity}
+                        onChange={(e) => {
+                          setGlassEnabled(true);
+                          setGlassOpacity(Number(e.target.value));
+                        }}
+                        className="w-full"
+                      />
+                      <div className={`text-[10px] ${mutedCls}`}>
+                        Регулирует реальную прозрачность окон, панели и виджетов
+                      </div>
                     </div>
                     <div className="space-y-1.5">
                       <div className="flex justify-between font-mono">
@@ -2263,7 +2975,7 @@ export default function App() {
                         ))}
                       </div>
                     </div>
-                    <div className="sm:col-span-3 flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/10">
+                    <div className={`sm:col-span-3 flex flex-wrap items-center justify-between gap-3 pt-2 border-t ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
                       <button onClick={() => setGlassEnabled((v) => !v)} className="flex items-center gap-2 cursor-pointer">
                         <span className={mutedCls}>Стеклянный слой:</span>
                         <StatusPill active={glassEnabled} />
@@ -2291,7 +3003,7 @@ export default function App() {
                     </div>
                     <div
                       className={`h-32 rounded-2xl border p-4 overflow-hidden ${
-                        isDark ? 'bg-[#09090b] border-white/10' : 'bg-[#f3f3f1] border-zinc-300'
+                        isDark ? 'bg-[#09090b] border-white/10' : 'bg-[#d6d7d1] border-zinc-400/60'
                       }`}
                     >
                       <LumaClockRenderer
@@ -2331,7 +3043,7 @@ export default function App() {
                               <span className="text-xs font-semibold truncate">{opt.label}</span>
                               {sel && <span className="w-2 h-2 rounded-full bg-[var(--luma-accent)] shrink-0" />}
                             </div>
-                            <div className="text-[11px] font-mono text-zinc-400">{opt.sample}</div>
+                            <div className="text-[11px] font-mono text-zinc-500">{opt.sample}</div>
                           </button>
                         );
                       })}
@@ -2406,7 +3118,7 @@ export default function App() {
                   >
                     <div>
                       <div className="text-sm font-bold">ПКМ «Назад»</div>
-                      <div className={`text-xs ${mutedCls}`}>Быстрый возврат и закрытие панелей. Также работают Ctrl+K (Spotlight), Alt+D (Рабочий стол) и Escape.</div>
+                      <div className={`text-xs ${mutedCls}`}>Быстрый возврат и закрытие панелей. Также работают Ctrl+K (Spotlight), Alt+D (Рабочий стол), F11 (Полный экран) и Escape.</div>
                     </div>
                     <StatusPill active={rightClickBackEnabled} />
                   </div>
@@ -2469,10 +3181,13 @@ export default function App() {
                       <button
                         onClick={async () => {
                           setCheckingGithub(true);
-                          let ver = '1.0.2b';
+                          let ver = '1.0.3 (Hydrogen)';
                           try {
                             const r = await fetch('/api/kernel/status');
-                            if (r.ok) ver = (await r.json())?.version || ver;
+                            if (r.ok) {
+                              const j = await r.json();
+                              if (j?.version) ver = j.codename ? `${j.version} (${j.codename})` : j.version;
+                            }
                           } catch {
                             // ignore
                           }
@@ -2514,7 +3229,7 @@ export default function App() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
                       {[
-                        ['Ядро IPC 49215', kernelConnected ? 'ONLINE' : 'FALLBACK'],
+                        ['Ядро LumaCore 1.0', kernelConnected ? 'ONLINE · 49215' : 'FALLBACK'],
                         ['LumaGuard', `AES-256-GCM #${cryptoKeyVersion}`],
                         ['Телеметрия', `CPU ${cpuLoad}% · RAM ${ramLoad}%`],
                         ['Рабочий стол', `${desktopCols}×10 (${desktopCols * 10} ячеек)`],
@@ -2529,23 +3244,23 @@ export default function App() {
                 </div>
               )}
 
-              {/* ABOUT + COMPLETE UNTOUCHED VERSION HISTORY (26 RELEASES) */}
+              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.0.3 HYDROGEN) */}
               {settingsTab === 'about' && (
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.0.2b</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.0.3 (Hydrogen)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка DeX · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро Luma Core
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.0
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.0.2b.exe"
-                      download="LumaOS_1.0.2b.exe"
+                      href="/LumaOS_1.0.3.exe"
+                      download="LumaOS_1.0.3.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.0.2b.exe
+                      LumaOS_1.0.3.exe
                     </a>
                   </div>
 
@@ -2582,14 +3297,14 @@ export default function App() {
                       <div
                         key={ver}
                         className={`p-4 rounded-xl border space-y-2 ${
-                          ver === '1.0.2' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
+                          ver === '1.0.3 (Hydrogen)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-mono font-bold">
                             Версия {ver}
                           </span>
-                          {ver === '1.0.2' && <StatusPill active={true} />}
+                          {ver === '1.0.3 (Hydrogen)' && <StatusPill active={true} />}
                         </div>
                         <ul className="space-y-1 text-xs leading-relaxed">
                           {items.map((line, i) => (
@@ -2703,7 +3418,7 @@ export default function App() {
                       {
                         id: slug.toLowerCase(),
                         name: newPluginTitle.trim() || slug,
-                        version: '1.0.2b',
+                        version: '1.0.3',
                         author: 'Luma SDK',
                         category: 'Пользовательские',
                         icon: 'Puzzle',
@@ -3208,20 +3923,11 @@ export default function App() {
         </DexWindow>
       )}
 
-      {/* ==================== LAYER 4: ADAPTIVE TASKBAR (BOTTOM / LEFT / TOP) × (NOTHING / PIXELBOOK) ==================== */}
+      {/* ==================== LAYER 4: ADAPTIVE OS TASKBAR (BOTTOM / LEFT / TOP) WITH RUNNING APPS & TASK SWITCHER ==================== */}
       {taskbarPosition === 'left' ? (
         <aside
           onClick={(e) => e.stopPropagation()}
-          className={`fixed left-0 inset-y-0 w-14 z-50 border-r flex flex-col items-center justify-between py-2.5 gap-2 ${
-            isPixel
-              ? isDark
-                ? 'bg-[#121824]/92 border-blue-300/[0.14] text-slate-100'
-                : 'bg-white/92 border-blue-900/[0.1] text-slate-900'
-              : isDark
-              ? 'bg-[#0b0b0e]/92 border-white/[0.09] text-zinc-100'
-              : 'bg-white/92 border-zinc-900/[0.1] text-zinc-900'
-          }`}
-          style={{ backdropFilter: 'blur(24px)' }}
+          className={`fixed left-0 inset-y-0 w-14 z-50 border-r flex flex-col items-center justify-between py-2.5 gap-2 ${taskbarGlassCls}`}
         >
           {/* Top: Start Menu + Spotlight + Grid Edit */}
           <div className="flex flex-col items-center gap-1.5 shrink-0">
@@ -3229,6 +3935,8 @@ export default function App() {
               onClick={() => {
                 setStartMenuOpen((v) => !v);
                 setControlCenterOpen(false);
+                setTaskListOpen(false);
+                setTaskbarAppMenuId(null);
               }}
               title="Пуск (Меню Luma)"
               className={`w-10 h-10 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
@@ -3236,7 +3944,7 @@ export default function App() {
                   ? 'bg-[var(--luma-accent)] text-white'
                   : isDark
                   ? 'hover:bg-white/10 text-zinc-200'
-                  : 'hover:bg-zinc-200 text-zinc-800'
+                  : 'hover:bg-zinc-900/10 text-zinc-800'
               }`}
             >
               {isPixel ? (
@@ -3271,7 +3979,7 @@ export default function App() {
             </button>
           </div>
 
-          {/* Center: Vertical Window Icons */}
+          {/* Center: Vertical System Windows + Running User Applications */}
           <div className="flex flex-col items-center gap-1 overflow-y-auto no-scrollbar py-1">
             {taskbarApps
               .filter((item) => item.pinned || windows[item.id].open)
@@ -3292,10 +4000,10 @@ export default function App() {
                       isFocused
                         ? isDark
                           ? 'bg-white/[0.14] text-white'
-                          : 'bg-zinc-200 text-zinc-950'
+                          : 'bg-zinc-900/[0.12] text-zinc-950'
                         : isDark
                         ? 'text-zinc-400 hover:bg-white/[0.07] hover:text-zinc-100'
-                        : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                        : 'text-zinc-700 hover:bg-zinc-900/[0.07] hover:text-zinc-950'
                     }`}
                   >
                     {item.icon}
@@ -3309,10 +4017,66 @@ export default function App() {
                   </button>
                 );
               })}
+
+            {runningApps.length > 0 && (
+              <>
+                <div className={`w-6 h-px my-1 ${isDark ? 'bg-white/15' : 'bg-zinc-900/15'}`} />
+                {runningApps.map((app) => {
+                  const activePop = taskbarAppMenuId === app.id;
+                  return (
+                    <button
+                      key={app.id}
+                      onClick={() => {
+                        setTaskbarAppMenuId((cur) => (cur === app.id ? null : app.id));
+                        setStartMenuOpen(false);
+                        setControlCenterOpen(false);
+                        setTaskListOpen(false);
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleStopApp(app.id);
+                      }}
+                      title={`${app.name} (Запущено · ${formatLiveClock(app.elapsedSeconds)} · ПКМ — закрыть)`}
+                      className={`relative w-10 h-10 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
+                        activePop
+                          ? 'bg-[var(--luma-accent-soft)] text-[var(--luma-accent)]'
+                          : isDark
+                          ? 'bg-white/[0.06] text-zinc-100 hover:bg-white/[0.12]'
+                          : 'bg-zinc-900/[0.06] text-zinc-900 hover:bg-zinc-900/[0.12]'
+                      }`}
+                    >
+                      {renderAppIcon(app.icon, 'w-4 h-4')}
+                      <span className="absolute left-1 top-1/2 -translate-y-1/2 w-[2.5px] h-3.5 rounded-full bg-[var(--luma-accent)]" />
+                    </button>
+                  );
+                })}
+              </>
+            )}
           </div>
 
-          {/* Bottom: Fullscreen + Clipboard + Control Center + Vertical Clock + Show Desktop */}
+          {/* Bottom: Tasks Switcher + Fullscreen + Clipboard + Control Center + Vertical Clock + Show Desktop */}
           <div className="flex flex-col items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => {
+                setTaskListOpen((v) => !v);
+                setStartMenuOpen(false);
+                setControlCenterOpen(false);
+                setTaskbarAppMenuId(null);
+              }}
+              title={`Открытые задачи (${totalActiveTasksCount})`}
+              className={`relative w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center cursor-pointer ${
+                taskListOpen ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              {totalActiveTasksCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[var(--luma-accent)] text-white text-[9px] font-mono font-bold flex items-center justify-center">
+                  {totalActiveTasksCount}
+                </span>
+              )}
+            </button>
+
             <button
               onClick={handleToggleFullscreen}
               title={isFullscreen ? 'Выйти из полного экрана (F11)' : 'Во весь экран (F11)'}
@@ -3335,6 +4099,8 @@ export default function App() {
               onClick={() => {
                 setControlCenterOpen((v) => !v);
                 setStartMenuOpen(false);
+                setTaskListOpen(false);
+                setTaskbarAppMenuId(null);
               }}
               title="Центр управления"
               className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center cursor-pointer ${
@@ -3352,7 +4118,7 @@ export default function App() {
               onClick={() => openWindow('settings', 'clock')}
               title="Настройка 18 циферблатов"
               className={`w-11 py-1 rounded-xl flex flex-col items-center justify-center font-mono leading-tight cursor-pointer ${
-                isDark ? 'hover:bg-white/[0.08]' : 'hover:bg-zinc-100'
+                isDark ? 'hover:bg-white/[0.08]' : 'hover:bg-zinc-900/[0.08]'
               }`}
             >
               <span className="text-[11px] font-bold tabular-nums">{displayHrs}</span>
@@ -3365,7 +4131,7 @@ export default function App() {
               onClick={showDesktop}
               title="Показать рабочий стол (Alt+D)"
               className={`w-8 h-2 rounded-full cursor-pointer transition ${
-                isDark ? 'bg-white/20 hover:bg-white/40' : 'bg-zinc-300 hover:bg-zinc-500'
+                isDark ? 'bg-white/20 hover:bg-white/40' : 'bg-zinc-500/40 hover:bg-zinc-600'
               }`}
             />
           </div>
@@ -3381,16 +4147,7 @@ export default function App() {
               : taskbarPosition === 'top'
               ? 'top-0 inset-x-0 border-b'
               : 'bottom-0 inset-x-0 border-t'
-          } ${
-            isPixel
-              ? isDark
-                ? 'bg-[#121824]/90 border-blue-300/[0.16] text-slate-100'
-                : 'bg-white/90 border-blue-900/[0.12] text-slate-900'
-              : isDark
-              ? 'bg-[#0b0b0e]/92 border-white/[0.09] text-zinc-100'
-              : 'bg-white/92 border-zinc-900/[0.1] text-zinc-900'
-          }`}
-          style={{ backdropFilter: 'blur(26px)' }}
+          } ${taskbarGlassCls}`}
         >
           {/* Left: Real Start Menu Button + Spotlight + Grid Edit */}
           <div className="flex items-center gap-1 shrink-0">
@@ -3398,6 +4155,8 @@ export default function App() {
               onClick={() => {
                 setStartMenuOpen((v) => !v);
                 setControlCenterOpen(false);
+                setTaskListOpen(false);
+                setTaskbarAppMenuId(null);
               }}
               title="Пуск (Меню Luma)"
               className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
@@ -3405,7 +4164,7 @@ export default function App() {
                   ? 'bg-[var(--luma-accent)] text-white'
                   : isDark
                   ? 'hover:bg-white/10 text-zinc-200'
-                  : 'hover:bg-zinc-200 text-zinc-800'
+                  : 'hover:bg-zinc-900/10 text-zinc-800'
               }`}
             >
               {isPixel ? (
@@ -3441,8 +4200,8 @@ export default function App() {
             </button>
           </div>
 
-          {/* Center: Running & Pinned DeX Windows */}
-          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+          {/* Center: OS-Style Pinned Windows + Running Applications List */}
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar min-w-0">
             {taskbarApps
               .filter((item) => item.pinned || windows[item.id].open)
               .map((item) => {
@@ -3457,17 +4216,17 @@ export default function App() {
                       e.stopPropagation();
                       if (st.open) closeWindow(item.id);
                     }}
-                    title={item.label}
-                    className={`relative h-9 px-3 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center gap-2 text-xs transition cursor-pointer whitespace-nowrap ${
+                    title={st.open ? `${item.label} (ПКМ — закрыть)` : item.label}
+                    className={`relative h-9 px-3 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center gap-2 text-xs transition cursor-pointer whitespace-nowrap shrink-0 ${
                       isFocused
                         ? isPixel
                           ? 'bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold'
                           : isDark
                           ? 'bg-white/[0.12] text-white font-semibold'
-                          : 'bg-zinc-200 text-zinc-950 font-semibold'
+                          : 'bg-zinc-900/[0.12] text-zinc-950 font-semibold'
                         : isDark
                         ? 'text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100'
-                        : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                        : 'text-zinc-700 hover:bg-zinc-900/[0.07] hover:text-zinc-950'
                     }`}
                   >
                     {item.icon}
@@ -3482,10 +4241,75 @@ export default function App() {
                   </button>
                 );
               })}
+
+            {/* Running User Applications Dynamically Displayed on Taskbar */}
+            {runningApps.length > 0 && (
+              <>
+                <span className={`w-px h-5 mx-1 shrink-0 ${isDark ? 'bg-white/15' : 'bg-zinc-900/15'}`} />
+                {runningApps.map((app) => {
+                  const activePop = taskbarAppMenuId === app.id;
+                  return (
+                    <button
+                      key={app.id}
+                      onClick={() => {
+                        setTaskbarAppMenuId((cur) => (cur === app.id ? null : app.id));
+                        setStartMenuOpen(false);
+                        setControlCenterOpen(false);
+                        setTaskListOpen(false);
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleStopApp(app.id);
+                      }}
+                      title={`${app.name} · ${formatLiveClock(app.elapsedSeconds)} (ЛКМ — управление, ПКМ — закрыть)`}
+                      className={`relative h-9 px-2.5 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center gap-1.5 text-xs transition cursor-pointer whitespace-nowrap shrink-0 border ${
+                        activePop
+                          ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold'
+                          : isDark
+                          ? 'border-white/[0.08] bg-white/[0.06] text-zinc-100 hover:bg-white/[0.12]'
+                          : 'border-zinc-900/[0.1] bg-zinc-900/[0.06] text-zinc-900 hover:bg-zinc-900/[0.12]'
+                      }`}
+                    >
+                      {renderAppIcon(app.icon, 'w-3.5 h-3.5 shrink-0')}
+                      <span className="hidden lg:inline max-w-[100px] truncate">{app.name}</span>
+                      <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-3.5 h-[2px] rounded-full bg-[var(--luma-accent)]" />
+                    </button>
+                  );
+                })}
+              </>
+            )}
           </div>
 
-          {/* Right: Telemetry + Clipboard + Fullscreen + Control Center + Clock + Show Desktop */}
+          {/* Right: Open Tasks Switcher + Telemetry + Clipboard + Fullscreen + Control Center + Clock + Show Desktop */}
           <div className="flex items-center gap-1.5 shrink-0 h-full">
+            <button
+              onClick={() => {
+                setTaskListOpen((v) => !v);
+                setStartMenuOpen(false);
+                setControlCenterOpen(false);
+                setTaskbarAppMenuId(null);
+              }}
+              title="Открытые задачи и запущенные приложения"
+              className={`h-8 px-2.5 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center gap-1.5 text-[11px] font-mono cursor-pointer transition ${
+                taskListOpen ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white font-bold' : btnCls
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Задачи</span>
+              <span
+                className={`px-1 rounded text-[10px] font-bold ${
+                  taskListOpen
+                    ? 'bg-white/20 text-white'
+                    : totalActiveTasksCount > 0
+                    ? 'bg-[var(--luma-accent-soft)] text-[var(--luma-accent)]'
+                    : 'opacity-60'
+                }`}
+              >
+                {totalActiveTasksCount}
+              </span>
+            </button>
+
             <div className={`hidden xl:flex items-center gap-2 px-2.5 h-8 ${isPixel ? 'rounded-full' : 'rounded-xl'} border text-[11px] font-mono ${btnCls}`}>
               <span>CPU {cpuLoad}%</span>
               <span className="opacity-30">·</span>
@@ -3525,6 +4349,8 @@ export default function App() {
               onClick={() => {
                 setControlCenterOpen((v) => !v);
                 setStartMenuOpen(false);
+                setTaskListOpen(false);
+                setTaskbarAppMenuId(null);
               }}
               title="Центр управления (Звук, Стиль, Панель, Питание)"
               className={`h-8 px-2.5 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center gap-2 text-[11px] font-mono cursor-pointer transition ${
@@ -3550,7 +4376,7 @@ export default function App() {
               onClick={() => openWindow('settings', 'clock')}
               title={`Циферблат: ${CLOCK_STYLE_OPTIONS.find((c) => c.id === clockStyle)?.label || clockStyle}`}
               className={`h-9 px-2.5 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex flex-col items-end justify-center leading-tight font-mono cursor-pointer transition ${
-                isDark ? 'hover:bg-white/[0.07]' : 'hover:bg-zinc-100'
+                isDark ? 'hover:bg-white/[0.07]' : 'hover:bg-zinc-900/[0.07]'
               }`}
             >
               <span className="text-xs font-bold tabular-nums">
@@ -3567,11 +4393,205 @@ export default function App() {
               onClick={showDesktop}
               title="Показать рабочий стол (Alt+D)"
               className={`w-2.5 h-7 rounded-sm border-l cursor-pointer transition ${
-                isDark ? 'border-white/15 hover:bg-white/20' : 'border-zinc-300 hover:bg-zinc-300'
+                isDark ? 'border-white/15 hover:bg-white/20' : 'border-zinc-500/40 hover:bg-zinc-500/30'
               }`}
             />
           </div>
         </footer>
+      )}
+
+      {/* ==================== RUNNING APP TASKBAR CONTROL POPOVER ==================== */}
+      {taskbarAppMenuId && (() => {
+        const activeApp = runningApps.find((a) => a.id === taskbarAppMenuId);
+        if (!activeApp) return null;
+        return (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`luma-animate-in fixed z-50 w-72 border p-3.5 space-y-3 text-xs ${popoverShellCls} ${
+              taskbarPosition === 'left'
+                ? 'top-1/2 -translate-y-1/2 left-[66px]'
+                : taskbarPosition === 'top'
+                ? isPixel
+                  ? 'top-16 left-1/2 -translate-x-1/2'
+                  : 'top-14 left-1/2 -translate-x-1/2'
+                : isPixel
+                ? 'bottom-16 left-1/2 -translate-x-1/2'
+                : 'bottom-14 left-1/2 -translate-x-1/2'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] flex items-center justify-center shrink-0">
+                  {renderAppIcon(activeApp.icon, 'w-4 h-4')}
+                </div>
+                <div className="min-w-0">
+                  <div className="font-bold truncate">{activeApp.name}</div>
+                  <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
+                    Активно · {formatLiveClock(activeApp.elapsedSeconds)}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setTaskbarAppMenuId(null)}
+                className={`p-1 rounded-lg border cursor-pointer ${btnCls}`}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                onClick={() => handleFocusOrRelaunchApp(activeApp)}
+                className="py-1.5 px-2.5 rounded-lg bg-[var(--luma-accent)] text-white font-semibold cursor-pointer inline-flex items-center justify-center gap-1"
+              >
+                <ExternalLink className="w-3 h-3" /> Открыть
+              </button>
+              <button
+                onClick={() => {
+                  handleOpenAppProperties(activeApp);
+                  setTaskbarAppMenuId(null);
+                }}
+                className={`py-1.5 px-2.5 rounded-lg border font-semibold cursor-pointer inline-flex items-center justify-center gap-1 ${btnCls}`}
+              >
+                <Info className="w-3 h-3" /> Свойства
+              </button>
+            </div>
+            <button
+              onClick={() => handleStopApp(activeApp.id)}
+              className="w-full py-1.5 px-2.5 rounded-lg border border-[var(--luma-accent-border)] bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold cursor-pointer inline-flex items-center justify-center gap-1.5"
+            >
+              <Square className="w-3 h-3" /> Закрыть приложение
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* ==================== OS OPEN TASKS SWITCHER POPOVER («ОТКРЫТЫЕ ЗАДАЧИ») ==================== */}
+      {taskListOpen && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className={`luma-animate-in fixed z-50 w-80 max-w-[calc(100vw-24px)] border p-4 space-y-3 text-xs ${popoverShellCls} ${
+            taskbarPosition === 'left'
+              ? 'bottom-16 left-[66px]'
+              : taskbarPosition === 'top'
+              ? isPixel
+                ? 'top-16 right-3'
+                : 'top-14 right-3'
+              : isPixel
+              ? 'bottom-16 right-3'
+              : 'bottom-14 right-3'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="font-mono font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+              Открытые задачи ({totalActiveTasksCount})
+            </div>
+            <button onClick={() => setTaskListOpen(false)} className={`p-1 rounded-lg border cursor-pointer ${btnCls}`}>
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+
+          {totalActiveTasksCount === 0 ? (
+            <div className={`py-6 text-center font-mono ${mutedCls}`}>
+              Нет открытых окон или запущенных приложений
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-72 overflow-y-auto pr-0.5">
+              {openSystemWindowsList.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>
+                    Окна системы ({openSystemWindowsList.length})
+                  </div>
+                  {openSystemWindowsList.map((w) => {
+                    const st = windows[w.id];
+                    return (
+                      <div key={w.id} className={`px-2.5 py-2 rounded-xl border flex items-center justify-between gap-2 ${btnCls}`}>
+                        <button
+                          onClick={() => openWindow(w.id)}
+                          className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer"
+                        >
+                          <span className="text-[var(--luma-accent)]">{w.icon}</span>
+                          <span className="font-semibold truncate">{w.label}</span>
+                          {st.minimized && <span className={`text-[10px] font-mono ${mutedCls}`}>(свёрн.)</span>}
+                        </button>
+                        <button
+                          onClick={() => closeWindow(w.id)}
+                          title="Закрыть окно"
+                          className="p-1 rounded-md hover:bg-[var(--luma-accent-soft)] text-zinc-500 hover:text-[var(--luma-accent)] cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {runningApps.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>
+                    Запущенные приложения ({runningApps.length})
+                  </div>
+                  {runningApps.map((app) => (
+                    <div key={app.id} className={`px-2.5 py-2 rounded-xl border flex items-center justify-between gap-2 ${btnCls}`}>
+                      <button
+                        onClick={() => handleFocusOrRelaunchApp(app)}
+                        className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer"
+                      >
+                        {renderAppIcon(app.icon, 'w-3.5 h-3.5 shrink-0 text-[var(--luma-accent)]')}
+                        <div className="min-w-0">
+                          <div className="font-semibold truncate">{app.name}</div>
+                          <div className={`text-[10px] font-mono ${mutedCls}`}>{formatLiveClock(app.elapsedSeconds)}</div>
+                        </div>
+                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => {
+                            handleOpenAppProperties(app);
+                            setTaskListOpen(false);
+                          }}
+                          title="Свойства"
+                          className={`p-1 rounded-md cursor-pointer ${mutedCls} hover:text-current`}
+                        >
+                          <Info className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleStopApp(app.id)}
+                          title="Закрыть приложение"
+                          className="p-1 rounded-md hover:bg-[var(--luma-accent-soft)] text-zinc-500 hover:text-[var(--luma-accent)] cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {totalActiveTasksCount > 0 && (
+            <div className={`pt-2 border-t flex items-center gap-1.5 ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
+              <button
+                onClick={showDesktop}
+                className={`flex-1 py-1.5 rounded-lg border font-semibold cursor-pointer ${btnCls}`}
+              >
+                Свернуть окна
+              </button>
+              {runningApps.length > 0 && (
+                <button
+                  onClick={() => {
+                    setApps((prev) => prev.map((a) => ({ ...a, isRunning: false })));
+                    setTaskListOpen(false);
+                  }}
+                  className="flex-1 py-1.5 rounded-lg border border-[var(--luma-accent-border)] bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold cursor-pointer"
+                >
+                  Закрыть все ({runningApps.length})
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* ==================== REAL START MENU («ПУСК») POPOVER ==================== */}
@@ -3634,7 +4654,7 @@ export default function App() {
             </div>
           )}
 
-          {/* Pinned / Filtered Applications */}
+          {/* Pinned / Filtered Applications (Right-Click for Properties & Delete) */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className={`text-[10px] font-mono uppercase tracking-[0.14em] ${mutedCls}`}>
@@ -3656,6 +4676,12 @@ export default function App() {
                     key={app.id}
                     onClick={() => {
                       handleLaunchApp(app);
+                      setStartMenuOpen(false);
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setContextMenuApp(app);
                       setStartMenuOpen(false);
                     }}
                     className={`px-2.5 py-2 rounded-xl border flex items-center gap-2.5 text-left transition cursor-pointer ${btnCls}`}
@@ -3700,15 +4726,15 @@ export default function App() {
           </div>
 
           {/* Start Footer: Host Info + Fullscreen + Power */}
-          <div className={`pt-3 border-t flex items-center justify-between gap-2 ${isDark ? 'border-white/10' : 'border-zinc-200'}`}>
+          <div className={`pt-3 border-t flex items-center justify-between gap-2 ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-7 h-7 rounded-full bg-[var(--luma-accent)] text-white text-xs font-mono font-bold flex items-center justify-center shrink-0">
                 L
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold truncate">{liveSystem?.hostname || 'Luma Desktop'}</div>
+                <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                 <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                  {liveSystem?.location?.city || 'Luma Core 1.0.2b'}
+                  {liveSystem?.location?.city || 'Luma OS 1.0.3 (Hydrogen)'}
                 </div>
               </div>
             </div>
@@ -3751,7 +4777,7 @@ export default function App() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.0.2b</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.0.3 (HYDROGEN)</span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>
               {liveSystem?.location?.city || 'LOCAL'}
             </span>
@@ -3763,7 +4789,7 @@ export default function App() {
               { label: isDark ? 'Тёмная' : 'Светлая', active: isDark, icon: isDark ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />, run: () => setThemeKey(isDark ? 'nothing_paper' : 'nothing_mono') },
               { label: designStyle === 'nothing' ? 'Nothing' : 'Pixelbook', active: designStyle === 'pixelbook', icon: <Sliders className="w-3.5 h-3.5" />, run: () => setDesignStyle(designStyle === 'nothing' ? 'pixelbook' : 'nothing') },
               { label: 'Luma Island', active: dynamicIslandEnabled, icon: <Disc3 className="w-3.5 h-3.5" />, run: handleToggleDynamicIsland },
-              { label: 'Во весь экран', active: isFullscreen, icon: isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />, run: handleToggleFullscreen },
+              { label: 'Экономия', active: powerProfile === 'saver', icon: <Leaf className="w-3.5 h-3.5" />, run: () => handleChangePowerProfile(powerProfile === 'saver' ? 'balanced' : 'saver') },
               { label: 'Не беспокоить', active: dndEnabled, icon: <BellOff className="w-3.5 h-3.5" />, run: () => setDndEnabled((v) => !v) },
               { label: `Сетка ${desktopCols}×10`, active: desktopEditMode, icon: <Grid className="w-3.5 h-3.5" />, run: () => setDesktopEditMode((v) => !v) },
             ].map((t) => (
@@ -3826,7 +4852,7 @@ export default function App() {
           </div>
 
           {/* Active Media Mini Row */}
-          <div className={`pt-3 border-t flex items-center justify-between gap-2 ${isDark ? 'border-white/10' : 'border-zinc-200'}`}>
+          <div className={`pt-3 border-t flex items-center justify-between gap-2 ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
             <div className="min-w-0">
               <div className="text-xs font-bold truncate">{displayTrackTitle}</div>
               <div className={`text-[10px] truncate ${mutedCls}`}>{displayTrackArtist}</div>
@@ -3845,7 +4871,7 @@ export default function App() {
           </div>
 
           {/* Power & Download Row */}
-          <div className={`pt-3 border-t flex items-center justify-between gap-1.5 ${isDark ? 'border-white/10' : 'border-zinc-200'}`}>
+          <div className={`pt-3 border-t flex items-center justify-between gap-1.5 ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
             <div className="flex gap-1">
               <button onClick={() => handleExecutePowerAction('lock')} title="Заблокировать" className={`p-2 rounded-lg border cursor-pointer ${btnCls}`}>
                 <Lock className="w-3.5 h-3.5" />
@@ -3858,8 +4884,8 @@ export default function App() {
               </button>
             </div>
             <a
-              href="/LumaOS_1.0.2b.exe"
-              download="LumaOS_1.0.2b.exe"
+              href="/LumaOS_1.0.3.exe"
+              download="LumaOS_1.0.3.exe"
               className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-mono font-bold inline-flex items-center gap-1 ${btnCls}`}
             >
               <Download className="w-3 h-3 text-[var(--luma-accent)]" />
@@ -3869,7 +4895,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== SUB-MODALS (ADD APP, CUSTOM THEME, APP CONTEXT MENU) ==================== */}
+      {/* ==================== SUB-MODALS (ADD APP, CUSTOM THEME, APP CONTEXT MENU, PROPERTIES) ==================== */}
       {addAppModalOpen && (
         <div onClick={() => setAddAppModalOpen(false)} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <form
@@ -3940,8 +4966,8 @@ export default function App() {
                   key={m}
                   onClick={() => {
                     setNewThemeMode(m);
-                    setNewThemeBg(m === 'light' ? '#f3f3f1' : m === 'amoled' ? '#050506' : '#09090b');
-                    setNewThemeSurface(m === 'light' ? '#ffffff' : '#141418');
+                    setNewThemeBg(m === 'light' ? '#dcddd7' : m === 'amoled' ? '#050506' : '#09090b');
+                    setNewThemeSurface(m === 'light' ? '#e7e8e3' : '#141418');
                   }}
                   className={`py-1.5 rounded-lg border font-mono uppercase cursor-pointer ${
                     newThemeMode === m ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
@@ -3996,31 +5022,53 @@ export default function App() {
         </div>
       )}
 
+      {/* RIGHT-CLICK APPLICATION CONTEXT MENU (PROPERTIES + PIN TO DESKTOP + UNIVERSAL DELETE) */}
       {contextMenuApp && (
         <div onClick={() => setContextMenuApp(null)} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
           <div
             onClick={(e) => e.stopPropagation()}
             className={`luma-animate-in w-64 border p-2 space-y-1 text-xs ${popoverShellCls}`}
           >
-            <div className={`px-3 py-2 border-b font-bold truncate ${isDark ? 'border-white/10' : 'border-zinc-200'}`}>
-              {contextMenuApp.name}
+            <div className={`px-3 py-2 border-b font-bold truncate flex items-center gap-2 ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
+              {renderAppIcon(contextMenuApp.icon, 'w-3.5 h-3.5 text-[var(--luma-accent)] shrink-0')}
+              <span className="truncate">{contextMenuApp.name}</span>
             </div>
             <button
               onClick={() => {
                 handleLaunchApp(contextMenuApp);
                 setContextMenuApp(null);
               }}
-              className="w-full px-3 py-2 rounded-xl hover:bg-white/10 text-left flex items-center gap-2 cursor-pointer"
+              className={`w-full px-3 py-2 rounded-xl text-left flex items-center gap-2 cursor-pointer ${isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'}`}
             >
               <Play className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
-              {contextMenuApp.isRunning ? 'Остановить таймер' : 'Запустить'}
+              {contextMenuApp.isRunning ? 'Остановить приложение' : 'Запустить'}
+            </button>
+            <button
+              onClick={() => {
+                handleOpenAppProperties(contextMenuApp);
+                setContextMenuApp(null);
+              }}
+              className={`w-full px-3 py-2 rounded-xl text-left flex items-center gap-2 cursor-pointer ${isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'}`}
+            >
+              <Info className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+              Свойства (вес, дата, путь)
+            </button>
+            <button
+              onClick={() => {
+                pinAppsToDesktop([contextMenuApp]);
+                setContextMenuApp(null);
+              }}
+              className={`w-full px-3 py-2 rounded-xl text-left flex items-center gap-2 cursor-pointer ${isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'}`}
+            >
+              <Pin className="w-3.5 h-3.5" />
+              Закрепить на рабочий стол
             </button>
             <button
               onClick={() => {
                 handleToggleFavorite(contextMenuApp);
                 setContextMenuApp(null);
               }}
-              className="w-full px-3 py-2 rounded-xl hover:bg-white/10 text-left flex items-center gap-2 cursor-pointer"
+              className={`w-full px-3 py-2 rounded-xl text-left flex items-center gap-2 cursor-pointer ${isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'}`}
             >
               <Star className="w-3.5 h-3.5" />
               {contextMenuApp.favorite ? 'Убрать из избранного' : 'В избранное'}
@@ -4036,26 +5084,37 @@ export default function App() {
                 );
                 setContextMenuApp(null);
               }}
-              className="w-full px-3 py-2 rounded-xl hover:bg-white/10 text-left flex items-center gap-2 cursor-pointer"
+              className={`w-full px-3 py-2 rounded-xl text-left flex items-center gap-2 cursor-pointer ${isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'}`}
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Сбросить время в 0
             </button>
-            {contextMenuApp.custom && (
-              <button
-                onClick={() => {
-                  setApps((prev) => prev.filter((a) => a.id !== contextMenuApp.id));
-                  setContextMenuApp(null);
-                }}
-                className="w-full px-3 py-2 rounded-xl hover:bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] text-left flex items-center gap-2 cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Удалить
-              </button>
-            )}
+            <div className={`my-1 border-t ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`} />
+            <button
+              onClick={() => {
+                handleDeleteApp(contextMenuApp);
+                setContextMenuApp(null);
+              }}
+              className="w-full px-3 py-2 rounded-xl hover:bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold text-left flex items-center gap-2 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Удалить
+            </button>
           </div>
         </div>
       )}
+
+      {/* ==================== PROPERTIES MODAL (APP / FILE WEIGHT, DOWNLOAD DATE, PATH, DELETE) ==================== */}
+      <PropertiesModal
+        target={propertiesTarget}
+        onClose={() => setPropertiesTarget(null)}
+        onLaunchApp={handleLaunchApp}
+        onCopyPath={(p) => copyTextToClipboard(p)}
+        popoverShellCls={popoverShellCls}
+        btnCls={btnCls}
+        mutedCls={mutedCls}
+        isDark={isDark}
+      />
 
       {/* ==================== LUMA SPOTLIGHT (CTRL+K) ==================== */}
       <LumaSpotlight
@@ -4110,6 +5169,14 @@ export default function App() {
           </div>
         ))}
       </div>
+
+      {/* ==================== COMFORT SCREEN BRIGHTNESS DIMMER OVERLAY (POWER SAVER) ==================== */}
+      {screenBrightness < 100 && (
+        <div
+          className="pointer-events-none fixed inset-0 z-[95] bg-black transition-opacity duration-200"
+          style={{ opacity: Math.min(0.45, (100 - screenBrightness) / 100) }}
+        />
+      )}
     </div>
   );
 }

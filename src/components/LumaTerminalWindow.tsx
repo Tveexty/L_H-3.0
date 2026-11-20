@@ -76,7 +76,7 @@ function createTab(idx: number): TermTab {
     cwd: '~',
     history: [],
     lines: [
-      { id: 1, kind: 'accent', text: 'LUMA CORE 1.0.2b PRO TERMINAL  [IPC 127.0.0.1:49215 · HOST EXEC READY]' },
+      { id: 1, kind: 'accent', text: 'LUMA OS 1.0.3 (HYDROGEN) · KERNEL 1.0 PRO TERMINAL  [IPC 127.0.0.1:49215]' },
       { id: 2, kind: 'out', text: 'Команды: help, neofetch, top, ls, cat, clip, weather, open, calc, sh <cmd>. Tab — автодополнение.' },
     ],
   };
@@ -229,12 +229,12 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         [
           `  ██╗     ██╗   ██╗███╗   ███╗ █████╗      luma@${hostName}`,
           `  ██║     ██║   ██║████╗ ████║██╔══██╗     ──────────────────────────`,
-          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.0.2b (${os})`,
+          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.0.3 Hydrogen (${os})`,
           `  ██║     ██║   ██║██║╚██╔╝██║██╔══██║     STYLE   : ${designStyle.toUpperCase()} · TASKBAR ${taskbarPosition.toUpperCase()}`,
           `  ███████╗╚██████╔╝██║ ╚═╝ ██║██║  ██║     CPU     : ${cpu}`,
           `  ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝     GPU     : ${gpu}`,
           `                                           RAM     : ${ram}`,
-          `  KERNEL : LumaCore IPC 127.0.0.1:49215    REGION  : ${loc}`,
+          `  KERNEL : LumaCore 1.0 (IPC 49215)        REGION  : ${loc}`,
         ].join('\n'),
         'accent'
       );

@@ -139,6 +139,8 @@ export const DexWindow: React.FC<DexWindowProps> = ({
 
   const { padTop, padBottom, padLeft, padRight } = getInsets();
 
+  const isPixel = designStyle === 'pixelbook';
+
   const style: React.CSSProperties = maximized
     ? {
         position: 'fixed',
@@ -147,6 +149,7 @@ export const DexWindow: React.FC<DexWindowProps> = ({
         right: padRight,
         bottom: padBottom,
         zIndex,
+        borderRadius: isPixel ? '22px' : 'var(--luma-radius)',
       }
     : {
         position: 'fixed',
@@ -155,9 +158,9 @@ export const DexWindow: React.FC<DexWindowProps> = ({
         width: rect.w,
         height: rect.h,
         zIndex,
+        borderRadius: isPixel ? '24px' : 'var(--luma-radius)',
       };
 
-  const isPixel = designStyle === 'pixelbook';
   const winSurface = isPixel
     ? isDark
       ? 'dex-window-pixel-dark text-slate-100'
@@ -166,20 +169,12 @@ export const DexWindow: React.FC<DexWindowProps> = ({
     ? 'dex-window-dark text-zinc-100'
     : 'dex-window-light text-zinc-900';
 
-  const radiusCls = isPixel
-    ? maximized
-      ? 'rounded-[22px]'
-      : 'rounded-[24px]'
-    : maximized
-    ? 'rounded-2xl'
-    : 'rounded-[18px]';
-
   return (
     <div
       style={style}
       onMouseDown={onFocus}
       onContextMenu={(e) => e.stopPropagation()}
-      className={`luma-animate-in flex flex-col overflow-hidden select-none ${radiusCls} ${winSurface}`}
+      className={`luma-animate-in flex flex-col overflow-hidden select-none ${winSurface}`}
     >
       {/* Window Titlebar */}
       <div
@@ -189,10 +184,10 @@ export const DexWindow: React.FC<DexWindowProps> = ({
           isPixel
             ? isDark
               ? 'border-blue-300/[0.1] bg-blue-400/[0.04]'
-              : 'border-blue-900/[0.08] bg-slate-100/75'
+              : 'border-blue-900/[0.1] bg-slate-200/55'
             : isDark
             ? 'border-white/[0.08] bg-white/[0.02]'
-            : 'border-zinc-900/[0.08] bg-zinc-50/80'
+            : 'border-zinc-900/[0.1] bg-zinc-300/35'
         }`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
