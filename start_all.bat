@@ -1,69 +1,48 @@
 @echo off
 chcp 65001 >nul
 setlocal EnableDelayedExpansion
-title LauncherHub 3.0 ^& Luma Core 1.0 — Быстрый запуск в один клик
+title Luma OS 1.0 ^& Launcher Hab 3.0 — Запуск в 1 клик (2 Окна + Ядро Luma 1.0)
 
 echo ============================================================================
-echo   🚀 LAUNCHERHUB 3.0 + LUMA SYSTEM CORE 1.0 (C# .NET 8 ^& PYTHON FLET)
+echo   🚀 LUMA OS 1.0 KERNEL ^& SHELL (MATERIAL 3 EXPRESSIVE • 2 ОКНА)
+echo   - Окно 1: Список по группам (структура LH-2.4 + трекер с 00:00)
+echo   - Окно 2: Матрица ячеек 20x30 (18 виджетов Android / iPhone / Windows)
+echo   - Ядро Luma Core 1.0: JSON-RPC 2.0 (127.0.0.1:49215) + AES-256-GCM
 echo ============================================================================
 echo.
 
 cd /d "%~dp0"
 
-:: 1. Определяем корневую директорию и папку C# проекта
-if exist "LauncherHab3.csproj" (
-    set "CSHARP_DIR=%CD%"
-    set "ROOT_DIR=%CD%\.."
-) else (
-    set "CSHARP_DIR=%CD%\LauncherHab3.0_CSharp"
-    set "ROOT_DIR=%CD%"
+:: 1. Мгновенный запуск автономного исполняемого файла LumaOS_1.0.exe (без зависимостей!)
+if exist "LumaOS_1.0.exe" (
+    echo [LumaOS 1.0 EXE] Запуск готового исполняемого файла LumaOS_1.0.exe ^(Ядро + 2 Окна^)...
+    start "Luma OS 1.0 Kernel & Shell" "LumaOS_1.0.exe"
+    echo.
+    echo ✅ Ядро Luma Core 1.0 и оба окна ^(Окно 1: По группам + Окно 2: Ячейки 20x30^) запущены!
+    exit /b 0
 )
 
-:: 2. Удаляем дублирующуюся папку public\LauncherHab3.0_CSharp, если она мешает MSBuild
-if exist "%ROOT_DIR%\public\LauncherHab3.0_CSharp" (
-    echo [Очистка] Удаление дубликата public\LauncherHab3.0_CSharp для чистой сборки MSBuild...
-    rmdir /s /q "%ROOT_DIR%\public\LauncherHab3.0_CSharp"
-)
-
-:: 3. Проверка и запуск C# .NET 8 версии (LauncherHab3.0_CSharp)
+:: 2. Резервный запуск C# .NET 8 / Python Flet (если LumaOS_1.0.exe перемещен)
 where dotnet >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    if exist "%CSHARP_DIR%\LauncherHab3.csproj" (
-        echo [C# .NET 8] Обнаружен .NET SDK. Сборка и запуск LauncherHab3.0_CSharp...
-        pushd "%CSHARP_DIR%"
+    if exist "LauncherHab3.0_CSharp\LauncherHab3.csproj" (
+        pushd "LauncherHab3.0_CSharp"
         dotnet build LauncherHab3.csproj -c Release --nologo
         if !ERRORLEVEL! EQU 0 (
-            echo [C# .NET 8] Сборка успешно завершена без ошибок! Запуск ядра Luma и окон UI...
             start "LauncherHub 3.0 (C# .NET 8)" dotnet run --project LauncherHab3.csproj -c Release --no-build
-        ) else (
-            echo [Внимание] Ошибка сборки C# проекта. Проверьте установленный .NET 8.0 Windows Desktop SDK.
         )
         popd
     )
-) else (
-    echo [Инфо] .NET SDK (dotnet) не найден в PATH, переход к проверке Python/Flet контура...
 )
 
-:: 4. Проверка и автозапуск Python/Flet контура (Luma_Core + launcher_hab2.4 + Дашборд плиток)
 where python >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    if exist "%ROOT_DIR%\Luma_Core\luma_core.py" (
-        echo [Python Luma Core] Проверка сокета 127.0.0.1:49215 и запуск фонового ядра...
-        start "Luma Core Daemon (127.0.0.1:49215)" /min python "%ROOT_DIR%\Luma_Core\luma_core.py" --host 127.0.0.1 --port 49215
-        timeout /t 1 /nobreak >nul
+    if exist "Luma_Core\luma_core.py" (
+        start "Luma Core Daemon (127.0.0.1:49215)" /min python "Luma_Core\luma_core.py" --host 127.0.0.1 --port 49215
     )
-    if exist "%ROOT_DIR%\launcher_hab2.4\main.py" (
-        echo [Python UI] Запуск главного окна LauncherHub (Flet)...
-        start "LauncherHub Main UI" python "%ROOT_DIR%\launcher_hab2.4\main.py"
-    )
-    if exist "%ROOT_DIR%\Luma_Core\ui_tiles_dashboard.py" (
-        echo [Python Tiles] Запуск 3-го окна Плиточного Дашборда 12 виджетов...
-        start "Luma Tiles Dashboard" python "%ROOT_DIR%\Luma_Core\ui_tiles_dashboard.py"
+    if exist "launcher_hab2.4\main.py" (
+        start "LauncherHub Main UI" python "launcher_hab2.4\main.py"
     )
 )
 
-echo.
-echo ============================================================================
-echo   ✅ Все доступные модули LauncherHub 3.0 и ядро Luma (127.0.0.1:49215) запущены!
-echo ============================================================================
 pause

@@ -105,12 +105,23 @@ export interface BackupRecord {
 }
 
 export const THEMES: Record<string, CustomThemeConfig> = {
-  dark: {
-    id: 'dark',
-    name: 'Темная (Midnight Slate)',
+  m3_expressive: {
+    id: 'm3_expressive',
+    name: 'Material 3 Expressive (Android 16 / Luma 1.0)',
     isDark: true,
     bgGradient:
-      'radial-gradient(circle at 16% 12%, rgba(59, 130, 246, 0.11), transparent 40%), radial-gradient(circle at 85% 82%, rgba(16, 185, 129, 0.06), transparent 45%), linear-gradient(155deg, #0b0f17 0%, #0d111a 55%, #111723 100%)',
+      'radial-gradient(circle at 14% 12%, rgba(99, 102, 241, 0.22), transparent 42%), radial-gradient(circle at 86% 18%, rgba(168, 85, 247, 0.16), transparent 40%), radial-gradient(circle at 75% 85%, rgba(16, 185, 129, 0.12), transparent 45%), linear-gradient(155deg, #090b14 0%, #0e1222 52%, #12172b 100%)',
+    surfaceRgba: 'rgba(20, 25, 43, 0.88)',
+    cardHex: '#151b2e',
+    accent: 'indigo',
+    accentHex: '#6366f1',
+  },
+  dark: {
+    id: 'dark',
+    name: 'Темная (Midnight Slate LH-2.4)',
+    isDark: true,
+    bgGradient:
+      'radial-gradient(circle at 16% 12%, rgba(59, 130, 246, 0.14), transparent 40%), radial-gradient(circle at 85% 82%, rgba(16, 185, 129, 0.08), transparent 45%), linear-gradient(155deg, #0b0f17 0%, #0d111a 55%, #111723 100%)',
     surfaceRgba: 'rgba(21, 27, 38, 0.88)',
     cardHex: '#151b26',
     accent: 'blue',
@@ -121,7 +132,7 @@ export const THEMES: Record<string, CustomThemeConfig> = {
     name: 'Черный Оникс (AMOLED)',
     isDark: true,
     bgGradient:
-      'radial-gradient(circle at 20% 15%, rgba(16, 185, 129, 0.08), transparent 40%), linear-gradient(155deg, #05070b 0%, #080b11 60%, #0c1018 100%)',
+      'radial-gradient(circle at 20% 15%, rgba(16, 185, 129, 0.10), transparent 40%), linear-gradient(155deg, #05070b 0%, #080b11 60%, #0c1018 100%)',
     surfaceRgba: 'rgba(13, 17, 24, 0.92)',
     cardHex: '#0d1118',
     accent: 'emerald',
@@ -129,33 +140,33 @@ export const THEMES: Record<string, CustomThemeConfig> = {
   },
   light: {
     id: 'light',
-    name: 'Светлая',
+    name: 'Светлая (Material 3 Day)',
     isDark: false,
     bgGradient:
-      'radial-gradient(circle at 20% 15%, rgba(59, 130, 246, 0.12), transparent 45%), radial-gradient(circle at 80% 85%, rgba(14, 165, 233, 0.10), transparent 45%), linear-gradient(145deg, #eef2f7 0%, #f8fafc 60%, #e2e8f0 100%)',
-    surfaceRgba: 'rgba(255, 255, 255, 0.82)',
+      'radial-gradient(circle at 20% 15%, rgba(99, 102, 241, 0.14), transparent 45%), radial-gradient(circle at 80% 85%, rgba(14, 165, 233, 0.12), transparent 45%), linear-gradient(145deg, #eef2ff 0%, #f8fafc 60%, #e2e8f0 100%)',
+    surfaceRgba: 'rgba(255, 255, 255, 0.86)',
     cardHex: '#ffffff',
     accent: 'blue',
-    accentHex: '#2563eb',
+    accentHex: '#4f46e5',
   },
   purple: {
     id: 'purple',
-    name: 'Фиолетовая',
+    name: 'Фиолетовая (Expressive Berry)',
     isDark: true,
     bgGradient:
-      'radial-gradient(circle at 22% 18%, rgba(168, 85, 247, 0.18), transparent 45%), radial-gradient(circle at 80% 78%, rgba(217, 70, 239, 0.12), transparent 45%), linear-gradient(145deg, #0f0b1d 0%, #17122b 55%, #120e24 100%)',
-    surfaceRgba: 'rgba(26, 20, 48, 0.86)',
+      'radial-gradient(circle at 22% 18%, rgba(168, 85, 247, 0.20), transparent 45%), radial-gradient(circle at 80% 78%, rgba(217, 70, 239, 0.14), transparent 45%), linear-gradient(145deg, #0f0b1d 0%, #17122b 55%, #120e24 100%)',
+    surfaceRgba: 'rgba(26, 20, 48, 0.88)',
     cardHex: '#1a1430',
     accent: 'purple',
     accentHex: '#a855f7',
   },
   spring: {
     id: 'spring',
-    name: 'Весна',
+    name: 'Весна (Sakura Expressive)',
     isDark: false,
     bgGradient:
       'radial-gradient(circle at 22% 18%, rgba(236, 72, 153, 0.14), transparent 45%), radial-gradient(circle at 80% 78%, rgba(244, 114, 182, 0.12), transparent 45%), linear-gradient(145deg, #fff5f8 0%, #fce7f3 60%, #fbcfe8 100%)',
-    surfaceRgba: 'rgba(255, 245, 250, 0.82)',
+    surfaceRgba: 'rgba(255, 245, 250, 0.84)',
     cardHex: '#ffffff',
     accent: 'pink',
     accentHex: '#ec4899',
@@ -580,6 +591,78 @@ export const INITIAL_APPS: AppItem[] = [
     detoxGroup: 'Работа',
     isRunning: false,
   },
+  {
+    id: 'discord',
+    name: 'Discord',
+    package: 'discord',
+    category: 'Social',
+    icon: 'MessageSquare',
+    url: 'https://discord.com/app',
+    type: 'app',
+    installed: true,
+    favorite: false,
+    monthMinutes: 0,
+    weekMinutes: 0,
+    todayMinutes: 0,
+    elapsedSeconds: 0,
+    dailyLimitMinutes: 120,
+    detoxGroup: 'Соцсети и мессенджеры',
+    isRunning: false,
+  },
+  {
+    id: 'vscode',
+    name: 'Visual Studio Code',
+    package: 'code',
+    category: 'Development',
+    icon: 'Terminal',
+    url: 'vscode://',
+    type: 'app',
+    installed: true,
+    favorite: false,
+    monthMinutes: 0,
+    weekMinutes: 0,
+    todayMinutes: 0,
+    elapsedSeconds: 0,
+    dailyLimitMinutes: 360,
+    detoxGroup: 'Работа',
+    isRunning: false,
+  },
+  {
+    id: 'github',
+    name: 'GitHub Desktop',
+    package: 'github',
+    category: 'Development',
+    icon: 'Globe',
+    url: 'https://github.com/Tveexty/L_H-3.0',
+    type: 'web',
+    installed: true,
+    favorite: false,
+    monthMinutes: 0,
+    weekMinutes: 0,
+    todayMinutes: 0,
+    elapsedSeconds: 0,
+    dailyLimitMinutes: 360,
+    detoxGroup: 'Работа',
+    isRunning: false,
+  },
+  {
+    id: 'notion',
+    name: 'Notion Workspace',
+    package: 'notion',
+    category: 'Office',
+    icon: 'FileText',
+    url: 'https://notion.so',
+    type: 'web',
+    installed: true,
+    favorite: false,
+    monthMinutes: 0,
+    weekMinutes: 0,
+    todayMinutes: 0,
+    elapsedSeconds: 0,
+    dailyLimitMinutes: 300,
+    detoxGroup: 'Работа',
+    isRunning: false,
+  },
 ];
 
 export const INITIAL_DETOX_GROUPS: DetoxGroup[] = [
@@ -744,29 +827,37 @@ export const INITIAL_WORKSPACES: WorkspacePreset[] = [
   },
 ];
 
-export interface IslandPlayerItem {
+export interface IslandMediaPlayer {
   id: string;
   name: string;
   color: string;
+  accent: string;
   track: string;
   artist: string;
 }
 
-export interface IslandNotificationItem {
+export type IslandPlayerItem = IslandMediaPlayer;
+
+export interface WindowsNotificationItem {
   id: string;
   app: string;
   title: string;
   message: string;
   time: string;
-  color: string;
-  read: boolean;
+  icon: string;
+  color?: string;
+  unread: boolean;
+  read?: boolean;
 }
 
-export const INITIAL_ISLAND_PLAYERS: IslandPlayerItem[] = [
+export type IslandNotificationItem = WindowsNotificationItem;
+
+export const INITIAL_ISLAND_PLAYERS: IslandMediaPlayer[] = [
   {
     id: 'windows_smtc',
     name: 'Windows Media (SMTC)',
-    color: '#3b82f6',
+    color: '#6366f1',
+    accent: '#6366f1',
     track: 'Synthwave Night Drive',
     artist: 'System Audio Session',
   },
@@ -774,6 +865,7 @@ export const INITIAL_ISLAND_PLAYERS: IslandPlayerItem[] = [
     id: 'yandex_music',
     name: 'Яндекс Музыка',
     color: '#f59e0b',
+    accent: '#f59e0b',
     track: 'Моя Волна • Поток',
     artist: 'Яндекс Музыка HQ',
   },
@@ -781,6 +873,7 @@ export const INITIAL_ISLAND_PLAYERS: IslandPlayerItem[] = [
     id: 'spotify',
     name: 'Spotify Desktop',
     color: '#10b981',
+    accent: '#10b981',
     track: 'Midnight City (Lo-Fi Mix)',
     artist: 'Spotify Connect',
   },
@@ -788,6 +881,7 @@ export const INITIAL_ISLAND_PLAYERS: IslandPlayerItem[] = [
     id: 'vk_music',
     name: 'VK Музыка',
     color: '#60a5fa',
+    accent: '#60a5fa',
     track: 'Киберпанк Плейлист',
     artist: 'VK Audio',
   },
@@ -795,42 +889,63 @@ export const INITIAL_ISLAND_PLAYERS: IslandPlayerItem[] = [
     id: 'telegram_audio',
     name: 'Telegram Плеер',
     color: '#38bdf8',
+    accent: '#38bdf8',
     track: 'Голосовой / Аудио подкаст',
     artist: 'Telegram Desktop',
   },
 ];
 
-export const INITIAL_WINDOWS_NOTIFICATIONS: IslandNotificationItem[] = [
+export const INITIAL_WINDOWS_NOTIFICATIONS: WindowsNotificationItem[] = [
   {
     id: 'win_1',
     app: 'Luma OS Security Kernel 1.0',
-    title: 'Криптоядро AES-256-GCM активно',
-    message: 'Угроз не обнаружено. Контейнер PBKDF2-HMAC-SHA512 (310 000 итераций) синхронизирован.',
+    title: 'Криптоядро LumaGuard AES-256-GCM активно',
+    message: 'Угроз не обнаружено. Контейнер PBKDF2-HMAC-SHA512 (310 000 итераций) + HMAC-SHA256 IPC синхронизированы.',
     time: 'Сейчас',
+    icon: '🛡️',
     color: '#10b981',
+    unread: true,
     read: false,
   },
   {
     id: 'win_2',
-    app: 'Плиточная оболочка Luma Shell',
-    title: 'Интерфейс плиток (Windows / Android) запущен поверх Luma OS',
-    message: 'Все 12 живых виджетов, папки 1x1/2x1/2x2 и служба Dynamic Island подключены к ядру C#.',
+    app: 'Оболочка Luma Shell (Material 3 Expressive)',
+    title: 'Два окна готовы: Окно 1 (По группам) + Окно 2 (20×30)',
+    message: 'Все 18 живых виджетов Android 16, iOS 18 и Windows 11 подключены к матрице 20×30 (600 ячеек).',
     time: '1 мин назад',
-    color: '#3b82f6',
+    icon: '🪟',
+    color: '#6366f1',
+    unread: true,
     read: false,
   },
   {
     id: 'win_3',
-    app: 'Luma Core Daemon (.NET 8)',
-    title: 'JSON-RPC 2.0 сервер 127.0.0.1:49215',
-    message: 'Весь код переведен на C# (.NET 8 / WPF / WASAPI). Службы ядра работают в штатном режиме.',
+    app: 'Luma Core Daemon 1.0',
+    title: 'Шина Binder / JSON-RPC 2.0 (127.0.0.1:49215)',
+    message: 'Автономное ядро Luma Core 1.0 (HAL + ProcessManager + WidgetEngine + VFS) работает в штатном режиме.',
     time: '2 мин назад',
+    icon: '🧠',
     color: '#a855f7',
+    unread: true,
     read: false,
   },
 ];
 
 export const PYTHON_PROJECT_FILES: { path: string; title: string; badge: string; summary: string }[] = [
+  {
+    path: 'luma_kernel_main.go',
+    title: 'luma_kernel_main.go (LumaOS_1.0.exe Native Kernel)',
+    badge: 'LUMA CORE 1.0',
+    summary:
+      'Исходный код готового исполняемого файла LumaOS_1.0.exe: ядро по типу Android (TCP JSON-RPC 2.0 127.0.0.1:49215, HTTP IPC 49216, криптоядро AES-256-GCM + PBKDF2-HMAC-SHA512 + VFS, движок 18 виджетов и автозапуск 2 окон).',
+  },
+  {
+    path: 'Luma_Core/luma_core.py',
+    title: 'Luma_Core/luma_core.py (Python Kernel Daemon)',
+    badge: 'PYTHON CORE',
+    summary:
+      'Кроссплатформенный фоновый демон ядра Luma Core на Python (JSON-RPC 2.0, ProcessManager с Watchdog и виджет-телеметрия).',
+  },
   {
     path: 'LauncherHab3.0_CSharp/Program.cs',
     title: 'Program.cs',
@@ -957,20 +1072,25 @@ export const PYTHON_PROJECT_FILES: { path: string; title: string; badge: string;
     summary:
       'Полная документация по архитектуре системы Luma OS 1.0 на языке C# (.NET 8) и плиточной оболочке Windows / Android.',
   },
+  {
+    path: 'src/components/LumaGrid20x30Window.tsx',
+    title: 'src/components/LumaGrid20x30Window.tsx',
+    badge: 'WINDOW 2 (20×30)',
+    summary:
+      'Второе окно оболочки Luma 1.0 с координатной матрицей 20×30 (600 ячеек) и 18 самыми популярными виджетами из Android 16 Material 3 Expressive, iPhone iOS 18 и Windows 11.',
+  },
 ];
 
 // Полная история версий с 1.0 до 3.0
 export const VERSION_HISTORY: Record<string, string[]> = {
   '3.0': [
-    '🚀 LAUNCHER HAB 3.0 (C# .NET 8 EDITION) & РЕЛИЗНОЕ ЯДРО LUMA CORE 1.0 — ПОЛНЫЙ ПЕРЕХОД НА C#, ПЛИТОЧНЫЙ ЭКРАН, ПАПКИ И 12 СИСТЕМНЫХ ВИДЖЕТОВ',
-    '💜 ПОЛНЫЙ РЕРАЙТ АРХИТЕКТУРЫ НА ЯЗЫК C# (.NET 8 / WPF / WASAPI) — нативная производительность, строгая типизация, минимальное потребление ОЗУ и мгновенный отклик интерфейса',
-    '🧠 РЕЛИЗНОЕ ЯДРО LUMA CORE 1.0 STABLE — выход из стадии Luma Beta: асинхронный JSON-RPC 2.0 сервер на 127.0.0.1:49215, Watchdog-контроль процессов и атомарная UTF-8 запись конфигураций',
-    '🔐 ОБНОВЛЕННАЯ БЕЗОПАСНОСТЬ ЯДРА LUMA SECURITY 1.0 — аутентифицированное шифрование AES-256-GCM (96-бит Nonce + 128-бит AuthTag), деривация ключей PBKDF2-HMAC-SHA512 (310 000 итераций) и HMAC-SHA256 подпись IPC-пакетов с защитой от Replay-атак',
-    '📱 ПЛИТОЧНЫЙ ГЛАВНЫЙ ЭКРАН 3.0 + ПЕРЕКЛЮЧАТЕЛЬ В «БЫСТРЫЙ ПОИСК» (СТАРОЕ ОКНО) — настраиваемая сетка живых плиток как на современных смартфонах и ПК со свободной расстановкой элементов и мгновенным переключением обратно в классическое окно быстрого поиска',
-    '📁 СОЗДАНИЕ ПАПОК И НАСТРОЙКА РАЗМЕРОВ (1x1, 2x1, 2x2) — объединение приложений в папки, переименование, выбор цвета и независимое изменение размера для Папок, Иконок приложений и Виджетов',
-    '📊 12 ИНТЕРАКТИВНЫХ ВИДЖЕТОВ LUMA 1.0 НА ГЛАВНОМ ЭКРАНЕ — Системный монитор CPU/RAM (2x1), Анализатор дисков C:/D: (2x1), Аудио-микшер WASAPI (1x1), Быстрые заметки и To-Do чек-лист (2x2), Часы/Дата/Аптайм (1x1), Быстрый запуск утилит (2x1), Сетевой монитор Network I/O (1x1/2x1), Медиаплеер Now Playing (2x1), Таймер Помидор со звуком (1x1), Погода Open-Meteo (1x1/2x1), Быстрый калькулятор и конвертер (2x1), Управление питанием и блокировкой Win+L (1x1)',
-    '🌦️ ТОЧНЫЙ ПОИСК ПОГОДЫ ПО ЛЮБОМУ ГОРОДУ МИРА — прямая интеграция Open-Meteo Geocoding API + Forecast API с живым поиском городов на русском и английском языках, почасовым прогнозом и геолокацией',
-    '🔌 ПЛАГИН API 3.0 (ILumaPluginV3 C#) — изолированный контекст загрузки сборок .NET 8, система гранулярных разрешений (Permissions), регистрация собственных плиток и плавные 60fps анимации',
+    '🚀 LUMA OS 1.0 KERNEL & SHELL (MATERIAL 3 EXPRESSIVE) — РЕЛИЗНОЕ ЯДРО ПО ТИПУ ANDROID, ДВУХОКОННАЯ АРХИТЕКТУРА (СПИСОК ПО ГРУППАМ + ЯЧЕЙКИ 20×30), 18 ВИДЖЕТОВ ANDROID/iOS/WINDOWS И ГОТОВЫЙ LUMAOS_1.0.EXE',
+    '🧠 АРХИТЕКТУРА ЯДРА LUMA CORE 1.0 (ANDROID-LIKE KERNEL) — уровни HAL (Hardware Abstraction), Activity & Process Manager с Watchdog-перезапуском, Binder / JSON-RPC 2.0 IPC (127.0.0.1:49215), VFS и криптоядро LumaGuard (AES-256-GCM + PBKDF2-HMAC-SHA512 310k + HMAC-SHA256)',
+    '✨ ДИЗАЙН MATERIAL 3 EXPRESSIVE — выразительные формы (Squircle / Scallop / Tonal Pills), пружинная микро-анимация, динамические палитры и мгновенное зажигание статуса «🟢 АКТИВНО» из LH-2.4',
+    '🪟 ОКНО 1 (КАК В ФАЙЛЕ LH-2.4 — СПИСКОМ ПО ГРУППАМ) — левая панель «Библиотека» с живым поиском и фильтрами + рабочая область с категориями по группам (Избранное, Плагины, Games, Browser, Social, Media, Music, Development, Office, System) в режимах «Списком по группам» и «Карточками по группам»',
+    '📐 ОКНО 2 (СЕТКА ЯЧЕЕК 20×30 — 600 КООРДИНАТНЫХ ЯЧЕЕК) — точная матрица 20×30 / 30×20 с видимыми координатами [X, Y], перемещением в любую ячейку в 1 клик, масштабированием W×H и синхронизацией между окнами через BroadcastChannel и IPC ядра',
+    '🌍 18 САМЫХ ПОПУЛЯРНЫХ ВИДЖЕТОВ ИЗ ANDROID, iPHONE И WINDOWS — 6 виджетов Android 16 M3 Expressive (Scallop Clock, Quick Settings Shade, Pixel Weather Live, Digital Wellbeing, Keep Notes, M3 Calculator), 6 виджетов iPhone iOS 18 (Fitness Rings, Battery Matrix, StandBy Vinyl Player, Calendar & World Clock, Pomodoro Focus, Stocks & Crypto) и 6 виджетов Windows 11 (CPU/GPU/RAM Telemetry, NVMe Disks C:/D:, Network I/O & IPC, Quick Utilities, Power & Win+L, LumaGuard Security)',
+    '📦 ГОТОВЫЙ К ЗАПУСКУ ФАЙЛ LumaOS_1.0.exe — автономный Windows .exe файл со встроенным ядром Luma 1.0 и графической оболочкой без необходимости установки зависимостей',
   ],
   '2.9': [
     '🚀 LAUNCHER HAB 2.9 & LUMA KERNEL — ФИНАЛЬНАЯ СИНХРОНИЗАЦИЯ ТРЕХ ОКОН И АВТОЗАПУСК ДЕМОНА C#',
