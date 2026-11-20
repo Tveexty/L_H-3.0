@@ -6,7 +6,9 @@ import {
   BellOff,
   Code2,
   CornerDownLeft,
+  Cpu,
   Disc3,
+  FolderOpen,
   Grid,
   Lock,
   Moon,
@@ -31,7 +33,7 @@ import { AppItem, formatMonthBadge } from '../data/launcherData';
 
 export interface SpotlightAction {
   id: string;
-  group: 'Команды' | 'Окна системы' | 'Приложения';
+  group: 'Выполнить' | 'Окна системы' | 'Команды' | 'Приложения';
   title: string;
   subtitle: string;
   shortcut?: string;
@@ -52,7 +54,10 @@ interface LumaSpotlightProps {
   mediaPlaying: boolean;
   currentTrack: string;
   onLaunchApp: (app: AppItem) => void;
-  onOpenWindow: (win: 'apps' | 'tracker' | 'kernel' | 'terminal' | 'settings' | 'plugins' | 'island' | 'spaces') => void;
+  onOpenWindow: (
+    win: 'apps' | 'tracker' | 'kernel' | 'terminal' | 'settings' | 'plugins' | 'island' | 'spaces' | 'explorer' | 'taskmgr'
+  ) => void;
+  onRunCommand?: (cmd: string) => void;
   onShowDesktop: () => void;
   onToggleEditDesktop: () => void;
   onToggleIsland: () => void;
@@ -78,6 +83,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
   currentTrack,
   onLaunchApp,
   onOpenWindow,
+  onRunCommand,
   onShowDesktop,
   onToggleEditDesktop,
   onToggleIsland,
@@ -104,10 +110,30 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
   const actions = useMemo<SpotlightAction[]>(() => {
     const winActions: SpotlightAction[] = [
       {
+        id: 'win_explorer',
+        group: 'Окна системы',
+        title: 'Проводник Luma',
+        subtitle: 'Системный файловый менеджер, вкладки и скрытые файлы',
+        shortcut: 'FILES',
+        keywords: 'проводник файлы explorer диски папки скрытые',
+        icon: <FolderOpen className="w-4 h-4" />,
+        run: () => onOpenWindow('explorer'),
+      },
+      {
+        id: 'win_taskmgr',
+        group: 'Окна системы',
+        title: 'Диспетчер задач',
+        subtitle: 'Процессы Luma OS, открытые окна ОС и графики ресурсов',
+        shortcut: 'PROC',
+        keywords: 'диспетчер задач процессы taskmgr cpu ram убить процесс',
+        icon: <Cpu className="w-4 h-4" />,
+        run: () => onOpenWindow('taskmgr'),
+      },
+      {
         id: 'win_apps',
         group: 'Окна системы',
         title: 'Приложения (Библиотека по группам)',
-        subtitle: 'Открыть окно списка и карточек приложений',
+        subtitle: 'Открыть окно списка, мультивыбора и карточек приложений',
         shortcut: 'APPS',
         keywords: 'приложения библиотека окно группы список',
         icon: <AppWindow className="w-4 h-4" />,
@@ -117,7 +143,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'win_terminal',
         group: 'Окна системы',
         title: 'Терминал Luma',
-        subtitle: 'Командная строка ядра Luma Core 1.0.2b',
+        subtitle: 'Командная строка ядра Luma Core 1.0 (ПО 1.0.4)',
         shortcut: 'CLI',
         keywords: 'терминал консоль cmd shell cli',
         icon: <Terminal className="w-4 h-4" />,
@@ -135,8 +161,8 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'win_kernel',
         group: 'Окна системы',
-        title: 'Ядро Luma Core & IPC',
-        subtitle: 'Телеметрия, код ядра и консоль JSON-RPC 2.0',
+        title: 'Ядро LumaCore 1.0 & IPC',
+        subtitle: 'Телеметрия, журнал событий, код ядра и консоль JSON-RPC 2.0',
         keywords: 'ядро код kernel ipc rpc',
         icon: <Code2 className="w-4 h-4" />,
         run: () => onOpenWindow('kernel'),
@@ -145,9 +171,9 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'win_settings',
         group: 'Окна системы',
         title: 'Настройки системы',
-        subtitle: 'Темы, 18 циферблатов, Luma Island, история версий',
+        subtitle: '8 тем, панель задач, 18 циферблатов, Luma Island, память',
         shortcut: 'SET',
-        keywords: 'настройки параметры темы часы',
+        keywords: 'настройки параметры темы часы панель задач',
         icon: <Settings className="w-4 h-4" />,
         run: () => onOpenWindow('settings'),
       },
@@ -187,7 +213,11 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         title: mediaPlaying ? 'Пауза музыки' : 'Воспроизвести музыку',
         subtitle: currentTrack,
         keywords: 'музыка пауза play pause',
-        icon: mediaPlaying ? <Pause className="w-4 h-4 text-[#d71921]" /> : <Play className="w-4 h-4 text-[#d71921]" />,
+        icon: mediaPlaying ? (
+          <Pause className="w-4 h-4 text-[var(--luma-accent)]" />
+        ) : (
+          <Play className="w-4 h-4 text-[var(--luma-accent)]" />
+        ),
         run: onTogglePlay,
       },
       {
@@ -212,8 +242,8 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'cmd_edit_grid',
         group: 'Команды',
         title: 'Настроить сетку рабочего стола (22×10 / 20×10)',
-        subtitle: 'Включить режим расстановки и изменения виджетов',
-        keywords: 'сетка ячейки редактор стол виджеты',
+        subtitle: 'Включить режим расстановки, форм и размеров виджетов и папок',
+        keywords: 'сетка ячейки редактор стол виджеты форма размер',
         icon: <Activity className="w-4 h-4" />,
         run: onToggleEditDesktop,
       },
@@ -232,7 +262,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         title: isMuted ? 'Включить звук' : 'Выключить звук (Mute)',
         subtitle: 'Системный аудио-выход',
         keywords: 'звук громкость mute',
-        icon: isMuted ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-[#d71921]" />,
+        icon: isMuted ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-[var(--luma-accent)]" />,
         run: onToggleMute,
       },
       {
@@ -321,17 +351,65 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
   ]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return actions.slice(0, 16);
-    return actions
+    const raw = query.trim();
+    const q = raw.toLowerCase();
+    if (!q) return actions.slice(0, 18);
+    const matches = actions
       .filter(
         (a) =>
           a.title.toLowerCase().includes(q) ||
           a.subtitle.toLowerCase().includes(q) ||
           a.keywords.toLowerCase().includes(q)
       )
-      .slice(0, 22);
-  }, [actions, query]);
+      .slice(0, 20);
+
+    // Direct Run command / URL / path execution (like Windows Run Alt+R)
+    const runItem: SpotlightAction = {
+      id: `direct_run_${q}`,
+      group: 'Выполнить',
+      title: `Выполнить: ${raw}`,
+      subtitle:
+        /^https?:\/\//i.test(raw) || raw.includes('.')
+          ? 'Открыть адрес, файл или выполнить команду в Терминале Luma'
+          : 'Запустить в Терминале Luma или открыть системный путь',
+      shortcut: 'RUN',
+      keywords: q,
+      icon: <Terminal className="w-4 h-4 text-[var(--luma-accent)]" />,
+      run: () => {
+        if (q === 'explorer' || q === 'files' || q === 'проводник') {
+          onOpenWindow('explorer');
+          return;
+        }
+        if (q === 'taskmgr' || q === 'tasks' || q === 'диспетчер') {
+          onOpenWindow('taskmgr');
+          return;
+        }
+        if (q === 'settings' || q === 'настройки') {
+          onOpenWindow('settings');
+          return;
+        }
+        if (q === 'cmd' || q === 'terminal' || q === 'term') {
+          onOpenWindow('terminal');
+          return;
+        }
+        if (onRunCommand) {
+          onRunCommand(raw);
+        } else {
+          onOpenWindow('terminal');
+        }
+      },
+    };
+
+    const looksLikeDirect =
+      raw.includes(' ') ||
+      raw.includes('\\') ||
+      raw.includes('/') ||
+      raw.includes(':') ||
+      /^https?:\/\//i.test(raw) ||
+      matches.length === 0;
+
+    return looksLikeDirect ? [runItem, ...matches] : [...matches, runItem];
+  }, [actions, query, onOpenWindow, onRunCommand]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -358,7 +436,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
 
   if (!open) return null;
 
-  const groups: SpotlightAction['group'][] = ['Окна системы', 'Команды', 'Приложения'];
+  const groups: SpotlightAction['group'][] = ['Выполнить', 'Окна системы', 'Команды', 'Приложения'];
 
   return (
     <div
@@ -372,13 +450,13 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         }`}
       >
         <div className={`flex items-center gap-3 px-4 py-3.5 border-b ${isDark ? 'border-white/10' : 'border-zinc-200'}`}>
-          <Search className="w-4 h-4 text-[#d71921] shrink-0" />
+          <Search className="w-4 h-4 text-[var(--luma-accent)] shrink-0" />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Поиск приложений, окон и системных команд..."
+            placeholder="Выполнить команду, путь (C:\...), URL или найти приложение..."
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-500"
           />
           {query && (
@@ -419,7 +497,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
                         }`}
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          <span className={`shrink-0 ${active ? 'text-[#d71921]' : 'text-zinc-400'}`}>{item.icon}</span>
+                          <span className={`shrink-0 ${active ? 'text-[var(--luma-accent)]' : 'text-zinc-400'}`}>{item.icon}</span>
                           <div className="min-w-0">
                             <div className="text-xs font-semibold truncate">{item.title}</div>
                             <div className="text-[11px] text-zinc-500 truncate">{item.subtitle}</div>
@@ -429,8 +507,8 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
                           {item.shortcut && (
                             <span
                               className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
-                                item.shortcut === 'LIVE'
-                                  ? 'bg-[#d71921] text-white'
+                                item.shortcut === 'LIVE' || item.shortcut === 'RUN'
+                                  ? 'bg-[var(--luma-accent)] text-white'
                                   : isDark
                                   ? 'bg-white/10 text-zinc-400'
                                   : 'bg-zinc-200 text-zinc-600'
@@ -439,7 +517,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
                               {item.shortcut}
                             </span>
                           )}
-                          {active && <CornerDownLeft className="w-3.5 h-3.5 text-[#d71921]" />}
+                          {active && <CornerDownLeft className="w-3.5 h-3.5 text-[var(--luma-accent)]" />}
                         </div>
                       </button>
                     );
@@ -455,8 +533,8 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
             isDark ? 'border-white/[0.08]' : 'border-zinc-200'
           }`}
         >
-          <span>LUMA SPOTLIGHT 1.0.2b · ↑↓ · ENTER</span>
-          <span>CTRL + K</span>
+          <span>LUMA RUN & SPOTLIGHT 1.0.4 · ↑↓ · ENTER</span>
+          <span>ALT + R</span>
         </div>
       </div>
     </div>

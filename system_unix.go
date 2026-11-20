@@ -459,33 +459,125 @@ func (p *platformProbe) PickFile(mode string) PickedFileInfo {
 }
 
 func (p *platformProbe) TopProcesses(limit int) []ProcessMetric {
-	if limit <= 0 || limit > 20 {
-		limit = 10
+	if limit <= 0 || limit > 80 {
+		limit = 45
 	}
-	out, err := exec.Command("ps", "-eo", "pid,comm,%cpu,rss", "--sort=-rss", "--no-headers").Output()
+	selfPID := os.Getpid()
+	out, err := exec.Command("ps", "-eo", "pid,comm,%cpu,rss,stat", "--sort=-rss", "--no-headers").Output()
 	if err != nil {
 		return nil
 	}
 	var list []ProcessMetric
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 4 {
+		if len(fields) < 5 {
 			continue
 		}
 		pid, _ := strconv.Atoi(fields[0])
 		cpuVal, _ := strconv.ParseFloat(fields[2], 64)
 		rssKB, _ := strconv.ParseFloat(fields[3], 64)
+		st := "Работает"
+		if strings.HasPrefix(fields[4], "T") {
+			st = "Приостановлен"
+		} else if strings.HasPrefix(fields[4], "Z") {
+			st = "Зомби"
+		}
 		list = append(list, ProcessMetric{
-			PID:    pid,
-			Name:   fields[1],
-			CPUPct: math.Round(cpuVal*10) / 10,
-			MemMB:  math.Round((rssKB/1024.0)*10) / 10,
+			PID:       pid,
+			Name:      fields[1],
+			Title:     fields[1],
+			HasWindow: false,
+			Status:    st,
+			CPUPct:    math.Round(cpuVal*10) / 10,
+			MemMB:     math.Round((rssKB/1024.0)*10) / 10,
+			IsSelf:    pid == selfPID,
 		})
 		if len(list) >= limit {
 			break
 		}
 	}
 	return list
+}
+
+func (p *platformProbe) ListOpenWindows() []HostWindowItem {
+	// Use wmctrl if X11 session is active; otherwise return empty (browser/Linux headless)
+	if _, err := exec.LookPath("wmctrl"); err == nil {
+		out, err := exec.Command("wmctrl", "-lp").Output()
+		if err == nil {
+			var items []HostWindowItem
+			selfPID := os.Getpid()
+			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+				fields := strings.Fields(line)
+				if len(fields) < 5 {
+					continue
+				}
+				pid, _ := strconv.Atoi(fields[2])
+				if pid == selfPID || pid <= 0 {
+					continue
+				}
+				title := strings.Join(fields[4:], " ")
+				items = append(items, HostWindowItem{
+					PID:   pid,
+					Name:  fields[3],
+					Title: title,
+				})
+			}
+			return items
+		}
+	}
+	return []HostWindowItem{}
+}
+
+func (p *platformProbe) FocusWindow(pid int) error {
+	if _, err := exec.LookPath("wmctrl"); err == nil && pid > 0 {
+		out, err := exec.Command("wmctrl", "-lp").Output()
+		if err == nil {
+			for _, line := range strings.Split(string(out), "\n") {
+				fields := strings.Fields(line)
+				if len(fields) >= 3 && fields[2] == strconv.Itoa(pid) {
+					return exec.Command("wmctrl", "-i", "-a", fields[0]).Run()
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (p *platformProbe) KillProcess(pid int, force bool) error {
+	if pid <= 1 || pid == os.Getpid() {
+		return fmt.Errorf("cannot terminate system or self pid %d", pid)
+	}
+	sig := syscall.SIGTERM
+	if force {
+		sig = syscall.SIGKILL
+	}
+	return syscall.Kill(pid, sig)
+}
+
+func (p *platformProbe) IsPathHidden(fullPath, name string) bool {
+	return strings.HasPrefix(name, ".")
+}
+
+func (p *platformProbe) ListQuickFolders() []QuickFolderItem {
+	home, _ := os.UserHomeDir()
+	var items []QuickFolderItem
+	addIfExists := func(label, path, kind string) {
+		if path == "" {
+			return
+		}
+		if st, err := os.Stat(path); err == nil && st.IsDir() {
+			items = append(items, QuickFolderItem{Name: label, Path: path, Kind: kind})
+		}
+	}
+	addIfExists("Домашняя папка", home, "home")
+	addIfExists("Рабочий стол", filepath.Join(home, "Desktop"), "desktop")
+	addIfExists("Загрузки", filepath.Join(home, "Downloads"), "downloads")
+	addIfExists("Документы", filepath.Join(home, "Documents"), "documents")
+	addIfExists("Изображения", filepath.Join(home, "Pictures"), "pictures")
+	addIfExists("Корень системы (/)", "/", "drive")
+	addIfExists("Конфигурация (/etc)", "/etc", "folder")
+	addIfExists("Временные (/tmp)", "/tmp", "folder")
+	return items
 }
 
 func (p *platformProbe) ExecShell(command string) (string, string, int) {

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Plus, Terminal, Trash2, X } from 'lucide-react';
+import { Check, Copy, Download, Plus, Search, Terminal, Trash2, X } from 'lucide-react';
 import { LiveSystemTelemetry } from '../data/launcherData';
 import { DesignStyle, TaskbarPosition } from './DexWindow';
 
@@ -18,9 +18,13 @@ interface LumaTerminalWindowProps {
   onMediaAction: (action: 'play_pause' | 'next' | 'prev') => void;
   onToggleIsland: () => void;
   onSetThemeMode?: (mode: 'dark' | 'light') => void;
+  onSelectTheme?: (themeId: string) => void;
+  onSelectAnim?: (preset: 'standard' | 'spring' | 'glide' | 'none') => void;
   onSetDesignStyle?: (style: DesignStyle) => void;
   onSetTaskbarPosition?: (pos: TaskbarPosition) => void;
   onToggleFullscreen?: () => void;
+  onOpenExplorer?: (path?: string) => void;
+  onOpenTaskMgr?: () => void;
   onPowerAction: (action: 'lock' | 'sleep' | 'recycle_bin') => void;
   onCallRpc: (method: string) => Promise<void>;
   onClipboardUpdated?: (text: string) => void;
@@ -46,7 +50,13 @@ const BUILTIN_COMMANDS = [
   'sys',
   'top',
   'ps',
+  'kill',
+  'explorer',
+  'taskmgr',
   'ls',
+  'find',
+  'mkdir',
+  'touch',
   'cat',
   'disks',
   'loc',
@@ -59,6 +69,7 @@ const BUILTIN_COMMANDS = [
   'mute',
   'island',
   'theme',
+  'anim',
   'taskbar',
   'fullscreen',
   'rpc',
@@ -76,8 +87,8 @@ function createTab(idx: number): TermTab {
     cwd: '~',
     history: [],
     lines: [
-      { id: 1, kind: 'accent', text: 'LUMA OS 1.0.3 (HYDROGEN) · KERNEL 1.0 PRO TERMINAL  [IPC 127.0.0.1:49215]' },
-      { id: 2, kind: 'out', text: 'Команды: help, neofetch, top, ls, cat, clip, weather, open, calc, sh <cmd>. Tab — автодополнение.' },
+      { id: 1, kind: 'accent', text: 'LUMA OS 1.0.4 · KERNEL 1.0 PRO TERMINAL  [IPC 127.0.0.1:49215]' },
+      { id: 2, kind: 'out', text: 'Команды: help, neofetch, top, kill, explorer, taskmgr, ls, find, mkdir, touch, cat, theme, anim, sh <cmd>.' },
     ],
   };
 }
@@ -97,9 +108,13 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
   onMediaAction,
   onToggleIsland,
   onSetThemeMode,
+  onSelectTheme,
+  onSelectAnim,
   onSetDesignStyle,
   onSetTaskbarPosition,
   onToggleFullscreen,
+  onOpenExplorer,
+  onOpenTaskMgr,
   onPowerAction,
   onCallRpc,
   onClipboardUpdated,
@@ -110,6 +125,10 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
   const [histIdx, setHistIdx] = useState(-1);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>('md');
+  const [logSearch, setLogSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [lastExecMs, setLastExecMs] = useState<number | null>(null);
   const tabCounterRef = useRef(2);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -229,7 +248,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         [
           `  ██╗     ██╗   ██╗███╗   ███╗ █████╗      luma@${hostName}`,
           `  ██║     ██║   ██║████╗ ████║██╔══██╗     ──────────────────────────`,
-          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.0.3 Hydrogen (${os})`,
+          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.0.4 (${os})`,
           `  ██║     ██║   ██║██║╚██╔╝██║██╔══██║     STYLE   : ${designStyle.toUpperCase()} · TASKBAR ${taskbarPosition.toUpperCase()}`,
           `  ███████╗╚██████╔╝██║ ╚═╝ ██║██║  ██║     CPU     : ${cpu}`,
           `  ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝     GPU     : ${gpu}`,
@@ -512,8 +531,21 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
       } else if (arg === 'nothing' || arg === 'pixelbook') {
         onSetDesignStyle?.(arg);
         appendToTab(tid, `DESIGN STYLE -> ${arg.toUpperCase()}`);
+      } else if (['nothing_mono', 'nothing_paper', 'm3_expressive', 'amoled', 'purple', 'spring'].includes(arg)) {
+        onSelectTheme?.(arg);
+        appendToTab(tid, `THEME -> ${arg}`);
       } else {
-        appendToTab(tid, 'Использование: theme dark | light | nothing | pixelbook');
+        appendToTab(tid, 'Темы: nothing_mono | nothing_paper | m3_expressive | dark | amoled | light | purple | spring | nothing | pixelbook');
+      }
+      return;
+    }
+
+    if (head === 'anim') {
+      if (arg === 'standard' || arg === 'spring' || arg === 'glide' || arg === 'none') {
+        onSelectAnim?.(arg);
+        appendToTab(tid, `ANIMATION PRESET -> ${arg.toUpperCase()}`);
+      } else {
+        appendToTab(tid, 'Использование: anim standard | spring | glide | none');
       }
       return;
     }
@@ -538,7 +570,8 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
       const method = head === 'rpc' && rest ? rest : 'system.ping';
       const t0 = performance.now();
       await onCallRpc(method);
-      const dt = (performance.now() - t0).toFixed(1);
+      const dt = Math.round(performance.now() - t0);
+      setLastExecMs(dt);
       appendToTab(tid, `RPC ${method} @ 127.0.0.1:49215  ok=true  rtt=${dt}ms`, 'accent');
       return;
     }
@@ -556,6 +589,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
       return;
     }
     setBusy(true);
+    const t0 = performance.now();
     try {
       const r = await fetch('/api/kernel/exec', {
         method: 'POST',
@@ -563,6 +597,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         body: JSON.stringify({ command: shellCmd }),
       });
       const d = await r.json();
+      setLastExecMs(Math.round(performance.now() - t0));
       if (d.stdout && String(d.stdout).trim()) {
         appendToTab(tid, String(d.stdout).trimEnd(), 'out');
       }
@@ -605,6 +640,18 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
     window.setTimeout(() => setCopied(false), 1400);
   };
 
+  const handleExportLog = () => {
+    if (!activeTab) return;
+    const text = activeTab.lines.map((l) => l.text).join('\n');
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `luma-terminal-${activeTab.title}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleTabComplete = () => {
     const val = input.trim().toLowerCase();
     if (!val || val.includes(' ')) return;
@@ -612,21 +659,25 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
     if (match) setInput(match + ' ');
   };
 
-  const quickChips = ['neofetch', 'top', 'ls ~', 'sys', 'clip', 'weather', 'ping'];
+  const quickChips = ['neofetch', 'top', 'ls ~', 'explorer', 'taskmgr', 'sys', 'weather', 'ping'];
   const hostName = liveSystem?.hostname || 'host';
+  const fontCls = fontSize === 'sm' ? 'text-[11px]' : fontSize === 'lg' ? 'text-[14px]' : 'text-xs';
+  const visibleLines = (activeTab?.lines || []).filter(
+    (l) => !logSearch.trim() || l.text.toLowerCase().includes(logSearch.trim().toLowerCase())
+  );
 
   return (
     <div
       onClick={() => inputRef.current?.focus()}
-      className={`h-full flex flex-col font-mono text-xs cursor-text ${
-        isDark ? 'bg-[#09090b] text-zinc-200' : 'bg-[#f8f8f6] text-zinc-900'
+      className={`h-full flex flex-col font-mono ${fontCls} cursor-text ${
+        isDark ? 'bg-[#09090b] text-zinc-200' : 'bg-[#e4e5df] text-zinc-900'
       }`}
     >
-      {/* Multi-Tab Header Bar + Quick Action Buttons */}
+      {/* Multi-Tab Header Bar + Pro Tools */}
       <div
         onClick={(e) => e.stopPropagation()}
         className={`px-3 py-1.5 border-b flex items-center justify-between gap-2 shrink-0 ${
-          isDark ? 'border-white/[0.08] bg-white/[0.02]' : 'border-zinc-200 bg-zinc-100/80'
+          isDark ? 'border-white/[0.08] bg-white/[0.02]' : 'border-zinc-900/10 bg-black/[0.04]'
         }`}
       >
         <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
@@ -644,7 +695,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
                     ? 'bg-[var(--luma-accent)] text-white font-bold'
                     : isDark
                     ? 'bg-white/[0.05] text-zinc-400 hover:text-white'
-                    : 'bg-white text-zinc-600 border border-zinc-200 hover:text-zinc-900'
+                    : 'bg-white/60 text-zinc-700 border border-zinc-400/50 hover:text-zinc-950'
                 }`}
               >
                 <Terminal className="w-3 h-3" />
@@ -667,7 +718,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
             onClick={addNewTab}
             title="Новая вкладка терминала"
             className={`w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer transition ${
-              isDark ? 'hover:bg-white/10 text-zinc-400 hover:text-white' : 'hover:bg-zinc-200 text-zinc-600'
+              isDark ? 'hover:bg-white/10 text-zinc-400 hover:text-white' : 'hover:bg-zinc-900/10 text-zinc-700'
             }`}
           >
             <Plus className="w-3.5 h-3.5" />
@@ -675,11 +726,44 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          <div className={`hidden sm:flex items-center rounded-lg border overflow-hidden text-[10px] ${isDark ? 'border-white/10' : 'border-zinc-400/60'}`}>
+            {(['sm', 'md', 'lg'] as const).map((sz) => (
+              <button
+                key={sz}
+                onClick={() => setFontSize(sz)}
+                className={`px-1.5 py-0.5 uppercase cursor-pointer ${fontSize === sz ? 'bg-[var(--luma-accent)] text-white font-bold' : ''}`}
+              >
+                {sz === 'sm' ? 'S' : sz === 'md' ? 'M' : 'L'}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setSearchOpen((v) => !v)}
+            title="Поиск по выводу"
+            className={`p-1.5 rounded-lg cursor-pointer transition ${
+              searchOpen
+                ? 'bg-[var(--luma-accent)] text-white'
+                : isDark
+                ? 'bg-white/[0.06] hover:bg-white/[0.12] text-zinc-300'
+                : 'bg-white/60 border border-zinc-400/50 text-zinc-700'
+            }`}
+          >
+            <Search className="w-3 h-3" />
+          </button>
+          <button
+            onClick={handleExportLog}
+            title="Экспорт лога в .txt"
+            className={`p-1.5 rounded-lg cursor-pointer transition ${
+              isDark ? 'bg-white/[0.06] hover:bg-white/[0.12] text-zinc-300' : 'bg-white/60 border border-zinc-400/50 text-zinc-700'
+            }`}
+          >
+            <Download className="w-3 h-3" />
+          </button>
           <button
             onClick={handleCopyOutput}
             title="Скопировать вывод"
             className={`px-2 py-1 rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer transition ${
-              isDark ? 'bg-white/[0.06] hover:bg-white/[0.12] text-zinc-300' : 'bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-700'
+              isDark ? 'bg-white/[0.06] hover:bg-white/[0.12] text-zinc-300' : 'bg-white/60 border border-zinc-400/50 text-zinc-700'
             }`}
           >
             {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
@@ -689,7 +773,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
             onClick={clearActiveTab}
             title="Очистить вывод"
             className={`p-1.5 rounded-lg cursor-pointer transition ${
-              isDark ? 'bg-white/[0.06] hover:bg-white/[0.12] text-zinc-400' : 'bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-600'
+              isDark ? 'bg-white/[0.06] hover:bg-white/[0.12] text-zinc-400' : 'bg-white/60 border border-zinc-400/50 text-zinc-700'
             }`}
           >
             <Trash2 className="w-3 h-3" />
@@ -697,11 +781,11 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         </div>
       </div>
 
-      {/* Quick Command Chips */}
+      {/* Quick Command Chips & Optional Output Search */}
       <div
         onClick={(e) => e.stopPropagation()}
         className={`px-3 py-1.5 border-b flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0 ${
-          isDark ? 'border-white/[0.06]' : 'border-zinc-200/80'
+          isDark ? 'border-white/[0.06]' : 'border-zinc-900/10'
         }`}
       >
         {quickChips.map((chip) => (
@@ -711,18 +795,39 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
             className={`px-2 py-0.5 rounded-md text-[10px] border cursor-pointer transition whitespace-nowrap ${
               isDark
                 ? 'bg-white/[0.04] border-white/[0.08] text-zinc-400 hover:text-white hover:border-[var(--luma-accent)]'
-                : 'bg-white border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:border-[var(--luma-accent)]'
+                : 'bg-white/65 border-zinc-400/50 text-zinc-700 hover:text-zinc-950 hover:border-[var(--luma-accent)]'
             }`}
           >
             {chip}
           </button>
         ))}
+        {lastExecMs !== null && !busy && (
+          <span className="ml-auto text-[10px] opacity-60 whitespace-nowrap">{lastExecMs} ms</span>
+        )}
         {busy && <span className="ml-auto text-[10px] text-[var(--luma-accent)] animate-pulse">EXEC...</span>}
       </div>
 
+      {searchOpen && (
+        <div onClick={(e) => e.stopPropagation()} className={`px-3 py-1.5 border-b flex items-center gap-2 shrink-0 ${isDark ? 'border-white/10 bg-white/[0.03]' : 'border-zinc-900/10 bg-black/[0.04]'}`}>
+          <Search className="w-3 h-3 text-[var(--luma-accent)]" />
+          <input
+            autoFocus
+            value={logSearch}
+            onChange={(e) => setLogSearch(e.target.value)}
+            placeholder="Фильтр строк терминала..."
+            className="flex-1 bg-transparent text-xs outline-none placeholder:text-zinc-500"
+          />
+          {logSearch && (
+            <button onClick={() => setLogSearch('')} className="cursor-pointer">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Output Stream */}
       <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
-        {(activeTab?.lines || []).map((l) => (
+        {visibleLines.map((l) => (
           <pre
             key={l.id}
             className={`whitespace-pre-wrap break-words leading-relaxed ${
@@ -754,7 +859,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
           runCommand(v);
         }}
         className={`px-4 py-2.5 border-t flex items-center gap-2 shrink-0 ${
-          isDark ? 'border-white/10 bg-white/[0.015]' : 'border-zinc-300 bg-white/70'
+          isDark ? 'border-white/10 bg-white/[0.015]' : 'border-zinc-900/15 bg-black/[0.04]'
         }`}
       >
         <span className="text-[var(--luma-accent)] font-bold shrink-0">
@@ -787,7 +892,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
               }
             }
           }}
-          placeholder="neofetch, top, ls ~, clip, calc 64*12, sh whoami... (Tab)"
+          placeholder="neofetch, top, kill, explorer, taskmgr, find, ls ~, theme... (Tab)"
           className="flex-1 bg-transparent outline-none placeholder:text-zinc-500"
           autoFocus
         />

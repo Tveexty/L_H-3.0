@@ -85,7 +85,8 @@ type platformProbe struct {
 	prevRxBytes  uint64
 	prevTxBytes  uint64
 	prevNetStamp time.Time
-	media        MediaSessionInfo
+	media         MediaSessionInfo
+	cachedWindows []HostWindowItem
 }
 
 func newPlatformProbe() *platformProbe {
@@ -151,10 +152,13 @@ $cs  = Get-CimInstance Win32_ComputerSystem | Select-Object -First 1
 func (p *platformProbe) backgroundLoop() {
 	cpuTicker := time.NewTicker(1 * time.Second)
 	mediaNetTicker := time.NewTicker(3 * time.Second)
+	winTicker := time.NewTicker(2500 * time.Millisecond)
 	defer cpuTicker.Stop()
 	defer mediaNetTicker.Stop()
+	defer winTicker.Stop()
 
 	p.pollMediaAndNetwork()
+	p.refreshOpenWindows()
 
 	for {
 		select {
@@ -162,6 +166,8 @@ func (p *platformProbe) backgroundLoop() {
 			p.sampleCPUTimes()
 		case <-mediaNetTicker.C:
 			p.pollMediaAndNetwork()
+		case <-winTicker.C:
+			p.refreshOpenWindows()
 		}
 	}
 }
@@ -645,13 +651,25 @@ if ($d.ShowDialog() -eq 'OK') { [Console]::OutputEncoding = [System.Text.Encodin
 }
 
 func (p *platformProbe) TopProcesses(limit int) []ProcessMetric {
-	if limit <= 0 || limit > 20 {
-		limit = 10
+	if limit <= 0 || limit > 80 {
+		limit = 45
 	}
+	selfPID := os.Getpid()
 	script := fmt.Sprintf(`
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First %d | ForEach-Object {
-  [PSCustomObject]@{ pid=$_.Id; name=$_.ProcessName; cpu_pct=[math]::Round(($_.CPU),1); mem_mb=[math]::Round($_.WorkingSet64/1MB,1) }
+Get-Process -ErrorAction SilentlyContinue | Sort-Object @{Expression={$_.MainWindowHandle -ne 0}; Descending=$true}, WorkingSet64 -Descending | Select-Object -First %d | ForEach-Object {
+  $p = ""
+  try { $p = $_.Path } catch {}
+  [PSCustomObject]@{
+    pid = $_.Id
+    name = $_.ProcessName
+    title = [string]$_.MainWindowTitle
+    has_window = ($_.MainWindowHandle -ne 0 -and [string]$_.MainWindowTitle -ne "")
+    status = if ($_.Responding) { "Работает" } else { "Не отвечает" }
+    cpu_pct = [math]::Round(($_.CPU), 1)
+    mem_mb = [math]::Round($_.WorkingSet64 / 1MB, 1)
+    exe_path = [string]$p
+  }
 } | ConvertTo-Json -Compress
 `, limit)
 	out, err := runHiddenPowerShell(script)
@@ -665,7 +683,155 @@ Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First %d | F
 			list = append(list, single)
 		}
 	}
+	for i := range list {
+		if list[i].PID == selfPID {
+			list[i].IsSelf = true
+		}
+	}
 	return list
+}
+
+func (p *platformProbe) refreshOpenWindows() {
+	selfPID := os.Getpid()
+	script := `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 -and [string]$_.MainWindowTitle -ne "" } | Sort-Object ProcessName | ForEach-Object {
+  $p = ""
+  try { $p = $_.Path } catch {}
+  [PSCustomObject]@{
+    pid = $_.Id
+    name = $_.ProcessName
+    title = [string]$_.MainWindowTitle
+    mem_mb = [math]::Round($_.WorkingSet64 / 1MB, 1)
+    exe_path = [string]$p
+  }
+} | ConvertTo-Json -Compress
+`
+	out, err := runHiddenPowerShell(script)
+	if err != nil {
+		return
+	}
+	var list []HostWindowItem
+	if out != "" {
+		if json.Unmarshal([]byte(out), &list) != nil {
+			var single HostWindowItem
+			if json.Unmarshal([]byte(out), &single) == nil && single.PID > 0 {
+				list = append(list, single)
+			}
+		}
+	}
+	filtered := make([]HostWindowItem, 0, len(list))
+	for _, item := range list {
+		if item.PID == selfPID {
+			continue
+		}
+		lower := strings.ToLower(item.Name)
+		if lower == "textinputhost" || lower == "applicationframehost" && strings.TrimSpace(item.Title) == "" {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	p.mu.Lock()
+	p.cachedWindows = filtered
+	p.mu.Unlock()
+}
+
+func (p *platformProbe) ListOpenWindows() []HostWindowItem {
+	p.mu.RLock()
+	out := make([]HostWindowItem, len(p.cachedWindows))
+	copy(out, p.cachedWindows)
+	p.mu.RUnlock()
+	return out
+}
+
+func (p *platformProbe) FocusWindow(pid int) error {
+	if pid <= 0 {
+		return fmt.Errorf("invalid pid")
+	}
+	script := fmt.Sprintf(`
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class LumaWinFocus {
+  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+}
+"@
+$proc = Get-Process -Id %d -ErrorAction Stop
+$h = $proc.MainWindowHandle
+if ($h -ne [IntPtr]::Zero) {
+  if ([LumaWinFocus]::IsIconic($h)) { [LumaWinFocus]::ShowWindowAsync($h, 9) | Out-Null }
+  [LumaWinFocus]::SetForegroundWindow($h) | Out-Null
+}
+`, pid)
+	_, err := runHiddenPowerShell(script)
+	return err
+}
+
+func (p *platformProbe) KillProcess(pid int, force bool) error {
+	if pid <= 0 || pid == os.Getpid() {
+		return fmt.Errorf("cannot terminate system or self pid %d", pid)
+	}
+	if !force {
+		script := fmt.Sprintf(`$p = Get-Process -Id %d -ErrorAction Stop; if (-not $p.CloseMainWindow()) { Stop-Process -Id %d -Force -ErrorAction Stop }`, pid, pid)
+		if _, err := runHiddenPowerShell(script); err == nil {
+			go p.refreshOpenWindows()
+			return nil
+		}
+	}
+	cmd := exec.Command("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	err := cmd.Run()
+	if err == nil {
+		go p.refreshOpenWindows()
+	}
+	return err
+}
+
+func (p *platformProbe) IsPathHidden(fullPath, name string) bool {
+	if strings.HasPrefix(name, ".") {
+		return true
+	}
+	ptr, err := syscall.UTF16PtrFromString(fullPath)
+	if err != nil {
+		return false
+	}
+	attrs, err := syscall.GetFileAttributes(ptr)
+	if err != nil {
+		return false
+	}
+	const fileAttrHidden = 0x2
+	const fileAttrSystem = 0x4
+	return (attrs&(fileAttrHidden|fileAttrSystem)) != 0
+}
+
+func (p *platformProbe) ListQuickFolders() []QuickFolderItem {
+	home, _ := os.UserHomeDir()
+	var items []QuickFolderItem
+	addIfExists := func(label, path, kind string) {
+		if path == "" {
+			return
+		}
+		if st, err := os.Stat(path); err == nil && st.IsDir() {
+			items = append(items, QuickFolderItem{Name: label, Path: path, Kind: kind})
+		}
+	}
+	addIfExists("Рабочий стол", filepath.Join(home, "Desktop"), "desktop")
+	addIfExists("Загрузки", filepath.Join(home, "Downloads"), "downloads")
+	addIfExists("Документы", filepath.Join(home, "Documents"), "documents")
+	addIfExists("Изображения", filepath.Join(home, "Pictures"), "pictures")
+	addIfExists("Музыка", filepath.Join(home, "Music"), "music")
+	addIfExists("Видео", filepath.Join(home, "Videos"), "videos")
+	addIfExists("Профиль пользователя", home, "home")
+	for _, d := range p.readDisks() {
+		items = append(items, QuickFolderItem{
+			Name: fmt.Sprintf("%s (%s)", d.Label, d.Mount),
+			Path: d.Mount + `\`,
+			Kind: "drive",
+		})
+	}
+	return items
 }
 
 func (p *platformProbe) ExecShell(command string) (string, string, int) {

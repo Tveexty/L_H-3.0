@@ -149,7 +149,7 @@ func runNativeDesktopWindow(url string) bool {
 	if err != nil {
 		cfgDir = os.TempDir()
 	}
-	dataPath := filepath.Join(cfgDir, "LumaOS_1.0.3", "WebView2")
+	dataPath := filepath.Join(cfgDir, "LumaOS_1.0.4", "WebView2")
 	_ = os.MkdirAll(dataPath, 0o700)
 
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
@@ -157,7 +157,7 @@ func runNativeDesktopWindow(url string) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.0.3 (Hydrogen)",
+			Title:  "Luma OS 1.0.4",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,

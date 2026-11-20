@@ -24,13 +24,39 @@ export type AppType = 'app' | 'web' | 'system' | 'plugin';
 export interface CustomThemeConfig {
   id: string;
   name: string;
+  description?: string;
   isDark: boolean;
   bgGradient: string;
   surfaceRgba: string;
+  surfaceRgb?: string;
+  cardRgb?: string;
+  barRgb?: string;
   cardHex: string;
   accent: string;
   accentHex: string;
+  accentHoverHex?: string;
   custom?: boolean;
+}
+
+export interface HostWindowInfo {
+  pid: number;
+  name: string;
+  title: string;
+  mem_mb: number;
+  exe_path?: string;
+  is_self?: boolean;
+}
+
+export interface HostProcessInfo {
+  pid: number;
+  name: string;
+  title?: string;
+  has_window: boolean;
+  status: string;
+  cpu_pct: number;
+  mem_mb: number;
+  exe_path?: string;
+  is_self?: boolean;
 }
 
 export interface AppItem {
@@ -167,89 +193,131 @@ export interface LiveSystemTelemetry {
 export const THEMES: Record<string, CustomThemeConfig> = {
   nothing_mono: {
     id: 'nothing_mono',
-    name: 'Luma Mono (Тёмная)',
+    name: 'Luma Carbon',
+    description: 'Графитовый монохром, глубокий чёрный и сигнальный красный',
     isDark: true,
-    bgGradient: '#09090b',
-    surfaceRgba: 'rgba(18, 18, 21, 0.92)',
-    cardHex: '#121215',
+    bgGradient:
+      'radial-gradient(ellipse 75% 55% at 15% 10%, rgba(225, 29, 42, 0.08), transparent 55%), linear-gradient(160deg, #09090c 0%, #0e0e13 55%, #0a0a0d 100%)',
+    surfaceRgba: 'rgba(18, 18, 22, 0.92)',
+    surfaceRgb: '18, 18, 22',
+    cardRgb: '23, 23, 28',
+    barRgb: '12, 12, 16',
+    cardHex: '#151519',
     accent: 'red',
-    accentHex: '#d71921',
+    accentHex: '#e11d2a',
+    accentHoverHex: '#be1420',
   },
   nothing_paper: {
     id: 'nothing_paper',
-    name: 'Luma Paper (Мягкая светлая)',
+    name: 'Luma Paper',
+    description: 'Спокойная матовая бумага без слепящего белого и тёплый камень',
     isDark: false,
-    bgGradient: '#dcddd7',
-    surfaceRgba: 'rgba(232, 233, 228, 0.92)',
-    cardHex: '#e7e8e3',
+    bgGradient:
+      'radial-gradient(ellipse 70% 55% at 85% 15%, rgba(200, 30, 40, 0.06), transparent 55%), linear-gradient(155deg, #dadad3 0%, #d1d1c9 55%, #c8c8bf 100%)',
+    surfaceRgba: 'rgba(230, 230, 223, 0.92)',
+    surfaceRgb: '230, 230, 223',
+    cardRgb: '236, 236, 230',
+    barRgb: '220, 220, 213',
+    cardHex: '#e4e4dc',
     accent: 'red',
-    accentHex: '#d71921',
+    accentHex: '#c81e28',
+    accentHoverHex: '#a5161f',
   },
   m3_expressive: {
     id: 'm3_expressive',
-    name: 'Luma Expressive (Глубокий Индиго)',
+    name: 'Luma Indigo Depth',
+    description: 'Глубокий вечерний индиго с мягким кобальтовым стеклом',
     isDark: true,
     bgGradient:
-      'radial-gradient(circle at 14% 12%, rgba(99, 102, 241, 0.24), transparent 42%), radial-gradient(circle at 86% 18%, rgba(168, 85, 247, 0.16), transparent 40%), radial-gradient(circle at 75% 85%, rgba(16, 185, 129, 0.12), transparent 45%), linear-gradient(155deg, #080b14 0%, #0d1222 52%, #11182c 100%)',
-    surfaceRgba: 'rgba(18, 24, 42, 0.90)',
-    cardHex: '#131a2d',
+      'radial-gradient(circle at 14% 12%, rgba(99, 102, 241, 0.24), transparent 44%), radial-gradient(circle at 86% 84%, rgba(56, 189, 248, 0.14), transparent 46%), linear-gradient(155deg, #090d1b 0%, #101730 55%, #0d1327 100%)',
+    surfaceRgba: 'rgba(19, 26, 48, 0.90)',
+    surfaceRgb: '19, 26, 48',
+    cardRgb: '24, 33, 60',
+    barRgb: '13, 18, 34',
+    cardHex: '#18213c',
     accent: 'indigo',
     accentHex: '#6366f1',
+    accentHoverHex: '#4f46e5',
   },
   dark: {
     id: 'dark',
-    name: 'Luma Полночный Графит',
+    name: 'Luma Nordic Slate',
+    description: 'Скандинавский сине-графитовый фон и ледяной голубой акцент',
     isDark: true,
     bgGradient:
-      'radial-gradient(circle at 16% 12%, rgba(59, 130, 246, 0.15), transparent 40%), radial-gradient(circle at 85% 82%, rgba(16, 185, 129, 0.08), transparent 45%), linear-gradient(155deg, #0a0e17 0%, #0d111b 55%, #111723 100%)',
-    surfaceRgba: 'rgba(20, 26, 38, 0.90)',
-    cardHex: '#151b26',
+      'radial-gradient(circle at 18% 14%, rgba(56, 189, 248, 0.16), transparent 44%), radial-gradient(circle at 84% 82%, rgba(59, 130, 246, 0.12), transparent 46%), linear-gradient(155deg, #0b111c 0%, #111a29 55%, #0e1624 100%)',
+    surfaceRgba: 'rgba(20, 29, 44, 0.90)',
+    surfaceRgb: '20, 29, 44',
+    cardRgb: '25, 36, 54',
+    barRgb: '13, 20, 31',
+    cardHex: '#192436',
     accent: 'blue',
-    accentHex: '#3b82f6',
+    accentHex: '#38bdf8',
+    accentHoverHex: '#0ea5e9',
   },
   amoled: {
     id: 'amoled',
-    name: 'Luma Оникс (AMOLED)',
+    name: 'Luma Pure Obsidian',
+    description: 'Истинный OLED-чёрный с благородным изумрудным акцентом',
     isDark: true,
     bgGradient:
-      'radial-gradient(circle at 20% 15%, rgba(16, 185, 129, 0.10), transparent 40%), linear-gradient(155deg, #04060a 0%, #070a10 60%, #0b0f17 100%)',
-    surfaceRgba: 'rgba(12, 16, 23, 0.94)',
-    cardHex: '#0d1118',
+      'radial-gradient(circle at 20% 15%, rgba(16, 185, 129, 0.12), transparent 42%), linear-gradient(160deg, #020305 0%, #05080d 60%, #030508 100%)',
+    surfaceRgba: 'rgba(11, 15, 20, 0.94)',
+    surfaceRgb: '11, 15, 20',
+    cardRgb: '15, 21, 27',
+    barRgb: '6, 9, 12',
+    cardHex: '#0f151b',
     accent: 'emerald',
     accentHex: '#10b981',
+    accentHoverHex: '#059669',
   },
   light: {
     id: 'light',
-    name: 'Luma Светлый Камень',
+    name: 'Luma Mist Stone',
+    description: 'Прохладный дымчато-серый камень и глубокий кобальт',
     isDark: false,
     bgGradient:
-      'radial-gradient(circle at 20% 15%, rgba(99, 102, 241, 0.10), transparent 45%), radial-gradient(circle at 80% 85%, rgba(14, 165, 233, 0.09), transparent 45%), linear-gradient(145deg, #d8dee9 0%, #e1e5ed 60%, #cfd7e3 100%)',
-    surfaceRgba: 'rgba(232, 235, 241, 0.90)',
-    cardHex: '#e6e9ef',
+      'radial-gradient(circle at 18% 14%, rgba(37, 99, 235, 0.11), transparent 46%), radial-gradient(circle at 82% 86%, rgba(14, 165, 233, 0.09), transparent 46%), linear-gradient(150deg, #d2d9e4 0%, #c8d1df 55%, #bec9d9 100%)',
+    surfaceRgba: 'rgba(222, 228, 237, 0.92)',
+    surfaceRgb: '222, 228, 237',
+    cardRgb: '229, 234, 242',
+    barRgb: '211, 218, 229',
+    cardHex: '#dde3ec',
     accent: 'indigo',
-    accentHex: '#4f46e5',
+    accentHex: '#2563eb',
+    accentHoverHex: '#1d4ed8',
   },
   purple: {
     id: 'purple',
-    name: 'Luma Аметист Нео',
+    name: 'Luma Velvet Amethyst',
+    description: 'Глубокий аметистовый бархат и мягкое фиолетовое свечение',
     isDark: true,
     bgGradient:
-      'radial-gradient(circle at 22% 18%, rgba(168, 85, 247, 0.22), transparent 45%), radial-gradient(circle at 80% 78%, rgba(217, 70, 239, 0.14), transparent 45%), linear-gradient(145deg, #0f0b1d 0%, #17122b 55%, #120e24 100%)',
-    surfaceRgba: 'rgba(26, 20, 48, 0.90)',
-    cardHex: '#1a1430',
+      'radial-gradient(circle at 20% 16%, rgba(168, 85, 247, 0.24), transparent 46%), radial-gradient(circle at 82% 80%, rgba(232, 121, 249, 0.14), transparent 46%), linear-gradient(150deg, #0f0a1e 0%, #191132 55%, #120c26 100%)',
+    surfaceRgba: 'rgba(27, 19, 50, 0.90)',
+    surfaceRgb: '27, 19, 50',
+    cardRgb: '34, 24, 62',
+    barRgb: '18, 13, 34',
+    cardHex: '#22183e',
     accent: 'purple',
     accentHex: '#a855f7',
+    accentHoverHex: '#9333ea',
   },
   spring: {
     id: 'spring',
-    name: 'Luma Весенний Кварц',
+    name: 'Luma Rose Quartz',
+    description: 'Приглушённый пыльно-розовый кварц и ягодный акцент без бликов',
     isDark: false,
     bgGradient:
-      'radial-gradient(circle at 22% 18%, rgba(236, 72, 153, 0.14), transparent 45%), radial-gradient(circle at 80% 78%, rgba(244, 114, 182, 0.12), transparent 45%), linear-gradient(145deg, #fff5f8 0%, #fce7f3 60%, #fbcfe8 100%)',
-    surfaceRgba: 'rgba(255, 245, 250, 0.88)',
-    cardHex: '#ffffff',
+      'radial-gradient(circle at 20% 16%, rgba(190, 24, 93, 0.11), transparent 46%), radial-gradient(circle at 82% 84%, rgba(219, 39, 119, 0.08), transparent 46%), linear-gradient(150deg, #dfd2d6 0%, #d6c6cb 55%, #ccb9bf 100%)',
+    surfaceRgba: 'rgba(233, 223, 226, 0.92)',
+    surfaceRgb: '233, 223, 226',
+    cardRgb: '238, 230, 232',
+    barRgb: '223, 211, 215',
+    cardHex: '#e6dade',
     accent: 'pink',
-    accentHex: '#ec4899',
+    accentHex: '#be185d',
+    accentHoverHex: '#9d174d',
   },
 };
 
@@ -1107,6 +1175,17 @@ export const PYTHON_PROJECT_FILES: { path: string; title: string; badge: string;
 
 // Полная история версий Luma OS и всех предыдущих веток
 export const VERSION_HISTORY: Record<string, string[]> = {
+  '1.0.4': [
+    'LUMA OS 1.0.4 — СИСТЕМНЫЙ ПРОВОДНИК, ДИСПЕТЧЕР ЗАДАЧ, РЕАЛЬНЫЕ ОКНА ОС В ПАНЕЛИ ЗАДАЧ, ПАПКИ ДЛЯ ВСЕГО, ИЗМЕНЕНИЕ РАЗМЕРА И ФОРМЫ КАК В HARMONYOS, ГАЛЕРЕЯ ВАРИАНТОВ ВИДЖЕТОВ, 8 НОВЫХ ТЕМ И ALT+R',
+    'Реальные открытые приложения ОС в Панели задач — все уже запущенные на ПК программы и любые новые открытые приложения автоматически отображаются в панели задач Luma с переключением фокуса окна по ЛКМ и закрытием по ПКМ',
+    'Системный Проводник Luma (как в Windows) + все скрытые файлы — новое многовкладочное окно Проводника с Быстрым доступом, дисками, поиском, предпросмотром, созданием папок/файлов, вырезанием/копированием/вставкой, переименованием и удалением; в «Память и Файлы» и Проводнике отображаются ВСЕ файлы системы включая скрытые',
+    'ПКМ по Панели задач -> «Диспетчер задач» и «Настроить панель задач» — полноценный Диспетчер задач с процессами системы Luma OS, открытыми приложениями, фоновыми процессами ОС (со снятием задачи), живыми графиками производительности и службами Luma',
+    'Универсальные папки рабочего стола + изменение размера и формы как на Huawei (HarmonyOS) — храните в папках приложения, файлы, папки диска, ссылки, команды и заметки; ПКМ по виджету или папке -> «Изменить размер и форму» (интерактивное растягивание по ячейкам + 5 форм: Скруглённый, Круг, Капсула, Квадрат, Лист)',
+    'Новый каталог виджетов с вариантами дизайна — удобная навигация по категориям и живой выбор стиля и формы для часов (Квадратный, Круглый аналоговый, Прямоугольный, Перекидной, Капсула), батареи (Кольцо, Ячейка, Панель, Капсула), погоды, медиаплеера, системы и других виджетов',
+    'Полный редизайн всех 8 тем + глубокая кастомизация — гармоничные палитры с живым применением фона, полупрозрачности и акцента ко всей системе, пользовательский акцентный цвет, масштаб интерфейса (90/100/110%), выбор шрифта и настройки панели задач',
+    'Прокачаны Терминал Pro (ps, top, kill, explorer, taskmgr, find, theme, экспорт лога, поиск, сниппеты), Приложения (сортировка, фильтр запущенных, редактирование, пакетно в папку) и Ядро LumaCore (4 вкладки: Монитор, JSON-RPC редактор, Журнал событий, Код с поиском)',
+    'Горячая клавиша Alt+R — быстрый запуск / Spotlight и выполнение команд (explorer, taskmgr, URL, пути к файлам) переведены на Alt+R',
+  ],
   '1.0.3 (Hydrogen)': [
     'LUMA OS 1.0.3 (HYDROGEN) — ЯДРО UI, BLUETOOTH, ПАМЯТЬ И ПРОВОДНИК, ЭНЕРГОСБЕРЕЖЕНИЕ, МУЛЬТИВЫБОР, ЖИВАЯ ПРОЗРАЧНОСТЬ, АНИМАЦИИ И ПАНЕЛЬ ЗАДАЧ КАК В ОС',
     'Ядро UI (раздел в Настройках) — отдельная карточка устройства с именем ПК (редактируемым), реальной моделью устройства (Win32/DMI), версией ПО 1.0.3 (Hydrogen) и версией Ядра 1.0',

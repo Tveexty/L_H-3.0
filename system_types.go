@@ -31,18 +31,40 @@ type LocationInfo struct {
 }
 
 type ProcessMetric struct {
-	PID    int     `json:"pid"`
-	Name   string  `json:"name"`
-	CPUPct float64 `json:"cpu_pct"`
-	MemMB  float64 `json:"mem_mb"`
+	PID       int     `json:"pid"`
+	Name      string  `json:"name"`
+	Title     string  `json:"title,omitempty"`
+	HasWindow bool    `json:"has_window"`
+	Status    string  `json:"status"`
+	CPUPct    float64 `json:"cpu_pct"`
+	MemMB     float64 `json:"mem_mb"`
+	ExePath   string  `json:"exe_path,omitempty"`
+	IsSelf    bool    `json:"is_self,omitempty"`
+}
+
+type HostWindowItem struct {
+	PID     int     `json:"pid"`
+	Name    string  `json:"name"`
+	Title   string  `json:"title"`
+	MemMB   float64 `json:"mem_mb"`
+	ExePath string  `json:"exe_path,omitempty"`
+	IsSelf  bool    `json:"is_self,omitempty"`
+}
+
+type QuickFolderItem struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Kind string `json:"kind"`
 }
 
 type FsEntry struct {
-	Name    string `json:"name"`
-	Path    string `json:"path"`
-	IsDir   bool   `json:"is_dir"`
-	Size    int64  `json:"size"`
-	ModTime string `json:"mod_time"`
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	IsDir    bool   `json:"is_dir"`
+	Size     int64  `json:"size"`
+	ModTime  string `json:"mod_time"`
+	Ext      string `json:"ext"`
+	IsHidden bool   `json:"is_hidden"`
 }
 
 type PickedFileInfo struct {

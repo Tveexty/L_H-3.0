@@ -12,6 +12,8 @@ import {
   Cpu,
   Download,
   ExternalLink,
+  Eye,
+  EyeOff,
   File,
   FileText,
   Folder,
@@ -82,6 +84,7 @@ interface FsEntryItem {
   is_dir: boolean;
   size: number;
   mod_time: string;
+  is_hidden?: boolean;
 }
 
 function StatusBadge({ active, onLabel = 'ВКЛ', offLabel = 'ВЫКЛ' }: { active: boolean; onLabel?: string; offLabel?: string }) {
@@ -161,10 +164,10 @@ export const KernelUIPanel: React.FC<{
             </div>
             <div className="min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--luma-accent)] font-bold">
-                ЯДРО UI · LUMA HYDROGEN
+                ЯДРО UI · LUMA DESKTOP
               </div>
               <div className="text-lg font-extrabold tracking-tight truncate">
-                Luma OS 1.0.3 (Hydrogen)
+                Luma OS 1.0.4
               </div>
               <div className={`text-xs font-mono truncate ${mutedCls}`}>
                 LumaCore 1.0 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
@@ -173,12 +176,12 @@ export const KernelUIPanel: React.FC<{
           </div>
 
           <a
-            href="/LumaOS_1.0.3.exe"
-            download="LumaOS_1.0.3.exe"
+            href="/LumaOS_1.0.4.exe"
+            download="LumaOS_1.0.4.exe"
             className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
-            LumaOS_1.0.3.exe
+            LumaOS_1.0.4.exe
           </a>
         </div>
 
@@ -232,7 +235,7 @@ export const KernelUIPanel: React.FC<{
           {/* 3. Версия ПО */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия ПО</div>
-            <div className="text-sm font-mono font-bold">1.0.3 (Hydrogen)</div>
+            <div className="text-sm font-mono font-bold">1.0.4</div>
           </div>
 
           {/* 4. Версия Ядра (1.0) */}
@@ -595,6 +598,7 @@ export const StorageMemoryPanel: React.FC<{
   isDark: boolean;
   onInspectFile: (info: PropertiesTarget) => void;
   onPinFileToDesktop: (entry: { name: string; path: string; is_dir: boolean }) => void;
+  onOpenInExplorer?: (path: string) => void;
   onPushToast: (title: string, msg: string, type?: 'info' | 'warning' | 'success') => void;
 }> = ({
   liveSystem,
@@ -604,24 +608,27 @@ export const StorageMemoryPanel: React.FC<{
   isDark,
   onInspectFile,
   onPinFileToDesktop,
+  onOpenInExplorer,
   onPushToast,
 }) => {
   const [curPath, setCurPath] = useState<string>('~');
   const [parentPath, setParentPath] = useState<string>('');
   const [entries, setEntries] = useState<FsEntryItem[]>([]);
+  const [hiddenCount, setHiddenCount] = useState<number>(0);
+  const [showHidden, setShowHidden] = useState<boolean>(true);
   const [fsLoading, setFsLoading] = useState(false);
   const [fsError, setFsError] = useState('');
   const [fsFilter, setFsFilter] = useState('');
   const [previewFile, setPreviewFile] = useState<{ name: string; path: string; content: string } | null>(null);
 
-  const browseDir = async (targetPath: string) => {
+  const browseDir = async (targetPath: string, includeHidden = showHidden) => {
     setFsLoading(true);
     setFsError('');
     try {
       const r = await fetch('/api/kernel/fs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'ls', path: targetPath }),
+        body: JSON.stringify({ action: 'ls', path: targetPath, show_hidden: includeHidden }),
       });
       const d = await r.json();
       if (!d.ok) {
@@ -629,6 +636,7 @@ export const StorageMemoryPanel: React.FC<{
       } else {
         setCurPath(d.path || targetPath);
         setParentPath(d.parent || '');
+        setHiddenCount(typeof d.hidden_count === 'number' ? d.hidden_count : 0);
         const list: FsEntryItem[] = Array.isArray(d.entries) ? d.entries : [];
         list.sort((a, b) => Number(b.is_dir) - Number(a.is_dir) || a.name.localeCompare(b.name));
         setEntries(list);
@@ -641,16 +649,17 @@ export const StorageMemoryPanel: React.FC<{
   };
 
   useEffect(() => {
-    browseDir('~');
-  }, []);
+    browseDir(curPath, showHidden);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHidden]);
 
   const openOrPreview = async (entry: FsEntryItem) => {
     if (entry.is_dir) {
       browseDir(entry.path);
       return;
     }
-    const isText = /\.(txt|md|json|log|csv|ts|tsx|js|go|py|html|css|ini|conf|xml|yaml|yml|sh|bat|ps1)$/i.test(entry.name);
-    if (isText && entry.size <= 32768) {
+    const isText = /\.(txt|md|json|log|csv|ts|tsx|js|go|py|html|css|ini|conf|xml|yaml|yml|sh|bat|ps1|env)$/i.test(entry.name);
+    if (isText && entry.size <= 65536) {
       try {
         const r = await fetch('/api/kernel/fs', {
           method: 'POST',
@@ -738,7 +747,7 @@ export const StorageMemoryPanel: React.FC<{
         </div>
       </div>
 
-      {/* Built-in Host File Explorer */}
+      {/* Built-in Host File Explorer (Shows ALL System Files Including Hidden!) */}
       <div className={`rounded-xl border overflow-hidden ${surfaceCls}`}>
         <div className={`p-3 border-b flex flex-wrap items-center gap-2 ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
           <button
@@ -768,7 +777,26 @@ export const StorageMemoryPanel: React.FC<{
           <div className={`flex-1 min-w-[140px] px-2.5 py-1 rounded-lg border text-[11px] font-mono truncate ${btnCls}`}>
             {curPath}
           </div>
-          <div className={`w-40 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${btnCls}`}>
+          <button
+            onClick={() => setShowHidden((v) => !v)}
+            title="Показывать все скрытые и системные файлы"
+            className={`px-2 py-1 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer ${
+              showHidden ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+            }`}
+          >
+            {showHidden ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+            Скрытые ({hiddenCount})
+          </button>
+          {onOpenInExplorer && (
+            <button
+              onClick={() => onOpenInExplorer(curPath)}
+              className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
+            >
+              <ExternalLink className="w-3 h-3 text-[var(--luma-accent)]" />
+              Проводник
+            </button>
+          )}
+          <div className={`w-36 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${btnCls}`}>
             <Search className="w-3 h-3 text-zinc-500 shrink-0" />
             <input
               value={fsFilter}
@@ -782,16 +810,16 @@ export const StorageMemoryPanel: React.FC<{
         {fsError ? (
           <div className="p-6 text-center text-xs font-mono text-amber-500">{fsError}</div>
         ) : fsLoading ? (
-          <div className={`p-6 text-center text-xs font-mono ${mutedCls}`}>Загрузка файлов...</div>
+          <div className={`p-6 text-center text-xs font-mono ${mutedCls}`}>Загрузка всех файлов...</div>
         ) : (
-          <div className={`divide-y max-h-72 overflow-y-auto ${isDark ? 'divide-white/[0.06]' : 'divide-zinc-900/[0.08]'}`}>
+          <div className={`divide-y max-h-80 overflow-y-auto ${isDark ? 'divide-white/[0.06]' : 'divide-zinc-900/[0.08]'}`}>
             {filteredEntries.map((entry) => (
               <div
                 key={entry.path}
                 onClick={() => openOrPreview(entry)}
                 className={`px-3.5 py-2 flex items-center justify-between gap-2 text-xs cursor-pointer transition ${
                   isDark ? 'hover:bg-white/[0.05]' : 'hover:bg-black/[0.04]'
-                }`}
+                } ${entry.is_hidden ? 'opacity-75' : ''}`}
               >
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
                   {entry.is_dir ? (
@@ -800,6 +828,11 @@ export const StorageMemoryPanel: React.FC<{
                     <File className={`w-4 h-4 shrink-0 ${mutedCls}`} />
                   )}
                   <span className="truncate font-medium">{entry.name}</span>
+                  {entry.is_hidden && (
+                    <span className="px-1.5 py-0.5 rounded bg-zinc-500/20 text-[9px] font-mono uppercase shrink-0">
+                      скрытый
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className={`hidden sm:inline text-[10px] font-mono ${mutedCls}`}>

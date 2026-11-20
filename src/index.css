@@ -13,7 +13,7 @@
   }
 
   body {
-    font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: var(--luma-font-family, 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -32,39 +32,54 @@
   --luma-accent-hover: #b9151c;
   --luma-accent-soft: rgba(215, 25, 33, 0.14);
   --luma-accent-border: rgba(215, 25, 33, 0.45);
-  /* Live Opacity, Blur & Radius Engine (controlled from Settings -> Темы и Стол) */
+  /* Dynamic Theme RGB channels (auto-updated for all 8 themes + custom themes) */
+  --luma-surface-rgb: 18, 18, 22;
+  --luma-card-rgb: 22, 22, 27;
+  --luma-bar-rgb: 12, 12, 15;
+  /* Live Opacity, Blur, Radius & Typography Engine */
   --luma-glass-alpha: 0.90;
   --luma-card-alpha: 0.86;
-  --luma-blur: 24px;
+  --luma-blur: 22px;
   --luma-radius: 18px;
-}
-
-html[data-design="pixelbook"] {
-  --luma-accent: #1a73e8;
-  --luma-accent-hover: #1557b0;
-  --luma-accent-soft: rgba(26, 115, 232, 0.14);
-  --luma-accent-border: rgba(26, 115, 232, 0.45);
-}
-
-html.dark[data-design="pixelbook"] {
-  --luma-accent: #4285f4;
-  --luma-accent-hover: #3367d6;
-  --luma-accent-soft: rgba(66, 133, 244, 0.18);
-  --luma-accent-border: rgba(66, 133, 244, 0.5);
+  --luma-font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
 
-/* ==================== NOTHING × PIXELBOOK DESKTOP WALLPAPERS (SOFT MATTE LIGHT) ==================== */
+/* ==================== TRANSPARENT TEXTURE OVERLAYS (LAYERED CLEANLY OVER ANY OF THE 8 THEMES) ==================== */
+.luma-pattern-dots-dark {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.10) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.luma-pattern-dots-light {
+  background-image: radial-gradient(rgba(24, 24, 27, 0.14) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.luma-pattern-grid-dark {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.luma-pattern-grid-light {
+  background-image:
+    linear-gradient(to right, rgba(24, 24, 27, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(24, 24, 27, 0.07) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Legacy fallback classes kept for compatibility */
 .luma-bg-dots-dark {
   background-color: #09090b;
   background-image: radial-gradient(rgba(255, 255, 255, 0.11) 1px, transparent 1px);
   background-size: 22px 22px;
 }
 
-/* Soft, eye-friendly muted paper tone (replaces harsh pure white) */
 .luma-bg-dots-light {
   background-color: #dcddd7;
   background-image: radial-gradient(rgba(24, 24, 27, 0.16) 1px, transparent 1px);
@@ -103,9 +118,9 @@ html.dark[data-design="pixelbook"] {
     linear-gradient(160deg, #dde3ec 0%, #d4dce8 55%, #ccd5e3 100%);
 }
 
-/* ==================== REAL WORKING TRANSPARENCY & BLUR SURFACES ==================== */
+/* ==================== THEME-DRIVEN TRANSPARENCY & BLUR SURFACES ==================== */
 .dex-window-dark {
-  background: rgba(16, 16, 19, var(--luma-glass-alpha));
+  background: rgba(var(--luma-surface-rgb), var(--luma-glass-alpha));
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.78), 0 0 0 1px rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(var(--luma-blur)) saturate(135%);
@@ -113,7 +128,7 @@ html.dark[data-design="pixelbook"] {
 }
 
 .dex-window-light {
-  background: rgba(232, 233, 228, var(--luma-glass-alpha));
+  background: rgba(var(--luma-surface-rgb), var(--luma-glass-alpha));
   border: 1px solid rgba(24, 24, 27, 0.14);
   box-shadow: 0 20px 54px -16px rgba(17, 17, 19, 0.2), 0 2px 8px rgba(17, 17, 19, 0.06);
   backdrop-filter: blur(var(--luma-blur)) saturate(125%);
@@ -121,67 +136,84 @@ html.dark[data-design="pixelbook"] {
 }
 
 .dex-window-pixel-dark {
-  background: rgba(22, 28, 39, var(--luma-glass-alpha));
-  border: 1px solid rgba(138, 180, 248, 0.18);
+  background: rgba(var(--luma-surface-rgb), var(--luma-glass-alpha));
+  border: 1px solid var(--luma-accent-border);
   box-shadow: 0 24px 64px -14px rgba(3, 8, 18, 0.74), 0 2px 12px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(var(--luma-blur)) saturate(150%);
   -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(150%);
 }
 
 .dex-window-pixel-light {
-  background: rgba(232, 237, 245, var(--luma-glass-alpha));
-  border: 1px solid rgba(26, 115, 232, 0.18);
+  background: rgba(var(--luma-surface-rgb), var(--luma-glass-alpha));
+  border: 1px solid var(--luma-accent-border);
   box-shadow: 0 20px 54px -14px rgba(20, 42, 82, 0.18), 0 2px 10px rgba(20, 42, 82, 0.06);
   backdrop-filter: blur(var(--luma-blur)) saturate(145%);
   -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(145%);
 }
 
 .luma-widget-dark {
-  background: rgba(18, 18, 22, var(--luma-card-alpha));
-  backdrop-filter: blur(var(--luma-blur)) saturate(130%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(130%);
+  background: rgba(var(--luma-card-rgb), var(--luma-card-alpha));
+  backdrop-filter: blur(var(--luma-blur)) saturate(135%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(135%);
 }
 
 .luma-widget-light {
-  background: rgba(236, 237, 232, var(--luma-card-alpha));
-  backdrop-filter: blur(var(--luma-blur)) saturate(120%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(120%);
+  background: rgba(var(--luma-card-rgb), var(--luma-card-alpha));
+  backdrop-filter: blur(var(--luma-blur)) saturate(125%);
+  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(125%);
 }
 
 .luma-widget-pixel-dark {
-  background: rgba(23, 30, 43, var(--luma-card-alpha));
+  background: rgba(var(--luma-card-rgb), var(--luma-card-alpha));
   backdrop-filter: blur(var(--luma-blur)) saturate(145%);
   -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(145%);
 }
 
 .luma-widget-pixel-light {
-  background: rgba(234, 239, 247, var(--luma-card-alpha));
+  background: rgba(var(--luma-card-rgb), var(--luma-card-alpha));
   backdrop-filter: blur(var(--luma-blur)) saturate(140%);
   -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(140%);
 }
 
 .luma-taskbar-dark {
-  background: rgba(11, 11, 14, var(--luma-glass-alpha));
+  background: rgba(var(--luma-bar-rgb), var(--luma-glass-alpha));
   backdrop-filter: blur(var(--luma-blur)) saturate(140%);
   -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(140%);
 }
 
 .luma-taskbar-light {
-  background: rgba(231, 232, 227, var(--luma-glass-alpha));
+  background: rgba(var(--luma-bar-rgb), var(--luma-glass-alpha));
   backdrop-filter: blur(var(--luma-blur)) saturate(125%);
   -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(125%);
 }
 
 .luma-taskbar-pixel-dark {
-  background: rgba(18, 24, 36, var(--luma-glass-alpha));
+  background: rgba(var(--luma-bar-rgb), var(--luma-glass-alpha));
   backdrop-filter: blur(var(--luma-blur)) saturate(150%);
   -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(150%);
 }
 
 .luma-taskbar-pixel-light {
-  background: rgba(230, 236, 245, var(--luma-glass-alpha));
+  background: rgba(var(--luma-bar-rgb), var(--luma-glass-alpha));
   backdrop-filter: blur(var(--luma-blur)) saturate(145%);
   -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(145%);
+}
+
+/* ==================== HARMONYOS / HUAWEI WIDGET & FOLDER SHAPES ==================== */
+.luma-shape-squircle {
+  border-radius: var(--luma-radius, 18px) !important;
+}
+.luma-shape-circle {
+  border-radius: 9999px !important;
+}
+.luma-shape-pill {
+  border-radius: 40px !important;
+}
+.luma-shape-sharp {
+  border-radius: 6px !important;
+}
+.luma-shape-leaf {
+  border-radius: 30px 8px 30px 8px !important;
 }
 
 /* ==================== 4 SELECTABLE ANIMATION PRESETS (STANDARD / SPRING / GLIDE / NONE) ==================== */

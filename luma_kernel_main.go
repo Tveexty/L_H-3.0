@@ -30,6 +30,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,8 +44,8 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.0.3"
-	KernelCodename      = "Hydrogen"
+	KernelVersion       = "1.0.4"
+	KernelCodename      = "1.0.4"
 	KernelEngineVersion = "1.0"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
@@ -788,52 +790,323 @@ func main() {
 		_ = json.NewEncoder(w).Encode(picked)
 	})
 
-	// Real Top Host Processes (for Terminal `top` / `ps`)
-	mux.HandleFunc("/api/kernel/processes", func(w http.ResponseWriter, r *http.Request) {
+	// Real Host Open Windows (displayed live on Luma OS Taskbar!)
+	mux.HandleFunc("/api/kernel/windows", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		procs := kernel.probe.TopProcesses(12)
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "processes": procs})
+		wins := kernel.probe.ListOpenWindows()
+		if wins == nil {
+			wins = []HostWindowItem{}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "windows": wins})
 	})
 
-	// Safe Host Filesystem Inspector (for Terminal `ls`/`cat` AND Settings -> Память и Файлы)
+	// Bring a real OS application window to the foreground from Luma Taskbar / Task Manager
+	mux.HandleFunc("/api/kernel/windows/focus", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			PID int `json:"pid"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		err := kernel.probe.FocusWindow(payload.PID)
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "pid": payload.PID})
+	})
+
+	// Real Top Host Processes (for Task Manager & Terminal `top` / `ps`)
+	mux.HandleFunc("/api/kernel/processes", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		limit := 50
+		if qLim := r.URL.Query().Get("limit"); qLim != "" {
+			if n, err := strconv.Atoi(qLim); err == nil && n > 0 && n <= 80 {
+				limit = n
+			}
+		}
+		procs := kernel.probe.TopProcesses(limit)
+		if procs == nil {
+			procs = []ProcessMetric{}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":         true,
+			"self_pid":   os.Getpid(),
+			"processes":  procs,
+		})
+	})
+
+	// Close / Terminate a host process from Task Manager or Taskbar
+	mux.HandleFunc("/api/kernel/processes/kill", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			PID   int  `json:"pid"`
+			Force bool `json:"force"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		err := kernel.probe.KillProcess(payload.PID, payload.Force)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "pid": payload.PID})
+	})
+
+	// Full Windows-Grade Host Filesystem API (Luma Explorer + Storage & Files + Terminal — shows ALL files including hidden!)
+	var copyPathRecursive func(src, dst string) error
+	copyPathRecursive = func(src, dst string) error {
+		info, err := os.Stat(src)
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			if err := os.MkdirAll(dst, info.Mode()); err != nil {
+				return err
+			}
+			entries, err := os.ReadDir(src)
+			if err != nil {
+				return err
+			}
+			for _, e := range entries {
+				if err := copyPathRecursive(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		in, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+		outF, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
+		if err != nil {
+			return err
+		}
+		defer outF.Close()
+		_, err = io.Copy(outF, in)
+		return err
+	}
+
 	mux.HandleFunc("/api/kernel/fs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		var payload struct {
-			Action string `json:"action"`
-			Path   string `json:"path"`
+			Action     string `json:"action"`
+			Path       string `json:"path"`
+			TargetPath string `json:"target_path"`
+			Name       string `json:"name"`
+			Query      string `json:"query"`
+			Content    string `json:"content"`
+			ShowHidden *bool  `json:"show_hidden"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&payload)
-		target := strings.TrimSpace(payload.Path)
-		if target == "" || target == "~" {
-			target, _ = os.UserHomeDir()
+		action := strings.ToLower(strings.TrimSpace(payload.Action))
+		if action == "" {
+			action = "ls"
 		}
-		if strings.HasPrefix(target, "~/") {
+
+		resolvePath := func(raw string) string {
+			p := strings.TrimSpace(raw)
+			if p == "" || p == "~" {
+				p, _ = os.UserHomeDir()
+			}
+			if strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
+				home, _ := os.UserHomeDir()
+				p = filepath.Join(home, p[2:])
+			}
+			if len(p) == 2 && p[1] == ':' {
+				p = p + `\`
+			}
+			return p
+		}
+
+		// Quick Folders & All Mounted Drives
+		if action == "drives" {
 			home, _ := os.UserHomeDir()
-			target = filepath.Join(home, target[2:])
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":            true,
+				"home":          home,
+				"quick_folders": kernel.probe.ListQuickFolders(),
+				"disks":         kernel.probe.Collect(LocationInfo{}).Disks,
+			})
+			return
 		}
-		// Normalize Windows drive roots like "C:" -> "C:\"
-		if len(target) == 2 && target[1] == ':' {
-			target = target + `\`
-		}
-		if strings.EqualFold(payload.Action, "cat") {
+
+		target := resolvePath(payload.Path)
+
+		switch action {
+		case "cat", "read":
 			data, err := os.ReadFile(target)
 			if err != nil {
 				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
 				return
 			}
-			if len(data) > 16384 {
-				data = data[:16384]
+			if len(data) > 65536 {
+				data = data[:65536]
 			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": target, "content": string(data)})
 			return
+
+		case "mkdir":
+			dirPath := target
+			if strings.TrimSpace(payload.Name) != "" {
+				dirPath = filepath.Join(target, strings.TrimSpace(payload.Name))
+			}
+			if err := os.MkdirAll(dirPath, 0o755); err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": dirPath})
+			return
+
+		case "newfile", "touch":
+			filePath := target
+			if strings.TrimSpace(payload.Name) != "" {
+				filePath = filepath.Join(target, strings.TrimSpace(payload.Name))
+			}
+			if err := os.WriteFile(filePath, []byte(payload.Content), 0o644); err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": filePath})
+			return
+
+		case "rename":
+			newName := strings.TrimSpace(payload.Name)
+			dst := resolvePath(payload.TargetPath)
+			if newName != "" {
+				dst = filepath.Join(filepath.Dir(target), newName)
+			}
+			if err := os.Rename(target, dst); err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": dst})
+			return
+
+		case "move":
+			dstDir := resolvePath(payload.TargetPath)
+			dst := filepath.Join(dstDir, filepath.Base(target))
+			if err := os.Rename(target, dst); err != nil {
+				// Fallback cross-device copy + delete
+				if err2 := copyPathRecursive(target, dst); err2 != nil {
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err2.Error()})
+					return
+				}
+				_ = os.RemoveAll(target)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": dst})
+			return
+
+		case "copy":
+			dstDir := resolvePath(payload.TargetPath)
+			base := filepath.Base(target)
+			dst := filepath.Join(dstDir, base)
+			if dst == target {
+				ext := filepath.Ext(base)
+				stem := strings.TrimSuffix(base, ext)
+				dst = filepath.Join(dstDir, stem+"_copy"+ext)
+			}
+			if err := copyPathRecursive(target, dst); err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": dst})
+			return
+
+		case "delete", "rm":
+			if target == "/" || (len(target) <= 3 && strings.Contains(target, ":")) {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Защита от удаления корня диска"})
+				return
+			}
+			if err := os.RemoveAll(target); err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": target})
+			return
+
+		case "search":
+			q := strings.ToLower(strings.TrimSpace(payload.Query))
+			if q == "" {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": target, "entries": []FsEntry{}})
+				return
+			}
+			showHidden := true
+			if payload.ShowHidden != nil {
+				showHidden = *payload.ShowHidden
+			}
+			var found []FsEntry
+			visited := 0
+			_ = filepath.WalkDir(target, func(p string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return nil
+				}
+				if p == target {
+					return nil
+				}
+				visited++
+				if visited > 4500 || len(found) >= 180 {
+					return filepath.SkipAll
+				}
+				name := d.Name()
+				hidden := kernel.probe.IsPathHidden(p, name)
+				if !showHidden && hidden {
+					if d.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+				if strings.Contains(strings.ToLower(name), q) {
+					info, _ := d.Info()
+					var sz int64
+					mod := ""
+					if info != nil {
+						sz = info.Size()
+						mod = info.ModTime().Format("02.01.2006 15:04")
+					}
+					found = append(found, FsEntry{
+						Name:     name,
+						Path:     p,
+						IsDir:    d.IsDir(),
+						Size:     sz,
+						ModTime:  mod,
+						Ext:      strings.ToLower(filepath.Ext(name)),
+						IsHidden: hidden,
+					})
+				}
+				return nil
+			})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":      true,
+				"path":    target,
+				"entries": found,
+			})
+			return
+		}
+
+		// Default: ls — lists ALL entries including hidden files by default!
+		showHidden := true
+		if payload.ShowHidden != nil {
+			showHidden = *payload.ShowHidden
 		}
 		entries, err := os.ReadDir(target)
 		if err != nil {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
 			return
 		}
-		var out []FsEntry
+		out := make([]FsEntry, 0, len(entries))
+		hiddenCount := 0
 		for _, e := range entries {
+			name := e.Name()
+			full := filepath.Join(target, name)
+			hidden := kernel.probe.IsPathHidden(full, name)
+			if hidden {
+				hiddenCount++
+			}
+			if !showHidden && hidden {
+				continue
+			}
 			info, _ := e.Info()
 			var sz int64
 			mod := ""
@@ -842,25 +1115,35 @@ func main() {
 				mod = info.ModTime().Format("02.01.2006 15:04")
 			}
 			out = append(out, FsEntry{
-				Name:    e.Name(),
-				Path:    filepath.Join(target, e.Name()),
-				IsDir:   e.IsDir(),
-				Size:    sz,
-				ModTime: mod,
+				Name:     name,
+				Path:     full,
+				IsDir:    e.IsDir(),
+				Size:     sz,
+				ModTime:  mod,
+				Ext:      strings.ToLower(filepath.Ext(name)),
+				IsHidden: hidden,
 			})
-			if len(out) >= 120 {
+			if len(out) >= 2000 {
 				break
 			}
 		}
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].IsDir != out[j].IsDir {
+				return out[i].IsDir
+			}
+			return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+		})
 		parent := filepath.Dir(target)
 		if parent == target {
 			parent = ""
 		}
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"ok":      true,
-			"path":    target,
-			"parent":  parent,
-			"entries": out,
+			"ok":           true,
+			"path":         target,
+			"parent":       parent,
+			"hidden_count": hiddenCount,
+			"total_count":  len(out),
+			"entries":      out,
 		})
 	})
 
@@ -975,12 +1258,12 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "fullscreen": isNativeFullscreen()})
 	})
 
-	// Serve standalone executable download for LumaOS_1.0.3.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.0.4.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.3.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.4.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -988,12 +1271,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.3.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.4.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.0.4.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.3.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.2b.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.2.exe", serveExe)
@@ -1023,7 +1307,7 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.0.2b — MONO DESKTOP & KERNEL")
+	log.Printf("  LUMA OS 1.0.4 — DESKTOP ENVIRONMENT & LUMACORE 1.0")
 	log.Printf("  - Desktop Environment:         http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:  tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Media API:  http://%s/api/kernel/system", addr)
