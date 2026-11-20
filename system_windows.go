@@ -377,7 +377,9 @@ func (p *platformProbe) Collect(loc LocationInfo) HostHardwareSnapshot {
 		Hostname:            host,
 		DeviceModel:         devModel,
 		Manufacturer:        devMfg,
-		KernelEngineVersion: "1.0",
+		KernelEngineVersion: KernelEngineVersion,
+		SecurityCoreVersion: SecurityCoreVersion,
+		AppCodename:         KernelCodename,
 		OSName:              osCap,
 		Arch:                runtime.GOARCH,
 		CPUModel:            cpuModel,
@@ -576,6 +578,24 @@ func (p *platformProbe) ExecutePowerAction(action string) error {
 		return exec.Command("rundll32.exe", "user32.dll,LockWorkStation").Start()
 	case "sleep":
 		return exec.Command("rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0").Start()
+	case "hibernate":
+		return exec.Command("shutdown.exe", "/h").Start()
+	case "shutdown":
+		restoreWindowsShell()
+		return exec.Command("shutdown.exe", "/s", "/t", "0").Start()
+	case "restart", "reboot":
+		restoreWindowsShell()
+		return exec.Command("shutdown.exe", "/r", "/t", "0").Start()
+	case "signout", "logout":
+		restoreWindowsShell()
+		return exec.Command("shutdown.exe", "/l").Start()
+	case "exit_luma":
+		restoreWindowsShell()
+		go func() {
+			time.Sleep(250 * time.Millisecond)
+			os.Exit(0)
+		}()
+		return nil
 	case "recycle_bin":
 		return exec.Command("explorer.exe", "shell:RecycleBinFolder").Start()
 	default:
@@ -853,4 +873,175 @@ func (p *platformProbe) ExecShell(command string) (string, string, int) {
 	}
 	return strings.TrimRight(stdout.String(), "\r\n"), strings.TrimRight(stderr.String(), "\r\n"), code
 }
+
+func (p *platformProbe) GetDefenderStatus() DefenderStatus {
+	def := DefenderStatus{
+		Available:        false,
+		RealtimeEnabled:  false,
+		AntivirusEnabled: false,
+		SignatureVersion: "—",
+		CompatibleNote:   "LumaShield 1.1 работает в user-space режиме поверх системы и не конфликтует с Windows Defender",
+		ConflictFree:     true,
+	}
+	script := `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $st = Get-MpComputerStatus -ErrorAction Stop
+  @{
+    available = $true
+    realtime  = [bool]$st.RealTimeProtectionEnabled
+    av        = [bool]$st.AntivirusEnabled
+    sig       = [string]$st.AntivirusSignatureVersion
+  } | ConvertTo-Json -Compress
+} catch {
+  '{"available":false,"realtime":false,"av":false,"sig":"—"}'
+}`
+	out, err := runHiddenPowerShell(script)
+	if err != nil || out == "" {
+		return def
+	}
+	var parsed struct {
+		Available bool   `json:"available"`
+		Realtime  bool   `json:"realtime"`
+		AV        bool   `json:"av"`
+		Sig       string `json:"sig"`
+	}
+	if json.Unmarshal([]byte(out), &parsed) == nil {
+		def.Available = parsed.Available
+		def.RealtimeEnabled = parsed.Realtime
+		def.AntivirusEnabled = parsed.AV
+		if parsed.Sig != "" {
+			def.SignatureVersion = parsed.Sig
+		}
+	}
+	return def
+}
+
+func (p *platformProbe) ListSystemServices(limit int) []SystemServiceInfo {
+	if limit <= 0 || limit > 120 {
+		limit = 60
+	}
+	script := fmt.Sprintf(`
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$svcs = Get-Service -ErrorAction SilentlyContinue | Sort-Object @{Expression={$_.Status -ne 'Running'}}, DisplayName | Select-Object -First %d
+$out = foreach ($s in $svcs) {
+  [PSCustomObject]@{
+    name = [string]$s.Name
+    display_name = [string]$s.DisplayName
+    status = [string]$s.Status
+    start_type = [string]$s.StartType
+    source = "os"
+  }
+}
+@($out) | ConvertTo-Json -Compress
+`, limit)
+	out, err := runHiddenPowerShell(script)
+	if err != nil || out == "" {
+		return []SystemServiceInfo{}
+	}
+	var list []SystemServiceInfo
+	if strings.HasPrefix(out, "[") {
+		_ = json.Unmarshal([]byte(out), &list)
+	} else if strings.HasPrefix(out, "{") {
+		var single SystemServiceInfo
+		if json.Unmarshal([]byte(out), &single) == nil {
+			list = append(list, single)
+		}
+	}
+	return list
+}
+
+func (p *platformProbe) ListStartupItems() []StartupEntry {
+	script := `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$items = @()
+foreach ($loc in @(
+  @{ Path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'; Label = 'HKCU Run' },
+  @{ Path = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run'; Label = 'HKLM Run' }
+)) {
+  try {
+    $props = Get-ItemProperty -Path $loc.Path -ErrorAction Stop
+    foreach ($p in $props.PSObject.Properties) {
+      if ($p.Name -notlike 'PS*') {
+        $items += [PSCustomObject]@{
+          name = [string]$p.Name
+          command = [string]$p.Value
+          location = $loc.Label
+          enabled = $true
+          impact = "Среднее"
+        }
+      }
+    }
+  } catch {}
+}
+@($items) | ConvertTo-Json -Compress
+`
+	out, err := runHiddenPowerShell(script)
+	if err != nil || out == "" {
+		return []StartupEntry{}
+	}
+	var list []StartupEntry
+	if strings.HasPrefix(out, "[") {
+		_ = json.Unmarshal([]byte(out), &list)
+	} else if strings.HasPrefix(out, "{") {
+		var single StartupEntry
+		if json.Unmarshal([]byte(out), &single) == nil {
+			list = append(list, single)
+		}
+	}
+	return list
+}
+
+func (p *platformProbe) OpenSystemApplet(applet string) error {
+	runCmd := func(name string, args ...string) error {
+		c := exec.Command(name, args...)
+		c.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		return c.Start()
+	}
+	switch strings.ToLower(strings.TrimSpace(applet)) {
+	case "settings":
+		return runCmd("cmd", "/c", "start", "", "ms-settings:")
+	case "display":
+		return runCmd("cmd", "/c", "start", "", "ms-settings:display")
+	case "sound":
+		return runCmd("cmd", "/c", "start", "", "mmsys.cpl")
+	case "network":
+		return runCmd("cmd", "/c", "start", "", "ncpa.cpl")
+	case "bluetooth":
+		return runCmd("cmd", "/c", "start", "", "ms-settings:bluetooth")
+	case "power":
+		return runCmd("cmd", "/c", "start", "", "powercfg.cpl")
+	case "defender":
+		return runCmd("cmd", "/c", "start", "", "windowsdefender:")
+	case "firewall":
+		return runCmd("cmd", "/c", "start", "", "wf.msc")
+	case "devmgmt":
+		return runCmd("cmd", "/c", "start", "", "devmgmt.msc")
+	case "services":
+		return runCmd("cmd", "/c", "start", "", "services.msc")
+	case "control":
+		return runCmd("control.exe")
+	case "taskschd":
+		return runCmd("cmd", "/c", "start", "", "taskschd.msc")
+	case "snip":
+		return runCmd("cmd", "/c", "start", "", "ms-screenclip:")
+	case "osk":
+		return runCmd("osk.exe")
+	case "calc":
+		return runCmd("calc.exe")
+	case "notepad":
+		return runCmd("notepad.exe")
+	case "cmd":
+		return exec.Command("cmd.exe", "/c", "start", "cmd.exe").Start()
+	case "powershell":
+		return exec.Command("cmd.exe", "/c", "start", "powershell.exe").Start()
+	case "regedit":
+		return runCmd("cmd", "/c", "start", "", "regedit.exe")
+	case "winver":
+		return runCmd("winver.exe")
+	default:
+		return fmt.Errorf("unknown system applet: %s", applet)
+	}
+}
+
 

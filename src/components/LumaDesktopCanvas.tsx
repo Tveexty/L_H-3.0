@@ -254,6 +254,11 @@ export interface LumaDesktopCanvasProps {
   pendingFolderBatch?: { id: number; label: string; items: FolderEntry[] } | null;
   onConsumePendingFolderBatch?: () => void;
   onInspectProperties?: (info: { label: string; path: string; kind: string; app?: AppItem; onDelete?: () => void }) => void;
+  locale?: string;
+  taskbarSizePx?: number;
+  wallpaperImageUrl?: string;
+  wallpaperBlur?: number;
+  wallpaperDim?: number;
 }
 
 export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
@@ -308,6 +313,11 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   pendingFolderBatch,
   onConsumePendingFolderBatch,
   onInspectProperties,
+  locale = 'ru-RU',
+  taskbarSizePx = 54,
+  wallpaperImageUrl = '',
+  wallpaperBlur = 0,
+  wallpaperDim = 25,
 }) => {
   const totalRows = 10;
   const totalCells = gridCols * totalRows;
@@ -362,6 +372,68 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
   const [folderRenameDraft, setFolderRenameDraft] = useState('');
   const [openNoteItem, setOpenNoteItem] = useState<{ id: string; label: string; icon: string; target: string; content: string; fromFolderId?: string } | null>(null);
+
+  // User-customizable Currency & Markets widget state (persisted in localStorage)
+  const ALL_CURRENCIES = ['USD', 'EUR', 'RUB', 'MDL', 'RON', 'UAH', 'GBP', 'CNY', 'JPY', 'KZT', 'TRY', 'CHF', 'PLN', 'BYN', 'AED', 'BTC', 'ETH', 'USDT'];
+  const CURRENCY_SYMBOLS: Record<string, string> = {
+    RUB: '₽', USD: '$', EUR: '€', GBP: '£', CNY: '¥', JPY: '¥', UAH: '₴', MDL: 'L', RON: 'lei', KZT: '₸', TRY: '₺', PLN: 'zł', CHF: 'Fr', BYN: 'Br', AED: 'د.إ', BTC: '₿', ETH: 'Ξ', USDT: '₮',
+  };
+  const [currencyBase, setCurrencyBase] = useState<string>(() => {
+    try {
+      return localStorage.getItem('luma_currency_base_v1') || 'RUB';
+    } catch {
+      return 'RUB';
+    }
+  });
+  const [trackedCurrencies, setTrackedCurrencies] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('luma_currency_list_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return ['USD', 'EUR', 'MDL', 'BTC'];
+  });
+  const [currencyRates, setCurrencyRates] = useState<Record<string, number>>({
+    USD: 92.5, EUR: 100.5, MDL: 5.18, RON: 20.2, UAH: 2.24, GBP: 117.1, CNY: 12.78, JPY: 0.6, KZT: 0.19, TRY: 2.69, CHF: 105.1, PLN: 23.0, BYN: 28.2, AED: 25.2, BTC: 8720000, ETH: 306000, USDT: 92.5, RUB: 1,
+  });
+  const [currencyLive, setCurrencyLive] = useState(false);
+  const [currencyUpdatedAt, setCurrencyUpdatedAt] = useState('');
+  const [currencyConfigOpen, setCurrencyConfigOpen] = useState(false);
+  const [currencyConvertAmt, setCurrencyConvertAmt] = useState('100');
+  const [currencyConvertFrom, setCurrencyConvertFrom] = useState('USD');
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('luma_currency_base_v1', currencyBase);
+      localStorage.setItem('luma_currency_list_v1', JSON.stringify(trackedCurrencies));
+    } catch {
+      // ignore
+    }
+  }, [currencyBase, trackedCurrencies]);
+
+  const refreshCurrencyRates = async (base = currencyBase) => {
+    try {
+      const r = await fetch(`/api/kernel/currency?base=${encodeURIComponent(base)}`);
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.ok && d?.unit_in_base) {
+          setCurrencyRates(d.unit_in_base);
+          setCurrencyLive(Boolean(d.live));
+          setCurrencyUpdatedAt(d.updated_at || '');
+        }
+      }
+    } catch {
+      // fallback rates remain active
+    }
+  };
+
+  useEffect(() => {
+    void refreshCurrencyRates(currencyBase);
+  }, [currencyBase]);
 
   const openFolder = useMemo(
     () => (openFolderId ? shortcuts.find((s) => s.id === openFolderId && s.kind === 'folder') || null : null),
@@ -1144,7 +1216,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
         const hh = timeFormat === '12' ? String(hrs24 % 12 || 12).padStart(2, '0') : String(hrs24).padStart(2, '0');
         const mm = String(now.getMinutes()).padStart(2, '0');
         const ss = String(now.getSeconds()).padStart(2, '0');
-        const dayStr = now.toLocaleDateString('ru-RU', { weekday: 'short', day: '2-digit', month: 'short' });
+        const dayStr = now.toLocaleDateString(locale, { weekday: 'short', day: '2-digit', month: 'short' });
 
         if (variant === 'analog_circle' || isCircle) {
           const secDeg = now.getSeconds() * 6;
@@ -1182,11 +1254,11 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
 
         if (variant === 'square_matrix') {
           return (
-            <div className="h-full flex flex-col items-center justify-between text-center font-mono">
-              <div className={`text-[9px] uppercase tracking-[0.16em] ${mutedCls}`}>{dayStr}</div>
+            <div className="h-full px-1 py-0.5 flex flex-col items-center justify-between text-center font-mono">
+              <div className={`text-[9px] uppercase tracking-[0.14em] truncate max-w-full ${mutedCls}`}>{dayStr}</div>
               <div className="flex flex-col items-center leading-[0.88] font-black tracking-tighter tabular-nums">
-                <span className="text-4xl">{hh}</span>
-                <span className="text-4xl text-[var(--luma-accent)]">{mm}</span>
+                <span className="text-3xl sm:text-4xl">{hh}</span>
+                <span className="text-3xl sm:text-4xl text-[var(--luma-accent)]">{mm}</span>
               </div>
               <div className="px-2 py-0.5 rounded-full bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] text-[10px] font-bold tabular-nums">
                 :{ss}
@@ -1197,18 +1269,18 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
 
         if (variant === 'split_flip') {
           return (
-            <div className="h-full flex flex-col justify-between">
-              <div className={`flex justify-between text-[9px] font-mono uppercase tracking-[0.16em] ${mutedCls}`}>
-                <span>FLIP CLOCK</span>
-                <span>{dayStr}</span>
+            <div className="h-full px-1 py-0.5 flex flex-col justify-between">
+              <div className={`flex justify-between gap-2 text-[9px] font-mono uppercase tracking-[0.14em] ${mutedCls}`}>
+                <span className="truncate">FLIP CLOCK</span>
+                <span className="truncate">{dayStr}</span>
               </div>
               <div className="flex-1 flex items-center justify-center gap-2 font-mono font-black tabular-nums">
-                <div className={`relative flex-1 h-full max-h-20 rounded-lg border flex items-center justify-center text-4xl ${subBtnCls}`}>
+                <div className={`relative flex-1 h-full max-h-20 rounded-lg border flex items-center justify-center text-3xl sm:text-4xl ${subBtnCls}`}>
                   {hh}
                   <span className="absolute inset-x-0 top-1/2 h-px bg-black/35" />
                 </div>
                 <span className="text-2xl text-[var(--luma-accent)] animate-pulse">:</span>
-                <div className={`relative flex-1 h-full max-h-20 rounded-lg border flex items-center justify-center text-4xl ${subBtnCls}`}>
+                <div className={`relative flex-1 h-full max-h-20 rounded-lg border flex items-center justify-center text-3xl sm:text-4xl ${subBtnCls}`}>
                   {mm}
                   <span className="absolute inset-x-0 top-1/2 h-px bg-black/35" />
                 </div>
@@ -1219,8 +1291,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
 
         if (variant === 'pill_minimal' || isPill) {
           return (
-            <div className="h-full flex items-center justify-between gap-3 px-2 font-mono">
-              <div className="flex items-center gap-2">
+            <div className="h-full flex items-center justify-between gap-3 px-3 font-mono">
+              <div className="flex items-center gap-2 shrink-0">
                 <span className="w-2 h-2 rounded-full bg-[var(--luma-accent)]" />
                 <span className="text-xl font-extrabold tabular-nums">
                   {hh}:{mm}
@@ -1245,6 +1317,9 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
             clockBlinkColon={clockBlinkColon}
             isDark={isDark}
             cityLabel={liveSystem?.location?.city || 'LUMA DESKTOP'}
+            locale={locale}
+            widgetW={w.w}
+            widgetH={w.h}
           />
         );
       }
@@ -2046,28 +2121,59 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
         );
       }
 
-      case 'luma_markets':
+      case 'luma_markets': {
+        const baseSym = CURRENCY_SYMBOLS[currencyBase] || currencyBase;
+        const visibleList = trackedCurrencies.filter((c) => c !== currencyBase).slice(0, w.w >= 5 ? 4 : 3);
+        const fmtRate = (val: number) => {
+          if (!Number.isFinite(val)) return '—';
+          if (val >= 100000) return `${(val / 1000).toFixed(0)}k`;
+          if (val >= 10000) return `${(val / 1000).toFixed(1)}k`;
+          if (val >= 100) return val.toFixed(1);
+          if (val >= 1) return val.toFixed(2);
+          return val.toFixed(3);
+        };
         return (
-          <div className="h-full flex flex-col justify-between">
-            <div className={`inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-[0.14em] ${mutedCls}`}>
-              <TrendingUp className="w-3 h-3" />
-              РЫНКИ
+          <div className="h-full flex flex-col justify-between gap-1.5 px-0.5">
+            <div className="flex items-center justify-between gap-1">
+              <div className={`inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-[0.12em] truncate ${mutedCls}`}>
+                <TrendingUp className="w-3 h-3 text-[var(--luma-accent)] shrink-0" />
+                <span>ВАЛЮТЫ · {currencyBase}</span>
+                {currencyLive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" title="Живые курсы" />}
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrencyConfigOpen(true);
+                }}
+                title="Настроить валюты и конвертер"
+                className={`px-1.5 py-0.5 rounded-lg border text-[9px] font-mono cursor-pointer transition hover:border-[var(--luma-accent)] ${subBtnCls}`}
+              >
+                Изм.
+              </button>
             </div>
-            <div className="grid grid-cols-3 gap-2 font-mono text-[11px]">
-              {[
-                ['BTC', '94.2k', '+2.4%'],
-                ['ETH', '3.31k', '+1.1%'],
-                ['USD', '92.4₽', '-0.3%'],
-              ].map(([sym, pr, ch]) => (
-                <div key={sym}>
-                  <div className={`text-[9px] ${mutedCls}`}>{sym}</div>
-                  <div className="font-bold tabular-nums">{pr}</div>
-                  <div className={`text-[9px] ${ch.startsWith('+') ? 'text-emerald-500' : 'text-[var(--luma-accent)]'}`}>{ch}</div>
-                </div>
-              ))}
+            <div
+              className="grid gap-2 font-mono text-[11px]"
+              style={{ gridTemplateColumns: `repeat(${Math.max(1, visibleList.length)}, minmax(0, 1fr))` }}
+            >
+              {visibleList.map((sym) => {
+                const rate = currencyRates[sym];
+                return (
+                  <div key={sym} className="min-w-0">
+                    <div className={`text-[9px] truncate ${mutedCls}`}>{sym}</div>
+                    <div className="font-bold tabular-nums truncate">
+                      {fmtRate(rate)}
+                      <span className="text-[9px] opacity-75 ml-0.5">{baseSym}</span>
+                    </div>
+                    <div className="text-[8px] text-emerald-500 truncate">
+                      {currencyUpdatedAt ? currencyUpdatedAt : 'LIVE'}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
+      }
 
       case 'luma_power': {
         const actions = [
@@ -2173,12 +2279,12 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
     }
   };
 
-  const gridPadCls =
+  const dynamicGridPadStyle: React.CSSProperties =
     taskbarPosition === 'top'
-      ? 'p-3 pt-16'
+      ? { padding: '12px', paddingTop: `${taskbarSizePx + 14}px` }
       : taskbarPosition === 'left'
-      ? 'p-3 pl-[68px]'
-      : 'p-3 pb-16';
+      ? { padding: '12px', paddingLeft: `${taskbarSizePx + 14}px` }
+      : { padding: '12px', paddingBottom: `${taskbarSizePx + 14}px` };
 
   const modalShellCls = isPixel
     ? isDark
@@ -2202,6 +2308,28 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           (isDark ? 'linear-gradient(160deg, #09090b 0%, #101014 100%)' : 'linear-gradient(160deg, #e1e2dc 0%, #d4d6ce 100%)'),
       }}
     >
+      {/* Optional Custom Wallpaper Image Layer with Adjustable Blur & Dimming */}
+      {wallpaperImageUrl && (
+        <>
+          <div
+            className="pointer-events-none absolute inset-0 bg-cover bg-center transition-all duration-500"
+            style={{
+              backgroundImage: `url("${wallpaperImageUrl}")`,
+              filter: wallpaperBlur > 0 ? `blur(${wallpaperBlur}px)` : undefined,
+              transform: wallpaperBlur > 0 ? 'scale(1.06)' : undefined,
+            }}
+          />
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundColor: isDark
+                ? `rgba(7, 7, 12, ${Math.min(0.85, Math.max(0, wallpaperDim / 100))})`
+                : `rgba(240, 240, 236, ${Math.min(0.75, Math.max(0, wallpaperDim / 120))})`,
+            }}
+          />
+        </>
+      )}
+
       {/* Subtle transparent texture overlay (Dots / Grid / Matte) over ANY theme */}
       {patternOverlayCls && <div className={`pointer-events-none absolute inset-0 ${patternOverlayCls}`} />}
 
@@ -2220,7 +2348,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
       {/* FULL-VIEWPORT 22x10 (220 CELLS) OR 20x10 (200 CELLS) DESKTOP MATRIX */}
       <div
         ref={gridRef}
-        className={`relative z-10 w-full h-full ${gridPadCls}`}
+        className="relative z-10 w-full h-full"
         onMouseLeave={() => setHoveredCell(null)}
         onDragEnter={(e) => {
           if (e.dataTransfer?.types?.includes('Files')) setExternalFileDrag(true);
@@ -2232,6 +2360,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           }
         }}
         style={{
+          ...dynamicGridPadStyle,
           display: 'grid',
           gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`,
           gridTemplateRows: `repeat(${totalRows}, minmax(0, 1fr))`,
@@ -3894,6 +4023,124 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                   Удалить со стола
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOMIZABLE CURRENCY WIDGET MODAL + INSTANT CONVERTER */}
+      {currencyConfigOpen && (
+        <div
+          onClick={() => setCurrencyConfigOpen(false)}
+          className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`luma-animate-in w-full max-w-lg border p-5 shadow-2xl space-y-4 ${modalShellCls}`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-extrabold flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-[var(--luma-accent)]" />
+                  Настройка валют и конвертер
+                </div>
+                <div className={`text-[11px] font-mono ${mutedCls}`}>
+                  {currencyLive ? `Живые курсы · обновлено ${currencyUpdatedAt}` : 'Автономные курсы (нажмите Обновить)'}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => void refreshCurrencyRates(currencyBase)}
+                  className={`px-2.5 py-1 rounded-lg border text-xs font-mono cursor-pointer ${subBtnCls}`}
+                >
+                  Обновить
+                </button>
+                <button onClick={() => setCurrencyConfigOpen(false)} className={`p-1.5 rounded-lg border cursor-pointer ${subBtnCls}`}>
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Base Currency Selector */}
+            <div className="space-y-1.5">
+              <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>
+                Базовая валюта (в чём показывать курсы)
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {['RUB', 'MDL', 'USD', 'EUR', 'RON', 'UAH', 'GBP', 'CNY', 'KZT', 'TRY', 'PLN', 'CHF', 'JPY'].map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setCurrencyBase(c)}
+                    className={`px-2.5 py-1 rounded-lg border text-xs font-mono font-bold cursor-pointer transition ${
+                      currencyBase === c ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : subBtnCls
+                    }`}
+                  >
+                    {c} {CURRENCY_SYMBOLS[c] || ''}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tracked Currencies Toggle Grid */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider">
+                <span className={mutedCls}>Отслеживаемые валюты в виджете ({trackedCurrencies.length})</span>
+                <span className="text-[var(--luma-accent)]">Выберите до 4-х</span>
+              </div>
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+                {ALL_CURRENCIES.filter((c) => c !== currencyBase).map((sym) => {
+                  const active = trackedCurrencies.includes(sym);
+                  return (
+                    <button
+                      key={sym}
+                      onClick={() => {
+                        setTrackedCurrencies((prev) => {
+                          if (prev.includes(sym)) {
+                            return prev.length > 1 ? prev.filter((x) => x !== sym) : prev;
+                          }
+                          return [...prev, sym].slice(-4);
+                        });
+                      }}
+                      className={`py-1.5 px-2 rounded-lg border text-xs font-mono cursor-pointer transition ${
+                        active ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white font-bold' : subBtnCls
+                      }`}
+                    >
+                      {sym}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Instant Currency Converter */}
+            <div className={`p-3 rounded-xl border space-y-2 ${subBtnCls}`}>
+              <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Быстрый конвертер</div>
+              <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+                <input
+                  type="number"
+                  value={currencyConvertAmt}
+                  onChange={(e) => setCurrencyConvertAmt(e.target.value)}
+                  className={`w-24 px-2.5 py-1.5 rounded-lg border outline-none ${subBtnCls}`}
+                />
+                <select
+                  value={currencyConvertFrom}
+                  onChange={(e) => setCurrencyConvertFrom(e.target.value)}
+                  className={`px-2.5 py-1.5 rounded-lg border outline-none ${subBtnCls}`}
+                >
+                  {ALL_CURRENCIES.map((c) => (
+                    <option key={c} value={c} className="bg-zinc-900 text-white">
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <span className="opacity-60">=</span>
+                <span className="text-sm font-black text-[var(--luma-accent)]">
+                  {((parseFloat(currencyConvertAmt) || 0) * (currencyRates[currencyConvertFrom] || 1)).toLocaleString(locale, {
+                    maximumFractionDigits: 2,
+                  })}{' '}
+                  {CURRENCY_SYMBOLS[currencyBase] || currencyBase}
+                </span>
+              </div>
             </div>
           </div>
         </div>

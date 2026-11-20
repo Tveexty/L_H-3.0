@@ -55,7 +55,7 @@ interface LumaSpotlightProps {
   currentTrack: string;
   onLaunchApp: (app: AppItem) => void;
   onOpenWindow: (
-    win: 'apps' | 'tracker' | 'kernel' | 'terminal' | 'settings' | 'plugins' | 'island' | 'spaces' | 'explorer' | 'taskmgr'
+    win: 'apps' | 'tracker' | 'kernel' | 'terminal' | 'settings' | 'plugins' | 'island' | 'spaces' | 'explorer' | 'taskmgr' | 'ai' | 'utilities'
   ) => void;
   onRunCommand?: (cmd: string) => void;
   onShowDesktop: () => void;
@@ -130,6 +130,26 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         run: () => onOpenWindow('taskmgr'),
       },
       {
+        id: 'win_ai',
+        group: 'Окна системы',
+        title: 'Luma AI (Gemini / OpenAI / Claude / Ollama)',
+        subtitle: 'Встроенная нейросеть с контекстом системы и терминалом',
+        shortcut: 'AI',
+        keywords: 'ии нейросеть gemini openai chatgpt claude ollama ai ассистент',
+        icon: <Cpu className="w-4 h-4" />,
+        run: () => onOpenWindow('ai'),
+      },
+      {
+        id: 'win_utilities',
+        group: 'Окна системы',
+        title: 'Службы и утилиты системы',
+        subtitle: 'Калькулятор, Блокнот, Службы ОС и 16 утилит Windows',
+        shortcut: 'TOOLS',
+        keywords: 'службы утилиты windows калькулятор блокнот реестр панель управления',
+        icon: <AppWindow className="w-4 h-4" />,
+        run: () => onOpenWindow('utilities'),
+      },
+      {
         id: 'win_apps',
         group: 'Окна системы',
         title: 'Приложения (Библиотека по группам)',
@@ -143,7 +163,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'win_terminal',
         group: 'Окна системы',
         title: 'Терминал Luma',
-        subtitle: 'Командная строка ядра Luma Core 1.0 (ПО 1.0.4)',
+        subtitle: 'Командная строка ядра LumaCore 1.1 (ПО 1.1.0 Helium)',
         shortcut: 'CLI',
         keywords: 'терминал консоль cmd shell cli',
         icon: <Terminal className="w-4 h-4" />,
@@ -161,9 +181,9 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'win_kernel',
         group: 'Окна системы',
-        title: 'Ядро LumaCore 1.0 & IPC',
-        subtitle: 'Телеметрия, журнал событий, код ядра и консоль JSON-RPC 2.0',
-        keywords: 'ядро код kernel ipc rpc',
+        title: 'Ядро LumaCore 1.1 & IPC',
+        subtitle: 'Телеметрия, LumaShield 1.1, код ядра и консоль JSON-RPC 2.0',
+        keywords: 'ядро код kernel ipc rpc безопасность',
         icon: <Code2 className="w-4 h-4" />,
         run: () => onOpenWindow('kernel'),
       },
@@ -171,7 +191,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'win_settings',
         group: 'Окна системы',
         title: 'Настройки системы',
-        subtitle: '8 тем, панель задач, 18 циферблатов, Luma Island, память',
+        subtitle: 'Языки, Безопасность и AV, Shell Mode, GitHub OTA, ИИ, темы',
         shortcut: 'SET',
         keywords: 'настройки параметры темы часы панель задач',
         icon: <Settings className="w-4 h-4" />,
@@ -533,7 +553,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
             isDark ? 'border-white/[0.08]' : 'border-zinc-200'
           }`}
         >
-          <span>LUMA RUN & SPOTLIGHT 1.0.4 · ↑↓ · ENTER</span>
+          <span>LUMA RUN & SPOTLIGHT 1.1.0 (HELIUM) · ↑↓ · ENTER</span>
           <span>ALT + R</span>
         </div>
       </div>

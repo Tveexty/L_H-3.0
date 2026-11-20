@@ -1,9 +1,9 @@
-// Luma OS 1.0.2 (Flagship Edition) — Native Kernel & Material 3 Expressive Dual-Window Shell
-// Architecture: Modular OS Kernel (HAL Hardware Probe, Activity/Process Manager,
-// Binder / JSON-RPC 2.0 IPC on 127.0.0.1:49215, LumaGuard AES-256-GCM + PBKDF2-HMAC-SHA512
-// SecurityKernel, Encrypted Virtual File System, Real Media/Audio Controller, Region Auto-Detection,
-// and 18-Widget Engine across Luma Pulse, Luma Aura, and Luma Core suites).
-// Compiles to a zero-dependency standalone executable: LumaOS_1.0.2.exe
+// Luma OS 1.1.0 (Helium) — Native Kernel & Desktop Shell
+// Architecture: Modular OS Kernel LumaCore 1.1 (HAL Hardware Probe, Activity/Process Manager,
+// Binder / JSON-RPC 2.0 IPC on 127.0.0.1:49215, LumaShield 1.1 Security Core & Zero-Conflict
+// Local Antivirus, Encrypted VFS, GitHub OTA Self-Updater, Universal AI Bridge, Live Currency
+// Engine, and Win32 Fullscreen/Taskbar Shell Mode).
+// Compiles to a zero-dependency standalone executable: LumaOS_1.1.0.exe
 
 package main
 
@@ -28,25 +28,28 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
 //go:embed dist
 var embeddedDist embed.FS
 
-//go:embed luma_kernel_main.go system_types.go system_windows.go system_unix.go Luma_Core LauncherHab3.0_CSharp src/components/LumaDesktopCanvas.tsx src/components/LumaGrid20x30Window.tsx
+//go:embed luma_kernel_main.go kernel_security.go kernel_updater_ai.go system_types.go system_windows.go system_unix.go Luma_Core LauncherHab3.0_CSharp src/components/LumaDesktopCanvas.tsx src/components/LumaGrid20x30Window.tsx
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.0.4"
-	KernelCodename      = "1.0.4"
-	KernelEngineVersion = "1.0"
+	KernelVersion       = "1.1.0"
+	KernelCodename      = "Helium"
+	KernelEngineVersion = "1.1"
+	SecurityCoreVersion = "1.1"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
 )
@@ -78,6 +81,7 @@ type LumaKernel struct {
 	processes   map[string]*ActiveProcess
 	widgets     []WidgetDescriptor
 	probe       *platformProbe
+	security    *SecurityKernel
 	location    LocationInfo
 	rpcRequests uint64
 }
@@ -123,6 +127,55 @@ func resolveVfsDir() string {
 	return dir
 }
 
+func resolvePath(raw string) string {
+	p := strings.TrimSpace(raw)
+	if p == "" || p == "~" {
+		p, _ = os.UserHomeDir()
+	}
+	if strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
+		home, _ := os.UserHomeDir()
+		p = filepath.Join(home, p[2:])
+	}
+	if len(p) == 2 && p[1] == ':' {
+		p = p + `\`
+	}
+	return p
+}
+
+func copyPathRecursive(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		if err := os.MkdirAll(dst, info.Mode()); err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(src)
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			if err := copyPathRecursive(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	outF, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
+	if err != nil {
+		return err
+	}
+	defer outF.Close()
+	_, err = io.Copy(outF, in)
+	return err
+}
+
 func NewLumaKernel() *LumaKernel {
 	vfsDir := resolveVfsDir()
 	host, _ := os.Hostname()
@@ -139,6 +192,7 @@ func NewLumaKernel() *LumaKernel {
 		processes:  make(map[string]*ActiveProcess),
 		widgets:    default18Widgets(),
 		probe:      newPlatformProbe(),
+		security:   NewSecurityKernel(),
 	}
 	k.loadEncryptedVFS()
 	go k.RefreshLocation()
@@ -346,35 +400,37 @@ func (k *LumaKernel) TelemetrySnapshot() map[string]interface{} {
 		"version":               KernelVersion,
 		"codename":              KernelCodename,
 		"kernel_engine_version": KernelEngineVersion,
+		"security_core_version": SecurityCoreVersion,
 		"device_model":          hw.DeviceModel,
 		"manufacturer":          hw.Manufacturer,
 		"os":                    hw.OSName,
 		"hostname":              hw.Hostname,
-		"arch":            hw.Arch,
-		"cpu_model":       hw.CPUModel,
-		"cpu_cores":       hw.CPUCores,
-		"cpu_percent":     hw.CPUPercent,
-		"gpu_name":        hw.GPUName,
-		"ram_used_gb":     hw.RAMUsedGB,
-		"ram_total_gb":    hw.RAMTotalGB,
-		"ram_percent":     hw.RAMPercent,
-		"battery_percent": hw.BatteryPercent,
-		"battery_charging": hw.BatteryCharging,
-		"net_down_mbps":   hw.NetDownMbps,
-		"net_up_mbps":     hw.NetUpMbps,
-		"disks":           hw.Disks,
-		"media":           hw.Media,
-		"location":        hw.Location,
-		"core_rss_mb":     rssMB,
-		"uptime_sec":      int(uptime),
-		"ipc_endpoint":    fmt.Sprintf("tcp://127.0.0.1:%d", DefaultRpcPort),
-		"vfs_path":        k.vfsDir,
-		"security_engine": "LumaGuard AES-256-GCM + PBKDF2-HMAC-SHA512 + HMAC-SHA256",
-		"widgets_count":   len(k.widgets),
-		"rpc_requests":    k.rpcRequests,
-		"active_procs":    len(k.processes),
-		"real_telemetry":  true,
-		"timestamp":       float64(time.Now().UnixMilli()) / 1000.0,
+		"arch":                  hw.Arch,
+		"cpu_model":             hw.CPUModel,
+		"cpu_cores":             hw.CPUCores,
+		"cpu_percent":           hw.CPUPercent,
+		"gpu_name":              hw.GPUName,
+		"ram_used_gb":           hw.RAMUsedGB,
+		"ram_total_gb":          hw.RAMTotalGB,
+		"ram_percent":           hw.RAMPercent,
+		"battery_percent":       hw.BatteryPercent,
+		"battery_charging":      hw.BatteryCharging,
+		"net_down_mbps":         hw.NetDownMbps,
+		"net_up_mbps":           hw.NetUpMbps,
+		"disks":                 hw.Disks,
+		"media":                 hw.Media,
+		"location":              hw.Location,
+		"core_rss_mb":           rssMB,
+		"uptime_sec":            int(uptime),
+		"ipc_endpoint":          fmt.Sprintf("tcp://127.0.0.1:%d", DefaultRpcPort),
+		"vfs_path":              k.vfsDir,
+		"security_engine":       "LumaShield 1.1 · AES-256-GCM + PBKDF2-HMAC-SHA512 + Zero-Conflict AV",
+		"shell_config":          getShellConfig(),
+		"widgets_count":         len(k.widgets),
+		"rpc_requests":          k.rpcRequests,
+		"active_procs":          len(k.processes),
+		"real_telemetry":        true,
+		"timestamp":             float64(time.Now().UnixMilli()) / 1000.0,
 	}
 }
 
@@ -580,16 +636,28 @@ func isLumaAlreadyRunning(httpPort int) bool {
 
 func main() {
 	runtime.LockOSThread()
-	httpPort := flag.Int("port", DefaultHttpPort, "HTTP port for Luma OS 1.0.2b Desktop")
-	rpcPort := flag.Int("rpc-port", DefaultRpcPort, "TCP JSON-RPC 2.0 port for Luma Core 1.0.2b")
-	headless := flag.Bool("headless", false, "Run Luma Core 1.0.2b daemon without opening desktop window")
+	httpPort := flag.Int("port", DefaultHttpPort, "HTTP port for Luma OS 1.1.0 (Helium) Desktop")
+	rpcPort := flag.Int("rpc-port", DefaultRpcPort, "TCP JSON-RPC 2.0 port for LumaCore 1.1")
+	headless := flag.Bool("headless", false, "Run LumaCore 1.1 daemon without opening desktop window")
+	startFullscreen := flag.Bool("fullscreen", false, "Start Luma OS 1.1.0 (Helium) immediately in fullscreen mode")
 	flag.Parse()
 
+	loadShellConfig()
+
+	// Always guarantee Windows taskbar & work area restoration on interrupt/termination
+	sigCh := make(chan os.Signal, 2)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		restoreWindowsShell()
+		os.Exit(0)
+	}()
+
 	if isLumaAlreadyRunning(*httpPort) {
-		log.Printf("[LumaOS 1.0.2b] Existing kernel daemon detected on 127.0.0.1:%d — attaching native window...", *httpPort)
+		log.Printf("[LumaOS 1.1.0 Helium] Existing kernel daemon detected on 127.0.0.1:%d — attaching native window...", *httpPort)
 		if !*headless && runtime.GOOS == "windows" {
 			winURL := fmt.Sprintf("http://127.0.0.1:%d/", *httpPort)
-			if !runNativeDesktopWindow(winURL) {
+			if !runNativeDesktopWindow(winURL, *startFullscreen) {
 				openNativeDesktopWindow(winURL, 1440, 900, 40, 40)
 			}
 		}
@@ -849,45 +917,13 @@ func main() {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
 			return
 		}
+		if kernel.security != nil {
+			kernel.security.LogAudit("warn", "process", "Завершение процесса ОС", fmt.Sprintf("PID %d (force=%v)", payload.PID, payload.Force))
+		}
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "pid": payload.PID})
 	})
 
 	// Full Windows-Grade Host Filesystem API (Luma Explorer + Storage & Files + Terminal — shows ALL files including hidden!)
-	var copyPathRecursive func(src, dst string) error
-	copyPathRecursive = func(src, dst string) error {
-		info, err := os.Stat(src)
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			if err := os.MkdirAll(dst, info.Mode()); err != nil {
-				return err
-			}
-			entries, err := os.ReadDir(src)
-			if err != nil {
-				return err
-			}
-			for _, e := range entries {
-				if err := copyPathRecursive(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		in, err := os.Open(src)
-		if err != nil {
-			return err
-		}
-		defer in.Close()
-		outF, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
-		if err != nil {
-			return err
-		}
-		defer outF.Close()
-		_, err = io.Copy(outF, in)
-		return err
-	}
-
 	mux.HandleFunc("/api/kernel/fs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		var payload struct {
@@ -903,21 +939,6 @@ func main() {
 		action := strings.ToLower(strings.TrimSpace(payload.Action))
 		if action == "" {
 			action = "ls"
-		}
-
-		resolvePath := func(raw string) string {
-			p := strings.TrimSpace(raw)
-			if p == "" || p == "~" {
-				p, _ = os.UserHomeDir()
-			}
-			if strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
-				home, _ := os.UserHomeDir()
-				p = filepath.Join(home, p[2:])
-			}
-			if len(p) == 2 && p[1] == ':' {
-				p = p + `\`
-			}
-			return p
 		}
 
 		// Quick Folders & All Mounted Drives
@@ -1258,12 +1279,226 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "fullscreen": isNativeFullscreen()})
 	})
 
-	// Serve standalone executable download for LumaOS_1.0.4.exe (with backward-compatible aliases)
+	// ==================== LUMA OS 1.1.0 (HELIUM) NEW KERNEL APIS ====================
+
+	// 1. Shell Mode, Autostart with Windows, Fullscreen-on-Start & Hide Windows Taskbar
+	mux.HandleFunc("/api/kernel/shell-mode", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodPost {
+			var cfg ShellModeConfig
+			if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			applied := applyShellModeConfig(cfg)
+			if kernel.security != nil {
+				kernel.security.LogAudit("info", "shell", "Обновлён режим оболочки Windows",
+					fmt.Sprintf("fullscreen=%v autostart=%v hide_win_bar=%v work_area=%v",
+						applied.StartFullscreen, applied.AutostartWithOS, applied.HideWindowsTaskbar, applied.ReserveWorkArea))
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "config": applied})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "config": getShellConfig(), "os": runtime.GOOS})
+	})
+
+	mux.HandleFunc("/api/kernel/shell-restore", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		restoreWindowsShell()
+		cfg := getShellConfig()
+		cfg.HideWindowsTaskbar = false
+		cfg.AlwaysOnTop = false
+		applied := applyShellModeConfig(cfg)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "config": applied})
+	})
+
+	// 2. LumaShield 1.1 Security Core & Zero-Conflict Local Antivirus
+	mux.HandleFunc("/api/kernel/security/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(kernel.security.StatusSnapshot(kernel.probe))
+	})
+
+	mux.HandleFunc("/api/kernel/security/scan", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Mode string `json:"mode"` // quick | custom | startup
+			Path string `json:"path"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		if payload.Mode == "" {
+			payload.Mode = "quick"
+		}
+		res := kernel.security.RunScan(payload.Mode, payload.Path, kernel.probe)
+		_ = json.NewEncoder(w).Encode(res)
+	})
+
+	mux.HandleFunc("/api/kernel/security/quarantine", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Action   string `json:"action"` // quarantine | restore | delete
+			Path     string `json:"path"`
+			ID       string `json:"id"`
+			Reason   string `json:"reason"`
+			Severity string `json:"severity"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		switch strings.ToLower(strings.TrimSpace(payload.Action)) {
+		case "restore":
+			if err := kernel.security.RestoreQuarantine(payload.ID); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+		case "delete":
+			if err := kernel.security.DeleteQuarantine(payload.ID); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+		default:
+			item, err := kernel.security.QuarantineFile(payload.Path, payload.Reason, payload.Severity)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "item": item})
+		}
+	})
+
+	mux.HandleFunc("/api/kernel/security/eicar-test", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		path, err := kernel.security.CreateEicarTestFile()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		res := kernel.security.RunScan("custom", path, kernel.probe)
+		res["test_file"] = path
+		_ = json.NewEncoder(w).Encode(res)
+	})
+
+	// 3. Real GitHub Release Checker & Seamless OTA Self-Updater
+	mux.HandleFunc("/api/kernel/update/check", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		repo := r.URL.Query().Get("repo")
+		if repo == "" {
+			repo = "https://github.com/Tveexty/L_H-3.0"
+		}
+		res := CheckGitHubUpdate(repo)
+		_ = json.NewEncoder(w).Encode(res)
+	})
+
+	mux.HandleFunc("/api/kernel/update/apply", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			DownloadURL   string `json:"download_url"`
+			TargetVersion string `json:"target_version"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		if strings.TrimSpace(payload.DownloadURL) == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Не указан URL файла обновления"})
+			return
+		}
+		if err := StartGitHubSelfUpdate(payload.DownloadURL, payload.TargetVersion, kernel); err != nil {
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "progress": GetUpdateProgress()})
+	})
+
+	mux.HandleFunc("/api/kernel/update/progress", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(GetUpdateProgress())
+	})
+
+	// 4. Universal Multi-Provider AI Chat Proxy (Gemini / OpenAI / Claude / DeepSeek / Ollama / Custom)
+	mux.HandleFunc("/api/kernel/ai/chat", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var req AIChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		res := HandleAIChatRequest(req, kernel)
+		_ = json.NewEncoder(w).Encode(res)
+	})
+
+	// 5. Live Currency & Crypto Exchange Rates API
+	mux.HandleFunc("/api/kernel/currency", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		base := r.URL.Query().Get("base")
+		_ = json.NewEncoder(w).Encode(FetchLiveCurrencySnapshot(base))
+	})
+
+	// 6. Real Windows / OS Services, Startup Programs & Native System Applets
+	mux.HandleFunc("/api/kernel/services", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		limit := 60
+		if q := r.URL.Query().Get("limit"); q != "" {
+			if v, err := strconv.Atoi(q); err == nil && v > 0 && v <= 120 {
+				limit = v
+			}
+		}
+		lumaSvcs := []SystemServiceInfo{
+			{Name: "LumaCore", DisplayName: "Ядро LumaCore 1.1", Status: "Running", StartType: "Automatic", Source: "luma", PID: os.Getpid(), Description: "Основное ядро телеметрии, HAL, FS и IPC"},
+			{Name: "LumaShield", DisplayName: "Ядро безопасности LumaShield 1.1", Status: "Running", StartType: "Automatic", Source: "luma", PID: os.Getpid(), Description: "AES-256-GCM VFS, аудит и локальный антивирус"},
+			{Name: "LumaWindowBridge", DisplayName: "Служба синхронизации окон ОС", Status: "Running", StartType: "Automatic", Source: "luma", PID: os.Getpid(), Description: "Мониторинг открытых окон ПК для панели задач"},
+			{Name: "LumaAIBridge", DisplayName: "Шлюз нейросетей Luma AI", Status: "Running", StartType: "Manual", Source: "luma", PID: os.Getpid(), Description: "Прокси Gemini / OpenAI / Claude / Ollama"},
+			{Name: "LumaUpdater", DisplayName: "Служба OTA-обновлений GitHub", Status: "Running", StartType: "Automatic", Source: "luma", PID: os.Getpid(), Description: "Проверка версий и бесшовный переход на релиз"},
+		}
+		osSvcs := kernel.probe.ListSystemServices(limit)
+		if runtime.GOOS != "windows" {
+			// Avoid duplicating luma services already returned on unix
+			filtered := make([]SystemServiceInfo, 0, len(osSvcs))
+			for _, s := range osSvcs {
+				if s.Source != "luma" {
+					filtered = append(filtered, s)
+				}
+			}
+			osSvcs = filtered
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":       true,
+			"services": append(lumaSvcs, osSvcs...),
+		})
+	})
+
+	mux.HandleFunc("/api/kernel/startup", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":    true,
+			"items": kernel.probe.ListStartupItems(),
+		})
+	})
+
+	mux.HandleFunc("/api/kernel/system-applet", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Applet string `json:"applet"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		if err := kernel.probe.OpenSystemApplet(payload.Applet); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "applet": payload.Applet})
+	})
+
+	// Serve standalone executable download for LumaOS_1.1.0.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.4.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.1.0.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -1271,12 +1506,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.4.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.1.0.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.1.0.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.4.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.3.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.2b.exe", serveExe)
@@ -1289,7 +1525,7 @@ func main() {
 	mux.Handle("/LauncherHab3.0_CSharp/", sourceFileServer)
 	mux.Handle("/Luma_Core/", sourceFileServer)
 	mux.Handle("/src/", sourceFileServer)
-	for _, goFile := range []string{"luma_kernel_main.go", "system_types.go", "system_windows.go", "system_unix.go"} {
+	for _, goFile := range []string{"luma_kernel_main.go", "kernel_security.go", "kernel_updater_ai.go", "system_types.go", "system_windows.go", "system_unix.go"} {
 		fileName := goFile
 		mux.HandleFunc("/"+fileName, func(w http.ResponseWriter, r *http.Request) {
 			data, err := embeddedSources.ReadFile(fileName)
@@ -1307,10 +1543,10 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.0.4 — DESKTOP ENVIRONMENT & LUMACORE 1.0")
+	log.Printf("  LUMA OS 1.1.0 (HELIUM) — LUMACORE 1.1 & LUMASHIELD 1.1")
 	log.Printf("  - Desktop Environment:         http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:  tcp://127.0.0.1:%d", *rpcPort)
-	log.Printf("  - Real Telemetry & Media API:  http://%s/api/kernel/system", addr)
+	log.Printf("  - Real Telemetry & Security:   http://%s/api/kernel/status", addr)
 	log.Printf("=================================================================")
 
 	if !*headless && runtime.GOOS == "windows" {
@@ -1322,7 +1558,7 @@ func main() {
 		time.Sleep(200 * time.Millisecond)
 		winURL := fmt.Sprintf("http://127.0.0.1:%d/", *httpPort)
 		// Host directly inside native standalone Win32 WebView2 GUI window (no Microsoft Edge!)
-		if !runNativeDesktopWindow(winURL) {
+		if !runNativeDesktopWindow(winURL, *startFullscreen) {
 			openNativeDesktopWindow(winURL, 1440, 900, 40, 40)
 			select {}
 		}

@@ -304,7 +304,9 @@ func (p *platformProbe) Collect(loc LocationInfo) HostHardwareSnapshot {
 		Location:            loc,
 		DeviceModel:         readLinuxDMI("/sys/devices/virtual/dmi/id/product_name", "Luma Linux Workstation"),
 		Manufacturer:        readLinuxDMI("/sys/devices/virtual/dmi/id/sys_vendor", "Linux x64"),
-		KernelEngineVersion: "1.0",
+		KernelEngineVersion: KernelEngineVersion,
+		SecurityCoreVersion: SecurityCoreVersion,
+		AppCodename:         KernelCodename,
 		RealTelemetry:       true,
 	}
 }
@@ -403,7 +405,12 @@ func (p *platformProbe) SetAudioVolume(volume int, mute bool) error {
 }
 
 func (p *platformProbe) ExecutePowerAction(action string) error {
-	return nil
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "lock", "sleep", "hibernate", "shutdown", "restart", "reboot", "signout", "logout", "recycle_bin", "exit_luma":
+		return nil
+	default:
+		return fmt.Errorf("unsupported power action: %s", action)
+	}
 }
 
 var unixClipMu sync.Mutex
@@ -597,4 +604,80 @@ func (p *platformProbe) ExecShell(command string) (string, string, int) {
 	}
 	return strings.TrimRight(stdout.String(), "\r\n"), strings.TrimRight(stderr.String(), "\r\n"), code
 }
+
+func (p *platformProbe) GetDefenderStatus() DefenderStatus {
+	return DefenderStatus{
+		Available:        false,
+		RealtimeEnabled:  false,
+		AntivirusEnabled: false,
+		SignatureVersion: "LumaShield-1.1-Heuristics",
+		CompatibleNote:   "LumaShield 1.1 работает в изолированном user-space режиме (совместим с Windows Defender на Windows 10/11)",
+		ConflictFree:     true,
+	}
+}
+
+func (p *platformProbe) ListSystemServices(limit int) []SystemServiceInfo {
+	if limit <= 0 || limit > 120 {
+		limit = 40
+	}
+	out := []SystemServiceInfo{
+		{Name: "luma-core", DisplayName: "LumaCore 1.1 Kernel Engine", Status: "Running", StartType: "Automatic", Source: "luma", PID: os.Getpid(), Description: "Основное ядро телеметрии, HAL и файловой системы"},
+		{Name: "luma-shield", DisplayName: "LumaShield 1.1 Security Core", Status: "Running", StartType: "Automatic", Source: "luma", PID: os.Getpid(), Description: "Ядро безопасности, AES-256-GCM VFS и локальный антивирус"},
+		{Name: "luma-ipc", DisplayName: "Luma JSON-RPC 2.0 Binder (49215)", Status: "Running", StartType: "Automatic", Source: "luma", PID: os.Getpid(), Description: "Локальная шина межпроцессного взаимодействия"},
+		{Name: "luma-ai-bridge", DisplayName: "Luma AI Multi-Provider Bridge", Status: "Running", StartType: "Manual", Source: "luma", PID: os.Getpid(), Description: "Шлюз нейросетей Gemini / OpenAI / Claude / Ollama"},
+		{Name: "luma-updater", DisplayName: "Luma GitHub OTA Updater", Status: "Running", StartType: "Automatic", Source: "luma", PID: os.Getpid(), Description: "Служба проверки и бесшовного обновления с GitHub"},
+	}
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		if raw, err := exec.Command("systemctl", "list-units", "--type=service", "--no-pager", "--no-legend", "--plain").Output(); err == nil {
+			for _, line := range strings.Split(string(raw), "\n") {
+				if len(out) >= limit {
+					break
+				}
+				fields := strings.Fields(line)
+				if len(fields) < 4 {
+					continue
+				}
+				status := "Stopped"
+				if fields[3] == "running" {
+					status = "Running"
+				}
+				out = append(out, SystemServiceInfo{
+					Name:        fields[0],
+					DisplayName: strings.Join(fields[4:], " "),
+					Status:      status,
+					StartType:   fields[1],
+					Source:      "os",
+				})
+			}
+		}
+	}
+	return out
+}
+
+func (p *platformProbe) ListStartupItems() []StartupEntry {
+	items := []StartupEntry{
+		{Name: "LumaOS Shell Runtime", Command: "LumaOS_1.1.0.exe", Location: "Luma Core", Enabled: getShellConfig().AutostartWithOS, Impact: "Низкое"},
+	}
+	home, _ := os.UserHomeDir()
+	autoDir := filepath.Join(home, ".config", "autostart")
+	if entries, err := os.ReadDir(autoDir); err == nil {
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".desktop") {
+				items = append(items, StartupEntry{
+					Name:     strings.TrimSuffix(e.Name(), ".desktop"),
+					Command:  filepath.Join(autoDir, e.Name()),
+					Location: "~/.config/autostart",
+					Enabled:  true,
+					Impact:   "Низкое",
+				})
+			}
+		}
+	}
+	return items
+}
+
+func (p *platformProbe) OpenSystemApplet(applet string) error {
+	return nil
+}
+
 

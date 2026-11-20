@@ -42,6 +42,7 @@ import {
   LiveSystemTelemetry,
   WindowsNotificationItem,
 } from '../data/launcherData';
+import { LumaHeliumHeroCard } from './LumaHeliumEasterEgg';
 
 export type PowerProfile = 'performance' | 'balanced' | 'saver';
 
@@ -132,6 +133,7 @@ export const KernelUIPanel: React.FC<{
   btnCls: string;
   mutedCls: string;
   isDark: boolean;
+  onTriggerEasterEgg?: () => void;
 }> = ({
   liveSystem,
   customDeviceName,
@@ -141,6 +143,7 @@ export const KernelUIPanel: React.FC<{
   btnCls,
   mutedCls,
   isDark,
+  onTriggerEasterEgg,
 }) => {
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(customDeviceName || liveSystem?.hostname || 'Luma Desktop');
@@ -155,37 +158,44 @@ export const KernelUIPanel: React.FC<{
 
   return (
     <div className="space-y-4">
-      {/* Hero Device & Kernel UI Identity Banner */}
+      {/* Flagship Sculpted 3D Helium 1.1 Hero Artwork — Click for Orbital Awakening Animation & Mini-Game! */}
+      <LumaHeliumHeroCard
+        onTriggerEasterEgg={() => onTriggerEasterEgg?.()}
+        kernelVersion={liveSystem?.kernel_engine_version || '1.1'}
+        securityVersion="1.1"
+      />
+
+      {/* Device & Kernel UI Identity Card */}
       <div className={`p-5 rounded-2xl border space-y-4 ${surfaceCls}`}>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
             <div className="w-12 h-12 rounded-2xl bg-[var(--luma-accent)] text-white flex items-center justify-center font-mono font-black text-xl shrink-0">
-              L
+              He
             </div>
             <div className="min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--luma-accent)] font-bold">
-                ЯДРО UI · LUMA DESKTOP
+                ЯДРО UI · LUMA HELIUM
               </div>
               <div className="text-lg font-extrabold tracking-tight truncate">
-                Luma OS 1.0.4
+                Luma OS 1.1.0 (Helium)
               </div>
               <div className={`text-xs font-mono truncate ${mutedCls}`}>
-                LumaCore 1.0 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
+                LumaCore {liveSystem?.kernel_engine_version || '1.1'} · LumaShield 1.1 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
               </div>
             </div>
           </div>
 
           <a
-            href="/LumaOS_1.0.4.exe"
-            download="LumaOS_1.0.4.exe"
+            href="/LumaOS_1.1.0.exe"
+            download="LumaOS_1.1.0.exe"
             className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
-            LumaOS_1.0.4.exe
+            LumaOS_1.1.0.exe
           </a>
         </div>
 
-        {/* 4 Core Device Identity Tiles Requested by User */}
+        {/* 4 Core Device Identity Tiles */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
           {/* 1. Имя устройства (editable!) */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
@@ -235,17 +245,17 @@ export const KernelUIPanel: React.FC<{
           {/* 3. Версия ПО */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия ПО</div>
-            <div className="text-sm font-mono font-bold">1.0.4</div>
+            <div className="text-sm font-mono font-bold">1.1.0 (Helium)</div>
           </div>
 
-          {/* 4. Версия Ядра (1.0) */}
+          {/* 4. Версия Ядра (1.1) */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия Ядра</div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-mono font-bold text-[var(--luma-accent)]">
-                {liveSystem?.kernel_engine_version || '1.0'}
+                {liveSystem?.kernel_engine_version || '1.1'}
               </span>
-              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore HAL</span>
+              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore + Shield 1.1</span>
             </div>
           </div>
         </div>
@@ -258,7 +268,7 @@ export const KernelUIPanel: React.FC<{
           ['Графика (GPU)', liveSystem?.gpu_name || '—'],
           ['Оперативная память', liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ (${liveSystem.ram_percent}%)` : '—'],
           ['Платформа / Архитектура', `${liveSystem?.os_name || 'Luma OS'} · ${liveSystem?.arch || 'amd64'}`],
-          ['Криптоядро', 'LumaGuard AES-256-GCM · PBKDF2-SHA512'],
+          ['Ядро безопасности', 'LumaShield 1.1 · AES-256-GCM · Zero-Conflict AV'],
           ['Шина ядра', 'TCP JSON-RPC 2.0 · 127.0.0.1:49215'],
         ].map(([k, v]) => (
           <div key={k} className={`p-3.5 rounded-xl border space-y-1 ${surfaceCls}`}>
