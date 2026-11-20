@@ -3,11 +3,14 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -463,3 +466,115 @@ func (p *platformProbe) ExecutePowerAction(action string) error {
 		return fmt.Errorf("unsupported power action: %s", action)
 	}
 }
+
+func (p *platformProbe) GetClipboard() (string, error) {
+	out, err := runHiddenPowerShell(`[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Clipboard -Raw -ErrorAction SilentlyContinue`)
+	return out, err
+}
+
+func (p *platformProbe) SetClipboard(text string) error {
+	cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", "$input | Set-Clipboard")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.Stdin = strings.NewReader(text)
+	return cmd.Run()
+}
+
+func (p *platformProbe) OpenPath(target string) error {
+	clean := strings.TrimSpace(target)
+	if clean == "" {
+		return fmt.Errorf("empty path")
+	}
+	cmd := exec.Command("cmd", "/C", "start", "", clean)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	return cmd.Start()
+}
+
+func (p *platformProbe) PickFile(mode string) PickedFileInfo {
+	var script string
+	if strings.EqualFold(mode, "folder") {
+		script = `
+Add-Type -AssemblyName System.Windows.Forms
+$d = New-Object System.Windows.Forms.FolderBrowserDialog
+$d.Description = "Выберите папку для рабочего стола Luma OS"
+if ($d.ShowDialog() -eq 'OK') { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Write-Output $d.SelectedPath }
+`
+	} else {
+		script = `
+Add-Type -AssemblyName System.Windows.Forms
+$d = New-Object System.Windows.Forms.OpenFileDialog
+$d.Title = "Выберите файл для рабочего стола Luma OS"
+$d.Filter = "Все файлы (*.*)|*.*"
+if ($d.ShowDialog() -eq 'OK') { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Write-Output $d.FileName }
+`
+	}
+	cmd := exec.Command("powershell", "-NoProfile", "-STA", "-WindowStyle", "Hidden", "-Command", script)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	outBytes, err := cmd.Output()
+	if err != nil {
+		return PickedFileInfo{Picked: false}
+	}
+	sel := strings.TrimSpace(string(outBytes))
+	if sel == "" {
+		return PickedFileInfo{Picked: false}
+	}
+	info, _ := os.Stat(sel)
+	isDir := strings.EqualFold(mode, "folder")
+	var sz int64
+	if info != nil {
+		isDir = info.IsDir()
+		sz = info.Size()
+	}
+	return PickedFileInfo{
+		Picked: true,
+		Path:   sel,
+		Name:   filepath.Base(sel),
+		Ext:    strings.ToLower(filepath.Ext(sel)),
+		IsDir:  isDir,
+		Size:   sz,
+	}
+}
+
+func (p *platformProbe) TopProcesses(limit int) []ProcessMetric {
+	if limit <= 0 || limit > 20 {
+		limit = 10
+	}
+	script := fmt.Sprintf(`
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First %d | ForEach-Object {
+  [PSCustomObject]@{ pid=$_.Id; name=$_.ProcessName; cpu_pct=[math]::Round(($_.CPU),1); mem_mb=[math]::Round($_.WorkingSet64/1MB,1) }
+} | ConvertTo-Json -Compress
+`, limit)
+	out, err := runHiddenPowerShell(script)
+	if err != nil || out == "" {
+		return nil
+	}
+	var list []ProcessMetric
+	if json.Unmarshal([]byte(out), &list) != nil {
+		var single ProcessMetric
+		if json.Unmarshal([]byte(out), &single) == nil && single.PID > 0 {
+			list = append(list, single)
+		}
+	}
+	return list
+}
+
+func (p *platformProbe) ExecShell(command string) (string, string, int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+		"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "+command)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	code := 0
+	if err != nil {
+		code = 1
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		}
+	}
+	return strings.TrimRight(stdout.String(), "\r\n"), strings.TrimRight(stderr.String(), "\r\n"), code
+}
+

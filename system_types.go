@@ -30,6 +30,29 @@ type LocationInfo struct {
 	Source    string  `json:"source"`
 }
 
+type ProcessMetric struct {
+	PID    int     `json:"pid"`
+	Name   string  `json:"name"`
+	CPUPct float64 `json:"cpu_pct"`
+	MemMB  float64 `json:"mem_mb"`
+}
+
+type FsEntry struct {
+	Name  string `json:"name"`
+	Path  string `json:"path"`
+	IsDir bool   `json:"is_dir"`
+	Size  int64  `json:"size"`
+}
+
+type PickedFileInfo struct {
+	Picked bool   `json:"picked"`
+	Path   string `json:"path"`
+	Name   string `json:"name"`
+	Ext    string `json:"ext"`
+	IsDir  bool   `json:"is_dir"`
+	Size   int64  `json:"size"`
+}
+
 type HostHardwareSnapshot struct {
 	Hostname        string           `json:"hostname"`
 	OSName          string           `json:"os_name"`

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="#09090b" stroke="#27272a" stroke-width="6"/>
+  <!-- Minimalist geometric Luma "L" mark + signature signal-red dot -->
+  <path d="M74 64 H102 V168 H182 V194 H74 Z" fill="#fafafa"/>
+  <circle cx="172" cy="86" r="22" fill="#d71921"/>
+  <!-- Subtle technical corner ticks -->
+  <rect x="40" y="40" width="8" height="2" fill="#3f3f46"/>
+  <rect x="40" y="40" width="2" height="8" fill="#3f3f46"/>
+  <rect x="208" y="214" width="8" height="2" fill="#3f3f46"/>
+  <rect x="214" y="208" width="2" height="8" fill="#3f3f46"/>
+</svg>

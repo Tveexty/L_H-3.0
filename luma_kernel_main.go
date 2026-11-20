@@ -573,19 +573,18 @@ func isLumaAlreadyRunning(httpPort int) bool {
 }
 
 func main() {
+	runtime.LockOSThread()
 	httpPort := flag.Int("port", DefaultHttpPort, "HTTP port for Luma OS 1.0.2b Desktop")
 	rpcPort := flag.Int("rpc-port", DefaultRpcPort, "TCP JSON-RPC 2.0 port for Luma Core 1.0.2b")
-	headless := flag.Bool("headless", false, "Run Luma Core 1.0.2b daemon without auto-opening desktop window")
-	dualBoot := flag.Bool("dual-windows", false, "Optionally open a second desktop window on startup")
+	headless := flag.Bool("headless", false, "Run Luma Core 1.0.2b daemon without opening desktop window")
 	flag.Parse()
 
 	if isLumaAlreadyRunning(*httpPort) {
-		log.Printf("[LumaOS 1.0.2b] Existing kernel daemon detected on 127.0.0.1:%d — opening desktop...", *httpPort)
+		log.Printf("[LumaOS 1.0.2b] Existing kernel daemon detected on 127.0.0.1:%d — attaching native window...", *httpPort)
 		if !*headless && runtime.GOOS == "windows" {
-			openNativeDesktopWindow(fmt.Sprintf("http://127.0.0.1:%d/", *httpPort), 1440, 900, 40, 40)
-			if *dualBoot {
-				time.Sleep(300 * time.Millisecond)
-				openNativeDesktopWindow(fmt.Sprintf("http://127.0.0.1:%d/", *httpPort), 1440, 900, 100, 70)
+			winURL := fmt.Sprintf("http://127.0.0.1:%d/", *httpPort)
+			if !runNativeDesktopWindow(winURL) {
+				openNativeDesktopWindow(winURL, 1440, 900, 40, 40)
 			}
 		}
 		return
@@ -739,16 +738,145 @@ func main() {
 		_ = json.NewEncoder(w).Encode(res)
 	})
 
-	// Open Window 2 (20x30 Grid) as a separate native window
-	mux.HandleFunc("/api/kernel/open-window", func(w http.ResponseWriter, r *http.Request) {
+	// Native Host Clipboard API (Luma Island Clipboard Manager)
+	mux.HandleFunc("/api/kernel/clipboard", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		win2URL := fmt.Sprintf("http://127.0.0.1:%d/?window=2", *httpPort)
-		go openNativeDesktopWindow(win2URL, 1480, 920, 120, 60)
+		if r.Method == http.MethodPost {
+			var payload struct {
+				Text string `json:"text"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			err := kernel.probe.SetClipboard(payload.Text)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": err == nil, "text": payload.Text})
+			return
+		}
+		txt, err := kernel.probe.GetClipboard()
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": err == nil, "text": txt})
+	})
+
+	// Open ANY local file, folder, EXE, or URL natively
+	mux.HandleFunc("/api/kernel/open-path", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Path string `json:"path"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		err := kernel.probe.OpenPath(payload.Path)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": payload.Path})
+	})
+
+	// Native OS File / Folder Picker Dialog (Add real PC files/folders to desktop)
+	mux.HandleFunc("/api/kernel/pick-file", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Mode string `json:"mode"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		if payload.Mode == "" {
+			payload.Mode = "file"
+		}
+		picked := kernel.probe.PickFile(payload.Mode)
+		_ = json.NewEncoder(w).Encode(picked)
+	})
+
+	// Real Top Host Processes (for Terminal `top` / `ps`)
+	mux.HandleFunc("/api/kernel/processes", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		procs := kernel.probe.TopProcesses(12)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "processes": procs})
+	})
+
+	// Safe Host Filesystem Inspector (for Terminal `ls` / `cat`)
+	mux.HandleFunc("/api/kernel/fs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Action string `json:"action"`
+			Path   string `json:"path"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		target := strings.TrimSpace(payload.Path)
+		if target == "" || target == "~" {
+			target, _ = os.UserHomeDir()
+		}
+		if strings.HasPrefix(target, "~/") {
+			home, _ := os.UserHomeDir()
+			target = filepath.Join(home, target[2:])
+		}
+		if strings.EqualFold(payload.Action, "cat") {
+			data, err := os.ReadFile(target)
+			if err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			if len(data) > 16384 {
+				data = data[:16384]
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": target, "content": string(data)})
+			return
+		}
+		entries, err := os.ReadDir(target)
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		var out []FsEntry
+		for _, e := range entries {
+			info, _ := e.Info()
+			var sz int64
+			if info != nil {
+				sz = info.Size()
+			}
+			out = append(out, FsEntry{
+				Name:  e.Name(),
+				Path:  filepath.Join(target, e.Name()),
+				IsDir: e.IsDir(),
+				Size:  sz,
+			})
+			if len(out) >= 60 {
+				break
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": target, "entries": out})
+	})
+
+	// Host Shell Execution (for Pro Luma Terminal)
+	mux.HandleFunc("/api/kernel/exec", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Command string `json:"command"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		if strings.TrimSpace(payload.Command) == "" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "stderr": "empty command", "exit_code": 1})
+			return
+		}
+		stdout, stderr, code := kernel.probe.ExecShell(payload.Command)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"ok":     true,
-			"window": 2,
-			"url":    win2URL,
+			"ok":        code == 0,
+			"stdout":    stdout,
+			"stderr":    stderr,
+			"exit_code": code,
 		})
+	})
+
+	// Native Win32 Fullscreen Toggle API
+	mux.HandleFunc("/api/kernel/fullscreen", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodPost {
+			var payload struct {
+				Enabled *bool `json:"enabled"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			active := toggleNativeFullscreen(payload.Enabled)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "fullscreen": active})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "fullscreen": isNativeFullscreen()})
 	})
 
 	// Serve standalone executable download for LumaOS_1.0.2b.exe (with backward-compatible aliases)
@@ -806,14 +934,18 @@ func main() {
 
 	if !*headless && runtime.GOOS == "windows" {
 		go func() {
-			time.Sleep(450 * time.Millisecond)
-			winURL := fmt.Sprintf("http://127.0.0.1:%d/", *httpPort)
-			openNativeDesktopWindow(winURL, 1440, 900, 40, 40)
-			if *dualBoot {
-				time.Sleep(350 * time.Millisecond)
-				openNativeDesktopWindow(winURL, 1440, 900, 100, 70)
+			if err := http.ListenAndServe(addr, mux); err != nil {
+				log.Printf("Luma OS HTTP server error: %v", err)
 			}
 		}()
+		time.Sleep(200 * time.Millisecond)
+		winURL := fmt.Sprintf("http://127.0.0.1:%d/", *httpPort)
+		// Host directly inside native standalone Win32 WebView2 GUI window (no Microsoft Edge!)
+		if !runNativeDesktopWindow(winURL) {
+			openNativeDesktopWindow(winURL, 1440, 900, 40, 40)
+			select {}
+		}
+		return
 	}
 
 	if err := http.ListenAndServe(addr, mux); err != nil {

@@ -27,11 +27,32 @@
   }
 }
 
+:root {
+  --luma-accent: #d71921;
+  --luma-accent-hover: #b9151c;
+  --luma-accent-soft: rgba(215, 25, 33, 0.14);
+  --luma-accent-border: rgba(215, 25, 33, 0.45);
+}
+
+html[data-design="pixelbook"] {
+  --luma-accent: #1a73e8;
+  --luma-accent-hover: #1557b0;
+  --luma-accent-soft: rgba(26, 115, 232, 0.14);
+  --luma-accent-border: rgba(26, 115, 232, 0.45);
+}
+
+html.dark[data-design="pixelbook"] {
+  --luma-accent: #4285f4;
+  --luma-accent-hover: #3367d6;
+  --luma-accent-soft: rgba(66, 133, 244, 0.18);
+  --luma-accent-border: rgba(66, 133, 244, 0.5);
+}
+
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
 
-/* ==================== NOTHING × GOOGLE DESKTOP WALLPAPER PATTERNS ==================== */
+/* ==================== NOTHING × PIXELBOOK DESKTOP WALLPAPER PATTERNS ==================== */
 .luma-bg-dots-dark {
   background-color: #09090b;
   background-image: radial-gradient(rgba(255, 255, 255, 0.11) 1px, transparent 1px);
@@ -58,6 +79,22 @@
     linear-gradient(to right, rgba(17, 17, 19, 0.06) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(17, 17, 19, 0.06) 1px, transparent 1px);
   background-size: 32px 32px;
+}
+
+.luma-bg-pixel-dark {
+  background-color: #0f141e;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(66, 133, 244, 0.14), transparent 60%),
+    radial-gradient(ellipse 70% 55% at 88% 85%, rgba(52, 168, 83, 0.08), transparent 55%),
+    linear-gradient(160deg, #0d121b 0%, #131a26 55%, #0f1520 100%);
+}
+
+.luma-bg-pixel-light {
+  background-color: #eef3fa;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(26, 115, 232, 0.11), transparent 60%),
+    radial-gradient(ellipse 70% 55% at 88% 85%, rgba(52, 168, 83, 0.07), transparent 55%),
+    linear-gradient(160deg, #f5f8fc 0%, #eaf0f8 55%, #e3ebf6 100%);
 }
 
 /* ==================== INDUSTRIAL MOTION & ELEVATION ==================== */
@@ -91,6 +128,22 @@
   box-shadow: 0 24px 60px -16px rgba(17, 17, 19, 0.18), 0 2px 8px rgba(17, 17, 19, 0.05);
   backdrop-filter: blur(28px) saturate(130%);
   -webkit-backdrop-filter: blur(28px) saturate(130%);
+}
+
+.dex-window-pixel-dark {
+  background: rgba(22, 28, 39, 0.93);
+  border: 1px solid rgba(138, 180, 248, 0.16);
+  box-shadow: 0 24px 64px -14px rgba(3, 8, 18, 0.74), 0 2px 12px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(32px) saturate(150%);
+  -webkit-backdrop-filter: blur(32px) saturate(150%);
+}
+
+.dex-window-pixel-light {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(26, 115, 232, 0.16);
+  box-shadow: 0 20px 54px -14px rgba(20, 42, 82, 0.18), 0 2px 10px rgba(20, 42, 82, 0.06);
+  backdrop-filter: blur(32px) saturate(150%);
+  -webkit-backdrop-filter: blur(32px) saturate(150%);
 }
 
 .luma-specular {
@@ -141,7 +194,7 @@
   animation-duration: 0.84s;
 }
 
-/* Crisp Monochrome Hardware Range Sliders */
+/* Crisp Hardware Range Sliders (Adapts to Nothing / Pixelbook) */
 input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
@@ -157,7 +210,7 @@ input[type='range']::-webkit-slider-thumb {
   width: 13px;
   height: 13px;
   border-radius: 9999px;
-  background: #d71921;
+  background: var(--luma-accent);
   border: 2px solid #fafafa;
   cursor: pointer;
   transition: transform 0.12s ease;

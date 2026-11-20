@@ -8,7 +8,6 @@ import {
   Calendar,
   Check,
   CheckSquare,
-  Clock,
   Cloud,
   CloudLightning,
   CloudRain,
@@ -16,12 +15,24 @@ import {
   Code2,
   Cpu,
   Disc3,
+  ExternalLink,
+  File,
+  FileCode,
+  FileImage,
+  FilePlus,
+  FileText,
   Folder,
+  FolderOpen,
   FolderPlus,
+  Globe,
   Grid,
   HardDrive,
+  LayoutPanelLeft,
+  Link2,
   Lock,
   MapPin,
+  Maximize,
+  Minimize,
   Moon,
   Move,
   Music,
@@ -37,6 +48,7 @@ import {
   SkipForward,
   Sliders,
   Snowflake,
+  StickyNote,
   Sun,
   Terminal,
   Timer,
@@ -47,7 +59,9 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
-import { AppItem, IslandMediaPlayer, LiveSystemTelemetry } from '../data/launcherData';
+import { AppItem, ClockStyleKey, IslandMediaPlayer, LiveSystemTelemetry } from '../data/launcherData';
+import { DesignStyle, TaskbarPosition } from './DexWindow';
+import { LumaClockRenderer } from './LumaClockRenderer';
 
 export type DesktopGridCols = 22 | 20;
 export type WallpaperStyle = 'dots' | 'grid' | 'matte';
@@ -65,10 +79,11 @@ export interface DesktopWidgetInstance {
 
 export interface DesktopShortcut {
   id: string;
-  kind: 'system' | 'app' | 'folder';
+  kind: 'system' | 'app' | 'folder' | 'file' | 'disk_folder' | 'url' | 'command' | 'note';
   label: string;
   icon: string;
   target: string;
+  content?: string;
   appIds?: string[];
   col: number;
   row: number;
@@ -160,6 +175,20 @@ function wmoToRu(code: number): { label: string; kind: 'sun' | 'cloud' | 'rain' 
 export interface LumaDesktopCanvasProps {
   isDark: boolean;
   accentHex: string;
+  designStyle: DesignStyle;
+  onSetDesignStyle: (style: DesignStyle) => void;
+  taskbarPosition: TaskbarPosition;
+  onSetTaskbarPosition: (pos: TaskbarPosition) => void;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
+  clockStyle: ClockStyleKey;
+  timeFormat: '24' | '12';
+  showSeconds: boolean;
+  showDate: boolean;
+  clockAccentColor: string;
+  clockGlowEnabled: boolean;
+  clockGlowIntensity: number;
+  clockBlinkColon: boolean;
   apps: AppItem[];
   iconMap: Record<string, React.ComponentType<{ className?: string }>>;
   liveSystem: LiveSystemTelemetry | null;
@@ -177,6 +206,7 @@ export interface LumaDesktopCanvasProps {
   wallpaper: WallpaperStyle;
   onSetWallpaper: (wp: WallpaperStyle) => void;
   onOpenSystemWindow: (win: 'apps' | 'tracker' | 'kernel' | 'terminal' | 'settings' | 'plugins' | 'island' | 'spaces') => void;
+  onRunTerminalCommand: (cmd: string) => void;
   onLaunchApp: (app: AppItem) => void;
   onToggleMediaPlay: () => void;
   onNextTrack: () => void;
@@ -193,7 +223,20 @@ export interface LumaDesktopCanvasProps {
 
 export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   isDark,
-  accentHex,
+  designStyle,
+  onSetDesignStyle,
+  taskbarPosition,
+  onSetTaskbarPosition,
+  isFullscreen,
+  onToggleFullscreen,
+  clockStyle,
+  timeFormat,
+  showSeconds,
+  showDate,
+  clockAccentColor,
+  clockGlowEnabled,
+  clockGlowIntensity,
+  clockBlinkColon,
   apps,
   iconMap,
   liveSystem,
@@ -211,6 +254,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   wallpaper,
   onSetWallpaper,
   onOpenSystemWindow,
+  onRunTerminalCommand,
   onLaunchApp,
   onToggleMediaPlay,
   onNextTrack,
@@ -257,10 +301,20 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   const [hoveredCell, setHoveredCell] = useState<{ col: number; row: number } | null>(null);
   const [draggingId, setDraggingId] = useState<{ kind: 'widget' | 'shortcut'; id: string } | null>(null);
 
-  // Desktop right-click Context Menu
+  // Desktop right-click Context Menu & Custom Item / File / Note Modals
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; col: number; row: number } | null>(null);
-  const [pickerModal, setPickerModal] = useState<null | { mode: 'widget' | 'app'; col: number; row: number }>(null);
+  const [pickerModal, setPickerModal] = useState<null | { mode: 'widget' | 'app' | 'item'; col: number; row: number }>(null);
   const [openFolder, setOpenFolder] = useState<DesktopShortcut | null>(null);
+  const [openNoteItem, setOpenNoteItem] = useState<DesktopShortcut | null>(null);
+
+  // Add Any Item (PC File / PC Folder / URL / Terminal Command / Note) Form State
+  const [customItemTab, setCustomItemTab] = useState<'file' | 'disk_folder' | 'url' | 'command' | 'note'>('file');
+  const [customLabel, setCustomLabel] = useState('');
+  const [customTarget, setCustomTarget] = useState('');
+  const [customNoteBody, setCustomNoteBody] = useState('');
+  const [pickingOsFile, setPickingOsFile] = useState(false);
+  const hiddenFileInputRef = useRef<HTMLInputElement>(null);
+  const hiddenFileCellRef = useRef<{ col: number; row: number }>({ col: 2, row: 1 });
 
   // Widget interactive local states
   const [now, setNow] = useState(() => new Date());
@@ -455,6 +509,14 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
     setPickerModal(null);
   };
 
+  const inferFileIcon = (name: string) => {
+    const low = name.toLowerCase();
+    if (/\.(png|jpe?g|gif|webp|svg|bmp|ico)$/.test(low)) return 'FileImage';
+    if (/\.(ts|tsx|js|jsx|go|py|rs|cs|cpp|c|h|json|yaml|yml|toml|html|css|sh|bat|ps1)$/.test(low)) return 'FileCode';
+    if (/\.(txt|md|log|pdf|docx?|rtf|csv)$/.test(low)) return 'FileText';
+    return 'File';
+  };
+
   const addFolderAt = (col: number, row: number) => {
     setShortcuts((prev) => [
       ...prev,
@@ -472,6 +534,166 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
     setCtxMenu(null);
   };
 
+  const addCustomDesktopItem = (
+    item: Omit<DesktopShortcut, 'id' | 'col' | 'row'>,
+    col: number,
+    row: number
+  ) => {
+    setShortcuts((prev) => [
+      ...prev,
+      {
+        ...item,
+        id: `sc_custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        col: Math.max(1, Math.min(gridCols, col)),
+        row: Math.max(1, Math.min(totalRows, row)),
+      },
+    ]);
+  };
+
+  const handlePickOsItem = async (mode: 'file' | 'folder', col: number, row: number) => {
+    setPickingOsFile(true);
+    try {
+      const r = await fetch('/api/kernel/pick-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.picked && d?.path) {
+          addCustomDesktopItem(
+            {
+              kind: mode === 'folder' || d.is_dir ? 'disk_folder' : 'file',
+              label: d.name || d.path.split(/[\\/]/).pop() || (mode === 'folder' ? 'Папка ПК' : 'Файл'),
+              icon: mode === 'folder' || d.is_dir ? 'FolderOpen' : inferFileIcon(d.name || d.path),
+              target: d.path,
+            },
+            col,
+            row
+          );
+          setPickerModal(null);
+          onPushToast('Рабочий стол', `Добавлено: ${d.name || d.path}`, 'success');
+          setPickingOsFile(false);
+          return;
+        }
+      }
+    } catch {
+      // fallback to HTML file picker below
+    }
+    setPickingOsFile(false);
+    if (mode === 'file' && hiddenFileInputRef.current) {
+      hiddenFileCellRef.current = { col, row };
+      hiddenFileInputRef.current.click();
+    } else {
+      onPushToast('Выбор с ПК', 'Укажите путь ниже или запустите LumaOS_1.0.2b.exe для системного диалога', 'info');
+    }
+  };
+
+  const handleFilesAdded = (files: FileList | null, col: number, row: number) => {
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach((file, idx) => {
+      const targetCol = Math.min(gridCols, col + (idx % 4));
+      const targetRow = Math.min(totalRows, row + Math.floor(idx / 4));
+      const icon = inferFileIcon(file.name);
+      const isTextLike = /\.(txt|md|json|log|csv|ts|tsx|js|py|go|html|css|ini|conf|xml)$/i.test(file.name) && file.size <= 64 * 1024;
+      if (isTextLike) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          addCustomDesktopItem(
+            {
+              kind: 'file',
+              label: file.name,
+              icon,
+              target: file.name,
+              content: typeof reader.result === 'string' ? reader.result : '',
+            },
+            targetCol,
+            targetRow
+          );
+        };
+        reader.readAsText(file);
+      } else {
+        addCustomDesktopItem(
+          {
+            kind: 'file',
+            label: file.name,
+            icon,
+            target: file.name,
+            content: `Файл: ${file.name}\nРазмер: ${(file.size / 1024).toFixed(1)} КБ\nТип: ${file.type || 'файл'}`,
+          },
+          targetCol,
+          targetRow
+        );
+      }
+    });
+    setPickerModal(null);
+    onPushToast('Рабочий стол', `Добавлено файлов: ${files.length}`, 'success');
+  };
+
+  const handleOpenShortcut = async (sc: DesktopShortcut) => {
+    if (sc.kind === 'system') {
+      onOpenSystemWindow(sc.target as 'apps' | 'terminal' | 'kernel' | 'settings');
+      return;
+    }
+    if (sc.kind === 'folder') {
+      setOpenFolder(sc);
+      return;
+    }
+    if (sc.kind === 'app') {
+      const found = apps.find((a) => a.id === sc.target);
+      if (found) onLaunchApp(found);
+      return;
+    }
+    if (sc.kind === 'command') {
+      onRunTerminalCommand(sc.target);
+      return;
+    }
+    if (sc.kind === 'note') {
+      setOpenNoteItem(sc);
+      return;
+    }
+    if (sc.kind === 'url') {
+      const url = /^https?:\/\//i.test(sc.target) ? sc.target : `https://${sc.target}`;
+      try {
+        const r = await fetch('/api/kernel/open-path', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: url }),
+        });
+        if (r.ok) {
+          onPushToast('Открыто', sc.label, 'info');
+          return;
+        }
+      } catch {
+        // fallback
+      }
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    // Real PC File or Folder
+    const hasAbsolutePath = sc.target.includes('\\') || sc.target.includes('/') || sc.target.includes(':');
+    if (hasAbsolutePath) {
+      try {
+        const r = await fetch('/api/kernel/open-path', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: sc.target }),
+        });
+        if (r.ok) {
+          onPushToast('Открыто в ОС', sc.label, 'success');
+          return;
+        }
+      } catch {
+        // fall through to preview if available
+      }
+    }
+    if (sc.content !== undefined) {
+      setOpenNoteItem(sc);
+    } else {
+      onPushToast('Файл ПК', `Путь: ${sc.target}`, 'info');
+    }
+  };
+
   const handleCellClick = (col: number, row: number) => {
     setCtxMenu(null);
     if (!editMode || !selectedId) return;
@@ -485,8 +707,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   const handleDesktopContextMenu = (e: React.MouseEvent, col: number, row: number) => {
     e.preventDefault();
     e.stopPropagation();
-    const menuW = 248;
-    const menuH = 310;
+    const menuW = 264;
+    const menuH = 430;
     const x = Math.min(e.clientX, window.innerWidth - menuW - 12);
     const y = Math.min(e.clientY, window.innerHeight - menuH - 64);
     setCtxMenu({ x: Math.max(12, x), y: Math.max(12, y), col, row });
@@ -505,29 +727,42 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   };
 
   const runningAppsCount = useMemo(() => apps.filter((a) => a.isRunning).length, [apps]);
+  const isPixel = designStyle === 'pixelbook';
 
-  // Strict Monochrome Industrial Surface Tokens
-  const cardCls = isDark
+  // Design-Adaptive Surface Tokens (Nothing vs Pixelbook / Googlebook)
+  const cardCls = isPixel
+    ? isDark
+      ? 'bg-[#171e2b]/88 border-blue-300/[0.14] text-slate-100 hover:border-blue-400/40 shadow-[0_8px_28px_rgba(0,0,0,0.28)]'
+      : 'bg-white/90 border-blue-900/[0.11] text-slate-900 hover:border-blue-500/35 shadow-[0_4px_20px_rgba(25,55,109,0.08)]'
+    : isDark
     ? 'bg-[#121215]/88 border-white/[0.09] text-zinc-100 hover:border-white/[0.18]'
     : 'bg-white/92 border-zinc-900/[0.11] text-zinc-900 hover:border-zinc-900/[0.24] shadow-[0_2px_12px_rgba(0,0,0,0.04)]';
+
   const mutedCls = isDark ? 'text-zinc-400' : 'text-zinc-500';
-  const subBtnCls = isDark
+  const subBtnCls = isPixel
+    ? isDark
+      ? 'bg-blue-400/[0.08] hover:bg-blue-400/[0.15] border-blue-300/[0.14] text-slate-100'
+      : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
+    : isDark
     ? 'bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.09] text-zinc-200'
     : 'bg-zinc-100 hover:bg-zinc-200 border-zinc-300 text-zinc-800';
   const railTrackCls = isDark ? 'bg-white/[0.09]' : 'bg-zinc-200';
 
-  const wallpaperCls =
-    wallpaper === 'dots'
-      ? isDark
-        ? 'luma-bg-dots-dark'
-        : 'luma-bg-dots-light'
-      : wallpaper === 'grid'
-      ? isDark
-        ? 'luma-bg-grid-dark'
-        : 'luma-bg-grid-light'
-      : isDark
-      ? 'bg-[#09090b]'
-      : 'bg-[#f3f3f1]';
+  const wallpaperCls = isPixel
+    ? isDark
+      ? 'luma-bg-pixel-dark'
+      : 'luma-bg-pixel-light'
+    : wallpaper === 'dots'
+    ? isDark
+      ? 'luma-bg-dots-dark'
+      : 'luma-bg-dots-light'
+    : wallpaper === 'grid'
+    ? isDark
+      ? 'luma-bg-grid-dark'
+      : 'luma-bg-grid-light'
+    : isDark
+    ? 'bg-[#09090b]'
+    : 'bg-[#f3f3f1]';
 
   const renderWeatherIcon = (code: number) => {
     const k = wmoToRu(code).kind;
@@ -544,36 +779,35 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
     if (iconName === 'Code2') return <Code2 className={className} />;
     if (iconName === 'Settings') return <Settings className={className} />;
     if (iconName === 'Folder') return <Folder className={className} />;
+    if (iconName === 'FolderOpen') return <FolderOpen className={className} />;
+    if (iconName === 'File') return <File className={className} />;
+    if (iconName === 'FileText') return <FileText className={className} />;
+    if (iconName === 'FileCode') return <FileCode className={className} />;
+    if (iconName === 'FileImage') return <FileImage className={className} />;
+    if (iconName === 'Globe') return <Globe className={className} />;
+    if (iconName === 'Link2') return <Link2 className={className} />;
+    if (iconName === 'StickyNote') return <StickyNote className={className} />;
     const Comp = iconMap[iconName] || AppWindow;
     return <Comp className={className} />;
   };
 
   const renderWidgetBody = (w: DesktopWidgetInstance) => {
-    const hrs = String(now.getHours()).padStart(2, '0');
-    const mins = String(now.getMinutes()).padStart(2, '0');
-    const secs = String(now.getSeconds()).padStart(2, '0');
-    const dateStr = now.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' });
-
     switch (w.widgetType) {
       case 'luma_clock':
         return (
-          <div className="h-full flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.16em]">
-              <span className={mutedCls}>{liveSystem?.location?.city || 'LUMA DESKTOP'}</span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#d71921]" />
-                <span className={mutedCls}>{secs}</span>
-              </span>
-            </div>
-            <div className="font-mono font-bold tracking-tighter tabular-nums leading-none text-5xl xl:text-6xl">
-              {hrs}
-              <span className="text-[#d71921] mx-0.5">:</span>
-              {mins}
-            </div>
-            <div className={`text-[11px] font-mono uppercase tracking-wider truncate ${mutedCls}`}>
-              {dateStr}
-            </div>
-          </div>
+          <LumaClockRenderer
+            now={now}
+            clockStyle={clockStyle}
+            timeFormat={timeFormat}
+            showSeconds={showSeconds}
+            showDate={showDate}
+            clockAccentColor={clockAccentColor}
+            clockGlowEnabled={clockGlowEnabled}
+            clockGlowIntensity={clockGlowIntensity}
+            clockBlinkColon={clockBlinkColon}
+            isDark={isDark}
+            cityLabel={liveSystem?.location?.city || 'LUMA DESKTOP'}
+          />
         );
 
       case 'luma_weather':
@@ -581,7 +815,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           <div className="h-full flex flex-col justify-between">
             <div className="flex items-center justify-between gap-2">
               <span className={`inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.14em] truncate ${mutedCls}`}>
-                <MapPin className="w-3 h-3 text-[#d71921] shrink-0" />
+                <MapPin className="w-3 h-3 text-[var(--luma-accent)] shrink-0" />
                 <span className="truncate">{weather.city}</span>
               </span>
               <button
@@ -599,7 +833,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                   }
                 }}
                 title="Обновить погоду и регион"
-                className={`p-1 rounded-md cursor-pointer transition ${mutedCls} hover:text-[#d71921]`}
+                className={`p-1 rounded-md cursor-pointer transition ${mutedCls} hover:text-[var(--luma-accent)]`}
               >
                 <RefreshCw className={`w-3 h-3 ${weather.loading ? 'animate-spin' : ''}`} />
               </button>
@@ -626,14 +860,14 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           <div className="h-full flex flex-col justify-between">
             <div className="flex items-center justify-between gap-2 text-[10px] font-mono uppercase tracking-[0.14em]">
               <span className="inline-flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${isPlaying ? 'bg-[#d71921] animate-pulse' : 'bg-zinc-500'}`} />
+                <span className={`w-1.5 h-1.5 rounded-full ${isPlaying ? 'bg-[var(--luma-accent)] animate-pulse' : 'bg-zinc-500'}`} />
                 <span className={mutedCls}>{hasLiveMedia ? 'АУДИО ОС' : 'МЕДИА'}</span>
               </span>
               {isPlaying && (
                 <div className="flex items-end gap-[2px] h-2.5">
-                  <span className="w-[2px] h-full bg-[#d71921] luma-eq-bar" />
+                  <span className="w-[2px] h-full bg-[var(--luma-accent)] luma-eq-bar" />
                   <span className="w-[2px] h-full bg-current luma-eq-bar luma-eq-bar-2" />
-                  <span className="w-[2px] h-full bg-[#d71921] luma-eq-bar luma-eq-bar-3" />
+                  <span className="w-[2px] h-full bg-[var(--luma-accent)] luma-eq-bar luma-eq-bar-3" />
                 </div>
               )}
             </div>
@@ -659,7 +893,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                     onToggleMediaPlay();
                   }}
                   title={isPlaying ? 'Пауза' : 'Воспроизвести'}
-                  className="w-8 h-8 rounded-full bg-[#d71921] hover:bg-[#b9151c] text-white flex items-center justify-center cursor-pointer transition"
+                  className="w-8 h-8 rounded-full bg-[var(--luma-accent)] hover:bg-[#b9151c] text-white flex items-center justify-center cursor-pointer transition"
                 >
                   {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
                 </button>
@@ -703,7 +937,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                   <div className={`h-[3px] w-full rounded-full overflow-hidden ${railTrackCls}`}>
                     <div
                       className={`h-full transition-all duration-300 ${
-                        m.pct > 85 ? 'bg-[#d71921]' : isDark ? 'bg-zinc-200' : 'bg-zinc-900'
+                        m.pct > 85 ? 'bg-[var(--luma-accent)]' : isDark ? 'bg-zinc-200' : 'bg-zinc-900'
                       }`}
                       style={{ width: `${Math.max(4, Math.min(100, m.pct))}%` }}
                     />
@@ -736,7 +970,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                   </div>
                   <div className={`h-[3px] rounded-full overflow-hidden ${railTrackCls}`}>
                     <div
-                      className={`h-full ${d.percent > 85 ? 'bg-[#d71921]' : isDark ? 'bg-zinc-200' : 'bg-zinc-900'}`}
+                      className={`h-full ${d.percent > 85 ? 'bg-[var(--luma-accent)]' : isDark ? 'bg-zinc-200' : 'bg-zinc-900'}`}
                       style={{ width: `${Math.max(3, d.percent)}%` }}
                     />
                   </div>
@@ -781,14 +1015,14 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           <div className="h-full flex flex-col justify-between">
             <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
               <span className={mutedCls}>ПИТАНИЕ</span>
-              <BatteryCharging className={`w-3.5 h-3.5 ${chg ? 'text-[#d71921]' : mutedCls}`} />
+              <BatteryCharging className={`w-3.5 h-3.5 ${chg ? 'text-[var(--luma-accent)]' : mutedCls}`} />
             </div>
             <div className="flex items-baseline justify-between">
               <span className="text-3xl font-mono font-bold tabular-nums">{bat}%</span>
               <span className={`text-[10px] font-mono uppercase ${mutedCls}`}>{chg ? 'ОТ СЕТИ' : 'АКБ'}</span>
             </div>
             <div className={`h-[3px] rounded-full overflow-hidden ${railTrackCls}`}>
-              <div className={`h-full ${bat < 20 ? 'bg-[#d71921]' : isDark ? 'bg-zinc-200' : 'bg-zinc-900'}`} style={{ width: `${bat}%` }} />
+              <div className={`h-full ${bat < 20 ? 'bg-[var(--luma-accent)]' : isDark ? 'bg-zinc-200' : 'bg-zinc-900'}`} style={{ width: `${bat}%` }} />
             </div>
           </div>
         );
@@ -813,7 +1047,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                   }}
                   className={`py-2 px-1 rounded-xl border flex flex-col items-center justify-center gap-1 text-[10px] font-mono cursor-pointer transition ${
                     b.active
-                      ? 'bg-[#d71921] border-[#d71921] text-white'
+                      ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
                       : subBtnCls
                   }`}
                 >
@@ -847,7 +1081,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                   <div className="flex items-center gap-2 min-w-0">
                     <span
                       className={`w-3.5 h-3.5 rounded-[4px] border flex items-center justify-center shrink-0 ${
-                        n.done ? 'bg-[#d71921] border-[#d71921] text-white' : 'border-zinc-500'
+                        n.done ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : 'border-zinc-500'
                       }`}
                     >
                       {n.done && <Check className="w-2.5 h-2.5" />}
@@ -859,7 +1093,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                       e.stopPropagation();
                       setNotes((prev) => prev.filter((x) => x.id !== n.id));
                     }}
-                    className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-[#d71921] cursor-pointer"
+                    className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-[var(--luma-accent)] cursor-pointer"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -882,7 +1116,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 placeholder="Новая задача..."
                 className={`flex-1 min-w-0 px-2.5 py-1 rounded-lg border text-[11px] outline-none ${subBtnCls}`}
               />
-              <button type="submit" className="px-2 py-1 rounded-lg bg-[#d71921] text-white text-[11px] font-bold cursor-pointer">
+              <button type="submit" className="px-2 py-1 rounded-lg bg-[var(--luma-accent)] text-white text-[11px] font-bold cursor-pointer">
                 +
               </button>
             </form>
@@ -899,7 +1133,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 <Timer className="w-3 h-3" />
                 ФОКУС
               </span>
-              <span className={pomoRunning ? 'text-[#d71921]' : mutedCls}>{pomoRunning ? 'ИДЁТ' : 'ПАУЗА'}</span>
+              <span className={pomoRunning ? 'text-[var(--luma-accent)]' : mutedCls}>{pomoRunning ? 'ИДЁТ' : 'ПАУЗА'}</span>
             </div>
             <div className="flex items-center justify-between gap-2">
               <span className="text-3xl font-mono font-bold tabular-nums">
@@ -911,7 +1145,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                     e.stopPropagation();
                     setPomoRunning((v) => !v);
                   }}
-                  className="px-2.5 py-1.5 rounded-lg bg-[#d71921] text-white text-[10px] font-mono font-bold cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg bg-[var(--luma-accent)] text-white text-[10px] font-mono font-bold cursor-pointer"
                 >
                   {pomoRunning ? 'СТОП' : 'СТАРТ'}
                 </button>
@@ -961,7 +1195,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                     }
                   }}
                   className={`py-1 rounded-lg border cursor-pointer ${
-                    k === '=' ? 'bg-[#d71921] border-[#d71921] text-white' : subBtnCls
+                    k === '=' ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : subBtnCls
                   }`}
                 >
                   {k}
@@ -984,7 +1218,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 <Calendar className="w-3 h-3" />
                 КАЛЕНДАРЬ
               </span>
-              <span className="text-[#d71921] font-bold">{now.getFullYear()}</span>
+              <span className="text-[var(--luma-accent)] font-bold">{now.getFullYear()}</span>
             </div>
             <div className="flex items-center justify-between gap-2">
               <div className="text-2xl font-mono font-bold tabular-nums">
@@ -1028,11 +1262,11 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
             <div className={`text-[10px] font-mono uppercase tracking-[0.14em] ${mutedCls}`}>РИТМ ДНЯ</div>
             <div className="flex items-center justify-between text-xs font-mono">
               <span>Задачи: {notes.filter((n) => n.done).length}/{notes.length}</span>
-              <span className="text-[#d71921] font-bold">{Math.round((notes.filter((n) => n.done).length / Math.max(1, notes.length)) * 100)}%</span>
+              <span className="text-[var(--luma-accent)] font-bold">{Math.round((notes.filter((n) => n.done).length / Math.max(1, notes.length)) * 100)}%</span>
             </div>
             <div className={`h-[3px] rounded-full overflow-hidden ${railTrackCls}`}>
               <div
-                className="h-full bg-[#d71921]"
+                className="h-full bg-[var(--luma-accent)]"
                 style={{ width: `${Math.round((notes.filter((n) => n.done).length / Math.max(1, notes.length)) * 100)}%` }}
               />
             </div>
@@ -1055,7 +1289,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 <div key={sym}>
                   <div className={`text-[9px] ${mutedCls}`}>{sym}</div>
                   <div className="font-bold tabular-nums">{pr}</div>
-                  <div className={`text-[9px] ${ch.startsWith('+') ? 'text-emerald-500' : 'text-[#d71921]'}`}>{ch}</div>
+                  <div className={`text-[9px] ${ch.startsWith('+') ? 'text-emerald-500' : 'text-[var(--luma-accent)]'}`}>{ch}</div>
                 </div>
               ))}
             </div>
@@ -1093,7 +1327,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           <div className="h-full flex flex-col justify-between">
             <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
               <span className={`inline-flex items-center gap-1 ${mutedCls}`}>
-                <ShieldCheck className="w-3.5 h-3.5 text-[#d71921]" />
+                <ShieldCheck className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
                 LUMAGUARD
               </span>
               <span>AES-256</span>
@@ -1143,11 +1377,38 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
     }
   };
 
+  const gridPadCls =
+    taskbarPosition === 'top'
+      ? 'p-3 pt-16'
+      : taskbarPosition === 'left'
+      ? 'p-3 pl-[68px]'
+      : 'p-3 pb-16';
+
+  const modalShellCls = isPixel
+    ? isDark
+      ? 'dex-window-pixel-dark text-slate-100 rounded-[24px]'
+      : 'dex-window-pixel-light text-slate-900 rounded-[24px]'
+    : isDark
+    ? 'dex-window-dark text-zinc-100 rounded-2xl'
+    : 'dex-window-light text-zinc-900 rounded-2xl';
+
   return (
     <div className={`relative w-full h-full overflow-hidden select-none ${wallpaperCls}`}>
+      {/* Hidden browser file input fallback when OS native dialog isn't attached */}
+      <input
+        ref={hiddenFileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          handleFilesAdded(e.target.files, hiddenFileCellRef.current.col, hiddenFileCellRef.current.row);
+          e.target.value = '';
+        }}
+      />
+
       {/* FULL-VIEWPORT 22x10 (220 CELLS) OR 20x10 (200 CELLS) DESKTOP MATRIX */}
       <div
-        className="w-full h-full p-3 pb-16"
+        className={`w-full h-full ${gridPadCls}`}
         style={{
           display: 'grid',
           gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`,
@@ -1155,7 +1416,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           gap: '6px',
         }}
       >
-        {/* 1. Interactive 200–220 Desktop Coordinate Cells */}
+        {/* 1. Interactive 200–220 Desktop Coordinate Cells (Supports dragging widgets, shortcuts, AND real OS files!) */}
         {Array.from({ length: totalRows }).map((_, rIdx) =>
           Array.from({ length: gridCols }).map((__, cIdx) => {
             const col = cIdx + 1;
@@ -1174,6 +1435,11 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 }}
                 onDrop={(e) => {
                   e.preventDefault();
+                  if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+                    handleFilesAdded(e.dataTransfer.files, col, row);
+                    setHoveredCell(null);
+                    return;
+                  }
                   if (draggingId) {
                     moveItemToCell(draggingId.kind, draggingId.id, col, row);
                     setDraggingId(null);
@@ -1183,12 +1449,12 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 className={`rounded-lg transition-colors flex items-center justify-center ${
                   editMode
                     ? isHovered
-                      ? 'border border-[#d71921]/70 bg-[#d71921]/10 cursor-pointer'
+                      ? 'border border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] cursor-pointer'
                       : isDark
                       ? 'border border-white/[0.06] hover:border-white/[0.15] cursor-pointer'
                       : 'border border-zinc-900/[0.08] hover:border-zinc-900/[0.2] cursor-pointer'
-                    : draggingId && isHovered
-                    ? 'border border-[#d71921]/60 bg-[#d71921]/10'
+                    : isHovered
+                    ? 'border border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
                     : ''
                 }`}
               >
@@ -1233,12 +1499,12 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 zIndex: isSelected ? 15 : 5,
                 backdropFilter: 'blur(20px)',
               }}
-              className={`relative rounded-[18px] border p-3.5 overflow-hidden luma-card-lift ${cardCls} ${
+              className={`relative ${isPixel ? 'rounded-[22px]' : 'rounded-[18px]'} border p-3.5 overflow-hidden luma-card-lift ${cardCls} ${
                 editMode ? 'cursor-grab active:cursor-grabbing' : ''
-              } ${isSelected && editMode ? 'ring-2 ring-[#d71921]' : ''}`}
+              } ${isSelected && editMode ? 'ring-2 ring-[var(--luma-accent)]' : ''}`}
             >
               {editMode && (
-                <div className="absolute top-1.5 right-1.5 z-20 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#d71921] text-white text-[9px] font-mono font-bold">
+                <div className="absolute top-1.5 right-1.5 z-20 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--luma-accent)] text-white text-[9px] font-mono font-bold">
                   <span>
                     {clampedCol},{clampedRow} · {w.w}×{w.h}
                   </span>
@@ -1249,11 +1515,23 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           );
         })}
 
-        {/* 3. Essential Desktop Shortcuts & Folders on 22x10 / 20x10 Grid */}
+        {/* 3. Desktop Shortcuts, Files, Folders, Links, Commands & Notes on 22x10 / 20x10 Grid */}
         {shortcuts.map((sc) => {
           const clampedCol = Math.max(1, Math.min(gridCols, sc.col));
           const clampedRow = Math.max(1, Math.min(totalRows, sc.row));
           const isSelected = selectedId === sc.id;
+          const badge =
+            sc.kind === 'url'
+              ? 'URL'
+              : sc.kind === 'command'
+              ? 'SH'
+              : sc.kind === 'note'
+              ? 'TXT'
+              : sc.kind === 'disk_folder'
+              ? 'DIR'
+              : sc.kind === 'file'
+              ? 'FILE'
+              : '';
           return (
             <button
               key={sc.id}
@@ -1270,14 +1548,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                   setSelectedId(sc.id);
                   return;
                 }
-                if (sc.kind === 'system') {
-                  onOpenSystemWindow(sc.target as 'apps' | 'terminal' | 'kernel' | 'settings');
-                } else if (sc.kind === 'folder') {
-                  setOpenFolder(sc);
-                } else {
-                  const found = apps.find((a) => a.id === sc.target);
-                  if (found) onLaunchApp(found);
-                }
+                handleOpenShortcut(sc);
               }}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -1290,19 +1561,28 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 gridRow: `${clampedRow} / span 1`,
                 zIndex: 6,
               }}
-              title={sc.label}
-              className={`group flex flex-col items-center justify-center gap-1 rounded-2xl p-1 transition cursor-pointer ${
+              title={sc.target ? `${sc.label}\n${sc.target}` : sc.label}
+              className={`group relative flex flex-col items-center justify-center gap-1 rounded-2xl p-1 transition cursor-pointer ${
                 isDark ? 'hover:bg-white/[0.07] text-zinc-200' : 'hover:bg-zinc-900/[0.06] text-zinc-900'
-              } ${isSelected && editMode ? 'ring-2 ring-[#d71921] bg-[#d71921]/10' : ''}`}
+              } ${isSelected && editMode ? 'ring-2 ring-[var(--luma-accent)] bg-[var(--luma-accent-soft)]' : ''}`}
             >
               <div
-                className={`w-10 h-10 rounded-[14px] border flex items-center justify-center transition ${
-                  isDark
+                className={`relative w-10 h-10 ${isPixel ? 'rounded-full' : 'rounded-[14px]'} border flex items-center justify-center transition ${
+                  isPixel
+                    ? isDark
+                      ? 'bg-[#1a2232]/92 border-blue-300/[0.16] group-hover:border-blue-400/50 text-slate-100'
+                      : 'bg-white/95 border-blue-900/[0.12] group-hover:border-blue-500/40 text-slate-900 shadow-xs'
+                    : isDark
                     ? 'bg-[#141418]/90 border-white/[0.1] group-hover:border-white/25 text-zinc-100'
                     : 'bg-white/95 border-zinc-900/[0.12] group-hover:border-zinc-900/30 text-zinc-900 shadow-xs'
                 }`}
               >
                 {renderShortcutIcon(sc.icon, 'w-4 h-4')}
+                {badge && (
+                  <span className="absolute -bottom-1 -right-1 px-1 py-[1px] rounded text-[7px] font-mono font-bold bg-[var(--luma-accent)] text-white leading-none">
+                    {badge}
+                  </span>
+                )}
               </div>
               <span className="text-[10px] font-medium leading-none truncate max-w-full px-0.5">
                 {sc.label}
@@ -1316,12 +1596,12 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
       {editMode && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`luma-animate-in fixed bottom-16 left-1/2 -translate-x-1/2 z-40 flex flex-wrap items-center gap-1.5 px-3 py-2 rounded-2xl border text-xs font-mono shadow-2xl ${
+          className={`luma-animate-in fixed ${taskbarPosition === 'bottom' ? 'bottom-16' : 'bottom-4'} left-1/2 -translate-x-1/2 z-40 flex flex-wrap items-center gap-1.5 px-3 py-2 rounded-2xl border text-xs font-mono shadow-2xl ${
             isDark ? 'bg-[#121215]/95 border-white/15 text-zinc-100' : 'bg-white/95 border-zinc-300 text-zinc-900'
           }`}
         >
           <span className="inline-flex items-center gap-1.5 px-2 text-[11px] font-bold">
-            <Move className="w-3.5 h-3.5 text-[#d71921]" />
+            <Move className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
             СЕТКА {gridCols}×{totalRows} ({totalCells})
           </span>
 
@@ -1352,11 +1632,18 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           {selectedId && (
             <button
               onClick={removeSelected}
-              className="px-2 py-1 rounded-lg bg-[#d71921]/15 border border-[#d71921]/40 text-[#d71921] text-[11px] font-bold cursor-pointer"
+              className="px-2 py-1 rounded-lg bg-[var(--luma-accent-soft)] border border-[var(--luma-accent-border)] text-[var(--luma-accent)] text-[11px] font-bold cursor-pointer"
             >
               Убрать
             </button>
           )}
+
+          <button
+            onClick={() => setPickerModal({ mode: 'item', col: 2, row: 1 })}
+            className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer inline-flex items-center gap-1 ${subBtnCls}`}
+          >
+            <FilePlus className="w-3 h-3" /> Файл / Ссылка
+          </button>
 
           <button
             onClick={() => setPickerModal({ mode: 'widget', col: 9, row: 3 })}
@@ -1382,7 +1669,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
               setSelectedId(null);
               onSetEditMode(false);
             }}
-            className="px-3 py-1 rounded-lg bg-[#d71921] text-white text-[11px] font-bold cursor-pointer"
+            className="px-3 py-1 rounded-lg bg-[var(--luma-accent)] text-white text-[11px] font-bold cursor-pointer"
           >
             Готово
           </button>
@@ -1394,15 +1681,24 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
         <div
           onClick={(e) => e.stopPropagation()}
           style={{ left: ctxMenu.x, top: ctxMenu.y }}
-          className={`luma-animate-in fixed z-50 w-60 rounded-2xl border p-1.5 shadow-2xl text-xs ${
-            isDark ? 'bg-[#121215]/96 border-white/12 text-zinc-100' : 'bg-white/96 border-zinc-300 text-zinc-900'
-          }`}
+          className={`luma-animate-in fixed z-50 w-64 border p-1.5 shadow-2xl text-xs ${modalShellCls}`}
         >
           <div className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>
             Ячейка [{ctxMenu.col}, {ctxMenu.row}] · {gridCols}×{totalRows}
           </div>
 
           {[
+            {
+              label: 'Добавить файл / папку / URL...',
+              icon: <FilePlus className="w-3.5 h-3.5 text-[var(--luma-accent)]" />,
+              run: () => {
+                setCustomLabel('');
+                setCustomTarget('');
+                setCustomNoteBody('');
+                setPickerModal({ mode: 'item', col: ctxMenu.col, row: ctxMenu.row });
+                setCtxMenu(null);
+              },
+            },
             {
               label: 'Добавить виджет сюда',
               icon: <Plus className="w-3.5 h-3.5" />,
@@ -1420,7 +1716,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
               },
             },
             {
-              label: 'Создать папку',
+              label: 'Создать папку приложений',
               icon: <FolderPlus className="w-3.5 h-3.5" />,
               run: () => addFolderAt(ctxMenu.col, ctxMenu.row),
             },
@@ -1441,6 +1737,59 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
 
           <button
             onClick={() => {
+              onToggleFullscreen();
+              setCtxMenu(null);
+            }}
+            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
+              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-100'
+            }`}
+          >
+            <span className="flex items-center gap-2.5">
+              {isFullscreen ? <Minimize className={`w-3.5 h-3.5 ${mutedCls}`} /> : <Maximize className={`w-3.5 h-3.5 ${mutedCls}`} />}
+              <span>{isFullscreen ? 'Выйти из полного экрана' : 'Во весь экран (F11)'}</span>
+            </span>
+            <span className="text-[10px] font-mono text-[var(--luma-accent)]">{isFullscreen ? 'ВКЛ' : 'F11'}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              const order: TaskbarPosition[] = ['bottom', 'left', 'top'];
+              onSetTaskbarPosition(order[(order.indexOf(taskbarPosition) + 1) % order.length]);
+              setCtxMenu(null);
+            }}
+            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
+              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-100'
+            }`}
+          >
+            <span className="flex items-center gap-2.5">
+              <LayoutPanelLeft className={`w-3.5 h-3.5 ${mutedCls}`} />
+              <span>Панель задач</span>
+            </span>
+            <span className="text-[10px] font-mono uppercase">
+              {taskbarPosition === 'bottom' ? 'Снизу' : taskbarPosition === 'left' ? 'Слева' : 'Сверху'}
+            </span>
+          </button>
+
+          <button
+            onClick={() => {
+              onSetDesignStyle(designStyle === 'nothing' ? 'pixelbook' : 'nothing');
+              setCtxMenu(null);
+            }}
+            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
+              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-100'
+            }`}
+          >
+            <span className="flex items-center gap-2.5">
+              <Sliders className={`w-3.5 h-3.5 ${mutedCls}`} />
+              <span>Стиль оболочки</span>
+            </span>
+            <span className="text-[10px] font-mono uppercase text-[var(--luma-accent)]">
+              {designStyle === 'nothing' ? 'Nothing' : 'Pixelbook'}
+            </span>
+          </button>
+
+          <button
+            onClick={() => {
               onSetEditMode(!editMode);
               setCtxMenu(null);
             }}
@@ -1452,7 +1801,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
               <Move className={`w-3.5 h-3.5 ${mutedCls}`} />
               <span>Режим расстановки</span>
             </span>
-            <span className="text-[10px] font-mono text-[#d71921]">{editMode ? 'ВКЛ' : 'ВЫКЛ'}</span>
+            <span className="text-[10px] font-mono text-[var(--luma-accent)]">{editMode ? 'ВКЛ' : 'ВЫКЛ'}</span>
           </button>
 
           <button
@@ -1471,25 +1820,27 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
             <span className="text-[10px] font-mono">{gridCols}×10</span>
           </button>
 
-          <button
-            onClick={() => {
-              const order: WallpaperStyle[] = ['dots', 'grid', 'matte'];
-              const next = order[(order.indexOf(wallpaper) + 1) % order.length];
-              onSetWallpaper(next);
-              setCtxMenu(null);
-            }}
-            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
-              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Sliders className={`w-3.5 h-3.5 ${mutedCls}`} />
-              <span>Фон рабочего стола</span>
-            </span>
-            <span className="text-[10px] font-mono uppercase">
-              {wallpaper === 'dots' ? 'Точки' : wallpaper === 'grid' ? 'Сетка' : 'Мат'}
-            </span>
-          </button>
+          {!isPixel && (
+            <button
+              onClick={() => {
+                const order: WallpaperStyle[] = ['dots', 'grid', 'matte'];
+                const next = order[(order.indexOf(wallpaper) + 1) % order.length];
+                onSetWallpaper(next);
+                setCtxMenu(null);
+              }}
+              className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
+                isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-100'
+              }`}
+            >
+              <span className="flex items-center gap-2.5">
+                <Sliders className={`w-3.5 h-3.5 ${mutedCls}`} />
+                <span>Фон рабочего стола</span>
+              </span>
+              <span className="text-[10px] font-mono uppercase">
+                {wallpaper === 'dots' ? 'Точки' : wallpaper === 'grid' ? 'Сетка' : 'Мат'}
+              </span>
+            </button>
+          )}
 
           <div className={`my-1 border-t ${isDark ? 'border-white/10' : 'border-zinc-200'}`} />
 
@@ -1535,7 +1886,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
         </div>
       )}
 
-      {/* WIDGET / APP PICKER MODAL FOR CELL [X, Y] */}
+      {/* WIDGET / APP / ANY FILE-FOLDER-URL-COMMAND-NOTE PICKER MODAL */}
       {pickerModal && (
         <div
           onClick={() => setPickerModal(null)}
@@ -1543,17 +1894,19 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`luma-animate-in w-full max-w-2xl max-h-[78vh] rounded-2xl border flex flex-col overflow-hidden ${
-              isDark ? 'dex-window-dark text-zinc-100' : 'dex-window-light text-zinc-900'
-            }`}
+            className={`luma-animate-in w-full max-w-2xl max-h-[82vh] border flex flex-col overflow-hidden ${modalShellCls}`}
           >
             <div className={`px-5 py-3.5 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-zinc-200'}`}>
               <div>
                 <h3 className="text-sm font-bold">
-                  {pickerModal.mode === 'widget' ? 'Каталог виджетов (18)' : 'Добавить ярлык на рабочий стол'}
+                  {pickerModal.mode === 'widget'
+                    ? 'Каталог виджетов (18)'
+                    : pickerModal.mode === 'app'
+                    ? 'Добавить ярлык приложения'
+                    : 'Добавить на рабочий стол (Файл / Папка / URL / Команда / Заметка)'}
                 </h3>
                 <p className={`text-[11px] font-mono ${mutedCls}`}>
-                  Позиция: [{pickerModal.col}, {pickerModal.row}] · Сетка {gridCols}×{totalRows}
+                  Позиция: [{pickerModal.col}, {pickerModal.row}] · Можно также перетащить файлы прямо с ПК на любую ячейку
                 </p>
               </div>
               <button onClick={() => setPickerModal(null)} className={`p-1.5 rounded-lg border cursor-pointer ${subBtnCls}`}>
@@ -1580,7 +1933,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                     </button>
                   ))}
                 </div>
-              ) : (
+              ) : pickerModal.mode === 'app' ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {apps.map((app) => (
                     <button
@@ -1593,13 +1946,160 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                     </button>
                   ))}
                 </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Quick Native OS File / Folder Dialog Triggers */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      disabled={pickingOsFile}
+                      onClick={() => handlePickOsItem('file', pickerModal.col, pickerModal.row)}
+                      className="p-3.5 rounded-xl bg-[var(--luma-accent)] text-white text-left flex items-center gap-3 cursor-pointer hover:opacity-95 transition"
+                    >
+                      <FilePlus className="w-5 h-5 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold">Выбрать файл с компьютера</div>
+                        <div className="text-[10px] opacity-85 truncate">Любой документ, EXE, фото, архив или скрипт</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={pickingOsFile}
+                      onClick={() => handlePickOsItem('folder', pickerModal.col, pickerModal.row)}
+                      className={`p-3.5 rounded-xl border text-left flex items-center gap-3 cursor-pointer transition ${subBtnCls}`}
+                    >
+                      <FolderOpen className="w-5 h-5 text-[var(--luma-accent)] shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold">Выбрать папку с компьютера</div>
+                        <div className={`text-[10px] truncate ${mutedCls}`}>Открытие каталога Проводником в 1 клик</div>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Manual Creation Tabs */}
+                  <div className={`flex flex-wrap gap-1 p-1 rounded-xl border ${subBtnCls}`}>
+                    {(
+                      [
+                        ['file', 'Файл (путь)'],
+                        ['disk_folder', 'Папка (путь)'],
+                        ['url', 'Сайт / URL'],
+                        ['command', 'Команда терминала'],
+                        ['note', 'Заметка'],
+                      ] as const
+                    ).map(([tk, tl]) => (
+                      <button
+                        key={tk}
+                        type="button"
+                        onClick={() => setCustomItemTab(tk)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition ${
+                          customItemTab === tk ? 'bg-[var(--luma-accent)] text-white' : ''
+                        }`}
+                      >
+                        {tl}
+                      </button>
+                    ))}
+                  </div>
+
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const lbl =
+                        customLabel.trim() ||
+                        (customTarget.trim().split(/[\\/]/).pop() || (customItemTab === 'note' ? 'Заметка' : 'Объект'));
+                      if (customItemTab !== 'note' && !customTarget.trim()) return;
+                      const icon =
+                        customItemTab === 'disk_folder'
+                          ? 'FolderOpen'
+                          : customItemTab === 'url'
+                          ? 'Globe'
+                          : customItemTab === 'command'
+                          ? 'Terminal'
+                          : customItemTab === 'note'
+                          ? 'StickyNote'
+                          : inferFileIcon(customTarget.trim() || lbl);
+
+                      addCustomDesktopItem(
+                        {
+                          kind: customItemTab,
+                          label: lbl,
+                          icon,
+                          target: customTarget.trim(),
+                          content: customItemTab === 'note' ? customNoteBody : undefined,
+                        },
+                        pickerModal.col,
+                        pickerModal.row
+                      );
+                      setPickerModal(null);
+                      onPushToast('Рабочий стол', `Добавлено: ${lbl}`, 'success');
+                    }}
+                    className="space-y-3"
+                  >
+                    <input
+                      value={customLabel}
+                      onChange={(e) => setCustomLabel(e.target.value)}
+                      placeholder={
+                        customItemTab === 'url'
+                          ? 'Подпись (например: GitHub)'
+                          : customItemTab === 'command'
+                          ? 'Подпись (например: Монитор процессов)'
+                          : customItemTab === 'note'
+                          ? 'Заголовок заметки'
+                          : 'Название на рабочем столе (необязательно)'
+                      }
+                      className={`w-full px-3 py-2 rounded-xl border text-xs outline-none ${subBtnCls}`}
+                    />
+
+                    {customItemTab !== 'note' ? (
+                      <input
+                        required
+                        value={customTarget}
+                        onChange={(e) => setCustomTarget(e.target.value)}
+                        placeholder={
+                          customItemTab === 'file'
+                            ? 'Путь к файлу, напр. C:\\Users\\Name\\Desktop\\report.pdf'
+                            : customItemTab === 'disk_folder'
+                            ? 'Путь к папке, напр. D:\\Projects'
+                            : customItemTab === 'url'
+                            ? 'https://github.com/Tveexty/L_H-3.0'
+                            : 'Команда, напр. neofetch или top или sh ipconfig'
+                        }
+                        className={`w-full px-3 py-2 rounded-xl border text-xs font-mono outline-none ${subBtnCls}`}
+                      />
+                    ) : (
+                      <textarea
+                        rows={4}
+                        value={customNoteBody}
+                        onChange={(e) => setCustomNoteBody(e.target.value)}
+                        placeholder="Текст заметки, команды, пароли, ссылки..."
+                        className={`w-full px-3 py-2 rounded-xl border text-xs outline-none resize-none ${subBtnCls}`}
+                      />
+                    )}
+
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPickerModal(null)}
+                        className={`px-3.5 py-1.5 rounded-xl border text-xs cursor-pointer ${subBtnCls}`}
+                      >
+                        Отмена
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-semibold cursor-pointer"
+                      >
+                        Поместить на стол
+                      </button>
+                    </div>
+                  </form>
+                </div>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {/* DESKTOP FOLDER POPUP */}
+      {/* DESKTOP VIRTUAL APP FOLDER POPUP */}
       {openFolder && (
         <div
           onClick={() => setOpenFolder(null)}
@@ -1607,13 +2107,11 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`luma-animate-in w-full max-w-sm rounded-2xl border p-4 space-y-3 ${
-              isDark ? 'dex-window-dark text-zinc-100' : 'dex-window-light text-zinc-900'
-            }`}
+            className={`luma-animate-in w-full max-w-sm border p-4 space-y-3 ${modalShellCls}`}
           >
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold flex items-center gap-2">
-                <Folder className="w-4 h-4 text-[#d71921]" />
+                <Folder className="w-4 h-4 text-[var(--luma-accent)]" />
                 {openFolder.label}
               </span>
               <button onClick={() => setOpenFolder(null)} className={`p-1 rounded-lg border cursor-pointer ${subBtnCls}`}>
@@ -1637,6 +2135,68 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                     <span className="text-xs font-medium truncate">{app.name}</span>
                   </button>
                 ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DESKTOP NOTE / DROPPED TEXT FILE VIEWER & EDITOR */}
+      {openNoteItem && (
+        <div
+          onClick={() => setOpenNoteItem(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`luma-animate-in w-full max-w-lg border p-4 space-y-3 ${modalShellCls}`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                {renderShortcutIcon(openNoteItem.icon, 'w-4 h-4 text-[var(--luma-accent)] shrink-0')}
+                <span className="text-sm font-bold truncate">{openNoteItem.label}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {openNoteItem.target && (
+                  <button
+                    onClick={() => {
+                      fetch('/api/kernel/open-path', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: openNoteItem.target }),
+                      }).catch(() => {});
+                    }}
+                    title="Открыть в ОС"
+                    className={`px-2 py-1 rounded-lg border text-[11px] inline-flex items-center gap-1 cursor-pointer ${subBtnCls}`}
+                  >
+                    <ExternalLink className="w-3 h-3" /> ОС
+                  </button>
+                )}
+                <button onClick={() => setOpenNoteItem(null)} className={`p-1 rounded-lg border cursor-pointer ${subBtnCls}`}>
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+            <textarea
+              rows={9}
+              value={openNoteItem.content || ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                setOpenNoteItem((prev) => (prev ? { ...prev, content: val } : null));
+                setShortcuts((prev) => prev.map((s) => (s.id === openNoteItem.id ? { ...s, content: val } : s)));
+              }}
+              className={`w-full p-3 rounded-xl border text-xs font-mono outline-none resize-none leading-relaxed ${subBtnCls}`}
+            />
+            <div className="flex items-center justify-between text-[11px] font-mono">
+              <span className={mutedCls}>Автосохранение на рабочем столе</span>
+              <button
+                onClick={() => {
+                  setShortcuts((prev) => prev.filter((s) => s.id !== openNoteItem.id));
+                  setOpenNoteItem(null);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-bold cursor-pointer"
+              >
+                Удалить со стола
+              </button>
             </div>
           </div>
         </div>

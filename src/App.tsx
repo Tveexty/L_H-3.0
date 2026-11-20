@@ -15,6 +15,8 @@ import {
   Calculator,
   Check,
   CheckCircle2,
+  Clipboard,
+  ClipboardCheck,
   Clock,
   Cloud,
   Code2,
@@ -36,14 +38,19 @@ import {
   Headphones,
   Info,
   LayoutGrid,
+  LayoutPanelLeft,
   Lock,
   MapPin,
+  Maximize,
   MessageSquare,
+  Minimize,
   Moon,
   MoreVertical,
   MousePointerClick,
   Music,
   Pause,
+  Pin,
+  PinOff,
   Play,
   Plus,
   Power,
@@ -60,6 +67,7 @@ import {
   Square,
   Star,
   Stethoscope,
+  StickyNote,
   Sun,
   Terminal,
   Timer,
@@ -101,7 +109,8 @@ import {
   WindowsNotificationItem,
   WorkspacePreset,
 } from './data/launcherData';
-import { DexWindow } from './components/DexWindow';
+import { DesignStyle, DexWindow, TaskbarPosition } from './components/DexWindow';
+import { LumaClockRenderer } from './components/LumaClockRenderer';
 import { DesktopGridCols, LumaDesktopCanvas, WallpaperStyle } from './components/LumaDesktopCanvas';
 import { LumaSpotlight } from './components/LumaSpotlight';
 import { LumaTerminalWindow } from './components/LumaTerminalWindow';
@@ -151,16 +160,23 @@ interface ToastMessage {
   type?: 'info' | 'warning' | 'success';
 }
 
+interface ClipboardEntry {
+  id: string;
+  text: string;
+  pinned: boolean;
+  time: string;
+}
+
 function StatusPill({ active }: { active: boolean }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase border ${
         active
-          ? 'bg-[#d71921]/15 text-[#d71921] border-[#d71921]/45'
+          ? 'bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] border-[var(--luma-accent-border)]'
           : 'bg-zinc-500/10 text-zinc-500 border-zinc-500/25'
       }`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-[#d71921]' : 'bg-zinc-500'}`} />
+      <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-[var(--luma-accent)]' : 'bg-zinc-500'}`} />
       {active ? 'ВКЛ' : 'ВЫКЛ'}
     </span>
   );
@@ -209,6 +225,13 @@ export default function App() {
   const [desktopCols, setDesktopCols] = useState<DesktopGridCols>(savedState?.desktopCols === 20 ? 20 : 22);
   const [wallpaper, setWallpaper] = useState<WallpaperStyle>(savedState?.wallpaper || 'dots');
   const [desktopEditMode, setDesktopEditMode] = useState<boolean>(false);
+  const [taskbarPosition, setTaskbarPosition] = useState<TaskbarPosition>(
+    savedState?.taskbarPosition === 'left' || savedState?.taskbarPosition === 'top' ? savedState.taskbarPosition : 'bottom'
+  );
+  const [designStyle, setDesignStyle] = useState<DesignStyle>(
+    savedState?.designStyle === 'pixelbook' ? 'pixelbook' : 'nothing'
+  );
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   // --- 18 Clock Styles & Fine Clock Customization (ALL Preserved!) ---
   const [clockStyle, setClockStyle] = useState<ClockStyleKey>(savedState?.clockStyle || 'nothing_dot');
@@ -233,11 +256,14 @@ export default function App() {
     savedState?.rightClickBackEnabled ?? true
   );
 
-  // --- DeX Window Manager State (Clean Empty Desktop on Boot!) ---
+  // --- DeX Window Manager & Real Start Menu State ---
   const [windows, setWindows] = useState<Record<DexWinId, DexWinState>>(INITIAL_WINDOWS);
   const zCounterRef = useRef<number>(25);
   const [spotlightOpen, setSpotlightOpen] = useState<boolean>(false);
+  const [startMenuOpen, setStartMenuOpen] = useState<boolean>(false);
+  const [startSearch, setStartSearch] = useState<string>('');
   const [controlCenterOpen, setControlCenterOpen] = useState<boolean>(false);
+  const [pendingTermCommand, setPendingTermCommand] = useState<{ id: number; command: string } | null>(null);
 
   // --- Apps Window (Window 1 Grouped Structure), Tracker, Plugins, Spaces ---
   const [apps, setApps] = useState<AppItem[]>(savedState?.apps || INITIAL_APPS);
@@ -251,7 +277,7 @@ export default function App() {
   const [plugins, setPlugins] = useState<PluginItem[]>(savedState?.plugins || INITIAL_PLUGINS);
   const [workspaces] = useState<WorkspacePreset[]>(INITIAL_WORKSPACES);
 
-  // --- Real Host Telemetry, Audio, Media & Luma Island ---
+  // --- Real Host Telemetry, Audio, Media & Supercharged Luma Island + Clipboard ---
   const [liveSystem, setLiveSystem] = useState<LiveSystemTelemetry | null>(null);
   const [kernelConnected, setKernelConnected] = useState<boolean>(false);
   const [cpuLoad, setCpuLoad] = useState<number>(0);
@@ -266,7 +292,36 @@ export default function App() {
     savedState?.dynamicIslandEnabled ?? false
   );
   const [dndEnabled, setDndEnabled] = useState<boolean>(savedState?.dndEnabled ?? false);
-  const [islandTab, setIslandTab] = useState<'overview' | 'notifications' | 'player' | 'timer' | 'stopwatch'>('overview');
+  const [islandTab, setIslandTab] = useState<
+    'overview' | 'clipboard' | 'scratchpad' | 'notifications' | 'player' | 'timer' | 'stopwatch' | 'settings'
+  >('overview');
+  const [islandPosition, setIslandPosition] = useState<'top' | 'bottom'>(
+    savedState?.islandPosition === 'bottom' ? 'bottom' : 'top'
+  );
+  const [islandSize, setIslandSize] = useState<'compact' | 'standard' | 'expanded'>(
+    savedState?.islandSize || 'standard'
+  );
+  const [islandShowEq, setIslandShowEq] = useState<boolean>(savedState?.islandShowEq ?? true);
+  const [islandShowClip, setIslandShowClip] = useState<boolean>(savedState?.islandShowClip ?? true);
+  const [islandShowBattery, setIslandShowBattery] = useState<boolean>(savedState?.islandShowBattery ?? true);
+  const [islandAutoClipboard, setIslandAutoClipboard] = useState<boolean>(savedState?.islandAutoClipboard ?? true);
+  const [islandGlowEnabled, setIslandGlowEnabled] = useState<boolean>(savedState?.islandGlowEnabled ?? false);
+  const [clipboardHistory, setClipboardHistory] = useState<ClipboardEntry[]>(
+    Array.isArray(savedState?.clipboardHistory)
+      ? savedState.clipboardHistory
+      : [
+          {
+            id: 'clip_init_1',
+            text: 'Luma OS 1.0.2b — Буфер обмена Luma Island готов к работе',
+            pinned: false,
+            time: 'сейчас',
+          },
+        ]
+  );
+  const [clipSearch, setClipSearch] = useState<string>('');
+  const [manualClipInput, setManualClipInput] = useState<string>('');
+  const [islandScratchpad, setIslandScratchpad] = useState<string>(savedState?.islandScratchpad || '');
+  const lastOsClipRef = useRef<string>('');
   const [notifications, setNotifications] = useState<WindowsNotificationItem[]>(
     savedState?.windowsNotifications || INITIAL_WINDOWS_NOTIFICATIONS
   );
@@ -354,9 +409,21 @@ export default function App() {
       [id]: { open: true, minimized: false, z: nextZ },
     }));
     setControlCenterOpen(false);
+    setStartMenuOpen(false);
+  };
+
+  const openIslandTab = (tab: typeof islandTab) => {
+    setIslandTab(tab);
+    openWindow('island');
+  };
+
+  const handleRunTerminalCommand = (command: string) => {
+    setPendingTermCommand({ id: Date.now(), command });
+    openWindow('terminal');
   };
 
   const toggleTaskbarWindow = (id: DexWinId) => {
+    setStartMenuOpen(false);
     const cur = windows[id];
     const maxZ = Math.max(...Object.values(windows).map((w) => (w.open && !w.minimized ? w.z : 0)));
     if (!cur.open) {
@@ -391,12 +458,127 @@ export default function App() {
       return next;
     });
     setControlCenterOpen(false);
+    setStartMenuOpen(false);
   };
 
-  // --- Sync dark mode class on <html> ---
+  // --- Real Native Win32 + Browser Fullscreen Toggle ---
+  const handleToggleFullscreen = async () => {
+    const target = !isFullscreen;
+    let nativeHandled = false;
+    try {
+      const r = await fetch('/api/kernel/fullscreen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: target }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (typeof d?.fullscreen === 'boolean') {
+          setIsFullscreen(d.fullscreen);
+          nativeHandled = d.fullscreen === target;
+        }
+      }
+    } catch {
+      // fallback to browser fullscreen API
+    }
+    try {
+      if (target && !document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        setIsFullscreen(true);
+      } else if (!target && document.fullscreenElement) {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      } else if (!nativeHandled) {
+        setIsFullscreen(target);
+      }
+    } catch {
+      if (!nativeHandled) setIsFullscreen(target);
+    }
+  };
+
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
+  // --- Clipboard History Manager (Synced with Host OS via /api/kernel/clipboard) ---
+  const pushClipboardText = (rawText: string) => {
+    const text = rawText.trim();
+    if (!text) return;
+    lastOsClipRef.current = text;
+    const tStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    setClipboardHistory((prev) => {
+      const existing = prev.find((c) => c.text === text);
+      if (existing) {
+        return [{ ...existing, time: tStr }, ...prev.filter((c) => c.id !== existing.id)];
+      }
+      const next: ClipboardEntry = {
+        id: `clip_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+        text,
+        pinned: false,
+        time: tStr,
+      };
+      const pinned = prev.filter((c) => c.pinned);
+      const unpinned = prev.filter((c) => !c.pinned).slice(0, 24);
+      return [next, ...pinned, ...unpinned];
+    });
+  };
+
+  const copyTextToClipboard = async (text: string) => {
+    lastOsClipRef.current = text;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // ignore browser permission issues inside WebView2
+    }
+    try {
+      await fetch('/api/kernel/clipboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+    } catch {
+      // ignore offline
+    }
+    pushClipboardText(text);
+    pushToast('Буфер обмена', text.length > 42 ? `${text.slice(0, 42)}…` : text, 'success');
+  };
+
+  const readOsClipboardNow = async (silent = false) => {
+    try {
+      const r = await fetch('/api/kernel/clipboard');
+      if (r.ok) {
+        const d = await r.json();
+        const txt = typeof d?.text === 'string' ? d.text.trim() : '';
+        if (txt && txt !== lastOsClipRef.current) {
+          pushClipboardText(txt);
+          if (!silent) pushToast('Буфер ОС', 'Считано в Luma Island', 'info');
+          return;
+        }
+        if (!silent) pushToast('Буфер ОС', txt ? 'Уже в истории' : 'Буфер обмена пуст', 'info');
+      }
+    } catch {
+      if (!silent) pushToast('Буфер ОС', 'Недоступно без ядра Luma Core', 'info');
+    }
+  };
+
+  useEffect(() => {
+    if (!islandAutoClipboard) return;
+    readOsClipboardNow(true);
+    const id = window.setInterval(() => readOsClipboardNow(true), 3000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [islandAutoClipboard]);
+
+  // --- Sync dark mode & Nothing/Pixelbook design style on <html> ---
   useEffect(() => {
     document.documentElement.classList.toggle('dark', currentTheme.isDark);
   }, [currentTheme.isDark]);
+
+  useEffect(() => {
+    document.documentElement.dataset.design = designStyle;
+  }, [designStyle]);
 
   // --- Persist state cleanly ---
   useEffect(() => {
@@ -416,6 +598,8 @@ export default function App() {
           showPluginsInGrid,
           desktopCols,
           wallpaper,
+          taskbarPosition,
+          designStyle,
           clockStyle,
           timeFormat,
           showSeconds,
@@ -436,6 +620,15 @@ export default function App() {
           isMuted,
           dynamicIslandEnabled,
           dndEnabled,
+          islandPosition,
+          islandSize,
+          islandShowEq,
+          islandShowClip,
+          islandShowBattery,
+          islandAutoClipboard,
+          islandGlowEnabled,
+          clipboardHistory: clipboardHistory.slice(0, 30),
+          islandScratchpad,
           windowsNotifications: notifications,
           islandPlayers,
           activePlayerIndex,
@@ -461,6 +654,8 @@ export default function App() {
     showPluginsInGrid,
     desktopCols,
     wallpaper,
+    taskbarPosition,
+    designStyle,
     clockStyle,
     timeFormat,
     showSeconds,
@@ -481,6 +676,15 @@ export default function App() {
     isMuted,
     dynamicIslandEnabled,
     dndEnabled,
+    islandPosition,
+    islandSize,
+    islandShowEq,
+    islandShowClip,
+    islandShowBattery,
+    islandAutoClipboard,
+    islandGlowEnabled,
+    clipboardHistory,
+    islandScratchpad,
     notifications,
     islandPlayers,
     activePlayerIndex,
@@ -509,12 +713,18 @@ export default function App() {
     };
   }, []);
 
-  // --- Global Keyboard Shortcuts (Ctrl+K Spotlight, Escape, Alt+D Show Desktop) ---
+  // --- Global Keyboard Shortcuts (F11 Fullscreen, Ctrl+K Spotlight, Alt+D Show Desktop, Escape) ---
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F11') {
+        e.preventDefault();
+        handleToggleFullscreen();
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setSpotlightOpen((v) => !v);
+        setStartMenuOpen(false);
         return;
       }
       if (e.altKey && e.key.toLowerCase() === 'd') {
@@ -524,6 +734,7 @@ export default function App() {
       }
       if (e.key === 'Escape') {
         if (spotlightOpen) setSpotlightOpen(false);
+        else if (startMenuOpen) setStartMenuOpen(false);
         else if (controlCenterOpen) setControlCenterOpen(false);
         else if (contextMenuApp) setContextMenuApp(null);
         else if (addAppModalOpen) setAddAppModalOpen(false);
@@ -533,7 +744,8 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [spotlightOpen, controlCenterOpen, contextMenuApp, addAppModalOpen, customThemeModalOpen, desktopEditMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spotlightOpen, startMenuOpen, controlCenterOpen, contextMenuApp, addAppModalOpen, customThemeModalOpen, desktopEditMode, isFullscreen]);
 
   // --- Single 1s System Ticker (Clock, Running App Timers, Island Timer/Stopwatch, Adaptive Day/Night) ---
   useEffect(() => {
@@ -676,7 +888,7 @@ export default function App() {
       fetch('/api/kernel/audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ volume: clamped, muted: clamped === 0 }),
+        body: JSON.stringify({ volume: clamped, mute: clamped === 0 }),
       }).catch(() => {});
     }, 90);
   };
@@ -688,7 +900,7 @@ export default function App() {
     fetch('/api/kernel/audio', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ volume, muted: next }),
+      body: JSON.stringify({ volume, mute: next }),
     }).catch(() => {});
   };
 
@@ -881,15 +1093,31 @@ export default function App() {
   const colon = clockBlinkColon && now.getSeconds() % 2 === 1 ? ' ' : ':';
   const dateShort = `${WEEKDAYS_RU[now.getDay()]} ${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-  // Strict Industrial Surface Tokens
+  // Adaptive Surface Tokens (Nothing vs Pixelbook / Googlebook)
   const isDark = currentTheme.isDark;
-  const surfaceCls = isDark
+  const isPixel = designStyle === 'pixelbook';
+  const surfaceCls = isPixel
+    ? isDark
+      ? 'bg-[#192130] border-blue-300/[0.14] text-slate-100'
+      : 'bg-white border-blue-900/[0.11] text-slate-900'
+    : isDark
     ? 'bg-[#141418] border-white/[0.09] text-zinc-100'
     : 'bg-white border-zinc-900/[0.1] text-zinc-900';
-  const btnCls = isDark
+  const btnCls = isPixel
+    ? isDark
+      ? 'bg-blue-400/[0.08] hover:bg-blue-400/[0.15] border-blue-300/[0.15] text-slate-100'
+      : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
+    : isDark
     ? 'bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.09] text-zinc-200'
     : 'bg-zinc-100 hover:bg-zinc-200 border-zinc-300 text-zinc-800';
   const mutedCls = isDark ? 'text-zinc-400' : 'text-zinc-500';
+  const popoverShellCls = isPixel
+    ? isDark
+      ? 'dex-window-pixel-dark text-slate-100 rounded-[24px]'
+      : 'dex-window-pixel-light text-slate-900 rounded-[24px]'
+    : isDark
+    ? 'dex-window-dark text-zinc-100 rounded-2xl'
+    : 'dex-window-light text-zinc-900 rounded-2xl';
 
   const renderAppIcon = (iconName: string, className = 'w-4 h-4') => {
     const Comp = ICON_MAP[iconName] || AppWindow;
@@ -910,13 +1138,29 @@ export default function App() {
 
   const topVisibleZ = Math.max(0, ...Object.values(windows).map((w) => (w.open && !w.minimized ? w.z : 0)));
 
+  // Smart Island vertical placement so it never overlaps top or bottom taskbar
+  const islandAnchorCls =
+    islandPosition === 'bottom'
+      ? taskbarPosition === 'bottom'
+        ? 'bottom-14'
+        : 'bottom-3'
+      : taskbarPosition === 'top'
+      ? 'top-14'
+      : 'top-2.5';
+
+  const islandHeightCls = islandSize === 'compact' ? 'h-7' : islandSize === 'expanded' ? 'h-10' : 'h-8';
+
   return (
     <div
+      onClick={() => {
+        if (startMenuOpen) setStartMenuOpen(false);
+        if (controlCenterOpen) setControlCenterOpen(false);
+      }}
       className={`relative w-screen h-screen overflow-hidden select-none ${
         isDark ? 'text-zinc-100' : 'text-zinc-900'
       }`}
       style={
-        themeKey !== 'nothing_mono' && themeKey !== 'nothing_paper'
+        !isPixel && themeKey !== 'nothing_mono' && themeKey !== 'nothing_paper'
           ? { background: currentTheme.bgGradient }
           : undefined
       }
@@ -925,6 +1169,20 @@ export default function App() {
       <LumaDesktopCanvas
         isDark={isDark}
         accentHex={currentTheme.accentHex}
+        designStyle={designStyle}
+        onSetDesignStyle={setDesignStyle}
+        taskbarPosition={taskbarPosition}
+        onSetTaskbarPosition={setTaskbarPosition}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={handleToggleFullscreen}
+        clockStyle={clockStyle}
+        timeFormat={timeFormat}
+        showSeconds={showSeconds}
+        showDate={showDate}
+        clockAccentColor={clockAccentColor}
+        clockGlowEnabled={clockGlowEnabled}
+        clockGlowIntensity={clockGlowIntensity}
+        clockBlinkColon={clockBlinkColon}
         apps={combinedApps}
         iconMap={ICON_MAP}
         liveSystem={liveSystem}
@@ -942,6 +1200,7 @@ export default function App() {
         wallpaper={wallpaper}
         onSetWallpaper={setWallpaper}
         onOpenSystemWindow={(w) => openWindow(w)}
+        onRunTerminalCommand={handleRunTerminalCommand}
         onLaunchApp={handleLaunchApp}
         onToggleMediaPlay={handleToggleMediaPlay}
         onNextTrack={handleNextTrack}
@@ -956,52 +1215,85 @@ export default function App() {
         onPushToast={pushToast}
       />
 
-      {/* ==================== LAYER 2: OPTIONAL FLOATING TOP-CENTER LUMA ISLAND PILL ==================== */}
+      {/* ==================== LAYER 2: SUPERCHARGED FLOATING LUMA ISLAND PILL (MEDIA + CLIPBOARD + TIMER) ==================== */}
       {dynamicIslandEnabled && (
-        <div className="fixed top-2.5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className={`fixed ${islandAnchorCls} left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5`}
+        >
           <div
-            onClick={() => openWindow('island')}
+            onClick={() => openIslandTab('overview')}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') openWindow('island');
+              if (e.key === 'Enter' || e.key === ' ') openIslandTab('overview');
             }}
-            className="h-8 pl-3 pr-2 rounded-full bg-[#0a0a0c]/95 text-zinc-100 border border-white/15 shadow-xl flex items-center gap-2.5 cursor-pointer whitespace-nowrap"
+            style={
+              islandGlowEnabled
+                ? { boxShadow: '0 0 22px -2px var(--luma-accent-border), 0 12px 28px rgba(0,0,0,0.45)' }
+                : undefined
+            }
+            className={`${islandHeightCls} pl-3 pr-2 rounded-full bg-[#0a0a0c]/95 text-zinc-100 border border-white/15 shadow-xl flex items-center gap-2.5 cursor-pointer whitespace-nowrap`}
           >
-            {displayMediaPlaying ? (
+            {islandShowEq && displayMediaPlaying ? (
               <div className="flex items-end gap-[2px] h-2.5">
-                <span className="w-[2px] h-full bg-[#d71921] luma-eq-bar" />
+                <span className="w-[2px] h-full bg-[var(--luma-accent)] luma-eq-bar" />
                 <span className="w-[2px] h-full bg-white luma-eq-bar luma-eq-bar-2" />
-                <span className="w-[2px] h-full bg-[#d71921] luma-eq-bar luma-eq-bar-3" />
+                <span className="w-[2px] h-full bg-[var(--luma-accent)] luma-eq-bar luma-eq-bar-3" />
               </div>
             ) : (
-              <span className={`w-1.5 h-1.5 rounded-full ${dndEnabled ? 'bg-zinc-400' : 'bg-[#d71921]'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${dndEnabled ? 'bg-zinc-400' : 'bg-[var(--luma-accent)]'}`} />
             )}
 
-            <span className="text-[11px] font-mono max-w-[170px] truncate">
+            <span className={`text-[11px] font-mono truncate ${islandSize === 'expanded' ? 'max-w-[240px]' : islandSize === 'compact' ? 'max-w-[120px]' : 'max-w-[175px]'}`}>
               {islandTimerRunning
-                ? formatLiveClock(islandTimerRemainingSec)
+                ? `⏱ ${formatLiveClock(islandTimerRemainingSec)}`
                 : islandStopwatchRunning
-                ? formatLiveClock(islandStopwatchSec)
+                ? `⏱ ${formatLiveClock(islandStopwatchSec)}`
                 : displayMediaPlaying || hasLiveOsMedia
                 ? displayTrackTitle
+                : clipboardHistory[0]?.text
+                ? `Буфер: ${clipboardHistory[0].text}`
                 : `События: ${unreadNotifCount}`}
             </span>
 
-            <div
-              className="flex items-center gap-0.5 pl-1.5 border-l border-white/10"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button onClick={handlePrevTrack} className="p-1 rounded-full hover:bg-white/15 cursor-pointer">
-                <SkipBack className="w-3 h-3" />
+            {islandShowBattery && islandSize !== 'compact' && (
+              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono text-zinc-400 pl-1.5 border-l border-white/10">
+                <BatteryCharging className={`w-3 h-3 ${isCharging ? 'text-[var(--luma-accent)]' : ''}`} />
+                {batteryLevel}%
+              </span>
+            )}
+
+            {islandShowClip && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openIslandTab('clipboard');
+                }}
+                title={`Буфер обмена Luma Island (${clipboardHistory.length})`}
+                className="px-1.5 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-[10px] font-mono inline-flex items-center gap-1 cursor-pointer transition"
+              >
+                <Clipboard className="w-3 h-3 text-[var(--luma-accent)]" />
+                <span>{clipboardHistory.length}</span>
               </button>
-              <button onClick={handleToggleMediaPlay} className="p-1 rounded-full bg-[#d71921] text-white cursor-pointer">
-                {displayMediaPlaying ? <Pause className="w-2.5 h-2.5" /> : <Play className="w-2.5 h-2.5" />}
-              </button>
-              <button onClick={handleNextTrack} className="p-1 rounded-full hover:bg-white/15 cursor-pointer">
-                <SkipForward className="w-3 h-3" />
-              </button>
-            </div>
+            )}
+
+            {islandShowEq && (
+              <div
+                className="flex items-center gap-0.5 pl-1.5 border-l border-white/10"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button onClick={handlePrevTrack} className="p-1 rounded-full hover:bg-white/15 cursor-pointer">
+                  <SkipBack className="w-3 h-3" />
+                </button>
+                <button onClick={handleToggleMediaPlay} className="p-1 rounded-full bg-[var(--luma-accent)] text-white cursor-pointer">
+                  {displayMediaPlaying ? <Pause className="w-2.5 h-2.5" /> : <Play className="w-2.5 h-2.5" />}
+                </button>
+                <button onClick={handleNextTrack} className="p-1 rounded-full hover:bg-white/15 cursor-pointer">
+                  <SkipForward className="w-3 h-3" />
+                </button>
+              </div>
+            )}
           </div>
 
           <button
@@ -1024,6 +1316,8 @@ export default function App() {
           subtitle={`${filteredApps.length} элементов`}
           icon={<AppWindow className="w-4 h-4" />}
           isDark={isDark}
+          designStyle={designStyle}
+          taskbarPosition={taskbarPosition}
           zIndex={windows.apps.z}
           initialWidth={1060}
           initialHeight={660}
@@ -1063,7 +1357,7 @@ export default function App() {
                     onClick={() => setCurrentFilter(fk)}
                     className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-left transition cursor-pointer ${
                       currentFilter === fk
-                        ? 'bg-[#d71921] text-white font-semibold'
+                        ? 'bg-[var(--luma-accent)] text-white font-semibold'
                         : isDark
                         ? 'text-zinc-300 hover:bg-white/[0.06]'
                         : 'text-zinc-700 hover:bg-zinc-200/70'
@@ -1080,7 +1374,7 @@ export default function App() {
               <div className="mt-auto space-y-2">
                 <button
                   onClick={() => setAddAppModalOpen(true)}
-                  className="w-full py-2 px-3 rounded-xl bg-[#d71921] hover:bg-[#b9151c] text-white text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full py-2 px-3 rounded-xl bg-[var(--luma-accent)] hover:bg-[#b9151c] text-white text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Добавить
@@ -1113,7 +1407,7 @@ export default function App() {
                       key={m}
                       onClick={() => setGroupedViewStyle(m)}
                       className={`px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer ${
-                        groupedViewStyle === m ? 'bg-[#d71921] text-white' : ''
+                        groupedViewStyle === m ? 'bg-[var(--luma-accent)] text-white' : ''
                       }`}
                     >
                       {label}
@@ -1147,7 +1441,7 @@ export default function App() {
                       >
                         <div className="flex items-center justify-between">
                           {renderAppIcon(app.icon, 'w-4 h-4')}
-                          {app.isRunning && <span className="w-2 h-2 rounded-full bg-[#d71921]" />}
+                          {app.isRunning && <span className="w-2 h-2 rounded-full bg-[var(--luma-accent)]" />}
                         </div>
                         <div className="min-w-0">
                           <div className="text-xs font-semibold truncate">{app.name}</div>
@@ -1223,7 +1517,7 @@ export default function App() {
                             <div className="flex items-center gap-2 shrink-0">
                               <span
                                 className={`text-[11px] font-mono ${
-                                  app.isRunning ? 'text-[#d71921] font-bold' : mutedCls
+                                  app.isRunning ? 'text-[var(--luma-accent)] font-bold' : mutedCls
                                 }`}
                               >
                                 {formatMonthBadge(app.monthMinutes, app.elapsedSeconds, app.isRunning)}
@@ -1254,33 +1548,44 @@ export default function App() {
       {windows.terminal.open && !windows.terminal.minimized && (
         <DexWindow
           id="terminal"
-          title="Терминал Luma"
-          subtitle="IPC 127.0.0.1:49215"
+          title="Терминал Luma Pro"
+          subtitle="Multi-Tab · Host Exec · IPC 49215"
           icon={<Terminal className="w-4 h-4" />}
           isDark={isDark}
+          designStyle={designStyle}
+          taskbarPosition={taskbarPosition}
           zIndex={windows.terminal.z}
-          initialWidth={740}
-          initialHeight={460}
+          initialWidth={820}
+          initialHeight={500}
           initialX={140}
-          initialY={90}
+          initialY={80}
           onFocus={() => focusWindow('terminal')}
           onMinimize={() => minimizeWindow('terminal')}
           onClose={() => closeWindow('terminal')}
         >
           <LumaTerminalWindow
             isDark={isDark}
+            designStyle={designStyle}
+            taskbarPosition={taskbarPosition}
             liveSystem={liveSystem}
             volume={volume}
             isMuted={isMuted}
             dynamicIslandEnabled={dynamicIslandEnabled}
+            pendingCommand={pendingTermCommand}
+            onConsumePendingCommand={() => setPendingTermCommand(null)}
             onChangeVolume={handleVolumeChange}
             onToggleMute={handleToggleMute}
             onMediaAction={(a) =>
               a === 'next' ? handleNextTrack() : a === 'prev' ? handlePrevTrack() : handleToggleMediaPlay()
             }
             onToggleIsland={handleToggleDynamicIsland}
+            onSetThemeMode={(m) => setThemeKey(m === 'light' ? 'nothing_paper' : 'nothing_mono')}
+            onSetDesignStyle={setDesignStyle}
+            onSetTaskbarPosition={setTaskbarPosition}
+            onToggleFullscreen={handleToggleFullscreen}
             onPowerAction={handleExecutePowerAction}
             onCallRpc={callLumaKernelRpc}
+            onClipboardUpdated={pushClipboardText}
           />
         </DexWindow>
       )}
@@ -1293,6 +1598,8 @@ export default function App() {
           subtitle="Сессии и лимиты"
           icon={<BarChart3 className="w-4 h-4" />}
           isDark={isDark}
+          designStyle={designStyle}
+          taskbarPosition={taskbarPosition}
           zIndex={windows.tracker.z}
           initialWidth={860}
           initialHeight={580}
@@ -1312,7 +1619,7 @@ export default function App() {
                     key={p}
                     onClick={() => setTrackerPeriod(p)}
                     className={`px-3 py-1 rounded-md text-xs font-mono cursor-pointer ${
-                      trackerPeriod === p ? 'bg-[#d71921] text-white font-bold' : ''
+                      trackerPeriod === p ? 'bg-[var(--luma-accent)] text-white font-bold' : ''
                     }`}
                   >
                     {p === 'day' ? 'День' : p === 'week' ? 'Неделя' : 'Месяц'}
@@ -1336,7 +1643,7 @@ export default function App() {
                       </span>
                     </div>
                     <div className={`h-1.5 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-zinc-200'}`}>
-                      <div className="h-full bg-[#d71921]" style={{ width: `${pct}%` }} />
+                      <div className="h-full bg-[var(--luma-accent)]" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 );
@@ -1361,7 +1668,7 @@ export default function App() {
                         <span className="font-semibold truncate">{app.name}</span>
                       </div>
                       <div className="flex items-center gap-3 shrink-0 font-mono">
-                        <span className={app.isRunning ? 'text-[#d71921] font-bold' : mutedCls}>
+                        <span className={app.isRunning ? 'text-[var(--luma-accent)] font-bold' : mutedCls}>
                           {app.isRunning ? formatLiveClock(app.elapsedSeconds) : formatDurationRu(mins, app.elapsedSeconds)}
                         </span>
                         <button
@@ -1387,6 +1694,8 @@ export default function App() {
           subtitle={kernelConnected ? 'CONNECTED · 127.0.0.1:49215' : 'STANDALONE'}
           icon={<Code2 className="w-4 h-4" />}
           isDark={isDark}
+          designStyle={designStyle}
+          taskbarPosition={taskbarPosition}
           zIndex={windows.kernel.z}
           initialWidth={1020}
           initialHeight={650}
@@ -1410,7 +1719,7 @@ export default function App() {
               <a
                 href="/LumaOS_1.0.2b.exe"
                 download="LumaOS_1.0.2b.exe"
-                className="px-3.5 py-1.5 rounded-xl bg-[#d71921] hover:bg-[#b9151c] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
+                className="px-3.5 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
               >
                 <Download className="w-3.5 h-3.5" />
                 LumaOS_1.0.2b.exe
@@ -1430,7 +1739,7 @@ export default function App() {
                         callLumaKernelRpc(m);
                       }}
                       className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono cursor-pointer ${
-                        lumaRpcMethod === m ? 'bg-[#d71921] border-[#d71921] text-white' : btnCls
+                        lumaRpcMethod === m ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
                       }`}
                     >
                       {m}
@@ -1460,7 +1769,7 @@ export default function App() {
                     key={f.path}
                     onClick={() => setSelectedCodePath(f.path)}
                     className={`w-full p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                      selectedCodePath === f.path ? 'border-[#d71921] bg-[#d71921]/10' : surfaceCls
+                      selectedCodePath === f.path ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]' : surfaceCls
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -1475,13 +1784,9 @@ export default function App() {
                   <span>{selectedCodePath}</span>
                   <button
                     onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(codeContent);
-                        setCopiedCode(true);
-                        window.setTimeout(() => setCopiedCode(false), 1500);
-                      } catch {
-                        // ignore
-                      }
+                      await copyTextToClipboard(codeContent);
+                      setCopiedCode(true);
+                      window.setTimeout(() => setCopiedCode(false), 1500);
                     }}
                     className={`px-2 py-0.5 rounded border text-[11px] inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
                   >
@@ -1506,6 +1811,8 @@ export default function App() {
           subtitle="Luma OS 1.0.2b"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
+          designStyle={designStyle}
+          taskbarPosition={taskbarPosition}
           zIndex={windows.settings.z}
           initialWidth={1020}
           initialHeight={660}
@@ -1537,7 +1844,7 @@ export default function App() {
                   onClick={() => setSettingsTab(tabId)}
                   className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition cursor-pointer ${
                     settingsTab === tabId
-                      ? 'bg-[#d71921] text-white font-semibold'
+                      ? 'bg-[var(--luma-accent)] text-white font-semibold'
                       : isDark
                       ? 'text-zinc-300 hover:bg-white/[0.06]'
                       : 'text-zinc-700 hover:bg-zinc-200/70'
@@ -1588,40 +1895,199 @@ export default function App() {
               )}
 
               {settingsTab === 'island' && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <div
                     onClick={handleToggleDynamicIsland}
                     className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer ${surfaceCls}`}
                   >
                     <div>
                       <div className="text-sm font-bold">Luma Island (Динамический остров)</div>
-                      <div className={`text-xs ${mutedCls}`}>Верхняя интерактивная капсула с эквалайзером и управлением треками</div>
+                      <div className={`text-xs ${mutedCls}`}>Плавающая капсула с эквалайзером, управлением треками, таймером и буфером обмена</div>
                     </div>
                     <StatusPill active={dynamicIslandEnabled} />
                   </div>
 
-                  <div
-                    onClick={() => setDndEnabled((v) => !v)}
-                    className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer ${surfaceCls}`}
-                  >
-                    <div>
-                      <div className="text-sm font-bold">Режим «Не беспокоить» (DND)</div>
-                      <div className={`text-xs ${mutedCls}`}>Скрывает всплывающие уведомления и системные оповещения</div>
+                  {/* Position & Size Controls */}
+                  <div className={`p-4 rounded-xl border grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs ${surfaceCls}`}>
+                    <div className="space-y-1.5">
+                      <div className={mutedCls}>Расположение капсулы:</div>
+                      <div className="flex gap-1.5">
+                        {(
+                          [
+                            ['top', 'Сверху'],
+                            ['bottom', 'Снизу'],
+                          ] as const
+                        ).map(([pos, label]) => (
+                          <button
+                            key={pos}
+                            onClick={() => setIslandPosition(pos)}
+                            className={`flex-1 py-1.5 rounded-lg border font-semibold cursor-pointer ${
+                              islandPosition === pos ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <StatusPill active={dndEnabled} />
+
+                    <div className="space-y-1.5">
+                      <div className={mutedCls}>Размер капсулы:</div>
+                      <div className="flex gap-1">
+                        {(
+                          [
+                            ['compact', 'Компакт'],
+                            ['standard', 'Стандарт'],
+                            ['expanded', 'Широкий'],
+                          ] as const
+                        ).map(([sz, label]) => (
+                          <button
+                            key={sz}
+                            onClick={() => setIslandSize(sz)}
+                            className={`flex-1 py-1.5 rounded-lg border font-semibold cursor-pointer ${
+                              islandSize === sz ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
-                  <button
-                    onClick={() => openWindow('island')}
-                    className={`px-4 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${btnCls}`}
-                  >
-                    Открыть центр Luma Island
-                  </button>
+                  {/* Island Modules & Clipboard Auto-Capture Toggles */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                    {[
+                      { label: 'Медиа и эквалайзер', sub: 'Кнопки треков и индикатор звука', active: islandShowEq, toggle: () => setIslandShowEq((v) => !v) },
+                      { label: 'Буфер обмена в острове', sub: 'Быстрая кнопка истории клипов', active: islandShowClip, toggle: () => setIslandShowClip((v) => !v) },
+                      { label: 'Авто-захват буфера ОС', sub: 'Сохранять скопированное из Windows', active: islandAutoClipboard, toggle: () => setIslandAutoClipboard((v) => !v) },
+                      { label: 'Индикатор батареи', sub: 'Показывать заряд в капсуле', active: islandShowBattery, toggle: () => setIslandShowBattery((v) => !v) },
+                      { label: 'Подсветка контура', sub: 'Мягкий акцент вокруг капсулы', active: islandGlowEnabled, toggle: () => setIslandGlowEnabled((v) => !v) },
+                      { label: 'Режим «Не беспокоить»', sub: 'Скрывать всплывающие уведомления', active: dndEnabled, toggle: () => setDndEnabled((v) => !v) },
+                    ].map((row) => (
+                      <div
+                        key={row.label}
+                        onClick={row.toggle}
+                        className={`p-3.5 rounded-xl border flex items-center justify-between gap-2 cursor-pointer ${surfaceCls}`}
+                      >
+                        <div className="min-w-0">
+                          <div className="font-bold truncate">{row.label}</div>
+                          <div className={`text-[11px] truncate ${mutedCls}`}>{row.sub}</div>
+                        </div>
+                        <StatusPill active={row.active} />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => openIslandTab('clipboard')}
+                      className="px-4 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Clipboard className="w-3.5 h-3.5" />
+                      Открыть буфер обмена ({clipboardHistory.length})
+                    </button>
+                    <button
+                      onClick={() => openIslandTab('scratchpad')}
+                      className={`px-4 py-2 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}
+                    >
+                      <StickyNote className="w-3.5 h-3.5" />
+                      Быстрая заметка
+                    </button>
+                    <button
+                      onClick={() => openIslandTab('overview')}
+                      className={`px-4 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${btnCls}`}
+                    >
+                      Центр Luma Island
+                    </button>
+                  </div>
                 </div>
               )}
 
               {settingsTab === 'appearance' && (
                 <div className="space-y-4">
+                  {/* Design Style (Nothing vs Pixelbook / Googlebook) & Taskbar Position (Bottom / Left / Top) */}
+                  <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-bold">Стиль системы и панель задач</div>
+                        <div className={`text-xs ${mutedCls}`}>Переключение оболочки Nothing / Pixelbook и стороны дока</div>
+                      </div>
+                      <button
+                        onClick={handleToggleFullscreen}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer ${
+                          isFullscreen ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                        }`}
+                      >
+                        {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+                        {isFullscreen ? 'Оконный режим' : 'Во весь экран (F11)'}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="space-y-1.5">
+                        <div className={mutedCls}>Дизайн оболочки:</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => setDesignStyle('nothing')}
+                            className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                              designStyle === 'nothing'
+                                ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                                : btnCls
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold font-mono">Nothing</span>
+                              <span className="w-2.5 h-2.5 rounded-full bg-[#d71921]" />
+                            </div>
+                            <div className={`text-[10px] mt-0.5 ${mutedCls}`}>Монохром, точки, 1px сетка</div>
+                          </button>
+
+                          <button
+                            onClick={() => setDesignStyle('pixelbook')}
+                            className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                              designStyle === 'pixelbook'
+                                ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                                : btnCls
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold">Pixelbook</span>
+                              <span className="w-2.5 h-2.5 rounded-full bg-[#4285f4]" />
+                            </div>
+                            <div className={`text-[10px] mt-0.5 ${mutedCls}`}>Googlebook, плавающая полка</div>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className={mutedCls}>Положение панели задач:</div>
+                        <div className="grid grid-cols-3 gap-1.5 h-[54px]">
+                          {(
+                            [
+                              ['bottom', 'Снизу'],
+                              ['left', 'Слева'],
+                              ['top', 'Сверху'],
+                            ] as const
+                          ).map(([pos, label]) => (
+                            <button
+                              key={pos}
+                              onClick={() => setTaskbarPosition(pos)}
+                              className={`rounded-xl border font-semibold cursor-pointer transition flex flex-col items-center justify-center gap-1 ${
+                                taskbarPosition === pos
+                                  ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                                  : btnCls
+                              }`}
+                            >
+                              <LayoutPanelLeft className={`w-3.5 h-3.5 ${pos === 'bottom' ? '-rotate-90' : pos === 'top' ? 'rotate-90' : ''}`} />
+                              <span className="text-[11px]">{label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Desktop Grid 22x10 / 20x10 & Wallpaper */}
                   <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
                     <div className="text-sm font-bold">Рабочий стол (200–220 ячеек)</div>
@@ -1634,7 +2100,7 @@ export default function App() {
                               key={c}
                               onClick={() => setDesktopCols(c)}
                               className={`flex-1 py-1.5 rounded-lg border font-mono font-bold cursor-pointer ${
-                                desktopCols === c ? 'bg-[#d71921] border-[#d71921] text-white' : btnCls
+                                desktopCols === c ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
                               }`}
                             >
                               {c}×10 ({c * 10})
@@ -1657,7 +2123,7 @@ export default function App() {
                               key={wKey}
                               onClick={() => setWallpaper(wKey)}
                               className={`flex-1 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer ${
-                                wallpaper === wKey ? 'bg-[#d71921] border-[#d71921] text-white' : btnCls
+                                wallpaper === wKey ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
                               }`}
                             >
                               {wLabel}
@@ -1679,7 +2145,7 @@ export default function App() {
                               key={dKey}
                               onClick={() => setUiDensity(dKey)}
                               className={`flex-1 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer ${
-                                uiDensity === dKey ? 'bg-[#d71921] border-[#d71921] text-white' : btnCls
+                                uiDensity === dKey ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
                               }`}
                             >
                               {dLabel}
@@ -1732,7 +2198,7 @@ export default function App() {
                       <div className="text-sm font-bold">Темы оформления</div>
                       <button
                         onClick={() => setCustomThemeModalOpen(true)}
-                        className="px-3 py-1.5 rounded-lg bg-[#d71921] text-white text-xs font-semibold cursor-pointer"
+                        className="px-3 py-1.5 rounded-lg bg-[var(--luma-accent)] text-white text-xs font-semibold cursor-pointer"
                       >
                         + Своя тема
                       </button>
@@ -1745,7 +2211,7 @@ export default function App() {
                             key={tKey}
                             onClick={() => setThemeKey(tKey)}
                             className={`p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between gap-2 ${
-                              sel ? 'border-[#d71921] bg-[#d71921]/10' : btnCls
+                              sel ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]' : btnCls
                             }`}
                           >
                             <div className="min-w-0">
@@ -1789,7 +2255,7 @@ export default function App() {
                             key={lvl}
                             onClick={() => setGlassIntensity(lvl)}
                             className={`flex-1 py-1 rounded-lg border text-[10px] font-mono cursor-pointer ${
-                              glassIntensity === lvl ? 'bg-[#d71921] border-[#d71921] text-white font-bold' : btnCls
+                              glassIntensity === lvl ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white font-bold' : btnCls
                             }`}
                           >
                             {lvl === 'light' ? 'Слаб.' : lvl === 'medium' ? 'Сред.' : 'Сильн.'}
@@ -1813,14 +2279,44 @@ export default function App() {
 
               {settingsTab === 'clock' && (
                 <div className="space-y-4">
-                  <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-bold">18 циферблатов Luma</div>
-                      <span className="text-xs font-mono text-[#d71921]">
+                  {/* LIVE INTERACTIVE CLOCK PREVIEW (Synchronized 1:1 with Desktop Clock Widget & Taskbar!) */}
+                  <div className={`p-4 rounded-xl border ${surfaceCls}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-mono uppercase tracking-wider text-zinc-500">
+                        Живой предпросмотр (мгновенно применяется на рабочем столе)
+                      </span>
+                      <span className="text-xs font-mono font-bold text-[var(--luma-accent)]">
                         {CLOCK_STYLE_OPTIONS.find((o) => o.id === clockStyle)?.label}
                       </span>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
+                    <div
+                      className={`h-32 rounded-2xl border p-4 overflow-hidden ${
+                        isDark ? 'bg-[#09090b] border-white/10' : 'bg-[#f3f3f1] border-zinc-300'
+                      }`}
+                    >
+                      <LumaClockRenderer
+                        now={now}
+                        clockStyle={clockStyle}
+                        timeFormat={timeFormat}
+                        showSeconds={showSeconds}
+                        showDate={showDate}
+                        clockAccentColor={clockAccentColor}
+                        clockGlowEnabled={clockGlowEnabled}
+                        clockGlowIntensity={clockGlowIntensity}
+                        clockBlinkColon={clockBlinkColon}
+                        isDark={isDark}
+                        cityLabel={liveSystem?.location?.city || 'LUMA DESKTOP'}
+                        compact
+                      />
+                    </div>
+                  </div>
+
+                  <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-bold">18 циферблатов Luma</div>
+                      <span className={`text-[11px] font-mono ${mutedCls}`}>Выберите стиль</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto pr-1">
                       {CLOCK_STYLE_OPTIONS.map((opt) => {
                         const sel = clockStyle === opt.id;
                         return (
@@ -1828,12 +2324,12 @@ export default function App() {
                             key={opt.id}
                             onClick={() => setClockStyle(opt.id)}
                             className={`p-3 rounded-xl border text-left transition cursor-pointer space-y-1 ${
-                              sel ? 'border-[#d71921] bg-[#d71921]/10' : btnCls
+                              sel ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]' : btnCls
                             }`}
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-semibold truncate">{opt.label}</span>
-                              {sel && <span className="w-2 h-2 rounded-full bg-[#d71921] shrink-0" />}
+                              {sel && <span className="w-2 h-2 rounded-full bg-[var(--luma-accent)] shrink-0" />}
                             </div>
                             <div className="text-[11px] font-mono text-zinc-400">{opt.sample}</div>
                           </button>
@@ -1842,30 +2338,62 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className={`p-4 rounded-xl border grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs ${surfaceCls}`}>
-                    <button onClick={() => setTimeFormat(timeFormat === '24' ? '12' : '24')} className={`p-2.5 rounded-lg border font-mono cursor-pointer ${btnCls}`}>
-                      Формат: {timeFormat}ч
-                    </button>
-                    <button onClick={() => setShowSeconds((v) => !v)} className={`p-2.5 rounded-lg border cursor-pointer flex items-center justify-between ${btnCls}`}>
-                      <span>Секунды</span>
-                      <StatusPill active={showSeconds} />
-                    </button>
-                    <button onClick={() => setShowDate((v) => !v)} className={`p-2.5 rounded-lg border cursor-pointer flex items-center justify-between ${btnCls}`}>
-                      <span>Дата</span>
-                      <StatusPill active={showDate} />
-                    </button>
-                    <button onClick={() => setClockBlinkColon((v) => !v)} className={`p-2.5 rounded-lg border cursor-pointer flex items-center justify-between ${btnCls}`}>
-                      <span>Мигание</span>
-                      <StatusPill active={clockBlinkColon} />
-                    </button>
-                    <button onClick={() => setClockGlowEnabled((v) => !v)} className={`p-2.5 rounded-lg border cursor-pointer flex items-center justify-between ${btnCls}`}>
-                      <span>Свечение</span>
-                      <StatusPill active={clockGlowEnabled} />
-                    </button>
-                    <div className={`p-2.5 rounded-lg border flex items-center justify-between ${btnCls}`}>
-                      <span className={mutedCls}>Акцент:</span>
-                      <input type="color" value={clockAccentColor} onChange={(e) => setClockAccentColor(e.target.value)} className="w-8 h-5 cursor-pointer bg-transparent" />
+                  <div className={`p-4 rounded-xl border space-y-3 text-xs ${surfaceCls}`}>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      <button onClick={() => setTimeFormat(timeFormat === '24' ? '12' : '24')} className={`p-2.5 rounded-lg border font-mono cursor-pointer ${btnCls}`}>
+                        Формат: {timeFormat}ч
+                      </button>
+                      <button onClick={() => setShowSeconds((v) => !v)} className={`p-2.5 rounded-lg border cursor-pointer flex items-center justify-between ${btnCls}`}>
+                        <span>Секунды</span>
+                        <StatusPill active={showSeconds} />
+                      </button>
+                      <button onClick={() => setShowDate((v) => !v)} className={`p-2.5 rounded-lg border cursor-pointer flex items-center justify-between ${btnCls}`}>
+                        <span>Дата</span>
+                        <StatusPill active={showDate} />
+                      </button>
+                      <button onClick={() => setClockBlinkColon((v) => !v)} className={`p-2.5 rounded-lg border cursor-pointer flex items-center justify-between ${btnCls}`}>
+                        <span>Мигание</span>
+                        <StatusPill active={clockBlinkColon} />
+                      </button>
+                      <button onClick={() => setClockGlowEnabled((v) => !v)} className={`p-2.5 rounded-lg border cursor-pointer flex items-center justify-between ${btnCls}`}>
+                        <span>Свечение</span>
+                        <StatusPill active={clockGlowEnabled} />
+                      </button>
+                      <div className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 ${btnCls}`}>
+                        <span className={mutedCls}>Акцент:</span>
+                        <div className="flex items-center gap-1">
+                          {['#d71921', '#4285f4', '#10b981', '#f59e0b', '#ffffff'].map((hex) => (
+                            <button
+                              key={hex}
+                              type="button"
+                              onClick={() => setClockAccentColor(hex)}
+                              className={`w-4 h-4 rounded-full border cursor-pointer ${
+                                clockAccentColor.toLowerCase() === hex ? 'ring-2 ring-current' : 'border-zinc-500/40'
+                              }`}
+                              style={{ backgroundColor: hex }}
+                            />
+                          ))}
+                          <input type="color" value={clockAccentColor} onChange={(e) => setClockAccentColor(e.target.value)} className="w-6 h-5 cursor-pointer bg-transparent" />
+                        </div>
+                      </div>
                     </div>
+
+                    {clockGlowEnabled && (
+                      <div className="space-y-1 pt-2 border-t border-white/10">
+                        <div className="flex justify-between font-mono text-[11px]">
+                          <span className={mutedCls}>Интенсивность свечения</span>
+                          <span>{clockGlowIntensity}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={4}
+                          max={32}
+                          value={clockGlowIntensity}
+                          onChange={(e) => setClockGlowIntensity(Number(e.target.value))}
+                          className="w-full"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1906,7 +2434,7 @@ export default function App() {
                           key={n}
                           onClick={() => setCardColumns(n)}
                           className={`w-8 h-8 rounded-lg border font-mono font-bold cursor-pointer ${
-                            cardColumns === n ? 'bg-[#d71921] border-[#d71921] text-white' : btnCls
+                            cardColumns === n ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
                           }`}
                         >
                           {n}
@@ -1951,7 +2479,7 @@ export default function App() {
                           setCheckingGithub(false);
                           setGithubUpdateStatus(`Актуальная сборка: ${ver} (${new Date().toLocaleTimeString('ru-RU')})`);
                         }}
-                        className="px-3.5 py-1.5 rounded-lg bg-[#d71921] text-white text-xs font-semibold cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-lg bg-[var(--luma-accent)] text-white text-xs font-semibold cursor-pointer"
                       >
                         {checkingGithub ? 'Проверка...' : 'Проверить'}
                       </button>
@@ -2014,7 +2542,7 @@ export default function App() {
                     <a
                       href="/LumaOS_1.0.2b.exe"
                       download="LumaOS_1.0.2b.exe"
-                      className="px-3.5 py-2 rounded-xl bg-[#d71921] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
+                      className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
                       LumaOS_1.0.2b.exe
@@ -2027,7 +2555,7 @@ export default function App() {
                       <button
                         onClick={() => setChangelogFilter('all')}
                         className={`px-2 py-0.5 rounded font-mono text-[11px] cursor-pointer ${
-                          changelogFilter === 'all' ? 'bg-[#d71921] text-white' : btnCls
+                          changelogFilter === 'all' ? 'bg-[var(--luma-accent)] text-white' : btnCls
                         }`}
                       >
                         Все
@@ -2039,7 +2567,7 @@ export default function App() {
                           key={v}
                           onClick={() => setChangelogFilter(v)}
                           className={`px-2 py-0.5 rounded font-mono text-[11px] cursor-pointer ${
-                            changelogFilter === v ? 'bg-[#d71921] text-white font-bold' : btnCls
+                            changelogFilter === v ? 'bg-[var(--luma-accent)] text-white font-bold' : btnCls
                           }`}
                         >
                           v{v}
@@ -2054,7 +2582,7 @@ export default function App() {
                       <div
                         key={ver}
                         className={`p-4 rounded-xl border space-y-2 ${
-                          ver === '1.0.2' ? 'border-[#d71921]/60 bg-[#d71921]/[0.06]' : surfaceCls
+                          ver === '1.0.2' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
                         }`}
                       >
                         <div className="flex items-center justify-between">
@@ -2085,6 +2613,8 @@ export default function App() {
           subtitle={`${plugins.filter((p) => p.enabled).length} активных`}
           icon={<Puzzle className="w-4 h-4" />}
           isDark={isDark}
+          designStyle={designStyle}
+          taskbarPosition={taskbarPosition}
           zIndex={windows.plugins.z}
           initialWidth={860}
           initialHeight={580}
@@ -2113,7 +2643,7 @@ export default function App() {
                       </button>
                       <button
                         onClick={() => setPlugins((prev) => prev.filter((x) => x.id !== p.id))}
-                        className="p-1.5 rounded-lg hover:bg-[#d71921]/20 text-zinc-500 hover:text-[#d71921] cursor-pointer"
+                        className="p-1.5 rounded-lg hover:bg-[var(--luma-accent-soft)] text-zinc-500 hover:text-[var(--luma-accent)] cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -2138,7 +2668,7 @@ export default function App() {
                         disabled={installed}
                         onClick={() => handleInstallCatalogPlugin(item)}
                         className={`px-3 py-1 rounded-lg text-xs font-mono shrink-0 cursor-pointer ${
-                          installed ? `${btnCls} opacity-50` : 'bg-[#d71921] text-white font-bold'
+                          installed ? `${btnCls} opacity-50` : 'bg-[var(--luma-accent)] text-white font-bold'
                         }`}
                       >
                         {installed ? 'OK' : 'Установить'}
@@ -2189,7 +2719,7 @@ export default function App() {
                     setNewPluginSlug('');
                     setNewPluginTitle('');
                   }}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#d71921] text-white text-xs font-semibold cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg bg-[var(--luma-accent)] text-white text-xs font-semibold cursor-pointer"
                 >
                   Создать
                 </button>
@@ -2199,38 +2729,43 @@ export default function App() {
         </DexWindow>
       )}
 
-      {/* WINDOW 7: LUMA ISLAND CONTROL CENTER */}
+      {/* WINDOW 7: SUPERCHARGED LUMA ISLAND HUB (MEDIA + CLIPBOARD MANAGER + SCRATCHPAD + TIMER + SETTINGS) */}
       {windows.island.open && !windows.island.minimized && (
         <DexWindow
           id="island"
           title="Luma Island"
-          subtitle="Медиа, события и таймер"
+          subtitle="Буфер обмена, медиа, заметка, таймер"
           icon={<Disc3 className="w-4 h-4" />}
           isDark={isDark}
+          designStyle={designStyle}
+          taskbarPosition={taskbarPosition}
           zIndex={windows.island.z}
-          initialWidth={700}
-          initialHeight={500}
+          initialWidth={780}
+          initialHeight={560}
           onFocus={() => focusWindow('island')}
           onMinimize={() => minimizeWindow('island')}
           onClose={() => closeWindow('island')}
         >
           <div className="p-5 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className={`flex items-center gap-1 p-0.5 rounded-lg border ${btnCls}`}>
+              <div className={`flex flex-wrap items-center gap-1 p-0.5 rounded-lg border ${btnCls}`}>
                 {(
                   [
                     ['overview', 'Обзор'],
+                    ['clipboard', `Буфер (${clipboardHistory.length})`],
+                    ['scratchpad', 'Заметка'],
                     ['player', 'Медиа'],
                     ['notifications', `События (${notifications.length})`],
                     ['timer', 'Таймер'],
                     ['stopwatch', 'Секундомер'],
+                    ['settings', 'Настройки'],
                   ] as const
                 ).map(([k, l]) => (
                   <button
                     key={k}
                     onClick={() => setIslandTab(k)}
                     className={`px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer ${
-                      islandTab === k ? 'bg-[#d71921] text-white' : ''
+                      islandTab === k ? 'bg-[var(--luma-accent)] text-white' : ''
                     }`}
                   >
                     {l}
@@ -2256,7 +2791,7 @@ export default function App() {
                     <button onClick={handlePrevTrack} className={`p-2.5 rounded-full border cursor-pointer ${btnCls}`}>
                       <SkipBack className="w-4 h-4" />
                     </button>
-                    <button onClick={handleToggleMediaPlay} className="p-3 rounded-full bg-[#d71921] text-white cursor-pointer">
+                    <button onClick={handleToggleMediaPlay} className="p-3 rounded-full bg-[var(--luma-accent)] text-white cursor-pointer">
                       {displayMediaPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                     </button>
                     <button onClick={handleNextTrack} className={`p-2.5 rounded-full border cursor-pointer ${btnCls}`}>
@@ -2270,12 +2805,190 @@ export default function App() {
                       key={pl.id}
                       onClick={() => setActivePlayerIndex(idx)}
                       className={`px-2.5 py-1 rounded-lg border text-xs cursor-pointer ${
-                        activePlayerIndex === idx ? 'bg-[#d71921] border-[#d71921] text-white' : btnCls
+                        activePlayerIndex === idx ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
                       }`}
                     >
                       {pl.name}
                     </button>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Overview Quick Clipboard Preview */}
+            {islandTab === 'overview' && (
+              <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold inline-flex items-center gap-1.5">
+                    <Clipboard className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+                    Последние записи буфера обмена
+                  </span>
+                  <button
+                    onClick={() => setIslandTab('clipboard')}
+                    className="text-[11px] font-mono text-[var(--luma-accent)] cursor-pointer hover:underline"
+                  >
+                    Открыть всё ({clipboardHistory.length})
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  {clipboardHistory.slice(0, 4).map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => copyTextToClipboard(c.text)}
+                      className={`w-full px-3 py-2 rounded-lg border text-left text-xs flex items-center justify-between gap-2 cursor-pointer transition ${btnCls}`}
+                    >
+                      <span className="truncate font-mono">{c.text}</span>
+                      <span className={`text-[10px] font-mono shrink-0 ${mutedCls}`}>{c.time}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* REAL OS CLIPBOARD MANAGER TAB */}
+            {islandTab === 'clipboard' && (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className={`flex-1 min-w-[180px] flex items-center gap-2 px-3 py-1.5 rounded-xl border ${btnCls}`}>
+                    <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                    <input
+                      value={clipSearch}
+                      onChange={(e) => setClipSearch(e.target.value)}
+                      placeholder="Поиск по истории буфера..."
+                      className="w-full bg-transparent text-xs outline-none placeholder:text-zinc-500"
+                    />
+                  </div>
+                  <button
+                    onClick={() => readOsClipboardNow(false)}
+                    className="px-3 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Считать ОС
+                  </button>
+                  <button
+                    onClick={() => setClipboardHistory((prev) => prev.filter((c) => c.pinned))}
+                    className={`px-3 py-1.5 rounded-xl border text-xs cursor-pointer ${btnCls}`}
+                    title="Удалить все незакреплённые записи"
+                  >
+                    Очистить
+                  </button>
+                </div>
+
+                {/* Add Manual Clip Snippet */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!manualClipInput.trim()) return;
+                    copyTextToClipboard(manualClipInput.trim());
+                    setManualClipInput('');
+                  }}
+                  className="flex gap-2"
+                >
+                  <input
+                    value={manualClipInput}
+                    onChange={(e) => setManualClipInput(e.target.value)}
+                    placeholder="Сохранить текст / ссылку / шаблон в буфер обмена..."
+                    className={`flex-1 px-3 py-2 rounded-xl border text-xs outline-none ${btnCls}`}
+                  />
+                  <button
+                    type="submit"
+                    className={`px-3.5 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${btnCls}`}
+                  >
+                    + В буфер
+                  </button>
+                </form>
+
+                {/* Clipboard Entries List */}
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {clipboardHistory
+                    .filter((c) => !clipSearch.trim() || c.text.toLowerCase().includes(clipSearch.trim().toLowerCase()))
+                    .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+                    .map((entry) => (
+                      <div
+                        key={entry.id}
+                        className={`p-3 rounded-xl border flex items-start justify-between gap-3 text-xs ${surfaceCls} ${
+                          entry.pinned ? 'border-[var(--luma-accent-border)]' : ''
+                        }`}
+                      >
+                        <div
+                          onClick={() => copyTextToClipboard(entry.text)}
+                          className="min-w-0 flex-1 cursor-pointer space-y-1"
+                        >
+                          <div className="font-mono break-all line-clamp-3 leading-relaxed">{entry.text}</div>
+                          <div className={`text-[10px] font-mono flex items-center gap-2 ${mutedCls}`}>
+                            <span>{entry.time}</span>
+                            <span>·</span>
+                            <span>{entry.text.length} симв.</span>
+                            {entry.pinned && <span className="text-[var(--luma-accent)] font-bold">ЗАКРЕПЛЕНО</span>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => copyTextToClipboard(entry.text)}
+                            title="Скопировать в ОС"
+                            className={`p-1.5 rounded-lg border cursor-pointer ${btnCls}`}
+                          >
+                            <ClipboardCheck className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+                          </button>
+                          <button
+                            onClick={() =>
+                              setClipboardHistory((prev) =>
+                                prev.map((c) => (c.id === entry.id ? { ...c, pinned: !c.pinned } : c))
+                              )
+                            }
+                            title={entry.pinned ? 'Открепить' : 'Закрепить'}
+                            className={`p-1.5 rounded-lg border cursor-pointer ${
+                              entry.pinned ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                            }`}
+                          >
+                            {entry.pinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            onClick={() => setClipboardHistory((prev) => prev.filter((c) => c.id !== entry.id))}
+                            title="Удалить"
+                            className="p-1.5 rounded-lg hover:bg-[var(--luma-accent-soft)] text-zinc-500 hover:text-[var(--luma-accent)] cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  {clipboardHistory.length === 0 && (
+                    <div className={`py-8 text-center text-xs font-mono ${mutedCls}`}>История буфера обмена пуста</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* SCRATCHPAD QUICK NOTE TAB */}
+            {islandTab === 'scratchpad' && (
+              <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold">Быстрая заметка Luma Island</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => islandScratchpad.trim() && copyTextToClipboard(islandScratchpad)}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
+                    >
+                      <Copy className="w-3 h-3" /> В буфер
+                    </button>
+                    <button
+                      onClick={() => setIslandScratchpad('')}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] cursor-pointer ${btnCls}`}
+                    >
+                      Очистить
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  rows={10}
+                  value={islandScratchpad}
+                  onChange={(e) => setIslandScratchpad(e.target.value)}
+                  placeholder="Черновик, быстрые заметки, команды, ссылки — сохраняются автоматически..."
+                  className={`w-full p-3 rounded-xl border text-xs font-mono outline-none resize-none leading-relaxed ${btnCls}`}
+                />
+                <div className={`text-[10px] font-mono ${mutedCls}`}>
+                  Символов: {islandScratchpad.length} · Автосохранение активно
                 </div>
               </div>
             )}
@@ -2327,7 +3040,7 @@ export default function App() {
                 <div className="flex justify-center gap-2">
                   <button
                     onClick={() => setIslandTimerRunning((v) => !v)}
-                    className="px-5 py-2 rounded-xl bg-[#d71921] text-white text-xs font-mono font-bold cursor-pointer"
+                    className="px-5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold cursor-pointer"
                   >
                     {islandTimerRunning ? 'ПАУЗА' : 'СТАРТ'}
                   </button>
@@ -2350,7 +3063,7 @@ export default function App() {
                 <div className="flex justify-center gap-2">
                   <button
                     onClick={() => setIslandStopwatchRunning((v) => !v)}
-                    className="px-5 py-2 rounded-xl bg-[#d71921] text-white text-xs font-mono font-bold cursor-pointer"
+                    className="px-5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold cursor-pointer"
                   >
                     {islandStopwatchRunning ? 'СТОП' : 'СТАРТ'}
                   </button>
@@ -2382,6 +3095,65 @@ export default function App() {
                 )}
               </div>
             )}
+
+            {/* INLINE ISLAND SETTINGS TAB */}
+            {islandTab === 'settings' && (
+              <div className="space-y-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className={`p-3.5 rounded-xl border space-y-2 ${surfaceCls}`}>
+                    <div className={mutedCls}>Положение капсулы</div>
+                    <div className="flex gap-1.5">
+                      {(['top', 'bottom'] as const).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => setIslandPosition(p)}
+                          className={`flex-1 py-1.5 rounded-lg border font-semibold cursor-pointer ${
+                            islandPosition === p ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                          }`}
+                        >
+                          {p === 'top' ? 'Сверху' : 'Снизу'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className={`p-3.5 rounded-xl border space-y-2 ${surfaceCls}`}>
+                    <div className={mutedCls}>Размер капсулы</div>
+                    <div className="flex gap-1">
+                      {(['compact', 'standard', 'expanded'] as const).map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => setIslandSize(s)}
+                          className={`flex-1 py-1.5 rounded-lg border font-semibold cursor-pointer ${
+                            islandSize === s ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                          }`}
+                        >
+                          {s === 'compact' ? 'Компакт' : s === 'standard' ? 'Станд.' : 'Широкий'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {[
+                    { label: 'Медиа и эквалайзер', active: islandShowEq, toggle: () => setIslandShowEq((v) => !v) },
+                    { label: 'Буфер обмена в капсуле', active: islandShowClip, toggle: () => setIslandShowClip((v) => !v) },
+                    { label: 'Авто-захват буфера ОС', active: islandAutoClipboard, toggle: () => setIslandAutoClipboard((v) => !v) },
+                    { label: 'Индикатор заряда', active: islandShowBattery, toggle: () => setIslandShowBattery((v) => !v) },
+                    { label: 'Свечение контура', active: islandGlowEnabled, toggle: () => setIslandGlowEnabled((v) => !v) },
+                    { label: 'Не беспокоить (DND)', active: dndEnabled, toggle: () => setDndEnabled((v) => !v) },
+                  ].map((opt) => (
+                    <button
+                      key={opt.label}
+                      onClick={opt.toggle}
+                      className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer ${surfaceCls}`}
+                    >
+                      <span className="font-semibold">{opt.label}</span>
+                      <StatusPill active={opt.active} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </DexWindow>
       )}
@@ -2394,6 +3166,8 @@ export default function App() {
           subtitle="Пакетный запуск"
           icon={<Rocket className="w-4 h-4" />}
           isDark={isDark}
+          designStyle={designStyle}
+          taskbarPosition={taskbarPosition}
           zIndex={windows.spaces.z}
           initialWidth={600}
           initialHeight={420}
@@ -2424,7 +3198,7 @@ export default function App() {
                     pushToast('Пространство', `Профиль «${ws.name}» запущен`, 'info');
                     closeWindow('spaces');
                   }}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#d71921] text-white text-xs font-semibold cursor-pointer shrink-0"
+                  className="px-3.5 py-1.5 rounded-lg bg-[var(--luma-accent)] text-white text-xs font-semibold cursor-pointer shrink-0"
                 >
                   Запустить
                 </button>
@@ -2434,171 +3208,546 @@ export default function App() {
         </DexWindow>
       )}
 
-      {/* ==================== LAYER 4: BOTTOM SAMSUNG DeX × NOTHING TASKBAR (48px) ==================== */}
-      <footer
-        className={`fixed bottom-0 inset-x-0 h-12 z-50 border-t flex items-center justify-between px-2.5 gap-2 ${
-          isDark
-            ? 'bg-[#0b0b0e]/92 border-white/[0.09] text-zinc-100'
-            : 'bg-white/92 border-zinc-900/[0.1] text-zinc-900'
-        }`}
-        style={{ backdropFilter: 'blur(24px)' }}
-      >
-        {/* Left: 9-Dot App Launcher + Spotlight + Grid Edit */}
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={() => toggleTaskbarWindow('apps')}
-            title="Приложения (Окно 1)"
-            className={`w-9 h-9 rounded-xl flex items-center justify-center transition cursor-pointer ${
-              windows.apps.open && !windows.apps.minimized
-                ? 'bg-[#d71921] text-white'
-                : isDark
-                ? 'hover:bg-white/10 text-zinc-200'
-                : 'hover:bg-zinc-200 text-zinc-800'
-            }`}
-          >
-            {/* Iconic 3x3 Nothing Dot Matrix Launcher Icon */}
-            <div className="grid grid-cols-3 gap-[3px]">
-              {Array.from({ length: 9 }).map((_, idx) => (
-                <span key={idx} className="w-[3.5px] h-[3.5px] rounded-full bg-current" />
-              ))}
-            </div>
-          </button>
+      {/* ==================== LAYER 4: ADAPTIVE TASKBAR (BOTTOM / LEFT / TOP) × (NOTHING / PIXELBOOK) ==================== */}
+      {taskbarPosition === 'left' ? (
+        <aside
+          onClick={(e) => e.stopPropagation()}
+          className={`fixed left-0 inset-y-0 w-14 z-50 border-r flex flex-col items-center justify-between py-2.5 gap-2 ${
+            isPixel
+              ? isDark
+                ? 'bg-[#121824]/92 border-blue-300/[0.14] text-slate-100'
+                : 'bg-white/92 border-blue-900/[0.1] text-slate-900'
+              : isDark
+              ? 'bg-[#0b0b0e]/92 border-white/[0.09] text-zinc-100'
+              : 'bg-white/92 border-zinc-900/[0.1] text-zinc-900'
+          }`}
+          style={{ backdropFilter: 'blur(24px)' }}
+        >
+          {/* Top: Start Menu + Spotlight + Grid Edit */}
+          <div className="flex flex-col items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => {
+                setStartMenuOpen((v) => !v);
+                setControlCenterOpen(false);
+              }}
+              title="Пуск (Меню Luma)"
+              className={`w-10 h-10 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
+                startMenuOpen
+                  ? 'bg-[var(--luma-accent)] text-white'
+                  : isDark
+                  ? 'hover:bg-white/10 text-zinc-200'
+                  : 'hover:bg-zinc-200 text-zinc-800'
+              }`}
+            >
+              {isPixel ? (
+                <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center">
+                  <span className="w-2 h-2 rounded-full bg-current" />
+                </span>
+              ) : (
+                <div className="grid grid-cols-3 gap-[3px]">
+                  {Array.from({ length: 9 }).map((_, idx) => (
+                    <span key={idx} className="w-[3.5px] h-[3.5px] rounded-full bg-current" />
+                  ))}
+                </div>
+              )}
+            </button>
 
-          <button
-            onClick={() => setSpotlightOpen(true)}
-            title="Luma Spotlight (Ctrl+K)"
-            className={`h-8 px-2.5 rounded-xl border flex items-center gap-1.5 text-xs transition cursor-pointer ${btnCls}`}
-          >
-            <Search className="w-3.5 h-3.5 text-[#d71921]" />
-            <span className="hidden sm:inline font-mono text-[11px]">⌘K</span>
-          </button>
+            <button
+              onClick={() => setSpotlightOpen(true)}
+              title="Spotlight (Ctrl+K)"
+              className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center transition cursor-pointer ${btnCls}`}
+            >
+              <Search className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+            </button>
 
-          <button
-            onClick={() => setDesktopEditMode((v) => !v)}
-            title={`Редактор сетки рабочего стола (${desktopCols}×10)`}
-            className={`w-8 h-8 rounded-xl border flex items-center justify-center transition cursor-pointer ${
-              desktopEditMode ? 'bg-[#d71921] border-[#d71921] text-white' : btnCls
-            }`}
-          >
-            <Grid className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Center: Running & Pinned DeX Windows */}
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-          {taskbarApps
-            .filter((item) => item.pinned || windows[item.id].open)
-            .map((item) => {
-              const st = windows[item.id];
-              const isFocused = st.open && !st.minimized && st.z === topVisibleZ;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => toggleTaskbarWindow(item.id)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (st.open) closeWindow(item.id);
-                  }}
-                  title={item.label}
-                  className={`relative h-9 px-3 rounded-xl flex items-center gap-2 text-xs transition cursor-pointer whitespace-nowrap ${
-                    isFocused
-                      ? isDark
-                        ? 'bg-white/[0.12] text-white font-semibold'
-                        : 'bg-zinc-200 text-zinc-950 font-semibold'
-                      : isDark
-                      ? 'text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100'
-                      : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-                  }`}
-                >
-                  {item.icon}
-                  <span className="hidden md:inline">{item.label}</span>
-                  {st.open && (
-                    <span
-                      className={`absolute bottom-1 left-1/2 -translate-x-1/2 rounded-full transition-all ${
-                        st.minimized ? 'w-1 h-1 bg-zinc-400' : 'w-3 h-[2px] bg-[#d71921]'
-                      }`}
-                    />
-                  )}
-                </button>
-              );
-            })}
-        </div>
-
-        {/* Right: DeX System Tray + Clock + Show Desktop Edge */}
-        <div className="flex items-center gap-1.5 shrink-0 h-full">
-          <div className={`hidden lg:flex items-center gap-2 px-2.5 h-8 rounded-xl border text-[11px] font-mono ${btnCls}`}>
-            <span>CPU {cpuLoad}%</span>
-            <span className="opacity-30">·</span>
-            <span>RAM {ramLoad}%</span>
+            <button
+              onClick={() => setDesktopEditMode((v) => !v)}
+              title={`Редактор сетки (${desktopCols}×10)`}
+              className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center transition cursor-pointer ${
+                desktopEditMode ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+              }`}
+            >
+              <Grid className="w-3.5 h-3.5" />
+            </button>
           </div>
 
-          {!dynamicIslandEnabled && (
+          {/* Center: Vertical Window Icons */}
+          <div className="flex flex-col items-center gap-1 overflow-y-auto no-scrollbar py-1">
+            {taskbarApps
+              .filter((item) => item.pinned || windows[item.id].open)
+              .map((item) => {
+                const st = windows[item.id];
+                const isFocused = st.open && !st.minimized && st.z === topVisibleZ;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => toggleTaskbarWindow(item.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (st.open) closeWindow(item.id);
+                    }}
+                    title={item.label}
+                    className={`relative w-10 h-10 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
+                      isFocused
+                        ? isDark
+                          ? 'bg-white/[0.14] text-white'
+                          : 'bg-zinc-200 text-zinc-950'
+                        : isDark
+                        ? 'text-zinc-400 hover:bg-white/[0.07] hover:text-zinc-100'
+                        : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                    }`}
+                  >
+                    {item.icon}
+                    {st.open && (
+                      <span
+                        className={`absolute left-1 top-1/2 -translate-y-1/2 rounded-full transition-all ${
+                          st.minimized ? 'w-1 h-1 bg-zinc-400' : 'w-[2.5px] h-3.5 bg-[var(--luma-accent)]'
+                        }`}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+          </div>
+
+          {/* Bottom: Fullscreen + Clipboard + Control Center + Vertical Clock + Show Desktop */}
+          <div className="flex flex-col items-center gap-1.5 shrink-0">
             <button
-              onClick={handleToggleDynamicIsland}
-              title="Включить Luma Island"
-              className={`w-8 h-8 rounded-xl border flex items-center justify-center cursor-pointer ${btnCls}`}
+              onClick={handleToggleFullscreen}
+              title={isFullscreen ? 'Выйти из полного экрана (F11)' : 'Во весь экран (F11)'}
+              className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center cursor-pointer ${
+                isFullscreen ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+              }`}
             >
-              <Disc3 className="w-3.5 h-3.5" />
+              {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
             </button>
+
+            <button
+              onClick={() => openIslandTab('clipboard')}
+              title={`Буфер обмена (${clipboardHistory.length})`}
+              className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center cursor-pointer ${btnCls}`}
+            >
+              <Clipboard className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={() => {
+                setControlCenterOpen((v) => !v);
+                setStartMenuOpen(false);
+              }}
+              title="Центр управления"
+              className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center cursor-pointer ${
+                controlCenterOpen ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]' : btnCls
+              }`}
+            >
+              {isMuted || volume === 0 ? (
+                <VolumeX className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+              ) : (
+                <Volume2 className="w-3.5 h-3.5" />
+              )}
+            </button>
+
+            <button
+              onClick={() => openWindow('settings', 'clock')}
+              title="Настройка 18 циферблатов"
+              className={`w-11 py-1 rounded-xl flex flex-col items-center justify-center font-mono leading-tight cursor-pointer ${
+                isDark ? 'hover:bg-white/[0.08]' : 'hover:bg-zinc-100'
+              }`}
+            >
+              <span className="text-[11px] font-bold tabular-nums">{displayHrs}</span>
+              <span className="text-[11px] font-bold tabular-nums" style={{ color: clockAccentColor }}>
+                {displayMins}
+              </span>
+            </button>
+
+            <button
+              onClick={showDesktop}
+              title="Показать рабочий стол (Alt+D)"
+              className={`w-8 h-2 rounded-full cursor-pointer transition ${
+                isDark ? 'bg-white/20 hover:bg-white/40' : 'bg-zinc-300 hover:bg-zinc-500'
+              }`}
+            />
+          </div>
+        </aside>
+      ) : (
+        <footer
+          onClick={(e) => e.stopPropagation()}
+          className={`fixed z-50 h-12 flex items-center justify-between px-2.5 gap-2 transition-all ${
+            isPixel
+              ? taskbarPosition === 'top'
+                ? 'top-2 inset-x-3 rounded-full border shadow-xl'
+                : 'bottom-2 inset-x-3 rounded-full border shadow-xl'
+              : taskbarPosition === 'top'
+              ? 'top-0 inset-x-0 border-b'
+              : 'bottom-0 inset-x-0 border-t'
+          } ${
+            isPixel
+              ? isDark
+                ? 'bg-[#121824]/90 border-blue-300/[0.16] text-slate-100'
+                : 'bg-white/90 border-blue-900/[0.12] text-slate-900'
+              : isDark
+              ? 'bg-[#0b0b0e]/92 border-white/[0.09] text-zinc-100'
+              : 'bg-white/92 border-zinc-900/[0.1] text-zinc-900'
+          }`}
+          style={{ backdropFilter: 'blur(26px)' }}
+        >
+          {/* Left: Real Start Menu Button + Spotlight + Grid Edit */}
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => {
+                setStartMenuOpen((v) => !v);
+                setControlCenterOpen(false);
+              }}
+              title="Пуск (Меню Luma)"
+              className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
+                startMenuOpen
+                  ? 'bg-[var(--luma-accent)] text-white'
+                  : isDark
+                  ? 'hover:bg-white/10 text-zinc-200'
+                  : 'hover:bg-zinc-200 text-zinc-800'
+              }`}
+            >
+              {isPixel ? (
+                <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center">
+                  <span className="w-2 h-2 rounded-full bg-current" />
+                </span>
+              ) : (
+                <div className="grid grid-cols-3 gap-[3px]">
+                  {Array.from({ length: 9 }).map((_, idx) => (
+                    <span key={idx} className="w-[3.5px] h-[3.5px] rounded-full bg-current" />
+                  ))}
+                </div>
+              )}
+            </button>
+
+            <button
+              onClick={() => setSpotlightOpen(true)}
+              title="Luma Spotlight (Ctrl+K)"
+              className={`h-8 px-2.5 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center gap-1.5 text-xs transition cursor-pointer ${btnCls}`}
+            >
+              <Search className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+              <span className="hidden sm:inline font-mono text-[11px]">⌘K</span>
+            </button>
+
+            <button
+              onClick={() => setDesktopEditMode((v) => !v)}
+              title={`Редактор сетки рабочего стола (${desktopCols}×10)`}
+              className={`w-8 h-8 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center transition cursor-pointer ${
+                desktopEditMode ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+              }`}
+            >
+              <Grid className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Center: Running & Pinned DeX Windows */}
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+            {taskbarApps
+              .filter((item) => item.pinned || windows[item.id].open)
+              .map((item) => {
+                const st = windows[item.id];
+                const isFocused = st.open && !st.minimized && st.z === topVisibleZ;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => toggleTaskbarWindow(item.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (st.open) closeWindow(item.id);
+                    }}
+                    title={item.label}
+                    className={`relative h-9 px-3 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center gap-2 text-xs transition cursor-pointer whitespace-nowrap ${
+                      isFocused
+                        ? isPixel
+                          ? 'bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold'
+                          : isDark
+                          ? 'bg-white/[0.12] text-white font-semibold'
+                          : 'bg-zinc-200 text-zinc-950 font-semibold'
+                        : isDark
+                        ? 'text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100'
+                        : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                    }`}
+                  >
+                    {item.icon}
+                    <span className="hidden md:inline">{item.label}</span>
+                    {st.open && (
+                      <span
+                        className={`absolute bottom-1 left-1/2 -translate-x-1/2 rounded-full transition-all ${
+                          st.minimized ? 'w-1 h-1 bg-zinc-400' : 'w-3 h-[2px] bg-[var(--luma-accent)]'
+                        }`}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+          </div>
+
+          {/* Right: Telemetry + Clipboard + Fullscreen + Control Center + Clock + Show Desktop */}
+          <div className="flex items-center gap-1.5 shrink-0 h-full">
+            <div className={`hidden xl:flex items-center gap-2 px-2.5 h-8 ${isPixel ? 'rounded-full' : 'rounded-xl'} border text-[11px] font-mono ${btnCls}`}>
+              <span>CPU {cpuLoad}%</span>
+              <span className="opacity-30">·</span>
+              <span>RAM {ramLoad}%</span>
+            </div>
+
+            <button
+              onClick={() => openIslandTab('clipboard')}
+              title={`Буфер обмена (${clipboardHistory.length})`}
+              className={`w-8 h-8 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center cursor-pointer ${btnCls}`}
+            >
+              <Clipboard className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={handleToggleFullscreen}
+              title={isFullscreen ? 'Выйти из полного экрана (F11)' : 'Во весь экран (F11)'}
+              className={`w-8 h-8 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center cursor-pointer ${
+                isFullscreen ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+              }`}
+            >
+              {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+            </button>
+
+            {!dynamicIslandEnabled && (
+              <button
+                onClick={handleToggleDynamicIsland}
+                title="Включить Luma Island"
+                className={`w-8 h-8 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center cursor-pointer ${btnCls}`}
+              >
+                <Disc3 className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {/* System Tray Control Center Trigger */}
+            <button
+              onClick={() => {
+                setControlCenterOpen((v) => !v);
+                setStartMenuOpen(false);
+              }}
+              title="Центр управления (Звук, Стиль, Панель, Питание)"
+              className={`h-8 px-2.5 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center gap-2 text-[11px] font-mono cursor-pointer transition ${
+                controlCenterOpen ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]' : btnCls
+              }`}
+            >
+              {isMuted || volume === 0 ? (
+                <VolumeX className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+              ) : volume < 50 ? (
+                <Volume1 className="w-3.5 h-3.5" />
+              ) : (
+                <Volume2 className="w-3.5 h-3.5" />
+              )}
+              <Wifi className="w-3.5 h-3.5 hidden sm:inline" />
+              <span className="inline-flex items-center gap-1">
+                <BatteryCharging className={`w-3.5 h-3.5 ${isCharging ? 'text-[var(--luma-accent)]' : ''}`} />
+                {batteryLevel}%
+              </span>
+            </button>
+
+            {/* Taskbar Clock (Reflects live clockStyle accent, seconds, format & date!) */}
+            <button
+              onClick={() => openWindow('settings', 'clock')}
+              title={`Циферблат: ${CLOCK_STYLE_OPTIONS.find((c) => c.id === clockStyle)?.label || clockStyle}`}
+              className={`h-9 px-2.5 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex flex-col items-end justify-center leading-tight font-mono cursor-pointer transition ${
+                isDark ? 'hover:bg-white/[0.07]' : 'hover:bg-zinc-100'
+              }`}
+            >
+              <span className="text-xs font-bold tabular-nums">
+                {displayHrs}
+                <span style={{ color: clockAccentColor }}>{colon}</span>
+                {displayMins}
+                {showSeconds ? `:${displaySecs}` : ''}
+              </span>
+              {showDate && <span className={`text-[9px] uppercase ${mutedCls}`}>{dateShort}</span>}
+            </button>
+
+            {/* Far-right Show Desktop Strip */}
+            <button
+              onClick={showDesktop}
+              title="Показать рабочий стол (Alt+D)"
+              className={`w-2.5 h-7 rounded-sm border-l cursor-pointer transition ${
+                isDark ? 'border-white/15 hover:bg-white/20' : 'border-zinc-300 hover:bg-zinc-300'
+              }`}
+            />
+          </div>
+        </footer>
+      )}
+
+      {/* ==================== REAL START MENU («ПУСК») POPOVER ==================== */}
+      {startMenuOpen && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className={`luma-animate-in fixed z-50 w-[430px] max-w-[calc(100vw-24px)] border p-4 space-y-4 ${popoverShellCls} ${
+            taskbarPosition === 'left'
+              ? 'top-3 left-[66px]'
+              : taskbarPosition === 'top'
+              ? isPixel
+                ? 'top-16 left-1/2 -translate-x-1/2'
+                : 'top-14 left-2.5'
+              : isPixel
+              ? 'bottom-16 left-1/2 -translate-x-1/2'
+              : 'bottom-14 left-2.5'
+          }`}
+        >
+          {/* Start Search Header */}
+          <div className="flex items-center gap-2">
+            <div className={`flex-1 flex items-center gap-2 px-3 py-2 ${isPixel ? 'rounded-full' : 'rounded-xl'} border ${btnCls}`}>
+              <Search className="w-3.5 h-3.5 text-[var(--luma-accent)] shrink-0" />
+              <input
+                value={startSearch}
+                onChange={(e) => setStartSearch(e.target.value)}
+                placeholder="Поиск приложений, модулей и команд..."
+                autoFocus
+                className="w-full bg-transparent text-xs outline-none placeholder:text-zinc-500"
+              />
+              {startSearch && (
+                <button onClick={() => setStartSearch('')} className="text-zinc-400 hover:text-current cursor-pointer">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => openWindow('apps')}
+              className={`px-3 py-2 ${isPixel ? 'rounded-full' : 'rounded-xl'} border text-xs font-semibold cursor-pointer ${btnCls}`}
+            >
+              Все
+            </button>
+          </div>
+
+          {/* System Modules Grid */}
+          {!startSearch.trim() && (
+            <div className="space-y-2">
+              <div className={`text-[10px] font-mono uppercase tracking-[0.14em] ${mutedCls}`}>Система Luma OS</div>
+              <div className="grid grid-cols-4 gap-2">
+                {taskbarApps.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => openWindow(m.id)}
+                    className={`p-2.5 ${isPixel ? 'rounded-2xl' : 'rounded-xl'} border flex flex-col items-center gap-1.5 text-center transition cursor-pointer ${btnCls}`}
+                  >
+                    <span className="text-[var(--luma-accent)]">{m.icon}</span>
+                    <span className="text-[11px] font-medium truncate max-w-full">{m.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
-          {/* System Tray Control Center Trigger */}
-          <button
-            onClick={() => setControlCenterOpen((v) => !v)}
-            title="Центр управления (Звук, Тема, Сетка, Питание)"
-            className={`h-8 px-2.5 rounded-xl border flex items-center gap-2 text-[11px] font-mono cursor-pointer transition ${
-              controlCenterOpen ? 'border-[#d71921] bg-[#d71921]/15' : btnCls
-            }`}
-          >
-            {isMuted || volume === 0 ? (
-              <VolumeX className="w-3.5 h-3.5 text-[#d71921]" />
-            ) : volume < 50 ? (
-              <Volume1 className="w-3.5 h-3.5" />
-            ) : (
-              <Volume2 className="w-3.5 h-3.5" />
-            )}
-            <Wifi className="w-3.5 h-3.5 hidden sm:inline" />
-            <span className="inline-flex items-center gap-1">
-              <BatteryCharging className={`w-3.5 h-3.5 ${isCharging ? 'text-[#d71921]' : ''}`} />
-              {batteryLevel}%
-            </span>
-          </button>
+          {/* Pinned / Filtered Applications */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] font-mono uppercase tracking-[0.14em] ${mutedCls}`}>
+                {startSearch.trim() ? 'Результаты поиска' : 'Закреплённые приложения'}
+              </span>
+              <span className={`text-[10px] font-mono ${mutedCls}`}>{runningAppsCount} активн.</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
+              {combinedApps
+                .filter((a) =>
+                  startSearch.trim()
+                    ? a.name.toLowerCase().includes(startSearch.trim().toLowerCase()) ||
+                      a.category.toLowerCase().includes(startSearch.trim().toLowerCase())
+                    : a.favorite
+                )
+                .slice(0, 8)
+                .map((app) => (
+                  <button
+                    key={app.id}
+                    onClick={() => {
+                      handleLaunchApp(app);
+                      setStartMenuOpen(false);
+                    }}
+                    className={`px-2.5 py-2 rounded-xl border flex items-center gap-2.5 text-left transition cursor-pointer ${btnCls}`}
+                  >
+                    {renderAppIcon(app.icon, 'w-4 h-4 shrink-0')}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-semibold truncate">{app.name}</div>
+                      <div className={`text-[10px] font-mono truncate ${mutedCls}`}>{app.category}</div>
+                    </div>
+                    {app.isRunning && <span className="w-1.5 h-1.5 rounded-full bg-[var(--luma-accent)] shrink-0" />}
+                  </button>
+                ))}
+            </div>
+          </div>
 
-          {/* Taskbar Clock */}
-          <button
-            onClick={() => openWindow('settings', 'clock')}
-            title="Настройка 18 циферблатов"
-            className={`h-9 px-2.5 rounded-xl flex flex-col items-end justify-center leading-tight font-mono cursor-pointer transition ${
-              isDark ? 'hover:bg-white/[0.07]' : 'hover:bg-zinc-100'
-            }`}
-          >
-            <span className="text-xs font-bold tabular-nums">
-              {displayHrs}
-              {colon}
-              {displayMins}
-              {showSeconds ? `:${displaySecs}` : ''}
-            </span>
-            {showDate && <span className={`text-[9px] uppercase ${mutedCls}`}>{dateShort}</span>}
-          </button>
+          {/* Quick Shell Controls inside Start Menu */}
+          <div className="grid grid-cols-3 gap-1.5 text-[11px]">
+            <button
+              onClick={() => openIslandTab('clipboard')}
+              className={`py-2 px-2 rounded-xl border flex items-center justify-center gap-1.5 cursor-pointer ${btnCls}`}
+            >
+              <Clipboard className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+              <span>Буфер ({clipboardHistory.length})</span>
+            </button>
+            <button
+              onClick={() => setDesignStyle(designStyle === 'nothing' ? 'pixelbook' : 'nothing')}
+              className={`py-2 px-2 rounded-xl border flex items-center justify-center gap-1.5 cursor-pointer ${btnCls}`}
+            >
+              <Sliders className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+              <span>{designStyle === 'nothing' ? 'Nothing' : 'Pixelbook'}</span>
+            </button>
+            <button
+              onClick={() => {
+                const order: TaskbarPosition[] = ['bottom', 'left', 'top'];
+                setTaskbarPosition(order[(order.indexOf(taskbarPosition) + 1) % order.length]);
+              }}
+              className={`py-2 px-2 rounded-xl border flex items-center justify-center gap-1.5 cursor-pointer ${btnCls}`}
+            >
+              <LayoutPanelLeft className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+              <span>{taskbarPosition === 'bottom' ? 'Снизу' : taskbarPosition === 'left' ? 'Слева' : 'Сверху'}</span>
+            </button>
+          </div>
 
-          {/* Far-right Show Desktop Strip (Classic DeX / Desktop feature) */}
-          <button
-            onClick={showDesktop}
-            title="Показать рабочий стол (Alt+D)"
-            className={`w-2.5 h-7 rounded-sm border-l cursor-pointer transition ${
-              isDark ? 'border-white/15 hover:bg-white/20' : 'border-zinc-300 hover:bg-zinc-300'
-            }`}
-          />
+          {/* Start Footer: Host Info + Fullscreen + Power */}
+          <div className={`pt-3 border-t flex items-center justify-between gap-2 ${isDark ? 'border-white/10' : 'border-zinc-200'}`}>
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-full bg-[var(--luma-accent)] text-white text-xs font-mono font-bold flex items-center justify-center shrink-0">
+                L
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-bold truncate">{liveSystem?.hostname || 'Luma Desktop'}</div>
+                <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
+                  {liveSystem?.location?.city || 'Luma Core 1.0.2b'}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={() => {
+                  handleToggleFullscreen();
+                  setStartMenuOpen(false);
+                }}
+                title="Во весь экран (F11)"
+                className={`p-2 rounded-lg border cursor-pointer ${btnCls}`}
+              >
+                {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+              </button>
+              <button onClick={() => handleExecutePowerAction('lock')} title="Заблокировать" className={`p-2 rounded-lg border cursor-pointer ${btnCls}`}>
+                <Lock className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => handleExecutePowerAction('sleep')} title="Сон" className={`p-2 rounded-lg border cursor-pointer ${btnCls}`}>
+                <Power className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
-      </footer>
+      )}
 
-      {/* ==================== BOTTOM-RIGHT DEX CONTROL CENTER POPOVER ==================== */}
+      {/* ==================== ADAPTIVE DEX CONTROL CENTER POPOVER ==================== */}
       {controlCenterOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`luma-animate-in fixed bottom-14 right-3 z-50 w-80 rounded-2xl border p-4 space-y-4 ${
-            isDark ? 'dex-window-dark text-zinc-100' : 'dex-window-light text-zinc-900'
+          className={`luma-animate-in fixed z-50 w-80 border p-4 space-y-3.5 ${popoverShellCls} ${
+            taskbarPosition === 'left'
+              ? 'bottom-3 left-[66px]'
+              : taskbarPosition === 'top'
+              ? isPixel
+                ? 'top-16 right-3'
+                : 'top-14 right-3'
+              : isPixel
+              ? 'bottom-16 right-3'
+              : 'bottom-14 right-3'
           }`}
         >
           <div className="flex items-center justify-between">
@@ -2608,11 +3757,13 @@ export default function App() {
             </span>
           </div>
 
-          {/* Quick 2x2 Hardware Toggles */}
+          {/* Quick 2x3 Hardware & Shell Toggles */}
           <div className="grid grid-cols-2 gap-2 text-xs">
             {[
               { label: isDark ? 'Тёмная' : 'Светлая', active: isDark, icon: isDark ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />, run: () => setThemeKey(isDark ? 'nothing_paper' : 'nothing_mono') },
+              { label: designStyle === 'nothing' ? 'Nothing' : 'Pixelbook', active: designStyle === 'pixelbook', icon: <Sliders className="w-3.5 h-3.5" />, run: () => setDesignStyle(designStyle === 'nothing' ? 'pixelbook' : 'nothing') },
               { label: 'Luma Island', active: dynamicIslandEnabled, icon: <Disc3 className="w-3.5 h-3.5" />, run: handleToggleDynamicIsland },
+              { label: 'Во весь экран', active: isFullscreen, icon: isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />, run: handleToggleFullscreen },
               { label: 'Не беспокоить', active: dndEnabled, icon: <BellOff className="w-3.5 h-3.5" />, run: () => setDndEnabled((v) => !v) },
               { label: `Сетка ${desktopCols}×10`, active: desktopEditMode, icon: <Grid className="w-3.5 h-3.5" />, run: () => setDesktopEditMode((v) => !v) },
             ].map((t) => (
@@ -2620,13 +3771,37 @@ export default function App() {
                 key={t.label}
                 onClick={t.run}
                 className={`p-2.5 rounded-xl border flex items-center gap-2 text-left transition cursor-pointer ${
-                  t.active ? 'bg-[#d71921] border-[#d71921] text-white font-semibold' : btnCls
+                  t.active ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white font-semibold' : btnCls
                 }`}
               >
                 {t.icon}
                 <span className="truncate">{t.label}</span>
               </button>
             ))}
+          </div>
+
+          {/* Taskbar Position Quick Switch */}
+          <div className="space-y-1.5">
+            <div className={`text-[10px] font-mono uppercase ${mutedCls}`}>Панель задач</div>
+            <div className="grid grid-cols-3 gap-1.5 text-[11px]">
+              {(
+                [
+                  ['bottom', 'Снизу'],
+                  ['left', 'Слева'],
+                  ['top', 'Сверху'],
+                ] as const
+              ).map(([pos, label]) => (
+                <button
+                  key={pos}
+                  onClick={() => setTaskbarPosition(pos)}
+                  className={`py-1.5 rounded-lg border font-semibold cursor-pointer ${
+                    taskbarPosition === pos ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Real System Volume Slider */}
@@ -2637,7 +3812,7 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2.5">
               <button onClick={handleToggleMute} className={`p-1.5 rounded-lg border cursor-pointer ${btnCls}`}>
-                {isMuted || volume === 0 ? <VolumeX className="w-3.5 h-3.5 text-[#d71921]" /> : <Volume2 className="w-3.5 h-3.5" />}
+                {isMuted || volume === 0 ? <VolumeX className="w-3.5 h-3.5 text-[var(--luma-accent)]" /> : <Volume2 className="w-3.5 h-3.5" />}
               </button>
               <input
                 type="range"
@@ -2660,7 +3835,7 @@ export default function App() {
               <button onClick={handlePrevTrack} className={`p-1.5 rounded-lg border cursor-pointer ${btnCls}`}>
                 <SkipBack className="w-3 h-3" />
               </button>
-              <button onClick={handleToggleMediaPlay} className="p-1.5 rounded-lg bg-[#d71921] text-white cursor-pointer">
+              <button onClick={handleToggleMediaPlay} className="p-1.5 rounded-lg bg-[var(--luma-accent)] text-white cursor-pointer">
                 {displayMediaPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
               </button>
               <button onClick={handleNextTrack} className={`p-1.5 rounded-lg border cursor-pointer ${btnCls}`}>
@@ -2687,7 +3862,7 @@ export default function App() {
               download="LumaOS_1.0.2b.exe"
               className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-mono font-bold inline-flex items-center gap-1 ${btnCls}`}
             >
-              <Download className="w-3 h-3 text-[#d71921]" />
+              <Download className="w-3 h-3 text-[var(--luma-accent)]" />
               EXE
             </a>
           </div>
@@ -2700,9 +3875,7 @@ export default function App() {
           <form
             onSubmit={handleAddCustomApp}
             onClick={(e) => e.stopPropagation()}
-            className={`luma-animate-in w-full max-w-md rounded-2xl border p-5 space-y-3.5 ${
-              isDark ? 'dex-window-dark text-zinc-100' : 'dex-window-light text-zinc-900'
-            }`}
+            className={`luma-animate-in w-full max-w-md border p-5 space-y-3.5 ${popoverShellCls}`}
           >
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold">Добавить приложение</span>
@@ -2730,7 +3903,7 @@ export default function App() {
                   type="button"
                   key={ic}
                   onClick={() => setNewAppIcon(ic)}
-                  className={`p-2 rounded-lg border cursor-pointer ${newAppIcon === ic ? 'bg-[#d71921] border-[#d71921] text-white' : btnCls}`}
+                  className={`p-2 rounded-lg border cursor-pointer ${newAppIcon === ic ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls}`}
                 >
                   {renderAppIcon(ic, 'w-3.5 h-3.5')}
                 </button>
@@ -2740,7 +3913,7 @@ export default function App() {
               <button type="button" onClick={() => setAddAppModalOpen(false)} className={`px-3.5 py-1.5 rounded-xl border text-xs cursor-pointer ${btnCls}`}>
                 Отмена
               </button>
-              <button type="submit" className="px-4 py-1.5 rounded-xl bg-[#d71921] text-white text-xs font-semibold cursor-pointer">
+              <button type="submit" className="px-4 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-semibold cursor-pointer">
                 Сохранить
               </button>
             </div>
@@ -2752,9 +3925,7 @@ export default function App() {
         <div onClick={() => setCustomThemeModalOpen(false)} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`luma-animate-in w-full max-w-md rounded-2xl border p-5 space-y-4 ${
-              isDark ? 'dex-window-dark text-zinc-100' : 'dex-window-light text-zinc-900'
-            }`}
+            className={`luma-animate-in w-full max-w-md border p-5 space-y-4 ${popoverShellCls}`}
           >
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold">Создать тему</span>
@@ -2773,7 +3944,7 @@ export default function App() {
                     setNewThemeSurface(m === 'light' ? '#ffffff' : '#141418');
                   }}
                   className={`py-1.5 rounded-lg border font-mono uppercase cursor-pointer ${
-                    newThemeMode === m ? 'bg-[#d71921] border-[#d71921] text-white' : btnCls
+                    newThemeMode === m ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
                   }`}
                 >
                   {m}
@@ -2816,7 +3987,7 @@ export default function App() {
                   setThemeKey(id);
                   setCustomThemeModalOpen(false);
                 }}
-                className="px-4 py-1.5 rounded-xl bg-[#d71921] text-white text-xs font-semibold cursor-pointer"
+                className="px-4 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-semibold cursor-pointer"
               >
                 Применить
               </button>
@@ -2829,9 +4000,7 @@ export default function App() {
         <div onClick={() => setContextMenuApp(null)} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`luma-animate-in w-64 rounded-2xl border p-2 space-y-1 text-xs ${
-              isDark ? 'dex-window-dark text-zinc-100' : 'dex-window-light text-zinc-900'
-            }`}
+            className={`luma-animate-in w-64 border p-2 space-y-1 text-xs ${popoverShellCls}`}
           >
             <div className={`px-3 py-2 border-b font-bold truncate ${isDark ? 'border-white/10' : 'border-zinc-200'}`}>
               {contextMenuApp.name}
@@ -2843,7 +4012,7 @@ export default function App() {
               }}
               className="w-full px-3 py-2 rounded-xl hover:bg-white/10 text-left flex items-center gap-2 cursor-pointer"
             >
-              <Play className="w-3.5 h-3.5 text-[#d71921]" />
+              <Play className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
               {contextMenuApp.isRunning ? 'Остановить таймер' : 'Запустить'}
             </button>
             <button
@@ -2878,7 +4047,7 @@ export default function App() {
                   setApps((prev) => prev.filter((a) => a.id !== contextMenuApp.id));
                   setContextMenuApp(null);
                 }}
-                className="w-full px-3 py-2 rounded-xl hover:bg-[#d71921]/20 text-[#d71921] text-left flex items-center gap-2 cursor-pointer"
+                className="w-full px-3 py-2 rounded-xl hover:bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] text-left flex items-center gap-2 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 Удалить
@@ -2915,18 +4084,24 @@ export default function App() {
       />
 
       {/* ==================== MINIMAL MONOCHROME TOASTS ==================== */}
-      <div className="fixed bottom-14 left-3 z-[60] flex flex-col gap-1.5 max-w-xs pointer-events-none">
+      <div
+        className={`fixed z-[60] flex flex-col gap-1.5 max-w-xs pointer-events-none ${
+          taskbarPosition === 'left'
+            ? 'bottom-3 left-[68px]'
+            : taskbarPosition === 'top'
+            ? 'bottom-3 left-3'
+            : 'bottom-14 left-3'
+        }`}
+      >
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`luma-animate-in pointer-events-auto px-3.5 py-2.5 rounded-xl border text-xs flex items-start gap-2.5 ${
-              isDark ? 'dex-window-dark text-zinc-100' : 'dex-window-light text-zinc-900'
-            }`}
+            className={`luma-animate-in pointer-events-auto px-3.5 py-2.5 rounded-xl border text-xs flex items-start gap-2.5 ${popoverShellCls}`}
           >
             {t.type === 'warning' ? (
-              <AlertTriangle className="w-4 h-4 text-[#d71921] shrink-0 mt-0.5" />
+              <AlertTriangle className="w-4 h-4 text-[var(--luma-accent)] shrink-0 mt-0.5" />
             ) : (
-              <CheckCircle2 className="w-4 h-4 text-[#d71921] shrink-0 mt-0.5" />
+              <CheckCircle2 className="w-4 h-4 text-[var(--luma-accent)] shrink-0 mt-0.5" />
             )}
             <div className="min-w-0">
               <div className="font-bold truncate">{t.title}</div>

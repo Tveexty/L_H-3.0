@@ -1,104 +1,259 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Check, Copy, Plus, Terminal, Trash2, X } from 'lucide-react';
 import { LiveSystemTelemetry } from '../data/launcherData';
+import { DesignStyle, TaskbarPosition } from './DexWindow';
 
 interface LumaTerminalWindowProps {
   isDark: boolean;
+  designStyle?: DesignStyle;
+  taskbarPosition?: TaskbarPosition;
   liveSystem: LiveSystemTelemetry | null;
   volume: number;
   isMuted: boolean;
   dynamicIslandEnabled: boolean;
+  pendingCommand?: { id: number; command: string } | null;
+  onConsumePendingCommand?: () => void;
   onChangeVolume: (val: number) => void;
   onToggleMute: () => void;
   onMediaAction: (action: 'play_pause' | 'next' | 'prev') => void;
   onToggleIsland: () => void;
+  onSetThemeMode?: (mode: 'dark' | 'light') => void;
+  onSetDesignStyle?: (style: DesignStyle) => void;
+  onSetTaskbarPosition?: (pos: TaskbarPosition) => void;
+  onToggleFullscreen?: () => void;
   onPowerAction: (action: 'lock' | 'sleep' | 'recycle_bin') => void;
   onCallRpc: (method: string) => Promise<void>;
+  onClipboardUpdated?: (text: string) => void;
 }
 
 interface TermLine {
   id: number;
-  kind: 'in' | 'out' | 'err';
+  kind: 'in' | 'out' | 'err' | 'accent';
   text: string;
+}
+
+interface TermTab {
+  id: string;
+  title: string;
+  cwd: string;
+  lines: TermLine[];
+  history: string[];
+}
+
+const BUILTIN_COMMANDS = [
+  'help',
+  'neofetch',
+  'sys',
+  'top',
+  'ps',
+  'ls',
+  'cat',
+  'disks',
+  'loc',
+  'weather',
+  'clip',
+  'open',
+  'calc',
+  'media',
+  'vol',
+  'mute',
+  'island',
+  'theme',
+  'taskbar',
+  'fullscreen',
+  'rpc',
+  'ping',
+  'sh',
+  'lock',
+  'sleep',
+  'clear',
+];
+
+function createTab(idx: number): TermTab {
+  return {
+    id: `tab_${Date.now()}_${idx}`,
+    title: `sh-${idx}`,
+    cwd: '~',
+    history: [],
+    lines: [
+      { id: 1, kind: 'accent', text: 'LUMA CORE 1.0.2b PRO TERMINAL  [IPC 127.0.0.1:49215 · HOST EXEC READY]' },
+      { id: 2, kind: 'out', text: 'Команды: help, neofetch, top, ls, cat, clip, weather, open, calc, sh <cmd>. Tab — автодополнение.' },
+    ],
+  };
 }
 
 export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
   isDark,
+  designStyle = 'nothing',
+  taskbarPosition = 'bottom',
   liveSystem,
   volume,
   isMuted,
   dynamicIslandEnabled,
+  pendingCommand,
+  onConsumePendingCommand,
   onChangeVolume,
   onToggleMute,
   onMediaAction,
   onToggleIsland,
+  onSetThemeMode,
+  onSetDesignStyle,
+  onSetTaskbarPosition,
+  onToggleFullscreen,
   onPowerAction,
   onCallRpc,
+  onClipboardUpdated,
 }) => {
-  const [lines, setLines] = useState<TermLine[]>([
-    { id: 1, kind: 'out', text: 'LUMA CORE 1.0.2b SHELL  [IPC 127.0.0.1:49215]' },
-    { id: 2, kind: 'out', text: 'Введите "help" для списка системных команд.' },
-  ]);
+  const [tabs, setTabs] = useState<TermTab[]>(() => [createTab(1)]);
+  const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0]?.id || '');
   const [input, setInput] = useState('');
-  const [history, setHistory] = useState<string[]>([]);
   const [histIdx, setHistIdx] = useState(-1);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const tabCounterRef = useRef(2);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
+
+  useEffect(() => {
+    if (!tabs.some((t) => t.id === activeTabId) && tabs[0]) {
+      setActiveTabId(tabs[0].id);
+    }
+  }, [tabs, activeTabId]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [lines]);
+  }, [activeTab?.lines]);
 
-  const append = (text: string, kind: 'out' | 'err' = 'out') => {
-    setLines((prev) => [...prev, { id: Date.now() + Math.random(), kind, text }]);
+  const appendToTab = (tabId: string, text: string, kind: TermLine['kind'] = 'out') => {
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === tabId
+          ? { ...t, lines: [...t.lines.slice(-260), { id: Date.now() + Math.random(), kind, text }] }
+          : t
+      )
+    );
   };
 
-  const runCommand = async (raw: string) => {
+  const clearActiveTab = () => {
+    if (!activeTab) return;
+    setTabs((prev) => prev.map((t) => (t.id === activeTab.id ? { ...t, lines: [] } : t)));
+  };
+
+  const addNewTab = () => {
+    const nt = createTab(tabCounterRef.current++);
+    setTabs((prev) => [...prev, nt]);
+    setActiveTabId(nt.id);
+    setHistIdx(-1);
+    setTimeout(() => inputRef.current?.focus(), 30);
+  };
+
+  const closeTab = (id: string) => {
+    if (tabs.length <= 1) {
+      clearActiveTab();
+      return;
+    }
+    setTabs((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      if (activeTabId === id && next[0]) setActiveTabId(next[0].id);
+      return next;
+    });
+  };
+
+  const runCommand = async (raw: string, targetTabId?: string) => {
     const cmd = raw.trim();
-    if (!cmd) return;
-    setLines((prev) => [...prev, { id: Date.now() + Math.random(), kind: 'in', text: `luma@host:~$ ${cmd}` }]);
-    setHistory((prev) => [cmd, ...prev.slice(0, 30)]);
+    const tid = targetTabId || activeTab?.id;
+    if (!cmd || !tid) return;
+
+    const hostName = liveSystem?.hostname || 'host';
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === tid
+          ? {
+              ...t,
+              lines: [...t.lines.slice(-260), { id: Date.now() + Math.random(), kind: 'in', text: `luma@${hostName}:${t.cwd}$ ${cmd}` }],
+              history: [cmd, ...t.history.slice(0, 49)],
+            }
+          : t
+      )
+    );
     setHistIdx(-1);
 
     const parts = cmd.split(/\s+/);
     const head = parts[0].toLowerCase();
+    const rest = cmd.slice(parts[0].length).trim();
     const arg = (parts[1] || '').toLowerCase();
 
     if (head === 'clear' || head === 'cls') {
-      setLines([]);
+      setTabs((prev) => prev.map((t) => (t.id === tid ? { ...t, lines: [] } : t)));
       return;
     }
 
     if (head === 'help') {
-      append(
+      appendToTab(
+        tid,
         [
-          'КОМАНДЫ LUMA TERMINAL:',
-          '  sys               — реальная телеметрия CPU / GPU / RAM / ОС',
-          '  disks             — список смонтированных томов и свободного места',
-          '  loc               — определённый регион, город, часовой пояс и IP',
-          '  media [next|prev|play] — состояние или управление музыкой в системе',
-          '  vol <0-100>       — установить системную громкость',
-          '  mute              — выключить / включить звук',
-          '  island            — включить / выключить Luma Island',
-          '  ping              — JSON-RPC 2.0 запрос к ядру Luma Core (49215)',
-          '  lock / sleep      — блокировка экрана или сон',
-          '  clear             — очистить экран',
+          'LUMA PRO TERMINAL — СПРАВОЧНИК КОМАНД:',
+          '  neofetch               — паспорт системы, железо и стиль оболочки',
+          '  sys / disks / loc      — CPU, GPU, RAM, тома дисков, авто-регион',
+          '  top | ps               — реальные процессы хоста (PID, CPU%, RAM)',
+          '  ls [path]              — список файлов каталога на ПК (по умолч. ~)',
+          '  cat <path>             — просмотр содержимого файла на ПК',
+          '  open <path|url>        — открыть файл, папку или URL в системе',
+          '  weather                — актуальная погода по региону хоста',
+          '  clip [set <текст>]     — чтение или запись системного буфера обмена',
+          '  calc <выражение>       — быстрый расчёт (например: calc 1024*16)',
+          '  media [next|prev|play] — управление системной музыкой',
+          '  vol <0-100> | mute     — системная громкость и звук',
+          '  island                 — переключить Luma Island',
+          '  theme <dark|light|nothing|pixelbook> — переключить тему/дизайн',
+          '  taskbar <bottom|left|top>            — положение панели задач',
+          '  fullscreen             — переключить полноэкранный режим',
+          '  ping | rpc <method>    — JSON-RPC 2.0 вызов к ядру (порт 49215)',
+          '  sh <команда>           — выполнить любую команду ОС (PowerShell/bash)',
+          '  lock | sleep | clear   — питание и очистка вкладки',
         ].join('\n')
+      );
+      return;
+    }
+
+    if (head === 'neofetch') {
+      const os = liveSystem?.os_name || 'Luma Runtime';
+      const cpu = liveSystem ? `${liveSystem.cpu_model} (${liveSystem.cpu_cores}c · ${liveSystem.cpu_percent}%)` : '—';
+      const gpu = liveSystem?.gpu_name || '—';
+      const ram = liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} GB (${liveSystem.ram_percent}%)` : '—';
+      const loc = liveSystem?.location?.detected ? `${liveSystem.location.city}, ${liveSystem.location.country}` : 'LOCAL';
+      appendToTab(
+        tid,
+        [
+          `  ██╗     ██╗   ██╗███╗   ███╗ █████╗      luma@${hostName}`,
+          `  ██║     ██║   ██║████╗ ████║██╔══██╗     ──────────────────────────`,
+          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.0.2b (${os})`,
+          `  ██║     ██║   ██║██║╚██╔╝██║██╔══██║     STYLE   : ${designStyle.toUpperCase()} · TASKBAR ${taskbarPosition.toUpperCase()}`,
+          `  ███████╗╚██████╔╝██║ ╚═╝ ██║██║  ██║     CPU     : ${cpu}`,
+          `  ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝     GPU     : ${gpu}`,
+          `                                           RAM     : ${ram}`,
+          `  KERNEL : LumaCore IPC 127.0.0.1:49215    REGION  : ${loc}`,
+        ].join('\n'),
+        'accent'
       );
       return;
     }
 
     if (head === 'sys') {
       if (!liveSystem) {
-        append('Телеметрия ещё загружается...', 'err');
+        appendToTab(tid, 'Телеметрия загружается...', 'err');
         return;
       }
-      append(
+      appendToTab(
+        tid,
         [
-          `HOST : ${liveSystem.hostname} (${liveSystem.os_name})`,
+          `HOST : ${liveSystem.hostname} (${liveSystem.os_name} / ${liveSystem.arch})`,
           `CPU  : ${liveSystem.cpu_model} (${liveSystem.cpu_cores} cores) — ${liveSystem.cpu_percent}%`,
           `GPU  : ${liveSystem.gpu_name}`,
           `RAM  : ${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} GB (${liveSystem.ram_percent}%)`,
-          `BAT  : ${liveSystem.battery_percent}% ${liveSystem.battery_charging ? '(CHARGING)' : '(BATTERY)'}`,
+          `BAT  : ${liveSystem.battery_percent}% ${liveSystem.battery_charging ? '(AC)' : '(BAT)'}`,
           `NET  : ↓ ${liveSystem.net_down_mbps.toFixed(1)} Mbps  ↑ ${liveSystem.net_up_mbps.toFixed(1)} Mbps`,
           `VOL  : ${isMuted ? 'MUTE' : `${volume}%`}`,
         ].join('\n')
@@ -106,12 +261,186 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
       return;
     }
 
-    if (head === 'disks') {
-      if (!liveSystem?.disks?.length) {
-        append('Тома не обнаружены.', 'err');
+    if (head === 'top' || head === 'ps') {
+      setBusy(true);
+      try {
+        const r = await fetch('/api/kernel/processes');
+        if (r.ok) {
+          const d = await r.json();
+          const list: { pid: number; name: string; cpu_pct: number; mem_mb: number }[] = d.processes || [];
+          if (list.length === 0) {
+            appendToTab(tid, 'Список процессов пуст.');
+          } else {
+            const header = `${'PID'.padEnd(8)} ${'CPU%'.padStart(6)} ${'MEM(MB)'.padStart(9)}  NAME`;
+            const rows = list.map(
+              (p) => `${String(p.pid).padEnd(8)} ${p.cpu_pct.toFixed(1).padStart(6)} ${p.mem_mb.toFixed(1).padStart(9)}  ${p.name}`
+            );
+            appendToTab(tid, [header, '─'.repeat(48), ...rows].join('\n'));
+          }
+        } else {
+          appendToTab(tid, 'Ошибка запроса /api/kernel/processes', 'err');
+        }
+      } catch {
+        appendToTab(tid, 'Ядро Luma Core недоступно.', 'err');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (head === 'ls' || head === 'dir') {
+      setBusy(true);
+      try {
+        const r = await fetch('/api/kernel/fs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'ls', path: rest || '~' }),
+        });
+        const d = await r.json();
+        if (!d.ok) {
+          appendToTab(tid, `Ошибка: ${d.error || 'недоступно'}`, 'err');
+        } else {
+          const entries: { name: string; is_dir: boolean; size: number }[] = d.entries || [];
+          const out = [
+            `DIR: ${d.path} (${entries.length})`,
+            ...entries.map((e) =>
+              e.is_dir
+                ? `  [DIR]  ${e.name}/`
+                : `  ${String(Math.max(1, Math.round(e.size / 1024))).padStart(6)}K ${e.name}`
+            ),
+          ].join('\n');
+          appendToTab(tid, out);
+        }
+      } catch {
+        appendToTab(tid, 'Файловая система доступна при запущенном ядре Luma Core.', 'err');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (head === 'cat') {
+      if (!rest) {
+        appendToTab(tid, 'Использование: cat <путь_к_файлу>', 'err');
         return;
       }
-      append(
+      setBusy(true);
+      try {
+        const r = await fetch('/api/kernel/fs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'cat', path: rest }),
+        });
+        const d = await r.json();
+        if (!d.ok) appendToTab(tid, `Ошибка чтения: ${d.error}`, 'err');
+        else appendToTab(tid, d.content || '(пустой файл)');
+      } catch {
+        appendToTab(tid, 'Не удалось прочитать файл.', 'err');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (head === 'open') {
+      if (!rest) {
+        appendToTab(tid, 'Использование: open <путь_к_файлу | папка | https://...>', 'err');
+        return;
+      }
+      try {
+        const r = await fetch('/api/kernel/open-path', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: rest }),
+        });
+        const d = await r.json();
+        if (d.ok) appendToTab(tid, `OPEN -> ${rest}`);
+        else appendToTab(tid, `Ошибка open: ${d.error || 'не найден путь'}`, 'err');
+      } catch {
+        if (/^https?:\/\//i.test(rest)) {
+          window.open(rest, '_blank');
+          appendToTab(tid, `OPEN URL -> ${rest}`);
+        } else {
+          appendToTab(tid, 'Требуется активное ядро Luma Core.', 'err');
+        }
+      }
+      return;
+    }
+
+    if (head === 'clip') {
+      if (arg === 'set') {
+        const text = cmd.replace(/^clip\s+set\s+/i, '');
+        try {
+          await fetch('/api/kernel/clipboard', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+          });
+          onClipboardUpdated?.(text);
+          appendToTab(tid, `CLIPBOARD SET (${text.length} симв.)`);
+        } catch {
+          appendToTab(tid, 'Не удалось записать буфер обмена.', 'err');
+        }
+      } else {
+        try {
+          const r = await fetch('/api/kernel/clipboard');
+          const d = await r.json();
+          appendToTab(tid, d.text ? `CLIPBOARD:\n${d.text}` : 'Буфер обмена пуст.');
+        } catch {
+          appendToTab(tid, 'Буфер обмена недоступен.', 'err');
+        }
+      }
+      return;
+    }
+
+    if (head === 'weather') {
+      const loc = liveSystem?.location;
+      if (!loc?.detected) {
+        appendToTab(tid, 'Регион ещё не определён.', 'err');
+        return;
+      }
+      setBusy(true);
+      try {
+        const r = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m&timezone=auto`
+        );
+        const d = await r.json();
+        const c = d.current || {};
+        appendToTab(
+          tid,
+          `${loc.city}, ${loc.country}: ${c.temperature_2m}°C (ощущается ${c.apparent_temperature}°C) · влажность ${c.relative_humidity_2m}% · ветер ${c.wind_speed_10m} км/ч`
+        );
+      } catch {
+        appendToTab(tid, 'Не удалось загрузить Open-Meteo.', 'err');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (head === 'calc') {
+      try {
+        const cleaned = rest.replace(/[^0-9+\-*/(). %]/g, '');
+        if (!cleaned) {
+          appendToTab(tid, 'Использование: calc 256 * 12', 'err');
+          return;
+        }
+        // eslint-disable-next-line no-new-func
+        const res = Function(`"use strict"; return (${cleaned})`)();
+        appendToTab(tid, `= ${res}`, 'accent');
+      } catch {
+        appendToTab(tid, 'Некорректное математическое выражение.', 'err');
+      }
+      return;
+    }
+
+    if (head === 'disks') {
+      if (!liveSystem?.disks?.length) {
+        appendToTab(tid, 'Тома не обнаружены.', 'err');
+        return;
+      }
+      appendToTab(
+        tid,
         liveSystem.disks
           .map(
             (d) =>
@@ -124,11 +453,12 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
 
     if (head === 'loc') {
       if (!liveSystem?.location?.detected) {
-        append('Регион не определён.', 'err');
+        appendToTab(tid, 'Регион не определён.', 'err');
         return;
       }
       const l = liveSystem.location;
-      append(
+      appendToTab(
+        tid,
         `CITY: ${l.city} | REGION: ${l.region} | COUNTRY: ${l.country}\nTZ  : ${l.timezone} | COORDS: ${l.latitude.toFixed(3)}, ${l.longitude.toFixed(3)} | IP: ${l.ip}`
       );
       return;
@@ -137,17 +467,17 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
     if (head === 'media') {
       if (arg === 'next') {
         onMediaAction('next');
-        append('MEDIA -> NEXT TRACK dispatched.');
+        appendToTab(tid, 'MEDIA -> NEXT TRACK');
       } else if (arg === 'prev') {
         onMediaAction('prev');
-        append('MEDIA -> PREVIOUS TRACK dispatched.');
+        appendToTab(tid, 'MEDIA -> PREV TRACK');
       } else if (arg === 'play' || arg === 'pause') {
         onMediaAction('play_pause');
-        append('MEDIA -> PLAY/PAUSE dispatched.');
+        appendToTab(tid, 'MEDIA -> PLAY/PAUSE');
       } else if (liveSystem?.media?.available) {
-        append(`NOW PLAYING: ${liveSystem.media.title} — ${liveSystem.media.artist} [${liveSystem.media.is_playing ? 'PLAYING' : 'PAUSED'}]`);
+        appendToTab(tid, `NOW PLAYING: ${liveSystem.media.title} — ${liveSystem.media.artist} [${liveSystem.media.is_playing ? 'PLAYING' : 'PAUSED'}]`);
       } else {
-        append('Активная системная медиа-сессия не найдена. Используйте: media next | prev | play');
+        appendToTab(tid, 'Нет активной сессии ОС. Используйте: media next | prev | play');
       }
       return;
     }
@@ -155,57 +485,253 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
     if (head === 'vol') {
       const n = Number(arg);
       if (isNaN(n) || n < 0 || n > 100) {
-        append(`Текущая громкость: ${isMuted ? 'MUTE' : `${volume}%`}. Использование: vol <0-100>`);
+        appendToTab(tid, `Громкость: ${isMuted ? 'MUTE' : `${volume}%`}. Использование: vol <0-100>`);
         return;
       }
       onChangeVolume(n);
-      append(`AUDIO -> VOLUME SET TO ${n}%`);
+      appendToTab(tid, `AUDIO -> ${n}%`);
       return;
     }
 
     if (head === 'mute') {
       onToggleMute();
-      append(`AUDIO -> ${isMuted ? 'UNMUTED' : 'MUTED'}`);
+      appendToTab(tid, `AUDIO -> ${isMuted ? 'UNMUTED' : 'MUTED'}`);
       return;
     }
 
     if (head === 'island') {
       onToggleIsland();
-      append(`LUMA ISLAND -> ${dynamicIslandEnabled ? 'OFF' : 'ON'}`);
+      appendToTab(tid, `LUMA ISLAND -> ${dynamicIslandEnabled ? 'OFF' : 'ON'}`);
       return;
     }
 
-    if (head === 'ping') {
+    if (head === 'theme') {
+      if (arg === 'dark' || arg === 'light') {
+        onSetThemeMode?.(arg);
+        appendToTab(tid, `THEME MODE -> ${arg.toUpperCase()}`);
+      } else if (arg === 'nothing' || arg === 'pixelbook') {
+        onSetDesignStyle?.(arg);
+        appendToTab(tid, `DESIGN STYLE -> ${arg.toUpperCase()}`);
+      } else {
+        appendToTab(tid, 'Использование: theme dark | light | nothing | pixelbook');
+      }
+      return;
+    }
+
+    if (head === 'taskbar') {
+      if (arg === 'bottom' || arg === 'left' || arg === 'top') {
+        onSetTaskbarPosition?.(arg);
+        appendToTab(tid, `TASKBAR POSITION -> ${arg.toUpperCase()}`);
+      } else {
+        appendToTab(tid, `Текущее положение: ${taskbarPosition}. Использование: taskbar bottom | left | top`);
+      }
+      return;
+    }
+
+    if (head === 'fullscreen' || head === 'fs') {
+      onToggleFullscreen?.();
+      appendToTab(tid, 'FULLSCREEN -> TOGGLED');
+      return;
+    }
+
+    if (head === 'ping' || head === 'rpc') {
+      const method = head === 'rpc' && rest ? rest : 'system.ping';
       const t0 = performance.now();
-      await onCallRpc('system.ping');
+      await onCallRpc(method);
       const dt = (performance.now() - t0).toFixed(1);
-      append(`PONG 127.0.0.1:49215  version=1.0.2b  rtt=${dt}ms`);
+      appendToTab(tid, `RPC ${method} @ 127.0.0.1:49215  ok=true  rtt=${dt}ms`, 'accent');
       return;
     }
 
     if (head === 'lock' || head === 'sleep') {
       onPowerAction(head);
-      append(`POWER -> ${head.toUpperCase()} dispatched.`);
+      appendToTab(tid, `POWER -> ${head.toUpperCase()}`);
       return;
     }
 
-    append(`Неизвестная команда: "${head}". Введите "help".`, 'err');
+    // Real Host OS Shell execution (`sh <cmd>` or direct fallback!)
+    const shellCmd = head === 'sh' ? rest : cmd;
+    if (!shellCmd) {
+      appendToTab(tid, 'Использование: sh <системная команда>', 'err');
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await fetch('/api/kernel/exec', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: shellCmd }),
+      });
+      const d = await r.json();
+      if (d.stdout && String(d.stdout).trim()) {
+        appendToTab(tid, String(d.stdout).trimEnd(), 'out');
+      }
+      if (d.stderr && String(d.stderr).trim()) {
+        appendToTab(tid, String(d.stderr).trimEnd(), 'err');
+      }
+      if (!d.stdout?.trim() && !d.stderr?.trim()) {
+        appendToTab(tid, `(exit ${d.exit_code ?? 0})`, d.ok ? 'out' : 'err');
+      }
+    } catch {
+      appendToTab(tid, `Неизвестная команда: "${head}". Введите "help".`, 'err');
+    } finally {
+      setBusy(false);
+    }
   };
+
+  // Auto-run command launched from Desktop Shortcut
+  useEffect(() => {
+    if (pendingCommand && pendingCommand.command) {
+      runCommand(pendingCommand.command);
+      onConsumePendingCommand?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCommand?.id]);
+
+  const handleCopyOutput = async () => {
+    if (!activeTab) return;
+    const text = activeTab.lines.map((l) => l.text).join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // fallback
+    }
+    fetch('/api/kernel/clipboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    }).catch(() => {});
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1400);
+  };
+
+  const handleTabComplete = () => {
+    const val = input.trim().toLowerCase();
+    if (!val || val.includes(' ')) return;
+    const match = BUILTIN_COMMANDS.find((c) => c.startsWith(val));
+    if (match) setInput(match + ' ');
+  };
+
+  const quickChips = ['neofetch', 'top', 'ls ~', 'sys', 'clip', 'weather', 'ping'];
+  const hostName = liveSystem?.hostname || 'host';
 
   return (
     <div
       onClick={() => inputRef.current?.focus()}
-      className={`h-full flex flex-col font-mono text-xs p-4 cursor-text ${
+      className={`h-full flex flex-col font-mono text-xs cursor-text ${
         isDark ? 'bg-[#09090b] text-zinc-200' : 'bg-[#f8f8f6] text-zinc-900'
       }`}
     >
-      <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
-        {lines.map((l) => (
+      {/* Multi-Tab Header Bar + Quick Action Buttons */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`px-3 py-1.5 border-b flex items-center justify-between gap-2 shrink-0 ${
+          isDark ? 'border-white/[0.08] bg-white/[0.02]' : 'border-zinc-200 bg-zinc-100/80'
+        }`}
+      >
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+          {tabs.map((t) => {
+            const active = t.id === activeTab?.id;
+            return (
+              <div
+                key={t.id}
+                onClick={() => {
+                  setActiveTabId(t.id);
+                  setHistIdx(-1);
+                }}
+                className={`px-2.5 py-1 rounded-lg flex items-center gap-1.5 text-[11px] cursor-pointer transition ${
+                  active
+                    ? 'bg-[var(--luma-accent)] text-white font-bold'
+                    : isDark
+                    ? 'bg-white/[0.05] text-zinc-400 hover:text-white'
+                    : 'bg-white text-zinc-600 border border-zinc-200 hover:text-zinc-900'
+                }`}
+              >
+                <Terminal className="w-3 h-3" />
+                <span>{t.title}</span>
+                {tabs.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeTab(t.id);
+                    }}
+                    className="opacity-70 hover:opacity-100 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <button
+            onClick={addNewTab}
+            title="Новая вкладка терминала"
+            className={`w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer transition ${
+              isDark ? 'hover:bg-white/10 text-zinc-400 hover:text-white' : 'hover:bg-zinc-200 text-zinc-600'
+            }`}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={handleCopyOutput}
+            title="Скопировать вывод"
+            className={`px-2 py-1 rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer transition ${
+              isDark ? 'bg-white/[0.06] hover:bg-white/[0.12] text-zinc-300' : 'bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-700'
+            }`}
+          >
+            {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+            <span className="hidden sm:inline">{copied ? 'OK' : 'Копия'}</span>
+          </button>
+          <button
+            onClick={clearActiveTab}
+            title="Очистить вывод"
+            className={`p-1.5 rounded-lg cursor-pointer transition ${
+              isDark ? 'bg-white/[0.06] hover:bg-white/[0.12] text-zinc-400' : 'bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-600'
+            }`}
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+
+      {/* Quick Command Chips */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`px-3 py-1.5 border-b flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0 ${
+          isDark ? 'border-white/[0.06]' : 'border-zinc-200/80'
+        }`}
+      >
+        {quickChips.map((chip) => (
+          <button
+            key={chip}
+            onClick={() => runCommand(chip)}
+            className={`px-2 py-0.5 rounded-md text-[10px] border cursor-pointer transition whitespace-nowrap ${
+              isDark
+                ? 'bg-white/[0.04] border-white/[0.08] text-zinc-400 hover:text-white hover:border-[var(--luma-accent)]'
+                : 'bg-white border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:border-[var(--luma-accent)]'
+            }`}
+          >
+            {chip}
+          </button>
+        ))}
+        {busy && <span className="ml-auto text-[10px] text-[var(--luma-accent)] animate-pulse">EXEC...</span>}
+      </div>
+
+      {/* Output Stream */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
+        {(activeTab?.lines || []).map((l) => (
           <pre
             key={l.id}
             className={`whitespace-pre-wrap break-words leading-relaxed ${
               l.kind === 'in'
-                ? 'text-[#d71921] font-semibold'
+                ? 'text-[var(--luma-accent)] font-semibold'
+                : l.kind === 'accent'
+                ? isDark
+                  ? 'text-zinc-100 font-semibold'
+                  : 'text-zinc-900 font-semibold'
                 : l.kind === 'err'
                 ? 'text-amber-500'
                 : isDark
@@ -219,6 +745,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         <div ref={bottomRef} />
       </div>
 
+      {/* Prompt Input */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -226,22 +753,28 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
           setInput('');
           runCommand(v);
         }}
-        className={`mt-3 pt-2.5 border-t flex items-center gap-2 ${
-          isDark ? 'border-white/10' : 'border-zinc-300'
+        className={`px-4 py-2.5 border-t flex items-center gap-2 shrink-0 ${
+          isDark ? 'border-white/10 bg-white/[0.015]' : 'border-zinc-300 bg-white/70'
         }`}
       >
-        <span className="text-[#d71921] font-bold shrink-0">luma@host:~$</span>
+        <span className="text-[var(--luma-accent)] font-bold shrink-0">
+          luma@{hostName}:{activeTab?.cwd || '~'}$
+        </span>
         <input
           ref={inputRef}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'ArrowUp' && history.length > 0) {
+            const hist = activeTab?.history || [];
+            if (e.key === 'Tab') {
               e.preventDefault();
-              const next = Math.min(history.length - 1, histIdx + 1);
+              handleTabComplete();
+            } else if (e.key === 'ArrowUp' && hist.length > 0) {
+              e.preventDefault();
+              const next = Math.min(hist.length - 1, histIdx + 1);
               setHistIdx(next);
-              setInput(history[next]);
+              setInput(hist[next]);
             } else if (e.key === 'ArrowDown') {
               e.preventDefault();
               if (histIdx <= 0) {
@@ -250,11 +783,11 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
               } else {
                 const next = histIdx - 1;
                 setHistIdx(next);
-                setInput(history[next]);
+                setInput(hist[next]);
               }
             }
           }}
-          placeholder="sys, disks, loc, media next, vol 50, ping..."
+          placeholder="neofetch, top, ls ~, clip, calc 64*12, sh whoami... (Tab)"
           className="flex-1 bg-transparent outline-none placeholder:text-zinc-500"
           autoFocus
         />

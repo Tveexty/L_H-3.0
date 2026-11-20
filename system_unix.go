@@ -4,10 +4,13 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -335,3 +338,104 @@ func (p *platformProbe) SetAudioVolume(volume int, mute bool) error {
 func (p *platformProbe) ExecutePowerAction(action string) error {
 	return nil
 }
+
+var unixClipMu sync.Mutex
+var unixClipBuf string
+
+func (p *platformProbe) GetClipboard() (string, error) {
+	if _, err := exec.LookPath("xclip"); err == nil {
+		if out, err := exec.Command("xclip", "-o", "-selection", "clipboard").Output(); err == nil {
+			return string(out), nil
+		}
+	}
+	if _, err := exec.LookPath("wl-paste"); err == nil {
+		if out, err := exec.Command("wl-paste", "-n").Output(); err == nil {
+			return string(out), nil
+		}
+	}
+	unixClipMu.Lock()
+	defer unixClipMu.Unlock()
+	return unixClipBuf, nil
+}
+
+func (p *platformProbe) SetClipboard(text string) error {
+	unixClipMu.Lock()
+	unixClipBuf = text
+	unixClipMu.Unlock()
+	if _, err := exec.LookPath("xclip"); err == nil {
+		cmd := exec.Command("xclip", "-i", "-selection", "clipboard")
+		cmd.Stdin = strings.NewReader(text)
+		_ = cmd.Run()
+	}
+	return nil
+}
+
+func (p *platformProbe) OpenPath(target string) error {
+	clean := strings.TrimSpace(target)
+	if clean == "" {
+		return fmt.Errorf("empty path")
+	}
+	if _, err := exec.LookPath("xdg-open"); err == nil {
+		return exec.Command("xdg-open", clean).Start()
+	}
+	return nil
+}
+
+func (p *platformProbe) PickFile(mode string) PickedFileInfo {
+	home, _ := os.UserHomeDir()
+	return PickedFileInfo{
+		Picked: false,
+		Path:   home,
+		Name:   filepath.Base(home),
+		IsDir:  strings.EqualFold(mode, "folder"),
+	}
+}
+
+func (p *platformProbe) TopProcesses(limit int) []ProcessMetric {
+	if limit <= 0 || limit > 20 {
+		limit = 10
+	}
+	out, err := exec.Command("ps", "-eo", "pid,comm,%cpu,rss", "--sort=-rss", "--no-headers").Output()
+	if err != nil {
+		return nil
+	}
+	var list []ProcessMetric
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		pid, _ := strconv.Atoi(fields[0])
+		cpuVal, _ := strconv.ParseFloat(fields[2], 64)
+		rssKB, _ := strconv.ParseFloat(fields[3], 64)
+		list = append(list, ProcessMetric{
+			PID:    pid,
+			Name:   fields[1],
+			CPUPct: math.Round(cpuVal*10) / 10,
+			MemMB:  math.Round((rssKB/1024.0)*10) / 10,
+		})
+		if len(list) >= limit {
+			break
+		}
+	}
+	return list
+}
+
+func (p *platformProbe) ExecShell(command string) (string, string, int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "bash", "-c", command)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	code := 0
+	if err != nil {
+		code = 1
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		}
+	}
+	return strings.TrimRight(stdout.String(), "\r\n"), strings.TrimRight(stderr.String(), "\r\n"), code
+}
+
