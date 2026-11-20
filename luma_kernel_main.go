@@ -1,8 +1,9 @@
-// Luma OS 1.0 Kernel & Material 3 Expressive Dual-Window Shell Launcher
-// Architecture: Android-inspired OS Kernel (HAL, Activity/Process Manager with Watchdog,
+// Luma OS 1.0.1 (Day-One Patch) — Native Kernel & Material 3 Expressive Dual-Window Shell
+// Architecture: Modular OS Kernel (HAL Hardware Probe, Activity/Process Manager,
 // Binder / JSON-RPC 2.0 IPC on 127.0.0.1:49215, LumaGuard AES-256-GCM + PBKDF2-HMAC-SHA512
-// SecurityKernel, Encrypted Virtual File System, and 18-Widget Engine for Android/iOS/Windows).
-// Compiles to a zero-dependency standalone Windows executable: LumaOS_1.0.exe
+// SecurityKernel, Encrypted Virtual File System, Real Media/Audio Controller, Region Auto-Detection,
+// and 18-Widget Engine across Luma Pulse, Luma Aura, and Luma Core suites).
+// Compiles to a zero-dependency standalone executable: LumaOS_1.0.1.exe
 
 package main
 
@@ -37,12 +38,12 @@ import (
 //go:embed dist
 var embeddedDist embed.FS
 
-//go:embed luma_kernel_main.go Luma_Core LauncherHab3.0_CSharp src/components/LumaGrid20x30Window.tsx
+//go:embed luma_kernel_main.go system_types.go system_windows.go system_unix.go Luma_Core LauncherHab3.0_CSharp src/components/LumaGrid20x30Window.tsx
 var embeddedSources embed.FS
 
 const (
-	KernelVersion   = "1.0.0-release"
-	KernelCodename  = "Nebula Android-Core M3 Expressive"
+	KernelVersion   = "1.0.1-day1-patch"
+	KernelCodename  = "Nebula M3 Expressive"
 	DefaultRpcPort  = 49215
 	DefaultHttpPort = 49216
 )
@@ -50,7 +51,7 @@ const (
 type WidgetDescriptor struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
-	Ecosystem string `json:"ecosystem"` // android | ios | windows
+	Ecosystem string `json:"ecosystem"` // pulse | aura | core
 	SpanW     int    `json:"spanW"`
 	SpanH     int    `json:"spanH"`
 	Category  string `json:"category"`
@@ -73,6 +74,8 @@ type LumaKernel struct {
 	vfsStore    map[string]string
 	processes   map[string]*ActiveProcess
 	widgets     []WidgetDescriptor
+	probe       *platformProbe
+	location    LocationInfo
 	rpcRequests uint64
 }
 
@@ -112,7 +115,7 @@ func resolveVfsDir() string {
 	if err != nil || base == "" {
 		base = os.TempDir()
 	}
-	dir := filepath.Join(base, "LumaOS_1.0")
+	dir := filepath.Join(base, "LumaOS_1.0.1")
 	_ = os.MkdirAll(dir, 0o700)
 	return dir
 }
@@ -120,9 +123,8 @@ func resolveVfsDir() string {
 func NewLumaKernel() *LumaKernel {
 	vfsDir := resolveVfsDir()
 	host, _ := os.Hostname()
-	pass := []byte("LumaOS_1.0_Hardware_Root_" + host + "_" + runtime.GOOS)
-	salt := []byte("LumaGuard_PBKDF2_SHA512_Salt_v1.0")
-	// Fast yet strong KDF derivation for kernel startup (64 bytes -> 32B AES-256 + 32B HMAC-SHA256)
+	pass := []byte("LumaOS_1.0.1_Hardware_Root_" + host + "_" + runtime.GOOS)
+	salt := []byte("LumaGuard_PBKDF2_SHA512_Salt_v1.0.1")
 	derived := pbkdf2HMACSHA512(pass, salt, 25000, 64)
 
 	k := &LumaKernel{
@@ -133,35 +135,111 @@ func NewLumaKernel() *LumaKernel {
 		vfsStore:   make(map[string]string),
 		processes:  make(map[string]*ActiveProcess),
 		widgets:    default18Widgets(),
+		probe:      newPlatformProbe(),
 	}
 	k.loadEncryptedVFS()
+	go k.RefreshLocation()
 	return k
 }
 
 func default18Widgets() []WidgetDescriptor {
 	return []WidgetDescriptor{
-		// Android 16 Material 3 Expressive (6)
-		{ID: "android_m3_clock", Title: "Android 16 M3 Scallop Clock & At a Glance", Ecosystem: "android", SpanW: 6, SpanH: 4, Category: "Clock & Weather"},
-		{ID: "android_quick_settings", Title: "Android 16 Quick Settings Shade", Ecosystem: "android", SpanW: 8, SpanH: 4, Category: "System Controls"},
-		{ID: "android_pixel_weather", Title: "Pixel Weather Open-Meteo Live", Ecosystem: "android", SpanW: 8, SpanH: 4, Category: "Weather"},
-		{ID: "android_wellbeing", Title: "Android Digital Wellbeing & Detox", Ecosystem: "android", SpanW: 6, SpanH: 3, Category: "Wellbeing"},
-		{ID: "android_keep_notes", Title: "Google Keep M3 Expressive Notes", Ecosystem: "android", SpanW: 6, SpanH: 4, Category: "Productivity"},
-		{ID: "android_calculator", Title: "Material You Expressive Calculator", Ecosystem: "android", SpanW: 6, SpanH: 4, Category: "Utilities"},
-		// iPhone iOS 18 (6)
-		{ID: "ios_activity_rings", Title: "iPhone Fitness Activity Rings", Ecosystem: "ios", SpanW: 6, SpanH: 4, Category: "Health & Fitness"},
-		{ID: "ios_battery_matrix", Title: "iOS 18 Battery Ecosystem Matrix", Ecosystem: "ios", SpanW: 6, SpanH: 4, Category: "Batteries"},
-		{ID: "ios_now_playing", Title: "iOS 18 StandBy Vinyl Now Playing", Ecosystem: "ios", SpanW: 8, SpanH: 4, Category: "Media"},
-		{ID: "ios_calendar_worldclock", Title: "iOS Calendar & World Clock", Ecosystem: "ios", SpanW: 6, SpanH: 4, Category: "Calendar"},
-		{ID: "ios_pomodoro_focus", Title: "iOS Focus Pomodoro Timer", Ecosystem: "ios", SpanW: 6, SpanH: 4, Category: "Focus"},
-		{ID: "ios_stocks_crypto", Title: "iOS Stocks & Crypto Sparkline", Ecosystem: "ios", SpanW: 6, SpanH: 4, Category: "Finance"},
-		// Windows 11 Fluent (6)
-		{ID: "win_cpu_gpu_ram", Title: "Windows 11 CPU / GPU / RAM Telemetry", Ecosystem: "windows", SpanW: 6, SpanH: 4, Category: "Performance"},
-		{ID: "win_storage_disks", Title: "Windows NVMe Drives C: / D: Analyzer", Ecosystem: "windows", SpanW: 6, SpanH: 4, Category: "Storage"},
-		{ID: "win_network_monitor", Title: "Windows Network I/O & Luma IPC Socket", Ecosystem: "windows", SpanW: 6, SpanH: 4, Category: "Network"},
-		{ID: "win_quick_utilities", Title: "Windows 11 Quick System Utilities", Ecosystem: "windows", SpanW: 8, SpanH: 3, Category: "System"},
-		{ID: "win_power_center", Title: "Windows Power & Lock Screen (Win+L)", Ecosystem: "windows", SpanW: 8, SpanH: 3, Category: "Power"},
-		{ID: "win_security_defender", Title: "LumaGuard Security & AES-256-GCM", Ecosystem: "windows", SpanW: 8, SpanH: 3, Category: "Security"},
+		// Luma Pulse (6)
+		{ID: "android_m3_clock", Title: "Luma Sculpt Clock & Сводка дня", Ecosystem: "pulse", SpanW: 6, SpanH: 4, Category: "Часы и сводка"},
+		{ID: "android_quick_settings", Title: "Центр быстрых плиток Luma", Ecosystem: "pulse", SpanW: 8, SpanH: 4, Category: "Управление"},
+		{ID: "android_pixel_weather", Title: "Luma Погода (Авто-регион Live)", Ecosystem: "pulse", SpanW: 8, SpanH: 4, Category: "Погода"},
+		{ID: "android_wellbeing", Title: "Luma Баланс и Экранное время", Ecosystem: "pulse", SpanW: 6, SpanH: 3, Category: "Баланс"},
+		{ID: "android_keep_notes", Title: "Luma Notes — Заметки и Задачи", Ecosystem: "pulse", SpanW: 6, SpanH: 4, Category: "Заметки"},
+		{ID: "android_calculator", Title: "Luma Calc & Конвертер", Ecosystem: "pulse", SpanW: 6, SpanH: 4, Category: "Утилиты"},
+		// Luma Aura (6)
+		{ID: "ios_activity_rings", Title: "Luma Кольца ритма и фокуса", Ecosystem: "aura", SpanW: 6, SpanH: 4, Category: "Активность"},
+		{ID: "ios_battery_matrix", Title: "Luma Энергия и Питание", Ecosystem: "aura", SpanW: 6, SpanH: 4, Category: "Энергия"},
+		{ID: "ios_now_playing", Title: "Luma Vinyl — Живой Медиаплеер", Ecosystem: "aura", SpanW: 8, SpanH: 4, Category: "Музыка"},
+		{ID: "ios_calendar_worldclock", Title: "Luma Календарь и Часовые пояса", Ecosystem: "aura", SpanW: 6, SpanH: 4, Category: "Время"},
+		{ID: "ios_pomodoro_focus", Title: "Luma Focus Flow (Помидор)", Ecosystem: "aura", SpanW: 6, SpanH: 4, Category: "Фокус"},
+		{ID: "ios_stocks_crypto", Title: "Luma Рынки и Курсы Live", Ecosystem: "aura", SpanW: 6, SpanH: 4, Category: "Финансы"},
+		// Luma Core (6)
+		{ID: "win_cpu_gpu_ram", Title: "Luma Монитор CPU / GPU / RAM", Ecosystem: "core", SpanW: 6, SpanH: 4, Category: "Ресурсы"},
+		{ID: "win_storage_disks", Title: "Luma Хранилище и Тома дисков", Ecosystem: "core", SpanW: 6, SpanH: 4, Category: "Диски"},
+		{ID: "win_network_monitor", Title: "Luma Сеть и Шина IPC 49215", Ecosystem: "core", SpanW: 6, SpanH: 4, Category: "Сеть"},
+		{ID: "win_quick_utilities", Title: "Luma Быстрый запуск утилит", Ecosystem: "core", SpanW: 8, SpanH: 3, Category: "Система"},
+		{ID: "win_power_center", Title: "Luma Питание и Щит блокировки", Ecosystem: "core", SpanW: 8, SpanH: 3, Category: "Питание"},
+		{ID: "win_security_defender", Title: "LumaGuard AES-256-GCM Защита", Ecosystem: "core", SpanW: 8, SpanH: 3, Category: "Безопасность"},
 	}
+}
+
+// RefreshLocation auto-detects the host's real region, city, country, timezone and coordinates
+func (k *LumaKernel) RefreshLocation() LocationInfo {
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// Primary: ipwho.is (HTTPS, reliable, returns exact city/region/country/lat/lon/tz)
+	if resp, err := client.Get("https://ipwho.is/"); err == nil {
+		defer resp.Body.Close()
+		var data struct {
+			Success   bool    `json:"success"`
+			IP        string  `json:"ip"`
+			City      string  `json:"city"`
+			Region    string  `json:"region"`
+			Country   string  `json:"country"`
+			Latitude  float64 `json:"latitude"`
+			Longitude float64 `json:"longitude"`
+			Timezone  struct {
+				ID string `json:"id"`
+			} `json:"timezone"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&data) == nil && data.Success && data.City != "" {
+			loc := LocationInfo{
+				Detected:  true,
+				City:      data.City,
+				Region:    data.Region,
+				Country:   data.Country,
+				Timezone:  data.Timezone.ID,
+				Latitude:  data.Latitude,
+				Longitude: data.Longitude,
+				IP:        data.IP,
+				Source:    "ipwho.is",
+			}
+			k.mu.Lock()
+			k.location = loc
+			k.mu.Unlock()
+			return loc
+		}
+	}
+
+	// Secondary fallback: ipapi.co
+	if resp, err := client.Get("https://ipapi.co/json/"); err == nil {
+		defer resp.Body.Close()
+		var data struct {
+			IP        string  `json:"ip"`
+			City      string  `json:"city"`
+			Region    string  `json:"region"`
+			Country   string  `json:"country_name"`
+			Timezone  string  `json:"timezone"`
+			Latitude  float64 `json:"latitude"`
+			Longitude float64 `json:"longitude"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&data) == nil && data.City != "" {
+			loc := LocationInfo{
+				Detected:  true,
+				City:      data.City,
+				Region:    data.Region,
+				Country:   data.Country,
+				Timezone:  data.Timezone,
+				Latitude:  data.Latitude,
+				Longitude: data.Longitude,
+				IP:        data.IP,
+				Source:    "ipapi.co",
+			}
+			k.mu.Lock()
+			k.location = loc
+			k.mu.Unlock()
+			return loc
+		}
+	}
+
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	return k.location
 }
 
 // SealAES256GCM encrypts payload with AES-256-GCM (96-bit nonce + 128-bit authentication tag)
@@ -236,53 +314,64 @@ func (k *LumaKernel) saveEncryptedVFS() error {
 	return os.Rename(tmpPath, finalPath)
 }
 
-// SignIPC computes HMAC-SHA256 signature for IPC frames
 func (k *LumaKernel) SignIPC(payload []byte) string {
 	mac := hmac.New(sha256.New, k.hmacSecret)
 	mac.Write(payload)
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
+func (k *LumaKernel) SystemSnapshot() HostHardwareSnapshot {
+	k.mu.RLock()
+	loc := k.location
+	k.mu.RUnlock()
+	return k.probe.Collect(loc)
+}
+
 func (k *LumaKernel) TelemetrySnapshot() map[string]interface{} {
+	hw := k.SystemSnapshot()
+
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 
 	uptime := time.Since(k.bootTime).Seconds()
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	rssMB := float64(memStats.Sys) / (1024.0 * 1024.0)
-	if rssMB < 8.4 {
-		rssMB = 14.2
-	}
-
-	cpuPct := int(16 + 10*math.Sin(uptime/5.0))
-	if cpuPct < 6 {
-		cpuPct = 6
-	}
-	ramPct := 42
+	rssMB := math.Round((float64(memStats.Sys)/(1024.0*1024.0))*10) / 10
 
 	return map[string]interface{}{
 		"kernel":          "LumaCore",
 		"version":         KernelVersion,
 		"codename":        KernelCodename,
-		"os":              runtime.GOOS,
-		"arch":            runtime.GOARCH,
-		"cpu_percent":     cpuPct,
-		"ram_percent":     ramPct,
-		"core_rss_mb":     math.Round(rssMB*10) / 10,
+		"os":              hw.OSName,
+		"hostname":        hw.Hostname,
+		"arch":            hw.Arch,
+		"cpu_model":       hw.CPUModel,
+		"cpu_cores":       hw.CPUCores,
+		"cpu_percent":     hw.CPUPercent,
+		"gpu_name":        hw.GPUName,
+		"ram_used_gb":     hw.RAMUsedGB,
+		"ram_total_gb":    hw.RAMTotalGB,
+		"ram_percent":     hw.RAMPercent,
+		"battery_percent": hw.BatteryPercent,
+		"battery_charging": hw.BatteryCharging,
+		"net_down_mbps":   hw.NetDownMbps,
+		"net_up_mbps":     hw.NetUpMbps,
+		"disks":           hw.Disks,
+		"media":           hw.Media,
+		"location":        hw.Location,
+		"core_rss_mb":     rssMB,
 		"uptime_sec":      int(uptime),
 		"ipc_endpoint":    fmt.Sprintf("tcp://127.0.0.1:%d", DefaultRpcPort),
 		"vfs_path":        k.vfsDir,
 		"security_engine": "LumaGuard AES-256-GCM + PBKDF2-HMAC-SHA512 + HMAC-SHA256",
 		"widgets_count":   len(k.widgets),
-		"windows_modes":   []string{"window1_grouped_lh24", "window2_grid_20x30", "dual_windows_split"},
 		"rpc_requests":    k.rpcRequests,
 		"active_procs":    len(k.processes),
+		"real_telemetry":  true,
 		"timestamp":       float64(time.Now().UnixMilli()) / 1000.0,
 	}
 }
 
-// LaunchTarget launches an application, system utility, or URL on the host OS
 func (k *LumaKernel) LaunchTarget(id, name, target, appType, args string) (map[string]interface{}, error) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -307,6 +396,8 @@ func (k *LumaKernel) LaunchTarget(id, name, target, appType, args string) (map[s
 			cmd = exec.Command("cmd.exe", "/c", "start", "", "wt.exe")
 		case "cmd", "cmd.exe":
 			cmd = exec.Command("cmd.exe", "/c", "start", "cmd.exe")
+		case "shell:recyclebinfolder":
+			cmd = exec.Command("explorer.exe", "shell:RecycleBinFolder")
 		case "lock", "win+l":
 			cmd = exec.Command("rundll32.exe", "user32.dll,LockWorkStation")
 		default:
@@ -348,7 +439,6 @@ func (k *LumaKernel) LaunchTarget(id, name, target, appType, args string) (map[s
 	}, nil
 }
 
-// HandleJSONRPC processes JSON-RPC 2.0 requests on both TCP (127.0.0.1:49215) and HTTP (/api/kernel/rpc)
 func (k *LumaKernel) HandleJSONRPC(raw []byte) []byte {
 	k.mu.Lock()
 	k.rpcRequests++
@@ -374,7 +464,7 @@ func (k *LumaKernel) HandleJSONRPC(raw []byte) []byte {
 	case "system.ping":
 		result = map[string]interface{}{
 			"pong":       true,
-			"engine":     "Luma OS 1.0 Kernel",
+			"engine":     "Luma OS 1.0.1 Kernel",
 			"version":    KernelVersion,
 			"ipc_socket": fmt.Sprintf("tcp://127.0.0.1:%d", DefaultRpcPort),
 			"timestamp":  float64(time.Now().UnixMilli()) / 1000.0,
@@ -386,7 +476,7 @@ func (k *LumaKernel) HandleJSONRPC(raw []byte) []byte {
 	case "widgets.get_data":
 		snap := k.TelemetrySnapshot()
 		result = map[string]interface{}{
-			"engine":        "Luma WidgetEngine 1.0 (Android 16 M3 + iOS 18 + Windows 11)",
+			"engine":        "Luma WidgetEngine 1.0.1 (Luma Pulse + Luma Aura + Luma Core)",
 			"grid_matrix":   "20x30 (600 coordinate cells)",
 			"widgets_total": len(k.widgets),
 			"interval_sec":  1,
@@ -394,9 +484,9 @@ func (k *LumaKernel) HandleJSONRPC(raw []byte) []byte {
 			"widgets":       k.widgets,
 		}
 	case "security.status":
-		sampleCipher, _ := k.SealAES256GCM([]byte("LumaOS_1.0_Verified_Container"))
+		sampleCipher, _ := k.SealAES256GCM([]byte("LumaOS_1.0.1_Verified_Container"))
 		result = map[string]interface{}{
-			"engine":            "LumaGuard SecurityKernel 1.0",
+			"engine":            "LumaGuard SecurityKernel 1.0.1",
 			"cipher":            "AES-256-GCM (96-bit Nonce + 128-bit AuthTag)",
 			"kdf":               "PBKDF2-HMAC-SHA512",
 			"ipc_mac":           "HMAC-SHA256",
@@ -444,7 +534,6 @@ func startTcpRpcServer(kernel *LumaKernel, port int) {
 	}
 }
 
-// openNativeDesktopWindow opens a URL in Microsoft Edge/Chrome --app mode on Windows
 func openNativeDesktopWindow(url string, width, height, x, y int) {
 	if runtime.GOOS != "windows" {
 		return
@@ -484,15 +573,14 @@ func isLumaAlreadyRunning(httpPort int) bool {
 }
 
 func main() {
-	httpPort := flag.Int("port", DefaultHttpPort, "HTTP port for Luma OS 1.0 Shell UI")
-	rpcPort := flag.Int("rpc-port", DefaultRpcPort, "TCP JSON-RPC 2.0 port for Luma Core 1.0")
-	headless := flag.Bool("headless", false, "Run Luma Core 1.0 daemon without auto-opening browser windows")
-	dualBoot := flag.Bool("dual-windows", true, "Open both Window 1 (Grouped List) and Window 2 (20x30 Grid) on Windows startup")
+	httpPort := flag.Int("port", DefaultHttpPort, "HTTP port for Luma OS 1.0.1 Shell UI")
+	rpcPort := flag.Int("rpc-port", DefaultRpcPort, "TCP JSON-RPC 2.0 port for Luma Core 1.0.1")
+	headless := flag.Bool("headless", false, "Run Luma Core 1.0.1 daemon without auto-opening desktop windows")
+	dualBoot := flag.Bool("dual-windows", true, "Open both Window 1 (Grouped List) and Window 2 (20x30 Grid) on startup")
 	flag.Parse()
 
-	// If LumaOS_1.0.exe is already running in the background, just open Window 1 & Window 2 right away!
 	if isLumaAlreadyRunning(*httpPort) {
-		log.Printf("[LumaOS 1.0] Existing kernel daemon detected on 127.0.0.1:%d — opening desktop windows...", *httpPort)
+		log.Printf("[LumaOS 1.0.1] Existing kernel daemon detected on 127.0.0.1:%d — opening desktop windows...", *httpPort)
 		if !*headless && runtime.GOOS == "windows" {
 			openNativeDesktopWindow(fmt.Sprintf("http://127.0.0.1:%d/?window=1", *httpPort), 1440, 900, 40, 40)
 			if *dualBoot {
@@ -505,7 +593,7 @@ func main() {
 
 	kernel := NewLumaKernel()
 
-	// 1. Start Luma Core 1.0 TCP JSON-RPC 2.0 Server (127.0.0.1:49215)
+	// 1. Start Luma Core 1.0.1 TCP JSON-RPC 2.0 Server (127.0.0.1:49215)
 	go startTcpRpcServer(kernel, *rpcPort)
 
 	// 2. Prepare embedded dist/ filesystem
@@ -517,10 +605,78 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	// Full Real Hardware + Media + Region Telemetry API
+	mux.HandleFunc("/api/kernel/system", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(kernel.SystemSnapshot())
+	})
+
 	// Kernel Status API
 	mux.HandleFunc("/api/kernel/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(kernel.TelemetrySnapshot())
+	})
+
+	// Region & Geolocation Auto-Detection API
+	mux.HandleFunc("/api/kernel/location", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.URL.Query().Get("refresh") == "1" || !kernel.location.Detected {
+			loc := kernel.RefreshLocation()
+			_ = json.NewEncoder(w).Encode(loc)
+			return
+		}
+		kernel.mu.RLock()
+		loc := kernel.location
+		kernel.mu.RUnlock()
+		_ = json.NewEncoder(w).Encode(loc)
+	})
+
+	// Real OS Media Track Switching API (play_pause | next | prev)
+	mux.HandleFunc("/api/kernel/media", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Action string `json:"action"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		if payload.Action == "" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "media": kernel.SystemSnapshot().Media})
+			return
+		}
+		media, err := kernel.probe.ControlMedia(payload.Action)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "action": payload.Action, "media": media})
+	})
+
+	// Real OS Audio Volume & Mute Control API
+	mux.HandleFunc("/api/kernel/audio", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Volume int  `json:"volume"`
+			Mute   bool `json:"mute"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		_ = kernel.probe.SetAudioVolume(payload.Volume, payload.Mute)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "volume": payload.Volume, "mute": payload.Mute})
+	})
+
+	// Real OS Power & System Action API (lock | sleep | recycle_bin)
+	mux.HandleFunc("/api/kernel/power", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Action string `json:"action"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		err := kernel.probe.ExecutePowerAction(payload.Action)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "action": payload.Action})
 	})
 
 	// Kernel JSON-RPC 2.0 over HTTP Bridge
@@ -555,7 +711,7 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "keys": len(kernel.vfsStore), "store": kernel.vfsStore})
 	})
 
-	// Kernel Process Launcher API (accepts either "url" or "command")
+	// Kernel Process Launcher API
 	mux.HandleFunc("/api/kernel/launch", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		var payload struct {
@@ -583,7 +739,7 @@ func main() {
 		_ = json.NewEncoder(w).Encode(res)
 	})
 
-	// Open Window 2 (20x30 Grid) as a separate native OS window
+	// Open Window 2 (20x30 Grid) as a separate native window
 	mux.HandleFunc("/api/kernel/open-window", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		win2URL := fmt.Sprintf("http://127.0.0.1:%d/?window=2", *httpPort)
@@ -595,49 +751,56 @@ func main() {
 		})
 	})
 
-	// Serve self executable when user downloads /LumaOS_1.0.exe from the UI
-	mux.HandleFunc("/LumaOS_1.0.exe", func(w http.ResponseWriter, r *http.Request) {
-		if _, err := os.Stat("LumaOS_1.0.exe"); err == nil {
-			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.exe"`)
-			http.ServeFile(w, r, "LumaOS_1.0.exe")
-			return
+	// Serve standalone executable download for both LumaOS_1.0.1.exe and LumaOS_1.0.exe
+	serveExe := func(w http.ResponseWriter, r *http.Request) {
+		for _, candidate := range []string{"LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+			if _, err := os.Stat(candidate); err == nil {
+				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.1.exe"`)
+				http.ServeFile(w, r, candidate)
+				return
+			}
 		}
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.0.1.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
-	})
+	}
+	mux.HandleFunc("/LumaOS_1.0.1.exe", serveExe)
+	mux.HandleFunc("/LumaOS_1.0.exe", serveExe)
 
-	// Serve embedded kernel & shell source files for the built-in "Ядро Luma" Code Viewer tab
+	// Serve embedded source files for built-in "Ядро Luma" Code Viewer
 	sourceFileServer := http.FileServer(http.FS(embeddedSources))
 	mux.Handle("/LauncherHab3.0_CSharp/", sourceFileServer)
 	mux.Handle("/Luma_Core/", sourceFileServer)
 	mux.Handle("/src/", sourceFileServer)
-	mux.HandleFunc("/luma_kernel_main.go", func(w http.ResponseWriter, r *http.Request) {
-		data, err := embeddedSources.ReadFile("luma_kernel_main.go")
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = w.Write(data)
-	})
+	for _, goFile := range []string{"luma_kernel_main.go", "system_types.go", "system_windows.go", "system_unix.go"} {
+		fileName := goFile
+		mux.HandleFunc("/"+fileName, func(w http.ResponseWriter, r *http.Request) {
+			data, err := embeddedSources.ReadFile(fileName)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = w.Write(data)
+		})
+	}
 
 	// Serve SPA & static assets
 	mux.Handle("/", fileServer)
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.0 KERNEL & SHELL (MATERIAL 3 EXPRESSIVE)")
-	log.Printf("  - Window 1 (Grouped List LH-2.4): http://%s/?window=1", addr)
-	log.Printf("  - Window 2 (20x30 Cell Matrix):   http://%s/?window=2", addr)
-	log.Printf("  - Kernel JSON-RPC 2.0 Socket:     tcp://127.0.0.1:%d", *rpcPort)
-	log.Printf("  - Encrypted VFS Vault:            %s", kernel.vfsDir)
+	log.Printf("  LUMA OS 1.0.1 (DAY-ONE PATCH) — KERNEL & SHELL")
+	log.Printf("  - Window 1 (Grouped List):     http://%s/?window=1", addr)
+	log.Printf("  - Window 2 (20x30 Matrix):     http://%s/?window=2", addr)
+	log.Printf("  - Kernel JSON-RPC 2.0 Socket:  tcp://127.0.0.1:%d", *rpcPort)
+	log.Printf("  - Real Telemetry & Media API:  http://%s/api/kernel/system", addr)
 	log.Printf("=================================================================")
 
 	if !*headless && runtime.GOOS == "windows" {

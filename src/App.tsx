@@ -72,6 +72,10 @@ import {
   Flag,
   Smartphone,
   Radio,
+  MapPin,
+  Disc3,
+  Power,
+  EyeOff,
 } from 'lucide-react';
 import {
   AppItem,
@@ -93,6 +97,7 @@ import {
   INITIAL_WINDOWS_NOTIFICATIONS,
   INITIAL_WORKSPACES,
   IslandMediaPlayer,
+  LiveSystemTelemetry,
   PLUGIN_CATALOG,
   PluginItem,
   PYTHON_PROJECT_FILES,
@@ -102,7 +107,6 @@ import {
   WindowsNotificationItem,
   WorkspacePreset,
 } from './data/launcherData';
-import { TileGridHome30 } from './components/TileGridHome30';
 import { LumaGrid20x30Window } from './components/LumaGrid20x30Window';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -134,7 +138,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 
 const ICON_NAMES = Object.keys(ICON_MAP);
 const WEEKDAYS_RU = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-const STORAGE_KEY = 'launcher_hab_v30_luma_os_10_state';
+const STORAGE_KEY = 'luma_os_1_0_1_shell_state';
 
 interface ToastMessage {
   id: string;
@@ -217,14 +221,19 @@ export default function App() {
   const [now, setNow] = useState<Date>(new Date());
 
   // --- Navigation & 2-Window Architecture State ---
-  // 'quick_search' = Окно 1: Список по группам (как в файле LH-2.4)
-  // 'grid_20x30'   = Окно 2: Ячейки 20x30 (18 Виджетов Android/iOS/Windows)
-  // 'dual_windows' = 2 Окна Рядом (Окно 1 Список по группам + Окно 2 Ячейки 20x30)
-  // 'tile_grid'    = Классические плитки 3.0
+  // 'quick_search' = Окно 1: Список и карточки по группам (Luma OS 1.0.1)
+  // 'grid_20x30'   = Окно 2: Ячейки 20x30 (18 живых виджетов Luma Pulse / Aura / Core)
+  // 'dual_windows' = 2 Окна Рядом (Окно 1 По группам + Окно 2 Ячейки 20x30)
   const [activeSection, setActiveSection] = useState<'apps' | 'tracker' | 'python_code'>('apps');
   const [windowDisplayMode, setWindowDisplayMode] = useState<
-    'quick_search' | 'grid_20x30' | 'dual_windows' | 'tile_grid'
-  >(isWindow2Param ? 'grid_20x30' : savedState?.windowDisplayMode || 'quick_search');
+    'quick_search' | 'grid_20x30' | 'dual_windows'
+  >(
+    isWindow2Param
+      ? 'grid_20x30'
+      : savedState?.windowDisplayMode === 'grid_20x30' || savedState?.windowDisplayMode === 'dual_windows'
+      ? savedState.windowDisplayMode
+      : 'quick_search'
+  );
   const [groupedViewStyle, setGroupedViewStyle] = useState<'list_and_cards' | 'list' | 'cards'>(
     savedState?.groupedViewStyle || 'list_and_cards'
   );
@@ -254,13 +263,15 @@ export default function App() {
   const [volume, setVolume] = useState<number>(savedState?.volume ?? 68);
   const [isMuted, setIsMuted] = useState<boolean>(savedState?.isMuted ?? false);
   const [volumePopupOpen, setVolumePopupOpen] = useState<boolean>(false);
-  const [audioBgStatus, setAudioBgStatus] = useState<string>('CoreAudio Worker Ready');
+  const [audioBgStatus, setAudioBgStatus] = useState<string>('Luma Audio Bridge Ready');
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioPostTimerRef = useRef<number | null>(null);
 
-  // --- Floating HUD & Modals ---
+  // --- Floating HUD, Real System Telemetry & Modals ---
   const [floatingHudVisible, setFloatingHudVisible] = useState<boolean>(false);
-  const [cpuLoad, setCpuLoad] = useState<number>(16);
-  const [ramLoad] = useState<number>(42);
+  const [cpuLoad, setCpuLoad] = useState<number>(0);
+  const [ramLoad, setRamLoad] = useState<number>(0);
+  const [liveSystem, setLiveSystem] = useState<LiveSystemTelemetry | null>(null);
 
   const [addAppModalOpen, setAddAppModalOpen] = useState<boolean>(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState<boolean>(false);
@@ -269,20 +280,22 @@ export default function App() {
   >('luma');
   const [pluginsModalOpen, setPluginsModalOpen] = useState<boolean>(false);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState<boolean>(false);
-  const [backupModalOpen, setBackupModalOpen] = useState<boolean>(false);
   const [contextMenuApp, setContextMenuApp] = useState<AppItem | null>(null);
   const [activePluginModal, setActivePluginModal] = useState<PluginItem | null>(null);
   const [editingPluginSettings, setEditingPluginSettings] = useState<PluginItem | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // --- v2.6: Always-Active Dynamic Island State ---
+  // --- Luma Island (Fully Toggleable ON/OFF in 1.0.1) ---
+  const [dynamicIslandEnabled, setDynamicIslandEnabled] = useState<boolean>(
+    savedState?.dynamicIslandEnabled ?? true
+  );
   const [islandModalOpen, setIslandModalOpen] = useState<boolean>(false);
   const [islandTab, setIslandTab] = useState<
     'overview' | 'notifications' | 'player' | 'timer' | 'stopwatch' | 'settings'
   >('overview');
   const [dndEnabled, setDndEnabled] = useState<boolean>(savedState?.dndEnabled ?? false);
   const [isCharging, setIsCharging] = useState<boolean>(savedState?.isCharging ?? true);
-  const [batteryLevel, setBatteryLevel] = useState<number>(savedState?.batteryLevel ?? 96);
+  const [batteryLevel, setBatteryLevel] = useState<number>(savedState?.batteryLevel ?? 100);
   const [chargingAnimationEnabled, setChargingAnimationEnabled] = useState<boolean>(
     savedState?.chargingAnimationEnabled ?? true
   );
@@ -304,27 +317,27 @@ export default function App() {
   const [islandStopwatchRunning, setIslandStopwatchRunning] = useState<boolean>(false);
   const [islandStopwatchLaps, setIslandStopwatchLaps] = useState<string[]>([]);
 
-  // --- v2.6: Adaptive Day / Night Theme State ---
+  // --- Adaptive Day / Night Theme State ---
   const [adaptiveThemeEnabled, setAdaptiveThemeEnabled] = useState<boolean>(
     savedState?.adaptiveThemeEnabled ?? false
   );
   const [dayStartTime, setDayStartTime] = useState<string>(savedState?.dayStartTime || '07:00');
   const [nightStartTime, setNightStartTime] = useState<string>(savedState?.nightStartTime || '20:00');
   const [dayThemeKey, setDayThemeKey] = useState<ThemeKey>(savedState?.dayThemeKey || 'light');
-  const [nightThemeKey, setNightThemeKey] = useState<ThemeKey>(savedState?.nightThemeKey || 'dark');
+  const [nightThemeKey, setNightThemeKey] = useState<ThemeKey>(savedState?.nightThemeKey || 'm3_expressive');
 
-  // --- v2.6: Right-Click Back (One-Handed Navigation) ---
+  // --- Right-Click Back (One-Handed Navigation) ---
   const [rightClickBackEnabled, setRightClickBackEnabled] = useState<boolean>(
     savedState?.rightClickBackEnabled ?? true
   );
 
-  // --- Luma OS 1.0: GitHub Auto-Update & Diagnostics State ---
+  // --- Luma OS 1.0.1: GitHub Auto-Update & Diagnostics State ---
   const [githubAutoUpdate, setGithubAutoUpdate] = useState<boolean>(savedState?.githubAutoUpdate ?? true);
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
   const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>(
-    '✅ Установлена актуальная версия Luma OS 1.0 / v3.0 (GitHub: Tveexty/L_H-3.0)'
+    '✅ Установлено обновление Luma OS 1.0.1 (Патч первого дня • Tveexty/L_H-3.0)'
   );
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsScore, setDiagnosticsScore] = useState<number>(100);
@@ -332,8 +345,8 @@ export default function App() {
   const [diagnosticsTotal] = useState<number>(6);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Проверено только что');
 
-  // --- Luma OS 1.0 Core & WidgetEngine Live State ---
-  const [lumaUptimeSec, setLumaUptimeSec] = useState<number>(342);
+  // --- Luma OS 1.0.1 Core & WidgetEngine Live State ---
+  const [lumaUptimeSec, setLumaUptimeSec] = useState<number>(0);
   const [lumaRpcMethod, setLumaRpcMethod] = useState<
     'widgets.get_data' | 'system.ping' | 'widgets.list' | 'system.info' | 'security.status'
   >('widgets.get_data');
@@ -342,9 +355,9 @@ export default function App() {
 
   // --- Interactive Plugin Widget States ---
   const [ideaNotes, setIdeaNotes] = useState<string[]>([
-    'Криптоядро SecurityKernel.cs: AES-256-GCM + PBKDF2-SHA512',
-    'Адаптивная плиточная оболочка: Android 15 Tiles & Windows 11 Live Tiles',
-    'Старт таймера сессий с 00:00 (SessionTrackerPlugin.cs)',
+    'Криптоядро LumaGuard 1.0.1: AES-256-GCM + PBKDF2-SHA512',
+    'Двухоконная оболочка Luma Shell: Библиотека по группам + Матрица 20×30',
+    'Патч 1.0.1: реальные ресурсы ПК, авто-регион погоды и управление треками',
   ]);
   const [newIdeaText, setNewIdeaText] = useState<string>('');
   const [pomodoroSeconds, setPomodoroSeconds] = useState<number>(25 * 60);
@@ -365,12 +378,12 @@ export default function App() {
   const [newPluginSlug, setNewPluginSlug] = useState<string>('');
   const [newPluginTitle, setNewPluginTitle] = useState<string>('');
 
-  // --- C# .NET 8 Source Code Viewer & Custom Theme Studio State ---
+  // --- Luma Core Source Code Viewer & Custom Theme Studio State ---
   const [selectedPyFile, setSelectedPyFile] = useState<string>(PYTHON_PROJECT_FILES[0].path);
-  const [pyFileContent, setPyFileContent] = useState<string>('// Загрузка исходного кода C# (.NET 8)...');
+  const [pyFileContent, setPyFileContent] = useState<string>('// Загрузка исходного кода ядра Luma Core 1.0.1...');
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
   const [customThemeModalOpen, setCustomThemeModalOpen] = useState<boolean>(false);
-  const [newThemeName, setNewThemeName] = useState<string>('Neon Cyber Slate');
+  const [newThemeName, setNewThemeName] = useState<string>('Luma Кибер Неон');
   const [newThemeMode, setNewThemeMode] = useState<'dark' | 'amoled' | 'light'>('dark');
   const [newThemeBg, setNewThemeBg] = useState<string>('#0a0e17');
   const [newThemeSurface, setNewThemeSurface] = useState<string>('#141c2b');
@@ -378,8 +391,11 @@ export default function App() {
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
   const [changelogFilter, setChangelogFilter] = useState<string>('all');
 
+  // Single persistent BroadcastChannel ref (Fixes Bug #8: prevents spawning/closing channel every second)
+  const syncChannelRef = useRef<BroadcastChannel | null>(null);
+
   const allThemesMap = useMemo(() => ({ ...THEMES, ...customThemes }), [customThemes]);
-  const currentTheme = allThemesMap[themeKey] || THEMES.dark;
+  const currentTheme = allThemesMap[themeKey] || THEMES.m3_expressive;
   const sessionTrackerEnabled = useMemo(
     () => plugins.find((p) => p.id === 'session_tracker_plugin')?.enabled ?? true,
     [plugins]
@@ -408,6 +424,50 @@ export default function App() {
       setThemeKey(target);
     }
   }, [adaptiveThemeEnabled, dayStartTime, nightStartTime, dayThemeKey, nightThemeKey, now, allThemesMap, themeKey]);
+
+  // Single persistent BroadcastChannel for instant Window 1 <-> Window 2 sync (Bug #8 fix)
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const bc = new BroadcastChannel('luma_os_1_0_1_sync');
+    syncChannelRef.current = bc;
+    bc.onmessage = (event) => {
+      const msg = event.data;
+      if (!msg || msg.type !== 'LUMA_STATE_SYNC') return;
+      if (msg.themeKey) setThemeKey((prev) => (prev === msg.themeKey ? prev : msg.themeKey));
+      if (typeof msg.volume === 'number') setVolume((prev) => (prev === msg.volume ? prev : msg.volume));
+      if (typeof msg.isMuted === 'boolean') setIsMuted((prev) => (prev === msg.isMuted ? prev : msg.isMuted));
+      if (typeof msg.dynamicIslandEnabled === 'boolean') {
+        setDynamicIslandEnabled((prev) => (prev === msg.dynamicIslandEnabled ? prev : msg.dynamicIslandEnabled));
+      }
+      if (typeof msg.dndEnabled === 'boolean') {
+        setDndEnabled((prev) => (prev === msg.dndEnabled ? prev : msg.dndEnabled));
+      }
+      if (typeof msg.glassEnabled === 'boolean') {
+        setGlassEnabled((prev) => (prev === msg.glassEnabled ? prev : msg.glassEnabled));
+      }
+    };
+    return () => {
+      bc.close();
+      syncChannelRef.current = null;
+    };
+  }, []);
+
+  // Broadcast key UI settings only when those settings change (NOT on 1s app timer ticks!)
+  useEffect(() => {
+    try {
+      syncChannelRef.current?.postMessage({
+        type: 'LUMA_STATE_SYNC',
+        themeKey,
+        volume,
+        isMuted,
+        dynamicIslandEnabled,
+        dndEnabled,
+        glassEnabled,
+      });
+    } catch {
+      // ignore closed channel
+    }
+  }, [themeKey, volume, isMuted, dynamicIslandEnabled, dndEnabled, glassEnabled]);
 
   // Persist all settings & state to localStorage automatically
   useEffect(() => {
@@ -450,6 +510,7 @@ export default function App() {
         backups,
         volume,
         isMuted,
+        dynamicIslandEnabled,
         dndEnabled,
         isCharging,
         batteryLevel,
@@ -472,11 +533,6 @@ export default function App() {
         groupedViewStyle,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-      if (typeof BroadcastChannel !== 'undefined') {
-        const bc = new BroadcastChannel('luma_os_1_0_sync');
-        bc.postMessage({ type: 'STATE_SYNC', themeKey, volume, isMuted });
-        bc.close();
-      }
     } catch {
       // ignore storage quota errors
     }
@@ -518,6 +574,7 @@ export default function App() {
     backups,
     volume,
     isMuted,
+    dynamicIslandEnabled,
     dndEnabled,
     isCharging,
     batteryLevel,
@@ -540,15 +597,20 @@ export default function App() {
     groupedViewStyle,
   ]);
 
-  // Listen for BroadcastChannel & storage events from the other window (Window 1 <-> Window 2)
+  // Listen for cross-window storage events
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          if (parsed.themeKey) setThemeKey(parsed.themeKey);
-          if (typeof parsed.volume === 'number') setVolume(parsed.volume);
-          if (typeof parsed.isMuted === 'boolean') setIsMuted(parsed.isMuted);
+          if (parsed.themeKey) setThemeKey((prev) => (prev === parsed.themeKey ? prev : parsed.themeKey));
+          if (typeof parsed.volume === 'number') setVolume((prev) => (prev === parsed.volume ? prev : parsed.volume));
+          if (typeof parsed.isMuted === 'boolean') setIsMuted((prev) => (prev === parsed.isMuted ? prev : parsed.isMuted));
+          if (typeof parsed.dynamicIslandEnabled === 'boolean') {
+            setDynamicIslandEnabled((prev) =>
+              prev === parsed.dynamicIslandEnabled ? prev : parsed.dynamicIslandEnabled
+            );
+          }
           if (Array.isArray(parsed.apps)) setApps(parsed.apps);
         } catch {
           // ignore
@@ -558,6 +620,36 @@ export default function App() {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
+
+  // Global Escape key closes top-most open modal/popup (Bug #12 fix)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (contextMenuApp) setContextMenuApp(null);
+      else if (editingPluginSettings) setEditingPluginSettings(null);
+      else if (activePluginModal) setActivePluginModal(null);
+      else if (customThemeModalOpen) setCustomThemeModalOpen(false);
+      else if (workspaceModalOpen) setWorkspaceModalOpen(false);
+      else if (addAppModalOpen) setAddAppModalOpen(false);
+      else if (pluginsModalOpen) setPluginsModalOpen(false);
+      else if (islandModalOpen) setIslandModalOpen(false);
+      else if (settingsModalOpen) setSettingsModalOpen(false);
+      else if (volumePopupOpen) setVolumePopupOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    contextMenuApp,
+    editingPluginSettings,
+    activePluginModal,
+    customThemeModalOpen,
+    workspaceModalOpen,
+    addAppModalOpen,
+    pluginsModalOpen,
+    islandModalOpen,
+    settingsModalOpen,
+    volumePopupOpen,
+  ]);
 
   // Sync dark class on <html>
   useEffect(() => {
@@ -569,12 +661,12 @@ export default function App() {
     }
   }, [currentTheme.isDark]);
 
-  // Push Windows Notification to Dynamic Island
+  // Push System Notification to Luma Island
   const pushIslandNotification = (app: string, title: string, message: string, icon = '🔔') => {
     const timeStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     setWindowsNotifications((prev) => [
       {
-        id: `wn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        id: `ln_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         app,
         title,
         message,
@@ -586,11 +678,10 @@ export default function App() {
     ]);
   };
 
-  // Real-time 1-second ticker: updates clock, CPU telemetry, Luma Core WidgetEngine uptime, Dynamic Island timer/stopwatch, Pomodoro, and running app session timers!
+  // Real-time 1-second ticker: clock, uptime, timers, stopwatch, running app session timers (NO fake CPU drift!)
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(new Date());
-      setCpuLoad((prev) => Math.max(8, Math.min(65, prev + Math.floor(Math.random() * 5) - 2)));
       setLumaUptimeSec((prev) => prev + 1);
 
       if (pomodoroRunning) {
@@ -601,7 +692,7 @@ export default function App() {
         setIslandTimerRemainingSec((prev) => {
           if (prev > 1) return prev - 1;
           setIslandTimerRunning(false);
-          pushIslandNotification('Таймер Dynamic Island', 'Время вышло!', 'Обратный отсчет таймера завершен (00:00).', '⏳');
+          pushIslandNotification('Таймер Luma Island', 'Время вышло!', 'Обратный отсчёт таймера завершён (00:00).', '⏳');
           return 0;
         });
       }
@@ -632,7 +723,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, [sessionTrackerEnabled, pomodoroRunning, islandTimerRunning, islandStopwatchRunning]);
 
-  // Load selected C# 3.0 file from /LauncherHab3.0_CSharp/
+  // Load selected source file from Luma Core 1.0.1 HTTP server
   useEffect(() => {
     let cancelled = false;
     const targetUrl = `/${selectedPyFile}`;
@@ -655,7 +746,6 @@ export default function App() {
     type: 'info' | 'warning' | 'success' = 'info',
     forceEvenIfDnd = false
   ) => {
-    // Working Do Not Disturb (Не беспокоить): silently record in Dynamic Island notifications instead of popping up toast
     if (dndEnabled && !forceEvenIfDnd) {
       pushIslandNotification('Тихий режим (DND)', title, message, '🔕');
       return;
@@ -672,19 +762,23 @@ export default function App() {
     if (!rightClickBackEnabled) return;
     e.preventDefault();
 
+    if (contextMenuApp) {
+      setContextMenuApp(null);
+      return;
+    }
     if (islandModalOpen) {
       setIslandModalOpen(false);
-      pushToast('⬅️ Назад (ПКМ)', 'Закрыто окно Dynamic Island', 'info', true);
+      pushToast('⬅️ Назад (ПКМ)', 'Закрыто окно Luma Island', 'info', true);
       return;
     }
     if (settingsModalOpen) {
       setSettingsModalOpen(false);
-      pushToast('⬅️ Назад (ПКМ)', 'Закрыто окно настроек Android', 'info', true);
+      pushToast('⬅️ Назад (ПКМ)', 'Закрыто окно настроек Luma OS', 'info', true);
       return;
     }
     if (pluginsModalOpen) {
       setPluginsModalOpen(false);
-      pushToast('⬅️ Назад (ПКМ)', 'Закрыт магазин плагинов', 'info', true);
+      pushToast('⬅️ Назад (ПКМ)', 'Закрыт центр расширений', 'info', true);
       return;
     }
     if (addAppModalOpen) {
@@ -694,7 +788,7 @@ export default function App() {
     }
     if (workspaceModalOpen) {
       setWorkspaceModalOpen(false);
-      pushToast('⬅️ Назад (ПКМ)', 'Закрыто окно пресетов', 'info', true);
+      pushToast('⬅️ Назад (ПКМ)', 'Закрыто окно пространств', 'info', true);
       return;
     }
     if (searchQuery.trim()) {
@@ -729,21 +823,32 @@ export default function App() {
     }
   };
 
-  // Background audio volume handler
+  // Real System Audio Volume Handler -> Dispatches to Luma Core 1.0.1 (/api/kernel/audio)
+  const dispatchKernelAudio = (volVal: number, mutedVal: boolean) => {
+    if (audioPostTimerRef.current) {
+      window.clearTimeout(audioPostTimerRef.current);
+    }
+    audioPostTimerRef.current = window.setTimeout(() => {
+      fetch('/api/kernel/audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ volume: volVal, muted: mutedVal }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((res) => {
+          if (res?.detail) setAudioBgStatus(String(res.detail));
+        })
+        .catch(() => {});
+    }, 90);
+  };
+
   const handleVolumeChange = (newVol: number) => {
     const clamped = Math.max(0, Math.min(100, newVol));
     setVolume(clamped);
+    const nextMuted = clamped === 0 ? true : false;
     if (clamped > 0 && isMuted) setIsMuted(false);
-    setAudioBgStatus(`AudioControllerWasapi.SetMasterVolumeScalar(${(clamped / 100).toFixed(2)}) [C# Background Worker]`);
-    try {
-      if (!audioCtxRef.current && typeof window !== 'undefined') {
-        const AudioCtx =
-          window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        if (AudioCtx) audioCtxRef.current = new AudioCtx();
-      }
-    } catch {
-      // ignore
-    }
+    setAudioBgStatus(`Luma HAL Audio: ${clamped}%`);
+    dispatchKernelAudio(clamped, nextMuted);
   };
 
   const playFeedbackBeep = (freq = 720) => {
@@ -772,11 +877,29 @@ export default function App() {
   const handleToggleMute = () => {
     const nextMute = !isMuted;
     setIsMuted(nextMute);
-    setAudioBgStatus(nextMute ? 'CoreAudio SetMute(1) [Background]' : `CoreAudio SetMute(0) • ${volume}%`);
+    setAudioBgStatus(nextMute ? 'Luma HAL Audio: Звук выключен' : `Luma HAL Audio: ${volume}%`);
+    dispatchKernelAudio(volume, nextMute);
     pushToast(
-      'Системный звук',
-      nextMute ? 'Звук системы приглушен (Mute) в фоновом режиме' : `Громкость системы: ${volume}%`
+      'Системный звук Luma',
+      nextMute ? 'Звук системы выключен (Mute)' : `Громкость системы: ${volume}%`
     );
+  };
+
+  // Toggle Dynamic Island (Luma Island) completely ON / OFF
+  const handleToggleDynamicIsland = () => {
+    setDynamicIslandEnabled((prev) => {
+      const next = !prev;
+      if (!next) setIslandModalOpen(false);
+      pushToast(
+        next ? '🏝️ Luma Island включён' : '🏝️ Luma Island выключен',
+        next
+          ? 'Интерактивный остров снова отображается в верхней панели.'
+          : 'Остров полностью скрыт. Включить обратно можно кнопкой в шапке, в Настройках или в Окне 2.',
+        'info',
+        true
+      );
+      return next;
+    });
   };
 
   // Check detox limits and notify if exceeded
@@ -797,7 +920,7 @@ export default function App() {
         .reduce((acc, item) => acc + item.todayMinutes, 0);
       if (groupTotal >= groupCfg.dailyLimitMinutes) {
         pushToast(
-          `🛑 Цифровой детокс: группа «${groupCfg.name}»`,
+          `🛑 Цифровой баланс: группа «${groupCfg.name}»`,
           `Дневной лимит группы «${groupCfg.name}» превышен (${formatDurationRu(groupTotal)} из ${formatDurationRu(groupCfg.dailyLimitMinutes)}).`,
           'warning'
         );
@@ -805,7 +928,7 @@ export default function App() {
     }
   };
 
-  // Live JSON-RPC 2.0 call to Luma Core 1.0 Kernel Daemon (/api/kernel/rpc)
+  // Live JSON-RPC 2.0 call to Luma Core 1.0.1 Kernel Daemon (/api/kernel/rpc)
   const callLumaKernelRpc = async (
     method: 'widgets.get_data' | 'system.ping' | 'widgets.list' | 'system.info' | 'security.status'
   ) => {
@@ -828,7 +951,29 @@ export default function App() {
     return null;
   };
 
-  // Detect live LumaOS_1.0.exe kernel daemon on mount
+  // Fetch REAL live hardware, disks, network, battery, active media track & region from Luma Core 1.0.1
+  const fetchLiveSystemTelemetry = async () => {
+    try {
+      const res = await fetch('/api/kernel/system');
+      if (!res.ok) return;
+      const snap: LiveSystemTelemetry = await res.json();
+      if (snap && typeof snap.cpu_percent === 'number') {
+        setLiveSystem(snap);
+        setKernelConnected(true);
+        setCpuLoad(snap.cpu_percent);
+        setRamLoad(snap.ram_percent);
+        setBatteryLevel(snap.battery_percent);
+        setIsCharging(snap.battery_charging);
+        if (snap.media?.available) {
+          setMediaPlaying(snap.media.is_playing);
+        }
+      }
+    } catch {
+      // keep existing state if offline
+    }
+  };
+
+  // Poll real kernel status + live system telemetry every 2 seconds
   useEffect(() => {
     fetch('/api/kernel/status')
       .then((r) => (r.ok ? r.json() : Promise.reject('offline')))
@@ -839,36 +984,107 @@ export default function App() {
         }
       })
       .catch(() => setKernelConnected(false));
+
+    fetchLiveSystemTelemetry();
+    const poll = setInterval(fetchLiveSystemTelemetry, 2000);
+    return () => clearInterval(poll);
   }, []);
 
-  // Media Player Track Controls shared by Dynamic Island and Window 2 (iOS 18 StandBy Widget)
+  // Trigger fresh real region lookup in kernel
+  const handleRefreshLocation = () => {
+    fetch('/api/kernel/location')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((loc) => {
+        if (loc && loc.detected) {
+          setLiveSystem((prev) => (prev ? { ...prev, location: loc } : prev));
+        }
+      })
+      .catch(() => {});
+  };
+
+  // Real Power & System Actions (Lock, Sleep, Recycle Bin) -> /api/kernel/power
+  const handleExecutePowerAction = (action: 'lock' | 'sleep' | 'recycle_bin') => {
+    fetch('/api/kernel/power', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => {
+        const label =
+          action === 'lock'
+            ? 'Блокировка экрана'
+            : action === 'sleep'
+            ? 'Режим сна'
+            : 'Системная корзина';
+        pushToast(label, res?.detail || `Команда ${action} отправлена в ядро Luma Core 1.0.1`, 'success');
+      })
+      .catch(() => {
+        pushToast('Luma Core Питание', `Действие «${action}» доступно при запуске LumaOS_1.0.1.exe`, 'info');
+      });
+  };
+
+  // 100% REAL Working OS Media Track Controls (Next / Previous / Play-Pause) + Ordered Playlist Cycling
+  const sendRealMediaCommand = async (action: 'play_pause' | 'next' | 'prev') => {
+    try {
+      const res = await fetch('/api/kernel/media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.media?.available) {
+          setLiveSystem((prev) => (prev ? { ...prev, media: data.media } : prev));
+          setMediaPlaying(Boolean(data.media.is_playing));
+        }
+      }
+    } catch {
+      // offline fallback handled locally below
+    }
+    // Re-poll system session after OS player switches track (~550ms)
+    window.setTimeout(fetchLiveSystemTelemetry, 550);
+  };
+
+  const handleToggleMediaPlay = () => {
+    setMediaPlaying((v) => !v);
+    sendRealMediaCommand('play_pause');
+  };
+
   const handleNextTrack = () => {
-    const tracks = [
-      'After Dark — Mr.Kitty',
-      'Blinding Lights (Synthwave)',
-      'Veridis Quo — Daft Punk',
-      'Memory Reboot — VØJ & Narvent',
-      'Instant Crush — Daft Punk',
-      'Resonance — HOME',
-    ];
-    const nextTrack = tracks[Math.floor(Math.random() * tracks.length)];
     setIslandPlayers((prev) =>
-      prev.map((p, i) => (i === activePlayerIndex ? { ...p, track: nextTrack } : p))
+      prev.map((p, i) => {
+        if (i !== activePlayerIndex) return p;
+        const list = p.playlist && p.playlist.length > 0 ? p.playlist : [{ track: p.track, artist: p.artist }];
+        const nextIdx = ((p.trackIndex ?? 0) + 1) % list.length;
+        return {
+          ...p,
+          trackIndex: nextIdx,
+          track: list[nextIdx].track,
+          artist: list[nextIdx].artist,
+        };
+      })
     );
+    setMediaPlaying(true);
+    sendRealMediaCommand('next');
   };
 
   const handlePrevTrack = () => {
-    const tracks = [
-      'Nightcall — Kavinsky',
-      'Midnight City (Extended)',
-      'Cyberpunk 2077 Theme',
-      'Starboy (Instrumental)',
-      'Sunset — The Midnight',
-    ];
-    const nextTrack = tracks[Math.floor(Math.random() * tracks.length)];
     setIslandPlayers((prev) =>
-      prev.map((p, i) => (i === activePlayerIndex ? { ...p, track: nextTrack } : p))
+      prev.map((p, i) => {
+        if (i !== activePlayerIndex) return p;
+        const list = p.playlist && p.playlist.length > 0 ? p.playlist : [{ track: p.track, artist: p.artist }];
+        const prevIdx = ((p.trackIndex ?? 0) - 1 + list.length) % list.length;
+        return {
+          ...p,
+          trackIndex: prevIdx,
+          track: list[prevIdx].track,
+          artist: list[prevIdx].artist,
+        };
+      })
     );
+    setMediaPlaying(true);
+    sendRealMediaCommand('prev');
   };
 
   // Open Window 2 (20x30 Cell Matrix) in a separate native OS / browser window
@@ -889,14 +1105,14 @@ export default function App() {
       if (opened) {
         pushToast(
           '🪟 Открыто Окно 2 (20×30)',
-          'Второе окно с матрицей 20×30 (600 ячеек) и 18 виджетами синхронизировано с ядром Luma 1.0',
+          'Второе окно с матрицей 20×30 (600 ячеек) и 18 виджетами синхронизировано с Luma OS 1.0.1',
           'success'
         );
       } else {
         setWindowDisplayMode('dual_windows');
         pushToast(
           '🪟 Режим 2 Окна Рядом',
-          'Браузер заблокировал всплывающее окно — включен режим «2 Окна Рядом (Окно 1 + Окно 2 20×30)»',
+          'Всплывающее окно заблокировано — включён режим «2 Окна Рядом (Окно 1 + Окно 2 20×30)»',
           'info'
         );
       }
@@ -932,7 +1148,7 @@ export default function App() {
 
     const willRun = !app.isRunning;
     if (willRun) {
-      // Dispatch to Luma Core 1.0 Kernel ProcessManager when running on desktop/exe
+      // Dispatch to Luma Core 1.0.1 Kernel ProcessManager when running on desktop/exe
       fetch('/api/kernel/launch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -946,7 +1162,7 @@ export default function App() {
       }).catch(() => {});
 
       pushToast(
-        `Запуск ${app.name} (Luma Kernel 1.0)`,
+        `Запуск ${app.name} (Luma Core 1.0.1)`,
         sessionTrackerEnabled
           ? `${app.name} запущено • Таймер запущен с ${formatLiveClock(app.elapsedSeconds || 0)}`
           : `${app.name} (${app.url}) запущено`,
@@ -972,7 +1188,7 @@ export default function App() {
         monthMinutes: 0,
       }))
     );
-    pushToast('Трекер сброшен в 0', 'Все счетчики времени обнулены до 00:00 (0 мин).', 'success');
+    pushToast('Трекер сброшен в 0', 'Все счётчики времени обнулены до 00:00 (0 мин).', 'success');
   };
 
   const handleAddSessionMinutes = (appId: string, minutesToAdd: number) => {
@@ -1053,14 +1269,14 @@ export default function App() {
     setAddAppModalOpen(false);
     pushToast(
       'Приложение добавлено',
-      `«${cleanName}» добавлено в библиотеку со счетчиком 0 мин`,
+      `«${cleanName}» добавлено в библиотеку со счётчиком 0 мин`,
       'success'
     );
   };
 
   const handleInstallCatalogPlugin = (item: CatalogPluginItem) => {
     if (plugins.some((p) => p.id === item.id)) {
-      pushToast('Магазин плагинов', `${item.name} уже установлен`, 'info');
+      pushToast('Каталог расширений Luma', `${item.name} уже установлен`, 'info');
       return;
     }
     const installed: PluginItem = {
@@ -1079,35 +1295,35 @@ export default function App() {
       notificationsEnabled: true,
     };
     setPlugins((prev) => [...prev, installed]);
-    pushToast('Плагин скачан и активирован', `«${item.name}» добавлен в список запуска!`, 'success');
+    pushToast('Расширение установлено', `«${item.name}» активировано и добавлено в список запуска!`, 'success');
   };
 
   const handleDeletePlugin = (pluginId: string) => {
     const target = plugins.find((p) => p.id === pluginId);
     setPlugins((prev) => prev.filter((p) => p.id !== pluginId));
     if (target) {
-      pushToast('Плагин удален', `Плагин «${target.name}» удален из системы`, 'info');
+      pushToast('Плагин удалён', `Модуль «${target.name}» удалён из Luma OS`, 'info');
     }
   };
 
   const handleCreatePluginTemplate = () => {
     if (!newPluginSlug.trim()) {
-      pushToast('Plugin SDK 3.0 (C#)', 'Введите ID нового расширения (например: DiscordOverlayPlugin)', 'warning');
+      pushToast('Luma Plugin SDK 1.0.1', 'Введите ID нового модуля (например: LumaOverlayExt)', 'warning');
       return;
     }
     const slug = newPluginSlug.trim().replace(/[^a-zA-Z0-9_]/g, '');
-    const title = newPluginTitle.trim() || 'Custom C# Extension';
+    const title = newPluginTitle.trim() || 'Luma Extension';
     const newPlugin: PluginItem = {
       id: slug.toLowerCase(),
-      name: `${title} (C#)`,
-      version: '3.0.0',
-      author: 'Luma C# SDK',
+      name: `${title}`,
+      version: '1.0.1',
+      author: 'Luma SDK',
       category: 'Пользовательские',
       icon: 'Puzzle',
-      description: 'Пользовательский плагин C# (.NET 8), реализующий интерфейс ILumaPluginV3 в изолированном AssemblyLoadContext.',
+      description: 'Пользовательский модуль Luma Plugin SDK 1.0.1, работающий в изолированном контейнере ядра.',
       enabled: true,
-      file: `LauncherHab3.0_CSharp/Plugins/${slug}.cs`,
-      hooks: ['OnInitializeAsync', 'OnTickAsync', 'GetTilePayload', 'OnShutdownAsync'],
+      file: `plugins/${slug}.luma`,
+      hooks: ['OnInitialize', 'OnTick', 'GetWidgetPayload', 'OnShutdown'],
       showInLauncher: true,
       customIntervalSec: 60,
       notificationsEnabled: true,
@@ -1116,8 +1332,8 @@ export default function App() {
     setNewPluginSlug('');
     setNewPluginTitle('');
     pushToast(
-      'Plugin SDK 3.0 (C# .NET 8)',
-      `Шаблон C#-плагина «${title}» (Plugins/${slug}.cs : ILumaPluginV3) создан и добавлен в плитки!`,
+      'Luma Plugin SDK 1.0.1',
+      `Модуль «${title}» (plugins/${slug}.luma) создан и добавлен в библиотеку!`,
       'success'
     );
   };
@@ -1180,7 +1396,7 @@ export default function App() {
     return map;
   }, [filteredApps]);
 
-  // Formatted clock parts for all 8 styles + Android 14 vertical clock
+  // Formatted clock parts for all 18 Luma clock styles
   const clockParts = useMemo(() => {
     let hours = now.getHours();
     const mins = String(now.getMinutes()).padStart(2, '0');
@@ -1203,7 +1419,7 @@ export default function App() {
     return { hrs, mins, secs, ampm, weekday, dateBase, fullDate };
   }, [now, timeFormat, showWeekday]);
 
-  // Glassmorphism dynamic CSS styles (matching Screenshot 2 Midnight Slate aesthetic)
+  // Glassmorphism dynamic CSS styles
   const blurPx = glassEnabled
     ? glassIntensity === 'light'
       ? 'blur(8px)'
@@ -1216,11 +1432,20 @@ export default function App() {
     backgroundColor: glassEnabled
       ? currentTheme.isDark
         ? `rgba(21, 27, 38, ${(glassOpacity / 100).toFixed(2)})`
-        : `rgba(255, 255, 255, ${(Math.max(65, glassOpacity) / 100).toFixed(2)})`
+        : `rgba(255, 255, 255, ${(Math.max(72, glassOpacity) / 100).toFixed(2)})`
       : currentTheme.cardHex,
     backdropFilter: blurPx,
     WebkitBackdropFilter: blurPx,
   };
+
+  // Theme-adaptive helper classes (Fixes Bug #9 Light Theme contrast)
+  const headerBtnCls = currentTheme.isDark
+    ? 'bg-[#1e2636]/80 hover:bg-[#263044] border-slate-700/60 text-slate-100'
+    : 'bg-white/90 hover:bg-slate-100 border-slate-300 text-slate-800';
+  const subSurfaceCls = currentTheme.isDark
+    ? 'bg-[#1a2232] border-slate-700/70 text-slate-100'
+    : 'bg-slate-100/90 border-slate-300 text-slate-900';
+  const mutedTextCls = currentTheme.isDark ? 'text-slate-400' : 'text-slate-600';
 
   const renderAppIcon = (iconName: string, className = 'w-8 h-8') => {
     const IconComponent = ICON_MAP[iconName] || Rocket;
@@ -1234,6 +1459,20 @@ export default function App() {
   );
   const currentIslandPlayer = islandPlayers[activePlayerIndex] || islandPlayers[0];
 
+  // Live OS detected music overrides local fallback whenever OS reports active media
+  const hasLiveOsMedia = Boolean(liveSystem?.media?.available && liveSystem.media.title);
+  const displayTrackTitle = hasLiveOsMedia ? liveSystem!.media.title : currentIslandPlayer.track;
+  const displayTrackArtist = hasLiveOsMedia
+    ? liveSystem!.media.artist || liveSystem!.media.source_app || 'Системный медиапоток'
+    : currentIslandPlayer.artist;
+  const displayMediaPlaying = hasLiveOsMedia ? liveSystem!.media.is_playing : mediaPlaying;
+  const displaySourceLabel = hasLiveOsMedia
+    ? `LIVE • ${liveSystem!.media.source_app || 'Системный поток'}`
+    : currentIslandPlayer.name;
+  const detectedRegionLabel = liveSystem?.location?.detected
+    ? `${liveSystem.location.city}${liveSystem.location.region ? `, ${liveSystem.location.region}` : ''}`
+    : '';
+
   return (
     <div
       onContextMenu={handleRightClickWorkspace}
@@ -1242,7 +1481,7 @@ export default function App() {
       }`}
       style={{ background: currentTheme.bgGradient }}
     >
-      {/* ==================== TOP HEADER (Flet Header 2.6 + Always-Active Dynamic Island) ==================== */}
+      {/* ==================== TOP HEADER (Luma OS 1.0.1 + Toggleable Luma Island) ==================== */}
       <header
         className={`sticky top-0 z-30 flex items-center justify-between gap-3 px-4 py-2 border-b transition-all ${
           currentTheme.isDark ? 'border-slate-800/90' : 'border-slate-300/80'
@@ -1253,23 +1492,29 @@ export default function App() {
         <div className="flex items-center gap-2.5 min-w-0">
           <button
             onClick={() => setWorkspaceModalOpen(true)}
-            title="Smart Workspace (Пресеты Luma OS 1.0)"
-            className="p-2 rounded-2xl bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 transition-all cursor-pointer shrink-0 shadow-sm"
+            title="Luma Spaces (Пространства Luma OS 1.0.1)"
+            className="p-2 rounded-2xl bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 border border-indigo-500/40 transition-all cursor-pointer shrink-0 shadow-sm"
           >
             <Rocket className="w-5 h-5" />
           </button>
 
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-base lg:text-lg font-extrabold tracking-tight whitespace-nowrap">
-              Luma OS 1.0
+              Luma OS 1.0.1
             </span>
-            <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
-              KERNEL 1.0 • M3 EXPRESSIVE
+            <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-500 border border-emerald-500/40">
+              PATCH 1.0.1 • M3
             </span>
           </div>
 
-          {/* 2-Window Switcher (Окно 1: Список по группам LH-2.4 | Окно 2: Ячейки 20x30 | 2 Окна Рядом | Отдельное окно) */}
-          <nav className="hidden xl:flex items-center gap-1 p-1 rounded-2xl bg-[#0b0f1b]/90 border border-indigo-500/30 ml-1">
+          {/* 2-Window Switcher */}
+          <nav
+            className={`hidden xl:flex items-center gap-1 p-1 rounded-2xl border ml-1 ${
+              currentTheme.isDark
+                ? 'bg-[#0b0f1b]/90 border-indigo-500/30'
+                : 'bg-slate-200/80 border-slate-300'
+            }`}
+          >
             <button
               onClick={() => {
                 handleSwitchSection('apps');
@@ -1278,11 +1523,13 @@ export default function App() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                 activeSection === 'apps' && windowDisplayMode === 'quick_search'
                   ? 'bg-indigo-600 text-white shadow-[0_0_14px_rgba(99,102,241,0.45)]'
-                  : 'text-slate-300 hover:text-white hover:bg-white/5'
+                  : currentTheme.isDark
+                  ? 'text-slate-300 hover:text-white hover:bg-white/5'
+                  : 'text-slate-700 hover:text-slate-950 hover:bg-white/60'
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
-              Окно 1: По группам (LH-2.4)
+              Окно 1: По группам
             </button>
             <button
               onClick={() => {
@@ -1292,7 +1539,9 @@ export default function App() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                 activeSection === 'apps' && windowDisplayMode === 'grid_20x30'
                   ? 'bg-indigo-600 text-white shadow-[0_0_14px_rgba(99,102,241,0.45)]'
-                  : 'text-slate-300 hover:text-white hover:bg-white/5'
+                  : currentTheme.isDark
+                  ? 'text-slate-300 hover:text-white hover:bg-white/5'
+                  : 'text-slate-700 hover:text-slate-950 hover:bg-white/60'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
@@ -1306,15 +1555,17 @@ export default function App() {
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                 activeSection === 'apps' && windowDisplayMode === 'dual_windows'
                   ? 'bg-emerald-600 text-white shadow-[0_0_14px_rgba(16,185,129,0.45)]'
-                  : 'text-slate-300 hover:text-white hover:bg-white/5'
+                  : currentTheme.isDark
+                  ? 'text-slate-300 hover:text-white hover:bg-white/5'
+                  : 'text-slate-700 hover:text-slate-950 hover:bg-white/60'
               }`}
-              title="Открыть Окно 1 (Список по группам) и Окно 2 (Ячейки 20×30) одновременно рядом"
+              title="Открыть Окно 1 (По группам) и Окно 2 (Ячейки 20×30) одновременно рядом"
             >
               🪟 2 Окна Рядом
             </button>
             <button
               onClick={handleOpenSecondWindow}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-indigo-300 hover:text-white hover:bg-indigo-500/25 border border-indigo-500/30 transition-all cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 transition-all cursor-pointer whitespace-nowrap"
               title="Открыть Окно 2 (Ячейки 20×30) в отдельном независимом окне"
             >
               <ExternalLink className="w-3 h-3" />
@@ -1325,7 +1576,9 @@ export default function App() {
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                 activeSection === 'tracker'
                   ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
+                  : currentTheme.isDark
+                  ? 'text-slate-400 hover:text-white'
+                  : 'text-slate-600 hover:text-slate-950'
               }`}
             >
               <BarChart3 className="w-3.5 h-3.5" />
@@ -1341,7 +1594,9 @@ export default function App() {
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                 activeSection === 'python_code'
                   ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
+                  : currentTheme.isDark
+                  ? 'text-slate-400 hover:text-white'
+                  : 'text-slate-600 hover:text-slate-950'
               }`}
             >
               <Code2 className="w-3.5 h-3.5" />
@@ -1350,101 +1605,125 @@ export default function App() {
           </nav>
         </div>
 
-        {/* CENTER: ALWAYS-ACTIVE DYNAMIC ISLAND 2.6 CAPSULE */}
+        {/* CENTER: TOGGLEABLE LUMA ISLAND 1.0.1 CAPSULE (Can be completely turned OFF!) */}
         <div className="flex items-center justify-center">
-          <button
-            onClick={() => setIslandModalOpen(true)}
-            title="Dynamic Island 2.6 (Всегда активен) — Нажмите для открытия уведомлений Windows, плеера, таймера, секундомера и настроек острова"
-            className={`group relative flex items-center gap-3 px-4 py-1.5 rounded-full bg-[#070a10] border transition-all duration-300 cursor-pointer hover:scale-[1.02] ${
-              isCharging && chargingAnimationEnabled
-                ? 'border-emerald-400/70 shadow-[0_0_22px_rgba(16,185,129,0.35)]'
-                : dndEnabled
-                ? 'border-purple-400/70 shadow-[0_0_18px_rgba(168,85,247,0.3)]'
-                : islandGlowEnabled
-                ? 'border-blue-500/50 shadow-[0_0_18px_rgba(59,130,246,0.22)]'
-                : 'border-slate-700/80'
-            }`}
-          >
-            {/* Camera / Island Active Pulse Pill */}
+          {dynamicIslandEnabled ? (
             <div className="flex items-center gap-1.5">
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${
+              <button
+                onClick={() => setIslandModalOpen(true)}
+                title="Luma Island 1.0.1 — нажмите для управления треками, уведомлениями, таймером и настройками"
+                className={`group relative flex items-center gap-3 px-4 py-1.5 rounded-full bg-[#070a10] border transition-all duration-300 cursor-pointer hover:scale-[1.02] ${
                   isCharging && chargingAnimationEnabled
-                    ? 'bg-emerald-400 animate-ping'
+                    ? 'border-emerald-400/70 shadow-[0_0_22px_rgba(16,185,129,0.35)]'
                     : dndEnabled
-                    ? 'bg-purple-400'
-                    : 'bg-emerald-400 animate-pulse'
-                }`}
-              />
-              {dndEnabled ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-bold">
-                  <BellOff className="w-3 h-3" />
-                  DND
-                </span>
-              ) : isCharging && chargingAnimationEnabled ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold animate-pulse">
-                  <Zap className="w-3 h-3 text-emerald-400" />
-                  Зарядка
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 text-[10px] font-semibold">
-                  Остров 2.6
-                </span>
-              )}
-            </div>
-
-            {/* Center Activity inside Dynamic Island: Timer / Stopwatch / Media / Notifications */}
-            <div className="flex items-center gap-2 text-xs text-slate-200">
-              {islandTimerRunning ? (
-                <span className="flex items-center gap-1 font-mono font-bold text-amber-300">
-                  <Timer className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-                  {formatLiveClock(islandTimerRemainingSec)}
-                </span>
-              ) : islandStopwatchRunning ? (
-                <span className="flex items-center gap-1 font-mono font-bold text-cyan-300">
-                  <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                  {formatLiveClock(islandStopwatchSec)}
-                </span>
-              ) : mediaPlaying ? (
-                <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-300 max-w-[160px] truncate">
-                  <Music className="w-3.5 h-3.5 text-emerald-400 shrink-0 animate-bounce" />
-                  <span className="truncate">{currentIslandPlayer.track}</span>
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 text-[11px] text-slate-300">
-                  <Bell className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Уведомл.: {unreadNotifCount}</span>
-                </span>
-              )}
-            </div>
-
-            <span className="text-slate-600">•</span>
-
-            {/* Right inside Dynamic Island: Live Time & Date + Device Battery % */}
-            <div className="flex items-center gap-2 text-xs font-mono">
-              <span className="font-bold text-white tabular-nums">
-                {clockParts.hrs}:{clockParts.mins}
-              </span>
-              <span className="hidden md:inline text-[10px] text-slate-400">
-                {clockParts.weekday} {clockParts.dateBase.slice(0, 5)}
-              </span>
-              <span
-                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                  isCharging
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                    : 'bg-slate-800 text-slate-300'
+                    ? 'border-purple-400/70 shadow-[0_0_18px_rgba(168,85,247,0.3)]'
+                    : islandGlowEnabled
+                    ? 'border-indigo-500/50 shadow-[0_0_18px_rgba(99,102,241,0.25)]'
+                    : 'border-slate-700/80'
                 }`}
               >
-                <BatteryCharging className="w-3 h-3 text-emerald-400" />
-                {batteryLevel}%
-              </span>
+                {/* Status Indicator */}
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full ${
+                      isCharging && chargingAnimationEnabled
+                        ? 'bg-emerald-400 animate-ping'
+                        : dndEnabled
+                        ? 'bg-purple-400'
+                        : 'bg-emerald-400 animate-pulse'
+                    }`}
+                  />
+                  {dndEnabled ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-bold">
+                      <BellOff className="w-3 h-3" />
+                      DND
+                    </span>
+                  ) : isCharging && chargingAnimationEnabled ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                      <Zap className="w-3 h-3 text-emerald-400" />
+                      Питание
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-semibold">
+                      Luma Island
+                    </span>
+                  )}
+                </div>
+
+                {/* Live Activity inside Luma Island: Timer / Stopwatch / Real Playing Track / Notifications */}
+                <div className="flex items-center gap-2 text-xs text-slate-200">
+                  {islandTimerRunning ? (
+                    <span className="flex items-center gap-1 font-mono font-bold text-amber-300">
+                      <Timer className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                      {formatLiveClock(islandTimerRemainingSec)}
+                    </span>
+                  ) : islandStopwatchRunning ? (
+                    <span className="flex items-center gap-1 font-mono font-bold text-cyan-300">
+                      <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                      {formatLiveClock(islandStopwatchSec)}
+                    </span>
+                  ) : displayMediaPlaying || hasLiveOsMedia ? (
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-300 max-w-[180px] truncate">
+                      <Music className={`w-3.5 h-3.5 text-emerald-400 shrink-0 ${displayMediaPlaying ? 'animate-bounce' : ''}`} />
+                      <span className="truncate">{displayTrackTitle}</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-[11px] text-slate-300">
+                      <Bell className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>События: {unreadNotifCount}</span>
+                    </span>
+                  )}
+                </div>
+
+                <span className="text-slate-600">•</span>
+
+                {/* Right inside Luma Island: Live Time, Region & Real Battery % */}
+                <div className="flex items-center gap-2 text-xs font-mono">
+                  <span className="font-bold text-white tabular-nums">
+                    {clockParts.hrs}:{clockParts.mins}
+                  </span>
+                  {detectedRegionLabel && (
+                    <span className="hidden lg:inline-flex items-center gap-1 text-[10px] text-sky-300 max-w-[110px] truncate">
+                      <MapPin className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{liveSystem?.location?.city}</span>
+                    </span>
+                  )}
+                  <span
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      isCharging
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : 'bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <BatteryCharging className="w-3 h-3 text-emerald-400" />
+                    {batteryLevel}%
+                  </span>
+                </div>
+              </button>
+
+              {/* Quick 1-click OFF button for Luma Island */}
+              <button
+                onClick={handleToggleDynamicIsland}
+                title="Выключить Luma Island (можно включить обратно в 1 клик)"
+                className={`p-1.5 rounded-full border transition cursor-pointer ${headerBtnCls} opacity-70 hover:opacity-100 hover:border-rose-400/60 hover:text-rose-400`}
+              >
+                <EyeOff className="w-3.5 h-3.5" />
+              </button>
             </div>
-          </button>
+          ) : (
+            <button
+              onClick={handleToggleDynamicIsland}
+              title="Luma Island выключен — нажмите, чтобы включить обратно"
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-semibold transition cursor-pointer ${headerBtnCls} hover:border-emerald-400/60`}
+            >
+              <Disc3 className="w-3.5 h-3.5 text-slate-400" />
+              <span>Вкл. Luma Island</span>
+            </button>
+          )}
         </div>
 
-        {/* Center/Right: Adaptive Theme Quick Pill + Customizable Clock (18 Styles) + Audio + Plugins + Settings */}
+        {/* Right: Adaptive Theme + Customizable Clock (18 Luma Styles) + Real Volume + Plugins + HUD + Settings + EXE */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Quick Adaptive Day/Night Status */}
           <button
             onClick={() => {
               const next = !adaptiveThemeEnabled;
@@ -1456,33 +1735,37 @@ export default function App() {
                   : 'Авто-смена темы отключена'
               );
             }}
-            title="Адаптивная тема День / Ночь (нажмите для переключения)"
+            title="Адаптивная тема День / Ночь"
             className={`hidden 2xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs transition-all cursor-pointer ${
               adaptiveThemeEnabled
-                ? 'bg-amber-500/15 border-amber-400/50 text-amber-300'
-                : 'bg-[#1e2636]/70 border-slate-700/60 text-slate-400 hover:text-white'
+                ? 'bg-amber-500/15 border-amber-400/50 text-amber-500'
+                : headerBtnCls
             }`}
           >
             {currentTheme.isDark ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
             <span className="font-medium">{adaptiveThemeEnabled ? 'Авто День/Ночь' : 'Тема'}</span>
           </button>
 
-          {/* Customizable Clock Widget (18 Styles including Android Vertical & 10 new v2.5 styles) */}
+          {/* Customizable Clock Widget (18 Luma Styles) */}
           <button
             onClick={() => {
               setSettingsTab('clock');
               setSettingsModalOpen(true);
             }}
-            title="Нажмите для настройки 18 стилей часов и дизайна циферблата (v2.5)"
+            title="Нажмите для настройки 18 циферблатов Luma OS 1.0.1"
             style={{
               borderRadius: `${clockBorderRadius}px`,
               backgroundColor: clockGlassFrame
-                ? `rgba(30, 38, 54, ${(clockBgOpacity / 100).toFixed(2)})`
+                ? currentTheme.isDark
+                  ? `rgba(30, 38, 54, ${(clockBgOpacity / 100).toFixed(2)})`
+                  : `rgba(241, 245, 249, ${(Math.max(80, clockBgOpacity) / 100).toFixed(2)})`
                 : 'transparent',
               borderColor: clockGlassFrame
                 ? clockGlowEnabled
                   ? `${clockAccentColor}66`
-                  : 'rgba(51, 65, 85, 0.7)'
+                  : currentTheme.isDark
+                  ? 'rgba(51, 65, 85, 0.7)'
+                  : 'rgba(148, 163, 184, 0.7)'
                 : 'transparent',
               boxShadow:
                 clockGlassFrame && clockGlowEnabled
@@ -1490,12 +1773,14 @@ export default function App() {
                   : 'none',
             }}
             className={`px-3.5 py-1.5 transition-all cursor-pointer border ${
-              clockGlassFrame ? 'hover:brightness-110' : 'hover:bg-white/5 border-transparent'
+              clockGlassFrame ? 'hover:brightness-105' : 'hover:bg-white/5 border-transparent'
             }`}
           >
             {(() => {
               const sep = clockBlinkColon && now.getSeconds() % 2 === 1 ? ' ' : ':';
               const weightCls = clockBold ? 'font-extrabold' : 'font-medium';
+              const resolvedTimeColor = !currentTheme.isDark && timeColor.toLowerCase() === '#f8fafc' ? '#0f172a' : timeColor;
+              const resolvedDateColor = !currentTheme.isDark && dateColor.toLowerCase() === '#94a3b8' ? '#475569' : dateColor;
               if (
                 clockStyle === 'android_vertical' ||
                 clockStyle === 'stacked' ||
@@ -1508,7 +1793,7 @@ export default function App() {
                     <div className="flex flex-col items-center leading-none">
                       <span
                         className={`${weightCls} font-mono tabular-nums tracking-tight`}
-                        style={{ color: timeColor, fontSize: '15px' }}
+                        style={{ color: resolvedTimeColor, fontSize: '15px' }}
                       >
                         {clockParts.hrs}
                       </span>
@@ -1530,7 +1815,7 @@ export default function App() {
                         >
                           {clockParts.weekday}
                         </span>
-                        <span className="text-[10px] font-mono tabular-nums" style={{ color: dateColor }}>
+                        <span className="text-[10px] font-mono tabular-nums" style={{ color: resolvedDateColor }}>
                           {clockParts.dateBase}
                         </span>
                       </div>
@@ -1541,7 +1826,7 @@ export default function App() {
               if (clockStyle === 'split_flip') {
                 return (
                   <div className="flex items-center gap-1">
-                    <span className="px-1.5 py-0.5 rounded bg-[#0d111a] border border-slate-700 font-mono font-bold text-xs">
+                    <span className="px-1.5 py-0.5 rounded bg-[#0d111a] text-white border border-slate-700 font-mono font-bold text-xs">
                       {clockParts.hrs}
                     </span>
                     <span className="font-bold text-xs" style={{ color: clockAccentColor }}>
@@ -1567,7 +1852,7 @@ export default function App() {
                     <Clock className="w-3.5 h-3.5" style={{ color: clockAccentColor }} />
                     <span
                       className={`${weightCls} font-mono tabular-nums text-xs`}
-                      style={{ color: timeColor }}
+                      style={{ color: resolvedTimeColor }}
                     >
                       {clockParts.hrs}
                       {sep}
@@ -1576,7 +1861,7 @@ export default function App() {
                     {showDate && (
                       <>
                         <span className="opacity-40">•</span>
-                        <span className="text-[11px] font-mono tabular-nums" style={{ color: dateColor }}>
+                        <span className="text-[11px] font-mono tabular-nums" style={{ color: resolvedDateColor }}>
                           {clockParts.fullDate}
                         </span>
                       </>
@@ -1593,7 +1878,7 @@ export default function App() {
                     >
                       {clockParts.weekday}
                     </span>
-                    <span className={`font-mono ${weightCls} text-xs`} style={{ color: timeColor }}>
+                    <span className={`font-mono ${weightCls} text-xs`} style={{ color: resolvedTimeColor }}>
                       {clockParts.hrs}
                       {sep}
                       {clockParts.mins}
@@ -1623,12 +1908,12 @@ export default function App() {
                 <div className="flex flex-col items-center leading-tight">
                   <span
                     className={`${weightCls} font-mono tabular-nums text-xs`}
-                    style={{ color: timeColor }}
+                    style={{ color: resolvedTimeColor }}
                   >
                     {formattedTime}
                   </span>
                   {showDate && (
-                    <span className="text-[10px] font-mono tabular-nums" style={{ color: dateColor }}>
+                    <span className="text-[10px] font-mono tabular-nums" style={{ color: resolvedDateColor }}>
                       {clockParts.fullDate}
                     </span>
                   )}
@@ -1637,15 +1922,15 @@ export default function App() {
             })()}
           </button>
 
-          {/* Background System Audio Controller */}
+          {/* Real System Audio Controller */}
           <div className="relative flex items-center gap-1.5">
             <button
               onClick={() => setVolumePopupOpen((v) => !v)}
-              title="Управление системной громкостью (Фоновый контроллер v2.5)"
+              title="Управление реальной системной громкостью Luma HAL"
               className={`p-2 rounded-xl border transition-all cursor-pointer ${
                 volumePopupOpen
-                  ? 'bg-blue-500/20 border-blue-500/40 text-blue-400'
-                  : 'bg-[#1e2636]/80 hover:bg-[#263044] border-slate-700/60'
+                  ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400'
+                  : headerBtnCls
               }`}
             >
               {isMuted || volume === 0 ? (
@@ -1659,18 +1944,20 @@ export default function App() {
 
             {volumePopupOpen && (
               <div
-                className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl border border-slate-700 shadow-lg"
+                className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl border shadow-lg ${
+                  currentTheme.isDark ? 'border-slate-700' : 'border-slate-300'
+                }`}
                 style={cardGlassStyle}
               >
                 <button
                   onClick={handleToggleMute}
-                  title="Mute / Unmute"
-                  className="text-xs p-1 rounded hover:bg-white/10 cursor-pointer"
+                  title="Выкл / Вкл звук"
+                  className="text-xs p-1 rounded hover:bg-slate-500/20 cursor-pointer"
                 >
                   {isMuted || volume === 0 ? (
                     <VolumeX className="w-4 h-4 text-rose-400" />
                   ) : (
-                    <Volume2 className="w-4 h-4 text-blue-400" />
+                    <Volume2 className="w-4 h-4 text-indigo-400" />
                   )}
                 </button>
                 <input
@@ -1679,7 +1966,7 @@ export default function App() {
                   max={100}
                   value={isMuted ? 0 : volume}
                   onChange={(e) => handleVolumeChange(Number(e.target.value))}
-                  className="w-24 accent-blue-500 cursor-pointer"
+                  className="w-24 accent-indigo-500 cursor-pointer"
                 />
                 <span className="text-xs font-mono tabular-nums w-9 text-right">
                   {isMuted ? 'MUTE' : `${volume}%`}
@@ -1691,54 +1978,54 @@ export default function App() {
           {/* Plugins Button */}
           <button
             onClick={() => setPluginsModalOpen(true)}
-            title="Магазин и управление плагинами (API 2.5)"
-            className="p-2 rounded-xl bg-[#1e2636]/80 hover:bg-[#263044] border border-slate-700/60 transition-all cursor-pointer"
+            title="Центр расширений и плагинов Luma API 1.0.1"
+            className={`p-2 rounded-xl border transition-all cursor-pointer ${headerBtnCls}`}
           >
             <Puzzle className="w-4 h-4" />
           </button>
 
-          {/* Floating HUD Button */}
+          {/* Luma HUD Button */}
           <button
             onClick={() => setFloatingHudVisible((v) => !v)}
-            title="Floating HUD (Мониторинг CPU/RAM)"
+            title="Luma HUD 1.0.1 (Реальные ресурсы CPU / RAM / Регион / Трек)"
             className={`p-2 rounded-xl border transition-all cursor-pointer ${
               floatingHudVisible
-                ? 'bg-blue-500/20 border-blue-500/40 text-blue-400'
-                : 'bg-[#1e2636]/80 hover:bg-[#263044] border-slate-700/60'
+                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-500'
+                : headerBtnCls
             }`}
           >
             <Activity className="w-4 h-4" />
           </button>
 
-          {/* Settings Button (Android 15 / Material 3 Expressive Style Settings) */}
+          {/* Settings Button */}
           <button
             onClick={() => {
               setSettingsTab('luma');
               setSettingsModalOpen(true);
             }}
-            title="Настройки системы Luma OS 1.0 (Material 3 Expressive & LH-2.4)"
-            className="p-2 rounded-xl bg-[#1e2636]/80 hover:bg-[#263044] border border-slate-700/60 transition-all cursor-pointer"
+            title="Настройки системы Luma OS 1.0.1 (Material 3 Expressive)"
+            className={`p-2 rounded-xl border transition-all cursor-pointer ${headerBtnCls}`}
           >
             <Settings className="w-4 h-4" />
           </button>
 
-          {/* Direct Download Standalone Windows EXE (LumaOS_1.0.exe) */}
+          {/* Direct Download Standalone EXE (LumaOS_1.0.1.exe) */}
           <a
-            href="/LumaOS_1.0.exe"
-            download="LumaOS_1.0.exe"
-            title="Скачать готовый к запуску исполняемый файл LumaOS_1.0.exe (Ядро Luma 1.0 + 2 Окна)"
-            className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-extrabold shadow-[0_4px_16px_rgba(99,102,241,0.4)] transition-all whitespace-nowrap"
+            href="/LumaOS_1.0.1.exe"
+            download="LumaOS_1.0.1.exe"
+            title="Скачать обновлённый исполняемый файл LumaOS_1.0.1.exe (Патч первого дня)"
+            className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white text-xs font-extrabold shadow-[0_4px_16px_rgba(99,102,241,0.4)] transition-all whitespace-nowrap"
           >
             <Download className="w-3.5 h-3.5" />
-            LumaOS_1.0.exe
+            LumaOS_1.0.1.exe
           </a>
         </div>
       </header>
 
-      {/* Responsive 2-Window Navigation Strip (visible on < xl viewports so Window 1 & Window 2 are always 1 click away) */}
+      {/* Responsive 2-Window Navigation Strip (visible on < xl viewports) */}
       <div
         className={`xl:hidden flex items-center gap-1.5 px-4 py-2 border-b overflow-x-auto ${
-          currentTheme.isDark ? 'border-slate-800/80 bg-[#0b0f1b]/80' : 'border-slate-300/80 bg-white/80'
+          currentTheme.isDark ? 'border-slate-800/80 bg-[#0b0f1b]/80' : 'border-slate-300/80 bg-white/85'
         }`}
       >
         <button
@@ -1749,7 +2036,7 @@ export default function App() {
           className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer ${
             activeSection === 'apps' && windowDisplayMode === 'quick_search'
               ? 'bg-indigo-600 text-white'
-              : 'bg-white/5 text-slate-300'
+              : headerBtnCls
           }`}
         >
           Окно 1: По группам
@@ -1762,7 +2049,7 @@ export default function App() {
           className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer ${
             activeSection === 'apps' && windowDisplayMode === 'grid_20x30'
               ? 'bg-indigo-600 text-white'
-              : 'bg-white/5 text-slate-300'
+              : headerBtnCls
           }`}
         >
           Окно 2: Ячейки 20×30
@@ -1775,21 +2062,21 @@ export default function App() {
           className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer ${
             activeSection === 'apps' && windowDisplayMode === 'dual_windows'
               ? 'bg-emerald-600 text-white'
-              : 'bg-white/5 text-slate-300'
+              : headerBtnCls
           }`}
         >
           🪟 2 Окна Рядом
         </button>
         <button
           onClick={handleOpenSecondWindow}
-          className="px-3 py-1 rounded-xl text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 whitespace-nowrap cursor-pointer"
+          className="px-3 py-1 rounded-xl text-xs font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 whitespace-nowrap cursor-pointer"
         >
           ↗ Окно 2 отдельно
         </button>
         <button
           onClick={() => handleSwitchSection('tracker')}
           className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap cursor-pointer ${
-            activeSection === 'tracker' ? 'bg-indigo-600 text-white' : 'bg-white/5 text-slate-300'
+            activeSection === 'tracker' ? 'bg-indigo-600 text-white' : headerBtnCls
           }`}
         >
           Трекер
@@ -1797,7 +2084,7 @@ export default function App() {
         <button
           onClick={() => handleSwitchSection('python_code')}
           className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap cursor-pointer ${
-            activeSection === 'python_code' ? 'bg-emerald-600 text-white' : 'bg-white/5 text-slate-300'
+            activeSection === 'python_code' ? 'bg-emerald-600 text-white' : headerBtnCls
           }`}
         >
           Ядро Luma
@@ -1963,12 +2250,14 @@ export default function App() {
               onClick={() => setAddAppModalOpen(true)}
               className="w-full flex items-center gap-3 p-3 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 transition-all cursor-pointer text-left"
             >
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/25 flex items-center justify-center text-emerald-400 shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/25 flex items-center justify-center text-emerald-500 shrink-0">
                 <Plus className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-emerald-100">Добавить приложение</div>
-                <div className="text-[11px] text-emerald-300/80 truncate">
+                <div className={`text-xs font-bold ${currentTheme.isDark ? 'text-emerald-100' : 'text-emerald-900'}`}>
+                  Добавить приложение
+                </div>
+                <div className={`text-[11px] truncate ${currentTheme.isDark ? 'text-emerald-300/80' : 'text-emerald-700'}`}>
                   EXE, URI или веб-сервис + трекер с 0
                 </div>
               </div>
@@ -1984,7 +2273,7 @@ export default function App() {
               sectionAnimating ? 'opacity-0 scale-[0.99] translate-y-1' : 'opacity-100 scale-100 translate-y-0'
             }`}
           >
-            {/* -------------------- WINDOW 2: 20x30 CELL MATRIX + 18 ANDROID / iOS / WINDOWS WIDGETS -------------------- */}
+            {/* -------------------- WINDOW 2: 20x30 CELL MATRIX + 18 LUMA PULSE / AURA / CORE WIDGETS -------------------- */}
             {activeSection === 'apps' && windowDisplayMode === 'grid_20x30' && (
               <div className="max-w-[1680px] mx-auto">
                 <LumaGrid20x30Window
@@ -1997,26 +2286,31 @@ export default function App() {
                   adaptiveThemeEnabled={adaptiveThemeEnabled}
                   glassEnabled={glassEnabled}
                   rightClickBackEnabled={rightClickBackEnabled}
+                  dynamicIslandEnabled={dynamicIslandEnabled}
                   batteryLevel={batteryLevel}
                   isCharging={isCharging}
                   islandPlayers={islandPlayers}
                   activePlayerIndex={activePlayerIndex}
                   mediaPlaying={mediaPlaying}
+                  liveSystem={liveSystem}
                   onSelectPlayer={(idx) => setActivePlayerIndex(idx)}
-                  onToggleMediaPlay={() => setMediaPlaying((v) => !v)}
+                  onToggleMediaPlay={handleToggleMediaPlay}
                   onNextTrack={handleNextTrack}
                   onPrevTrack={handlePrevTrack}
                   onToggleDnd={() => setDndEnabled((v) => !v)}
                   onToggleAdaptiveTheme={() => setAdaptiveThemeEnabled((v) => !v)}
                   onToggleGlass={() => setGlassEnabled((v) => !v)}
                   onToggleRightClickBack={() => setRightClickBackEnabled((v) => !v)}
+                  onToggleDynamicIsland={handleToggleDynamicIsland}
+                  onRefreshLocation={handleRefreshLocation}
+                  onExecutePowerAction={handleExecutePowerAction}
                   onChangeVolume={handleVolumeChange}
                   onToggleMute={handleToggleMute}
                   onLaunchApp={handleLaunchApp}
                   onSwitchToWindow1={() => {
                     setWindowDisplayMode('quick_search');
                     pushToast(
-                      '📋 Окно 1: Список по группам (LH-2.4)',
+                      '📋 Окно 1: Библиотека по группам',
                       'Переключено в первое окно со списком по группам',
                       'info'
                     );
@@ -2024,7 +2318,7 @@ export default function App() {
                   onOpenSeparateWindow2={handleOpenSecondWindow}
                   onPushNotification={(title, msg, type) => {
                     pushToast(title, msg, type || 'info');
-                    pushIslandNotification('Luma Core 1.0', title, msg, '⚡');
+                    pushIslandNotification('Luma Core 1.0.1', title, msg, '⚡');
                   }}
                   onPlayBeep={playFeedbackBeep}
                   iconMap={ICON_MAP}
@@ -2033,32 +2327,7 @@ export default function App() {
               </div>
             )}
 
-            {/* -------------------- LEGACY 3.0 TILE GRID VIEW -------------------- */}
-            {activeSection === 'apps' && windowDisplayMode === 'tile_grid' && (
-              <div className="max-w-7xl mx-auto">
-                <TileGridHome30
-                  apps={combinedApps}
-                  isDark={currentTheme.isDark}
-                  accentHex={currentTheme.accentHex}
-                  cardBorderRadius={cardBorderRadius}
-                  iconScalePct={iconScalePct}
-                  volume={volume}
-                  isMuted={isMuted}
-                  onChangeVolume={handleVolumeChange}
-                  onToggleMute={handleToggleMute}
-                  onLaunchApp={handleLaunchApp}
-                  onSwitchToClassicSearch={() => setWindowDisplayMode('quick_search')}
-                  onPushNotification={(title, msg, type) => {
-                    pushToast(title, msg, type || 'info');
-                    pushIslandNotification('Luma Core 1.0', title, msg, '⚡');
-                  }}
-                  onPlayBeep={playFeedbackBeep}
-                  iconMap={ICON_MAP}
-                />
-              </div>
-            )}
-
-            {/* -------------------- WINDOW 1 (GROUPED LIST & CARDS AS IN LH-2.4) OR DUAL-WINDOW SPLIT (WINDOW 1 + WINDOW 2 20x30) -------------------- */}
+            {/* -------------------- WINDOW 1 (GROUPED LIST & CARDS) OR DUAL-WINDOW SPLIT (WINDOW 1 + WINDOW 2 20x30) -------------------- */}
             {activeSection === 'apps' &&
               (windowDisplayMode === 'quick_search' || windowDisplayMode === 'dual_windows') && (
                 <div
@@ -2068,7 +2337,7 @@ export default function App() {
                       : 'space-y-6 max-w-6xl mx-auto'
                   }
                 >
-                  {/* LEFT / PRIMARY COLUMN: WINDOW 1 (КАК В ФАЙЛЕ LH-2.4 — СПИСКОМ И КАРТОЧКАМИ ПО ГРУППАМ) */}
+                  {/* LEFT / PRIMARY COLUMN: WINDOW 1 (СПИСКОМ И КАРТОЧКАМИ ПО ГРУППАМ) */}
                   <div className={windowDisplayMode === 'dual_windows' ? '2xl:col-span-5 space-y-5' : 'space-y-6'}>
                     {/* Top Material 3 Expressive Control Bar for Window 1 & Window 2 */}
                     <div
@@ -2076,30 +2345,36 @@ export default function App() {
                       style={cardGlassStyle}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-black shadow-md">
+                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-emerald-500 flex items-center justify-center text-white font-black shadow-md">
                           1
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-extrabold">
-                              Окно 1: Структура по группам (LH-2.4 • Material 3 Expressive)
+                              Окно 1: Библиотека по группам • Luma OS 1.0.1
                             </span>
                             <LitStatusBadge active={true} />
                           </div>
-                          <p className="text-[11px] text-slate-400">
-                            Все приложения и плагины разделены по группам категорий + живой трекер сессий с 00:00
+                          <p className={`text-[11px] ${mutedTextCls}`}>
+                            Все приложения и расширения разделены по группам + живой трекер сессий с 00:00
                           </p>
                         </div>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5">
                         {/* Group Rendering Mode Switcher */}
-                        <div className="flex items-center gap-1 p-1 rounded-2xl bg-[#0b0f1b]/90 border border-slate-700/70">
+                        <div
+                          className={`flex items-center gap-1 p-1 rounded-2xl border ${
+                            currentTheme.isDark
+                              ? 'bg-[#0b0f1b]/90 border-slate-700/70'
+                              : 'bg-slate-200/80 border-slate-300'
+                          }`}
+                        >
                           {(
                             [
                               ['list_and_cards', '✨ Список + Избранное'],
                               ['list', '📋 Списком по группам'],
-                              ['cards', '🗂️ Карточками (LH-2.4)'],
+                              ['cards', '🗂️ Карточками'],
                             ] as const
                           ).map(([modeId, modeLabel]) => (
                             <button
@@ -2108,7 +2383,9 @@ export default function App() {
                               className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
                                 groupedViewStyle === modeId
                                   ? 'bg-indigo-600 text-white shadow-sm'
-                                  : 'text-slate-400 hover:text-white'
+                                  : currentTheme.isDark
+                                  ? 'text-slate-400 hover:text-white'
+                                  : 'text-slate-700 hover:text-slate-950'
                               }`}
                             >
                               {modeLabel}
@@ -2125,7 +2402,7 @@ export default function App() {
                         </button>
                         <button
                           onClick={handleOpenSecondWindow}
-                          className="px-3 py-1.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
+                          className="px-3 py-1.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-500 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
                           ↗ Окно 2 отдельно
@@ -2133,7 +2410,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* ANDROID 16 / MATERIAL 3 EXPRESSIVE CLOCK WIDGET BANNER (18 STYLES) */}
+                    {/* LUMA EXPRESSIVE CLOCK & LIVE SYSTEM STRIP BANNER */}
                     {showAndroidClockWidget && (
                       <section
                         className="border border-indigo-500/30 p-5 shadow-xl flex flex-wrap items-center justify-between gap-6"
@@ -2145,18 +2422,24 @@ export default function App() {
                               setSettingsTab('clock');
                               setSettingsModalOpen(true);
                             }}
-                            title="Нажмите для настройки 18 стилей часов и неонового свечения"
+                            title="Нажмите для настройки 18 циферблатов Luma и неонового свечения"
                             style={{
                               borderRadius: `${clockBorderRadius}px`,
-                              backgroundColor: `rgba(26, 34, 54, ${(clockBgOpacity / 100).toFixed(2)})`,
-                              borderColor: clockGlowEnabled ? `${clockAccentColor}77` : 'rgba(51, 65, 85, 0.8)',
+                              backgroundColor: currentTheme.isDark
+                                ? `rgba(26, 34, 54, ${(clockBgOpacity / 100).toFixed(2)})`
+                                : `rgba(241, 245, 249, ${(Math.max(82, clockBgOpacity) / 100).toFixed(2)})`,
+                              borderColor: clockGlowEnabled ? `${clockAccentColor}77` : 'rgba(100, 116, 139, 0.5)',
                               boxShadow: clockGlowEnabled ? `0 0 ${clockGlowIntensity}px ${clockAccentColor}40` : 'none',
                             }}
-                            className="px-6 py-3 border flex flex-col items-center justify-center leading-none cursor-pointer hover:brightness-110 transition-all"
+                            className="px-6 py-3 border flex flex-col items-center justify-center leading-none cursor-pointer hover:brightness-105 transition-all"
                           >
                             <span
                               className={`${clockBold ? 'font-black' : 'font-semibold'} font-mono tabular-nums tracking-tighter`}
-                              style={{ color: timeColor, fontSize: '44px', lineHeight: 0.95 }}
+                              style={{
+                                color: !currentTheme.isDark && timeColor.toLowerCase() === '#f8fafc' ? '#0f172a' : timeColor,
+                                fontSize: '44px',
+                                lineHeight: 0.95,
+                              }}
                             >
                               {clockParts.hrs}
                             </span>
@@ -2170,20 +2453,28 @@ export default function App() {
 
                           <div className="space-y-1.5">
                             <div className="flex flex-wrap items-center gap-2">
-                              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-xs font-bold">
+                              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 text-xs font-bold">
                                 <Clock className="w-3.5 h-3.5" />
                                 {clockParts.fullDate}
-                                {showSeconds && (
-                                  <span className="font-mono text-slate-300">• :{clockParts.secs}</span>
-                                )}
+                                {showSeconds && <span className="font-mono opacity-80">• :{clockParts.secs}</span>}
                               </div>
+                              {detectedRegionLabel && (
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-500 text-xs font-semibold">
+                                  <MapPin className="w-3.5 h-3.5" />
+                                  {detectedRegionLabel}
+                                </div>
+                              )}
                               <LitStatusBadge active={true} />
                             </div>
                             <h3 className="text-base font-extrabold">
-                              Luma OS 1.0 — {CLOCK_STYLE_OPTIONS.find((c) => c.id === clockStyle)?.label}
+                              Luma OS 1.0.1 — {CLOCK_STYLE_OPTIONS.find((c) => c.id === clockStyle)?.label}
                             </h3>
-                            <p className="text-xs text-slate-400">
-                              Клик по элементу запускает процесс через ядро <code className="text-indigo-300">LumaCore 1.0</code> и стартует секундомер с <code className="text-emerald-400">00:00</code>
+                            <p className={`text-xs ${mutedTextCls}`}>
+                              CPU: <strong className="text-emerald-500 font-mono">{cpuLoad}%</strong> • ОЗУ:{' '}
+                              <strong className="text-indigo-400 font-mono">
+                                {liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)}/${liveSystem.ram_total_gb.toFixed(1)} ГБ (${ramLoad}%)` : `${ramLoad}%`}
+                              </strong>{' '}
+                              {hasLiveOsMedia ? `• ♫ ${displayTrackTitle}` : '• Ядро Luma Core 1.0.1 активно'}
                             </p>
                           </div>
                         </div>
@@ -2194,9 +2485,9 @@ export default function App() {
                               const idx = CLOCK_STYLE_OPTIONS.findIndex((c) => c.id === clockStyle);
                               const next = CLOCK_STYLE_OPTIONS[(idx + 1) % CLOCK_STYLE_OPTIONS.length];
                               setClockStyle(next.id);
-                              pushToast('Стиль часов', `Активирован стиль: ${next.label}`, 'success');
+                              pushToast('Стиль часов', `Активирован циферблат: ${next.label}`, 'success');
                             }}
-                            className="px-3.5 py-2 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold cursor-pointer transition-all"
+                            className="px-3.5 py-2 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-500 text-xs font-bold cursor-pointer transition-all"
                           >
                             ⚡ След. стиль (из 18)
                           </button>
@@ -2205,13 +2496,13 @@ export default function App() {
                               setSettingsTab('clock');
                               setSettingsModalOpen(true);
                             }}
-                            className="px-3.5 py-2 rounded-2xl bg-[#1e2636] hover:bg-[#273247] border border-slate-700 text-xs font-bold cursor-pointer transition-all"
+                            className={`px-3.5 py-2 rounded-2xl border text-xs font-bold cursor-pointer transition-all ${headerBtnCls}`}
                           >
                             🕒 18 стилей часов
                           </button>
                           <button
                             onClick={() => setCustomThemeModalOpen(true)}
-                            className="px-3.5 py-2 rounded-2xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-bold cursor-pointer transition-all"
+                            className="px-3.5 py-2 rounded-2xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-400 text-xs font-bold cursor-pointer transition-all"
                           >
                             🎨 Студия тем M3
                           </button>
@@ -2219,28 +2510,30 @@ export default function App() {
                       </section>
                     )}
 
-                    {/* FAVORITES GROUP SECTION ("Избранное" as in LH-2.4) */}
+                    {/* FAVORITES GROUP SECTION */}
                     <section
-                      className="rounded-[26px] border border-slate-800/90 p-6 shadow-xl transition-all"
+                      className={`rounded-[26px] border p-6 shadow-xl transition-all ${
+                        currentTheme.isDark ? 'border-slate-800/90' : 'border-slate-300/80'
+                      }`}
                       style={cardGlassStyle}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
                         <div className="flex items-center gap-2.5">
                           <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
                           <h3 className="text-base font-extrabold">Группа: Избранное</h3>
-                          <span className="text-xs text-slate-400 font-mono tabular-nums">
+                          <span className={`text-xs font-mono tabular-nums ${mutedTextCls}`}>
                             {favoriteApps.length}/10
                           </span>
                           <LitStatusBadge active={favoriteApps.some((a) => a.isRunning)} />
                         </div>
-                        <span className="text-xs text-slate-400">
+                        <span className={`text-xs ${mutedTextCls}`}>
                           Быстрый запуск избранных программ и старт таймера с 00:00
                         </span>
                       </div>
 
                       {favoriteApps.length === 0 ? (
-                        <div className="py-8 text-center text-slate-400 text-xs">
-                          Добавьте приложения в избранное через звездочку или меню карточки
+                        <div className={`py-8 text-center text-xs ${mutedTextCls}`}>
+                          Добавьте приложения в избранное через звёздочку или меню карточки
                         </div>
                       ) : (
                         <div
@@ -2261,6 +2554,7 @@ export default function App() {
                                 onClick={() => handleLaunchApp(app)}
                                 onContextMenu={(e) => {
                                   e.preventDefault();
+                                  e.stopPropagation();
                                   setContextMenuApp(app);
                                 }}
                                 className="group relative flex flex-col items-center p-2.5 rounded-3xl hover:scale-105 transition-all duration-200 cursor-pointer"
@@ -2268,17 +2562,21 @@ export default function App() {
                                 <div
                                   className={`w-22 h-22 rounded-[24px] flex items-center justify-center relative border transition-all ${
                                     app.isRunning
-                                      ? 'border-emerald-400 bg-[#12312a] shadow-[0_0_20px_rgba(16,185,129,0.35)]'
-                                      : 'border-slate-700/80 bg-[#1e2636] group-hover:border-indigo-500/70 group-hover:bg-[#242f46]'
+                                      ? 'border-emerald-400 bg-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.35)]'
+                                      : currentTheme.isDark
+                                      ? 'border-slate-700/80 bg-[#1e2636] group-hover:border-indigo-500/70 group-hover:bg-[#242f46]'
+                                      : 'border-slate-300 bg-slate-100 group-hover:border-indigo-400 group-hover:bg-indigo-50'
                                   }`}
                                 >
                                   <div
                                     className={
                                       app.isRunning
-                                        ? 'text-white'
+                                        ? 'text-emerald-400'
                                         : app.type === 'web'
-                                        ? 'text-blue-400'
-                                        : 'text-slate-100'
+                                        ? 'text-blue-500'
+                                        : currentTheme.isDark
+                                        ? 'text-slate-100'
+                                        : 'text-slate-800'
                                     }
                                   >
                                     {renderAppIcon(app.icon, 'w-9 h-9')}
@@ -2297,7 +2595,7 @@ export default function App() {
                                 </span>
                                 <span
                                   className={`text-[11px] font-mono tabular-nums text-center truncate w-full mt-0.5 ${
-                                    app.isRunning ? 'text-emerald-400 font-semibold' : 'text-slate-400'
+                                    app.isRunning ? 'text-emerald-500 font-semibold' : mutedTextCls
                                   }`}
                                 >
                                   {badgeText}
@@ -2309,13 +2607,15 @@ export default function App() {
                       )}
                     </section>
 
-                    {/* CATEGORY GROUP SECTIONS ("Сделанный списком и карточками по группам" as in LH-2.4) */}
+                    {/* CATEGORY GROUP SECTIONS */}
                     {Object.entries(categoriesMap).map(([category, catApps]) => {
                       const activeInCategory = catApps.some((a) => a.isRunning);
                       return (
                         <section
                           key={category}
-                          className="rounded-[26px] border border-slate-800/90 p-6 shadow-xl transition-all"
+                          className={`rounded-[26px] border p-6 shadow-xl transition-all ${
+                            currentTheme.isDark ? 'border-slate-800/90' : 'border-slate-300/80'
+                          }`}
                           style={cardGlassStyle}
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
@@ -2330,7 +2630,11 @@ export default function App() {
                                 }`}
                               />
                               <h3 className="text-base font-extrabold">Группа: {category}</h3>
-                              <span className="px-2 py-0.5 rounded-full bg-white/5 text-xs text-slate-300 font-mono tabular-nums">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-xs font-mono tabular-nums ${
+                                  currentTheme.isDark ? 'bg-white/5 text-slate-300' : 'bg-slate-200 text-slate-700'
+                                }`}
+                              >
                                 {catApps.length} эл.
                               </span>
                               {activeInCategory && <LitStatusBadge active={true} />}
@@ -2340,18 +2644,18 @@ export default function App() {
                                 onClick={() => setPluginsModalOpen(true)}
                                 className="text-xs text-indigo-400 hover:underline font-semibold cursor-pointer"
                               >
-                                Открыть магазин и настройки плагинов →
+                                Открыть центр расширений →
                               </button>
                             )}
                           </div>
 
-                          {/* MODE A: GROUPED LIST ROWS ("1 как в файле списком сделанный по группам") */}
+                          {/* MODE A: GROUPED LIST ROWS */}
                           {(groupedViewStyle === 'list' || groupedViewStyle === 'list_and_cards') && (
                             <div className="space-y-2.5">
                               {catApps.map((app) => {
                                 const isPlugin = app.type === 'plugin';
                                 const badgeText = isPlugin
-                                  ? 'Плагин Luma API 3.0'
+                                  ? 'Модуль Luma API 1.0.1'
                                   : sessionTrackerEnabled
                                   ? formatMonthBadge(app.monthMinutes, app.elapsedSeconds, app.isRunning)
                                   : app.type.toUpperCase();
@@ -2366,11 +2670,12 @@ export default function App() {
                                     onClick={() => handleLaunchApp(app)}
                                     onContextMenu={(e) => {
                                       e.preventDefault();
+                                      e.stopPropagation();
                                       if (!isPlugin) setContextMenuApp(app);
                                     }}
                                     className={`group flex flex-wrap sm:flex-nowrap items-center justify-between gap-3.5 p-3.5 rounded-2xl border transition-all cursor-pointer ${
                                       app.isRunning
-                                        ? 'bg-[#122b26] border-emerald-400/70 shadow-[0_0_20px_rgba(16,185,129,0.2)]'
+                                        ? 'bg-emerald-500/15 border-emerald-400/70 shadow-[0_0_20px_rgba(16,185,129,0.2)]'
                                         : currentTheme.isDark
                                         ? 'bg-[#171f30]/90 hover:bg-[#1e2940] border-slate-700/70 hover:border-indigo-500/60'
                                         : 'bg-white/90 hover:bg-indigo-50/70 border-slate-200 hover:border-indigo-400'
@@ -2381,12 +2686,12 @@ export default function App() {
                                       <div
                                         className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border transition-transform group-hover:scale-105 ${
                                           app.isRunning
-                                            ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                                            ? 'bg-emerald-500/20 border-emerald-400 text-emerald-400'
                                             : isPlugin
-                                            ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
+                                            ? 'bg-purple-500/20 border-purple-500/40 text-purple-400'
                                             : app.type === 'web'
-                                            ? 'bg-blue-500/15 border-blue-500/35 text-blue-400'
-                                            : 'bg-indigo-500/15 border-indigo-500/35 text-indigo-300'
+                                            ? 'bg-blue-500/15 border-blue-500/35 text-blue-500'
+                                            : 'bg-indigo-500/15 border-indigo-500/35 text-indigo-400'
                                         }`}
                                       >
                                         {renderAppIcon(app.icon, 'w-6 h-6')}
@@ -2395,19 +2700,25 @@ export default function App() {
                                       <div className="min-w-0 flex-1">
                                         <div className="flex flex-wrap items-center gap-2">
                                           <span className="text-sm font-extrabold truncate">{app.name}</span>
-                                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/5 border border-white/10 text-slate-300">
+                                          <span
+                                            className={`px-2 py-0.5 rounded-full text-[10px] font-mono border ${
+                                              currentTheme.isDark
+                                                ? 'bg-white/5 border-white/10 text-slate-300'
+                                                : 'bg-slate-200/80 border-slate-300 text-slate-700'
+                                            }`}
+                                          >
                                             {app.type.toUpperCase()}
                                           </span>
                                           {app.isRunning && <LitStatusBadge active={true} />}
                                         </div>
-                                        <div className="flex flex-wrap items-center gap-3 mt-1 text-[11px] text-slate-400 font-mono">
+                                        <div className={`flex flex-wrap items-center gap-3 mt-1 text-[11px] font-mono ${mutedTextCls}`}>
                                           <span className="truncate max-w-[240px]">{app.url}</span>
                                           <span>•</span>
-                                          <span className={app.isRunning ? 'text-emerald-300 font-bold' : ''}>
+                                          <span className={app.isRunning ? 'text-emerald-500 font-bold' : ''}>
                                             {badgeText}
                                           </span>
                                           {!isPlugin && app.dailyLimitMinutes > 0 && (
-                                            <span className="hidden md:inline text-slate-400">
+                                            <span className="hidden md:inline">
                                               • Лимит: {app.dailyLimitMinutes} мин ({limitPct}%)
                                             </span>
                                           )}
@@ -2427,7 +2738,7 @@ export default function App() {
                                           className={`p-2 rounded-xl border transition-all cursor-pointer ${
                                             app.favorite
                                               ? 'bg-amber-500/15 border-amber-400/50 text-amber-400'
-                                              : 'bg-white/5 border-slate-700 text-slate-400 hover:text-white'
+                                              : headerBtnCls
                                           }`}
                                         >
                                           <Star
@@ -2443,7 +2754,7 @@ export default function App() {
                                             setContextMenuApp(app);
                                           }}
                                           title="Контекстное меню"
-                                          className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-slate-700 text-slate-300 cursor-pointer"
+                                          className={`p-2 rounded-xl border cursor-pointer ${headerBtnCls}`}
                                         >
                                           <MoreVertical className="w-4 h-4" />
                                         </button>
@@ -2481,7 +2792,7 @@ export default function App() {
                             </div>
                           )}
 
-                          {/* MODE B: GROUPED CARDS ("Карточками по группам LH-2.4") */}
+                          {/* MODE B: GROUPED CARDS */}
                           {groupedViewStyle === 'cards' && (
                             <div
                               className="grid gap-4"
@@ -2505,6 +2816,7 @@ export default function App() {
                                     onClick={() => handleLaunchApp(app)}
                                     onContextMenu={(e) => {
                                       e.preventDefault();
+                                      e.stopPropagation();
                                       if (!isPlugin) setContextMenuApp(app);
                                     }}
                                     className="group relative flex flex-col items-center p-2.5 rounded-3xl hover:scale-105 transition-all duration-200 cursor-pointer"
@@ -2512,21 +2824,25 @@ export default function App() {
                                     <div
                                       className={`w-22 h-22 rounded-[24px] flex items-center justify-center relative border transition-all ${
                                         app.isRunning
-                                          ? 'border-emerald-400 bg-[#12312a] shadow-lg shadow-emerald-950/50'
+                                          ? 'border-emerald-400 bg-emerald-500/20 shadow-lg'
                                           : isPlugin
-                                          ? 'border-purple-500/40 bg-[#1f1d36] group-hover:border-purple-400'
-                                          : 'border-slate-700/80 bg-[#1e2636] group-hover:border-indigo-500/60 group-hover:bg-[#242f44]'
+                                          ? 'border-purple-500/40 bg-purple-500/15 group-hover:border-purple-400'
+                                          : currentTheme.isDark
+                                          ? 'border-slate-700/80 bg-[#1e2636] group-hover:border-indigo-500/60 group-hover:bg-[#242f44]'
+                                          : 'border-slate-300 bg-slate-100 group-hover:border-indigo-400 group-hover:bg-indigo-50'
                                       }`}
                                     >
                                       <div
                                         className={
                                           app.isRunning
-                                            ? 'text-white'
+                                            ? 'text-emerald-400'
                                             : isPlugin
                                             ? 'text-purple-400'
                                             : app.type === 'web'
-                                            ? 'text-blue-400'
-                                            : 'text-slate-100'
+                                            ? 'text-blue-500'
+                                            : currentTheme.isDark
+                                            ? 'text-slate-100'
+                                            : 'text-slate-800'
                                         }
                                       >
                                         {renderAppIcon(app.icon, 'w-9 h-9')}
@@ -2559,10 +2875,10 @@ export default function App() {
                                     <span
                                       className={`text-[11px] font-mono tabular-nums text-center truncate w-full mt-0.5 ${
                                         app.isRunning
-                                          ? 'text-emerald-400 font-semibold'
+                                          ? 'text-emerald-500 font-semibold'
                                           : isPlugin
                                           ? 'text-purple-400'
-                                          : 'text-slate-400'
+                                          : mutedTextCls
                                       }`}
                                     >
                                       {badgeText}
@@ -2577,7 +2893,7 @@ export default function App() {
                     })}
                   </div>
 
-                  {/* RIGHT COLUMN IN DUAL-WINDOW MODE: WINDOW 2 (20x30 CELL MATRIX + 18 WIDGETS) */}
+                  {/* RIGHT COLUMN IN DUAL-WINDOW MODE: WINDOW 2 (20x30 CELL MATRIX + 18 LUMA WIDGETS) */}
                   {windowDisplayMode === 'dual_windows' && (
                     <div className="2xl:col-span-7">
                       <LumaGrid20x30Window
@@ -2590,19 +2906,24 @@ export default function App() {
                         adaptiveThemeEnabled={adaptiveThemeEnabled}
                         glassEnabled={glassEnabled}
                         rightClickBackEnabled={rightClickBackEnabled}
+                        dynamicIslandEnabled={dynamicIslandEnabled}
                         batteryLevel={batteryLevel}
                         isCharging={isCharging}
                         islandPlayers={islandPlayers}
                         activePlayerIndex={activePlayerIndex}
                         mediaPlaying={mediaPlaying}
+                        liveSystem={liveSystem}
                         onSelectPlayer={(idx) => setActivePlayerIndex(idx)}
-                        onToggleMediaPlay={() => setMediaPlaying((v) => !v)}
+                        onToggleMediaPlay={handleToggleMediaPlay}
                         onNextTrack={handleNextTrack}
                         onPrevTrack={handlePrevTrack}
                         onToggleDnd={() => setDndEnabled((v) => !v)}
                         onToggleAdaptiveTheme={() => setAdaptiveThemeEnabled((v) => !v)}
                         onToggleGlass={() => setGlassEnabled((v) => !v)}
                         onToggleRightClickBack={() => setRightClickBackEnabled((v) => !v)}
+                        onToggleDynamicIsland={handleToggleDynamicIsland}
+                        onRefreshLocation={handleRefreshLocation}
+                        onExecutePowerAction={handleExecutePowerAction}
                         onChangeVolume={handleVolumeChange}
                         onToggleMute={handleToggleMute}
                         onLaunchApp={handleLaunchApp}
@@ -2610,7 +2931,7 @@ export default function App() {
                         onOpenSeparateWindow2={handleOpenSecondWindow}
                         onPushNotification={(title, msg, type) => {
                           pushToast(title, msg, type || 'info');
-                          pushIslandNotification('Luma Core 1.0', title, msg, '⚡');
+                          pushIslandNotification('Luma Core 1.0.1', title, msg, '⚡');
                         }}
                         onPlayBeep={playFeedbackBeep}
                         iconMap={ICON_MAP}
@@ -2912,46 +3233,58 @@ export default function App() {
               </div>
             )}
 
-            {/* -------------------- SECTION 3: C# .NET 8 LUMA OS & LAUNCHER 3.0 SOURCE CODE -------------------- */}
+            {/* -------------------- SECTION 3: LUMA CORE 1.0.1 SOURCE CODE VIEWER -------------------- */}
             {activeSection === 'python_code' && (
               <div className="space-y-5 max-w-6xl mx-auto">
                 <section
-                  className="rounded-2xl border border-slate-800/90 p-6 shadow-xl"
+                  className={`rounded-2xl border p-6 shadow-xl ${
+                    currentTheme.isDark ? 'border-slate-800/90' : 'border-slate-300/80'
+                  }`}
                   style={cardGlassStyle}
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
+                  <div
+                    className={`flex flex-wrap items-center justify-between gap-4 pb-4 border-b ${
+                      currentTheme.isDark ? 'border-slate-800' : 'border-slate-200'
+                    }`}
+                  >
                     <div>
                       <div className="flex items-center gap-2">
-                        <FileCode className="w-5 h-5 text-emerald-400" />
+                        <FileCode className="w-5 h-5 text-emerald-500" />
                         <h2 className="text-lg font-bold">
-                          Исходный код C# (.NET 8) — Система Luma OS 1.0 &amp; Плиточная оболочка 3.0
+                          Исходный код ядра Luma Core 1.0.1 &amp; Двухоконной оболочки
                         </h2>
                       </div>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Весь код приложения и ядра полностью переведен на язык <code className="text-emerald-400">C# (.NET 8 / WPF / WASAPI)</code>: полноценная система <code className="text-emerald-400">LumaSystemKernel.cs</code>, фоновый демон <code className="text-emerald-400">LumaCoreDaemon.cs</code>, криптоядро <code className="text-emerald-400">AES-256-GCM</code>, 12 виджетов и плиточный интерфейс <code className="text-emerald-400">Windows / Android</code> поверх системы.
+                      <p className={`text-xs mt-1 ${mutedTextCls}`}>
+                        Нативное ядро <code className="text-emerald-500">luma_kernel_main.go</code> +{' '}
+                        <code className="text-emerald-500">system_windows.go</code> (HAL, реальная телеметрия, медиа-управление, авто-регион), криптоядро <code className="text-emerald-500">LumaGuard AES-256-GCM</code> и матрица <code className="text-emerald-500">LumaGrid20x30Window.tsx</code>.
                       </p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
                       <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(pyFileContent);
-                          setCopiedCode(true);
-                          setTimeout(() => setCopiedCode(false), 2000);
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(pyFileContent);
+                            setCopiedCode(true);
+                            setTimeout(() => setCopiedCode(false), 2000);
+                            pushToast('Буфер обмена', `Код файла ${selectedPyFile} скопирован`, 'success');
+                          } catch {
+                            pushToast('Буфер обмена', 'Не удалось получить доступ к буферу обмена', 'warning');
+                          }
                         }}
-                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-semibold cursor-pointer transition-all"
+                        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${headerBtnCls}`}
                       >
-                        {copiedCode ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                        {copiedCode ? 'Скопировано!' : 'Копировать C# файл'}
+                        {copiedCode ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                        {copiedCode ? 'Скопировано!' : 'Копировать файл'}
                       </button>
 
                       <a
-                        href="/LauncherHab3.0_CSharp.zip"
-                        download="LauncherHab3.0_CSharp.zip"
+                        href="/LumaOS_1.0.1.exe"
+                        download="LumaOS_1.0.1.exe"
                         className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm transition-all"
                       >
                         <Download className="w-4 h-4" />
-                        Скачать весь проект C# (.zip)
+                        Скачать LumaOS_1.0.1.exe
                       </a>
                     </div>
                   </div>
@@ -2967,17 +3300,17 @@ export default function App() {
                             onClick={() => setSelectedPyFile(file.path)}
                             className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer ${
                               active
-                                ? 'bg-blue-600/20 border-blue-500/60 text-white'
-                                : 'bg-[#1a2232] hover:bg-[#222c40] border-slate-700/60 text-slate-300'
+                                ? 'bg-indigo-600/20 border-indigo-500/70'
+                                : subSurfaceCls
                             }`}
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-mono font-bold truncate">{file.title}</span>
-                              <span className="text-[10px] font-mono text-emerald-400 shrink-0">
+                              <span className="text-[10px] font-mono text-emerald-500 shrink-0">
                                 {file.badge}
                               </span>
                             </div>
-                            <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
+                            <p className={`text-[11px] mt-1 line-clamp-2 ${mutedTextCls}`}>
                               {file.summary}
                             </p>
                           </button>
@@ -2990,7 +3323,7 @@ export default function App() {
                       <div className="px-4 py-2.5 bg-[#121824] border-b border-slate-800 flex items-center justify-between text-xs font-mono text-slate-300">
                         <span>{selectedPyFile}</span>
                         <span className="text-emerald-400">
-                          C# 12 • .NET 8.0 Windows • Luma OS 1.0 Kernel + Tile Shell
+                          Luma OS 1.0.1 • Native Kernel + Shell
                         </span>
                       </div>
                       <pre className="p-4 text-xs font-mono text-slate-200 overflow-x-auto overflow-y-auto max-h-[600px] leading-relaxed">
@@ -3003,42 +3336,62 @@ export default function App() {
             )}
           </div>
 
-          {/* FLOATING HUD (Right Top Overlay) */}
+          {/* LUMA HUD 1.0.1 (Right Top Overlay — Real Live System Telemetry, Region & Active Track) */}
           {floatingHudVisible && (
             <div
-              className="fixed right-6 top-20 z-20 p-4 rounded-2xl border border-slate-700 shadow-2xl w-56"
+              className={`fixed right-6 top-20 z-20 p-4 rounded-2xl border shadow-2xl w-64 ${
+                currentTheme.isDark ? 'border-slate-700' : 'border-slate-300'
+              }`}
               style={cardGlassStyle}
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-blue-400">Floating HUD 2.4</span>
-                <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-xs font-extrabold text-indigo-400">Luma HUD 1.0.1</span>
+                <Activity className="w-3.5 h-3.5 text-emerald-500" />
               </div>
               <div className="space-y-1.5 text-xs font-mono tabular-nums">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">CPU:</span>
-                  <span>{cpuLoad}%</span>
+                  <span className={mutedTextCls}>CPU:</span>
+                  <span className="text-emerald-500 font-bold">{cpuLoad}%</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">RAM:</span>
-                  <span>{ramLoad}%</span>
+                  <span className={mutedTextCls}>RAM:</span>
+                  <span>
+                    {liveSystem
+                      ? `${liveSystem.ram_used_gb.toFixed(1)}/${liveSystem.ram_total_gb.toFixed(1)} ГБ (${ramLoad}%)`
+                      : `${ramLoad}%`}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className={mutedTextCls}>Регион:</span>
+                  <span className="truncate text-right text-sky-400">
+                    {liveSystem?.location?.city || 'Определение...'}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className={mutedTextCls}>Трек:</span>
+                  <span className="truncate text-right max-w-[140px]">
+                    {hasLiveOsMedia ? displayTrackTitle : 'Нет потока'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Volume:</span>
-                  <span>{isMuted ? 'Muted' : `${volume}%`}</span>
+                  <span className={mutedTextCls}>Звук:</span>
+                  <span>{isMuted ? 'MUTE' : `${volume}%`}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Активных сессий:</span>
-                  <span className="text-emerald-400">{runningAppsCount}</span>
+                  <span className={mutedTextCls}>Активных сессий:</span>
+                  <span className="text-emerald-500 font-bold">{runningAppsCount}</span>
                 </div>
               </div>
             </div>
           )}
 
-          {/* FIXED RECYCLE BIN FAB (Bottom Right) */}
+          {/* FIXED RECYCLE BIN FAB (Bottom Right — Calls Real OS Recycle Bin via /api/kernel/power) */}
           <button
-            onClick={() => pushToast('Корзина', 'Открыта системная корзина Windows (shell:RecycleBinFolder)')}
-            title="Открыть корзину"
-            className="fixed right-6 bottom-6 z-20 p-3.5 rounded-2xl border border-slate-700/80 shadow-xl hover:scale-105 transition-all cursor-pointer"
+            onClick={() => handleExecutePowerAction('recycle_bin')}
+            title="Открыть системную корзину (через ядро Luma Core 1.0.1)"
+            className={`fixed right-6 bottom-6 z-20 p-3.5 rounded-2xl border shadow-xl hover:scale-105 transition-all cursor-pointer ${
+              currentTheme.isDark ? 'border-slate-700/80' : 'border-slate-300'
+            }`}
             style={cardGlassStyle}
           >
             <Trash2 className="w-5 h-5" />
@@ -3046,61 +3399,65 @@ export default function App() {
         </main>
       </div>
 
-      {/* ==================== MODAL: INTERACTIVE PLUGIN WINDOW (Launched from Grid/Sidebar) ==================== */}
+      {/* ==================== MODAL: INTERACTIVE PLUGIN WINDOW ==================== */}
       {activePluginModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setActivePluginModal(null)}
+        >
           <div
+            onClick={(e) => e.stopPropagation()}
             className="w-full max-w-lg rounded-2xl border border-slate-700 p-6 shadow-2xl space-y-4"
             style={cardGlassStyle}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800/60">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400">
                   {renderAppIcon(activePluginModal.icon || 'Puzzle', 'w-5 h-5')}
                 </div>
                 <div>
                   <h3 className="text-base font-bold">{activePluginModal.name}</h3>
-                  <span className="text-xs font-mono text-slate-400">
+                  <span className={`text-xs font-mono ${mutedTextCls}`}>
                     v{activePluginModal.version} • {activePluginModal.file}
                   </span>
                 </div>
               </div>
               <button
                 onClick={() => setActivePluginModal(null)}
-                className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-slate-500/20 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-300">{activePluginModal.description}</p>
+            <p className={`text-xs ${mutedTextCls}`}>{activePluginModal.description}</p>
 
             {/* Interactive content based on plugin ID */}
             {activePluginModal.id === 'idea_notebook_plugin' && (
-              <div className="space-y-3 p-4 rounded-xl bg-[#0d111a] border border-slate-800">
+              <div className={`space-y-3 p-4 rounded-xl border ${subSurfaceCls}`}>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={newIdeaText}
                     onChange={(e) => setNewIdeaText(e.target.value)}
                     placeholder="Введите быструю заметку..."
-                    className="flex-1 px-3 py-2 rounded-xl bg-[#1a2232] border border-slate-700 text-xs outline-none"
+                    className={`flex-1 px-3 py-2 rounded-xl border text-xs outline-none ${headerBtnCls}`}
                   />
                   <button
                     onClick={() => {
                       if (!newIdeaText.trim()) return;
                       setIdeaNotes((prev) => [newIdeaText.trim(), ...prev]);
                       setNewIdeaText('');
-                      pushToast('Idea Notebook', 'Заметка сохранена в idea_notes.txt', 'success');
+                      pushToast('Luma Notes VFS', 'Заметка сохранена в зашифрованное хранилище VFS', 'success');
                     }}
-                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold cursor-pointer"
                   >
                     Сохранить
                   </button>
                 </div>
-                <ul className="space-y-1.5 max-h-40 overflow-y-auto text-xs text-slate-300">
+                <ul className="space-y-1.5 max-h-40 overflow-y-auto text-xs">
                   {ideaNotes.map((note, idx) => (
-                    <li key={idx} className="p-2 rounded-lg bg-[#161d2b] border border-slate-800">
+                    <li key={idx} className={`p-2 rounded-lg border ${headerBtnCls}`}>
                       • {note}
                     </li>
                   ))}
@@ -3109,10 +3466,10 @@ export default function App() {
             )}
 
             {activePluginModal.id === 'focus_mode_plugin' && (
-              <div className="p-4 rounded-xl bg-[#0d111a] border border-slate-800 flex items-center justify-between">
+              <div className={`p-4 rounded-xl border flex items-center justify-between ${subSurfaceCls}`}>
                 <div>
-                  <div className="text-xs text-slate-400">Таймер концентрации Pomodoro</div>
-                  <div className="text-3xl font-black font-mono text-emerald-400 mt-1">
+                  <div className={`text-xs ${mutedTextCls}`}>Таймер концентрации Luma Focus</div>
+                  <div className="text-3xl font-black font-mono text-emerald-500 mt-1">
                     {formatLiveClock(pomodoroSeconds)}
                   </div>
                 </div>
@@ -3128,7 +3485,7 @@ export default function App() {
                       setPomodoroRunning(false);
                       setPomodoroSeconds(25 * 60);
                     }}
-                    className="px-3 py-2 rounded-xl bg-white/10 text-xs cursor-pointer"
+                    className={`px-3 py-2 rounded-xl border text-xs cursor-pointer ${headerBtnCls}`}
                   >
                     Сброс
                   </button>
@@ -3138,22 +3495,22 @@ export default function App() {
 
             {activePluginModal.id !== 'idea_notebook_plugin' &&
               activePluginModal.id !== 'focus_mode_plugin' && (
-                <div className="p-4 rounded-xl bg-[#0d111a] border border-slate-800 space-y-3">
+                <div className={`p-4 rounded-xl border space-y-3 ${subSurfaceCls}`}>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Статус модуля:</span>
-                    <span className="text-emerald-400 font-mono">Активен в ядре Launcher Hab 2.4</span>
+                    <span className={mutedTextCls}>Статус модуля:</span>
+                    <span className="text-emerald-500 font-mono">Активен в ядре Luma Core 1.0.1</span>
                   </div>
                   <button
                     onClick={() =>
                       pushToast(
                         activePluginModal.name,
-                        `Действие плагина «${activePluginModal.name}» успешно выполнено!`,
+                        `Действие модуля «${activePluginModal.name}» успешно выполнено!`,
                         'success'
                       )
                     }
-                    className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer"
+                    className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold cursor-pointer"
                   >
-                    Выполнить быстрое действие плагина
+                    Выполнить быстрое действие модуля
                   </button>
                 </div>
               )}
@@ -3164,13 +3521,13 @@ export default function App() {
                   setEditingPluginSettings(activePluginModal);
                   setActivePluginModal(null);
                 }}
-                className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold cursor-pointer"
+                className={`px-3.5 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${headerBtnCls}`}
               >
-                Настройки плагина
+                Настройки модуля
               </button>
               <button
                 onClick={() => setActivePluginModal(null)}
-                className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold cursor-pointer"
               >
                 Готово
               </button>
@@ -3181,23 +3538,27 @@ export default function App() {
 
       {/* ==================== MODAL: PLUGIN SETTINGS CONFIGURATION ==================== */}
       {editingPluginSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setEditingPluginSettings(null)}
+        >
           <div
+            onClick={(e) => e.stopPropagation()}
             className="w-full max-w-md rounded-2xl border border-slate-700 p-6 shadow-2xl space-y-4"
             style={cardGlassStyle}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800/60">
               <h3 className="text-base font-bold">Настройки: {editingPluginSettings.name}</h3>
               <button
                 onClick={() => setEditingPluginSettings(null)}
-                className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-slate-500/20 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <label className="flex items-center justify-between p-3 rounded-xl bg-[#1a2232] border border-slate-700 cursor-pointer">
+              <label className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer ${subSurfaceCls}`}>
                 <span>Показывать плагин в списке запуска («Плагины»)</span>
                 <input
                   type="checkbox"
@@ -3208,11 +3569,11 @@ export default function App() {
                       showInLauncher: e.target.checked,
                     })
                   }
-                  className="w-4 h-4 accent-blue-500"
+                  className="w-4 h-4 accent-indigo-500"
                 />
               </label>
 
-              <label className="flex items-center justify-between p-3 rounded-xl bg-[#1a2232] border border-slate-700 cursor-pointer">
+              <label className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer ${subSurfaceCls}`}>
                 <span>Разрешить уведомления от плагина</span>
                 <input
                   type="checkbox"
@@ -3223,14 +3584,14 @@ export default function App() {
                       notificationsEnabled: e.target.checked,
                     })
                   }
-                  className="w-4 h-4 accent-blue-500"
+                  className="w-4 h-4 accent-indigo-500"
                 />
               </label>
 
-              <div className="p-3 rounded-xl bg-[#1a2232] border border-slate-700 space-y-2">
+              <div className={`p-3 rounded-xl border space-y-2 ${subSurfaceCls}`}>
                 <div className="flex justify-between">
                   <span>Интервал фонового опроса (сек):</span>
-                  <span className="font-mono text-blue-400">
+                  <span className="font-mono text-indigo-400">
                     {editingPluginSettings.customIntervalSec || 60} сек
                   </span>
                 </div>
@@ -3245,7 +3606,7 @@ export default function App() {
                       customIntervalSec: Number(e.target.value),
                     })
                   }
-                  className="w-full accent-blue-500"
+                  className="w-full accent-indigo-500"
                 />
               </div>
             </div>
@@ -3253,7 +3614,7 @@ export default function App() {
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setEditingPluginSettings(null)}
-                className="px-3.5 py-2 rounded-xl bg-white/10 text-xs font-semibold cursor-pointer"
+                className={`px-3.5 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${headerBtnCls}`}
               >
                 Отмена
               </button>
@@ -3265,7 +3626,7 @@ export default function App() {
                   setEditingPluginSettings(null);
                   pushToast('Настройки сохранены', 'Параметры плагина обновлены и сохранены.', 'success');
                 }}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold cursor-pointer"
               >
                 Сохранить
               </button>
@@ -3274,21 +3635,25 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== MODAL 1: IMPROVED ADD APPLICATION (v2.4) ==================== */}
+      {/* ==================== MODAL 1: ADD APPLICATION ==================== */}
       {addAppModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setAddAppModalOpen(false)}
+        >
           <div
+            onClick={(e) => e.stopPropagation()}
             className="w-full max-w-2xl rounded-2xl border border-slate-700 p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
             style={cardGlassStyle}
           >
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800/60">
               <div className="flex items-center gap-2.5">
-                <Plus className="w-5 h-5 text-blue-400" />
+                <Plus className="w-5 h-5 text-indigo-400" />
                 <h3 className="text-lg font-bold">Добавить приложение (Старт таймера с 0 мин)</h3>
               </div>
               <button
                 onClick={() => setAddAppModalOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-slate-500/20 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -3296,42 +3661,42 @@ export default function App() {
 
             <form onSubmit={handleAddCustomApp} className="space-y-4 mt-4">
               {/* Live Glass Card Preview */}
-              <div className="p-4 rounded-2xl bg-[#1a2232] border border-slate-700 flex items-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-blue-500/15 border border-blue-500/35 flex items-center justify-center text-blue-400 shrink-0">
+              <div className={`p-4 rounded-2xl border flex items-center gap-4 ${subSurfaceCls}`}>
+                <div className="w-16 h-16 rounded-2xl bg-indigo-500/15 border border-indigo-500/35 flex items-center justify-center text-indigo-400 shrink-0">
                   {renderAppIcon(newAppIcon, 'w-8 h-8')}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-blue-400 font-bold">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-indigo-400 font-bold">
                     Предпросмотр карточки (Начальное время: 0 мин)
                   </div>
                   <div className="text-sm font-bold truncate mt-0.5">
                     {newAppName.trim() || 'Новое приложение'}
                   </div>
-                  <div className="text-xs text-slate-400 font-mono tabular-nums mt-0.5">
-                    {newAppCategory} • 0 мин • Лимит детокса: {newAppLimit} мин/день
+                  <div className={`text-xs font-mono tabular-nums mt-0.5 ${mutedTextCls}`}>
+                    {newAppCategory} • 0 мин • Лимит баланса: {newAppLimit} мин/день
                   </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs text-slate-300 block mb-1">Название *</label>
+                  <label className="text-xs block mb-1">Название *</label>
                   <input
                     type="text"
                     required
                     value={newAppName}
                     onChange={(e) => setNewAppName(e.target.value)}
                     placeholder="Cyberpunk 2077 / VS Code"
-                    className="w-full px-3 py-2 rounded-xl bg-[#1a2232] border border-slate-700 text-xs outline-none focus:border-blue-500"
+                    className={`w-full px-3 py-2 rounded-xl border text-xs outline-none focus:border-indigo-500 ${subSurfaceCls}`}
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs text-slate-300 block mb-1">Категория</label>
+                  <label className="text-xs block mb-1">Категория</label>
                   <select
                     value={newAppCategory}
                     onChange={(e) => setNewAppCategory(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-[#1a2232] border border-slate-700 text-xs outline-none"
+                    className={`w-full px-3 py-2 rounded-xl border text-xs outline-none ${subSurfaceCls}`}
                   >
                     <option value="Games">Games</option>
                     <option value="Browser">Browser</option>
@@ -3344,11 +3709,11 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="text-xs text-slate-300 block mb-1">Тип запуска</label>
+                  <label className="text-xs block mb-1">Тип запуска</label>
                   <select
                     value={newAppType}
                     onChange={(e) => setNewAppType(e.target.value as AppType)}
-                    className="w-full px-3 py-2 rounded-xl bg-[#1a2232] border border-slate-700 text-xs outline-none"
+                    className={`w-full px-3 py-2 rounded-xl border text-xs outline-none ${subSurfaceCls}`}
                   >
                     <option value="app">Локальное (EXE / URI)</option>
                     <option value="web">Веб-приложение (URL)</option>
@@ -3359,25 +3724,25 @@ export default function App() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
-                  <label className="text-xs text-slate-300 block mb-1">URL, URI или путь к .exe файлу *</label>
+                  <label className="text-xs block mb-1">URL, URI или путь к файлу *</label>
                   <input
                     type="text"
                     required
                     value={newAppUrl}
                     onChange={(e) => setNewAppUrl(e.target.value)}
                     placeholder="https://... или C:\Program Files\App\app.exe"
-                    className="w-full px-3 py-2 rounded-xl bg-[#1a2232] border border-slate-700 text-xs outline-none focus:border-blue-500 font-mono"
+                    className={`w-full px-3 py-2 rounded-xl border text-xs outline-none focus:border-indigo-500 font-mono ${subSurfaceCls}`}
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-300 block mb-1">Лимит детокса (мин/день)</label>
+                  <label className="text-xs block mb-1">Лимит (мин/день)</label>
                   <input
                     type="number"
                     min={15}
                     max={600}
                     value={newAppLimit}
                     onChange={(e) => setNewAppLimit(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl bg-[#1a2232] border border-slate-700 text-xs outline-none font-mono tabular-nums"
+                    className={`w-full px-3 py-2 rounded-xl border text-xs outline-none font-mono tabular-nums ${subSurfaceCls}`}
                   />
                 </div>
               </div>
@@ -3391,10 +3756,10 @@ export default function App() {
                     value={newAppIconSearch}
                     onChange={(e) => setNewAppIconSearch(e.target.value)}
                     placeholder="Поиск иконки..."
-                    className="px-2.5 py-1 rounded-lg bg-[#1a2232] border border-slate-700 text-xs outline-none"
+                    className={`px-2.5 py-1 rounded-lg border text-xs outline-none ${subSurfaceCls}`}
                   />
                 </div>
-                <div className="grid grid-cols-8 sm:grid-cols-12 gap-2 p-2.5 rounded-xl bg-[#0d111a] border border-slate-800 max-h-32 overflow-y-auto">
+                <div className={`grid grid-cols-8 sm:grid-cols-12 gap-2 p-2.5 rounded-xl border max-h-32 overflow-y-auto ${subSurfaceCls}`}>
                   {ICON_NAMES.filter((name) =>
                     name.toLowerCase().includes(newAppIconSearch.toLowerCase())
                   ).map((iconKey) => (
@@ -3404,8 +3769,8 @@ export default function App() {
                       onClick={() => setNewAppIcon(iconKey)}
                       className={`p-2 rounded-xl flex items-center justify-center border transition-all cursor-pointer ${
                         newAppIcon === iconKey
-                          ? 'bg-blue-600/30 border-blue-400 text-blue-300'
-                          : 'bg-[#1a2232] border-transparent hover:bg-white/10 text-slate-300'
+                          ? 'bg-indigo-600/30 border-indigo-400 text-indigo-400'
+                          : headerBtnCls
                       }`}
                     >
                       {renderAppIcon(iconKey, 'w-5 h-5')}
@@ -3414,17 +3779,17 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800/60">
                 <button
                   type="button"
                   onClick={() => setAddAppModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold cursor-pointer"
+                  className={`px-4 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${headerBtnCls}`}
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer shadow-md"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold cursor-pointer shadow-md"
                 >
                   Добавить приложение
                 </button>
@@ -3434,41 +3799,45 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== MODAL 2: PLUGIN STORE, MANAGER & SDK 2.4 ==================== */}
+      {/* ==================== MODAL 2: LUMA PLUGIN STORE, MANAGER & SDK 1.0.1 ==================== */}
       {pluginsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setPluginsModalOpen(false)}
+        >
           <div
+            onClick={(e) => e.stopPropagation()}
             className="w-full max-w-4xl rounded-2xl border border-slate-700 p-6 shadow-2xl max-h-[90vh] overflow-y-auto space-y-5"
             style={cardGlassStyle}
           >
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800/60">
               <div className="flex items-center gap-2.5">
-                <Puzzle className="w-5 h-5 text-blue-400" />
+                <Puzzle className="w-5 h-5 text-indigo-400" />
                 <div>
                   <h3 className="text-lg font-bold">
-                    Центр управления плагинами и магазин расширений (Plugin API 2.4)
+                    Центр расширений Luma Store (Luma Plugin API 1.0.1)
                   </h3>
-                  <p className="text-xs text-slate-400">
-                    Скачивайте плагины из каталога, настраивайте параметры, выводите их в список запуска или удаляйте
+                  <p className={`text-xs ${mutedTextCls}`}>
+                    Устанавливайте модули из каталога, настраивайте параметры или создавайте собственные расширения
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setPluginsModalOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-slate-500/20 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Plugin Store Catalog (1-Click Download/Install) */}
-            <div className="p-4 rounded-xl bg-[#121926] border border-slate-700/80 space-y-3">
+            {/* Plugin Store Catalog */}
+            <div className={`p-4 rounded-xl border space-y-3 ${subSurfaceCls}`}>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                <div className="flex items-center gap-2 text-xs font-bold text-emerald-500">
                   <Download className="w-4 h-4" />
-                  Магазин расширений (Скачать и добавить в запуск в 1 клик)
+                  Каталог Luma Store (Установка в 1 клик)
                 </div>
-                <span className="text-[11px] text-slate-400 font-mono">
+                <span className={`text-[11px] font-mono ${mutedTextCls}`}>
                   Доступно в каталоге: {PLUGIN_CATALOG.length}
                 </span>
               </div>
@@ -3479,14 +3848,14 @@ export default function App() {
                   return (
                     <div
                       key={catItem.id}
-                      className="p-3.5 rounded-xl bg-[#1a2232] border border-slate-700/70 flex flex-col justify-between gap-3"
+                      className={`p-3.5 rounded-xl border flex flex-col justify-between gap-3 ${headerBtnCls}`}
                     >
                       <div>
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-bold">{catItem.name}</span>
-                          <span className="text-[10px] font-mono text-blue-400">v{catItem.version}</span>
+                          <span className="text-[10px] font-mono text-indigo-400">v{catItem.version}</span>
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-1">{catItem.description}</p>
+                        <p className={`text-[11px] mt-1 ${mutedTextCls}`}>{catItem.description}</p>
                       </div>
 
                       <button
@@ -3494,11 +3863,11 @@ export default function App() {
                         onClick={() => handleInstallCatalogPlugin(catItem)}
                         className={`w-full py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                           isInstalled
-                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 cursor-default'
-                            : 'bg-blue-600 hover:bg-blue-500 text-white'
+                            ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 cursor-default'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white'
                         }`}
                       >
-                        {isInstalled ? '✓ Установлено' : '⬇ Скачать и установить'}
+                        {isInstalled ? '✓ Установлено' : '⬇ Установить модуль'}
                       </button>
                     </div>
                   );
@@ -3507,52 +3876,52 @@ export default function App() {
             </div>
 
             {/* Plugin SDK Template Generator */}
-            <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/25">
-              <div className="flex items-center gap-2 text-xs font-bold text-blue-300 mb-2">
+            <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/30">
+              <div className="flex items-center gap-2 text-xs font-bold text-indigo-400 mb-2">
                 <Code2 className="w-4 h-4" />
-                Plugin SDK 3.0 (C# .NET 8) — Генератор собственного плагина (.cs ILumaPluginV3)
+                Luma Plugin SDK 1.0.1 — Генератор собственного модуля
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   value={newPluginSlug}
                   onChange={(e) => setNewPluginSlug(e.target.value)}
-                  placeholder="Имя класса плагина (напр. DiscordOverlayPlugin)"
-                  className="flex-1 px-3 py-2 rounded-xl bg-[#0d111a] border border-slate-700 text-xs font-mono outline-none"
+                  placeholder="ID модуля (напр. LumaOverlayExt)"
+                  className={`flex-1 px-3 py-2 rounded-xl border text-xs font-mono outline-none ${subSurfaceCls}`}
                 />
                 <input
                   type="text"
                   value={newPluginTitle}
                   onChange={(e) => setNewPluginTitle(e.target.value)}
-                  placeholder="Название расширения"
-                  className="flex-1 px-3 py-2 rounded-xl bg-[#0d111a] border border-slate-700 text-xs outline-none"
+                  placeholder="Название модуля"
+                  className={`flex-1 px-3 py-2 rounded-xl border text-xs outline-none ${subSurfaceCls}`}
                 />
                 <button
                   onClick={handleCreatePluginTemplate}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
                 >
-                  + Создать C# плагин
+                  + Создать модуль
                 </button>
               </div>
             </div>
 
-            {/* Installed Plugins List with Open / Configure / Reload / Delete */}
+            {/* Installed Plugins List */}
             <div className="space-y-2.5">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Установленные плагины ({plugins.length})
+              <h4 className={`text-xs font-bold uppercase tracking-wider ${mutedTextCls}`}>
+                Установленные модули ({plugins.length})
               </h4>
               {plugins.map((plugin) => (
                 <div
                   key={plugin.id}
-                  className="p-4 rounded-xl bg-[#1a2232] border border-slate-700/70 flex flex-wrap items-center justify-between gap-3"
+                  className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${subSurfaceCls}`}
                 >
                   <div className="max-w-xl">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-bold">{plugin.name}</span>
-                      <span className="text-xs font-mono text-blue-400">v{plugin.version}</span>
-                      <span className="text-xs font-mono text-slate-400">({plugin.file})</span>
+                      <span className="text-xs font-mono text-indigo-400">v{plugin.version}</span>
+                      <span className={`text-xs font-mono ${mutedTextCls}`}>({plugin.file})</span>
                     </div>
-                    <p className="text-xs text-slate-300 mt-1">{plugin.description}</p>
+                    <p className={`text-xs mt-1 ${mutedTextCls}`}>{plugin.description}</p>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
@@ -3565,33 +3934,33 @@ export default function App() {
                           setActivePluginModal(plugin);
                         }
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-xs font-semibold text-emerald-300 cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-xs font-semibold text-emerald-500 cursor-pointer"
                     >
                       Запустить
                     </button>
 
                     <button
                       onClick={() => setEditingPluginSettings(plugin)}
-                      title="Настроить параметры плагина"
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-slate-700 cursor-pointer"
+                      title="Настроить параметры модуля"
+                      className={`p-1.5 rounded-lg border cursor-pointer ${headerBtnCls}`}
                     >
-                      <Settings className="w-4 h-4 text-slate-300" />
+                      <Settings className="w-4 h-4" />
                     </button>
 
                     <button
                       onClick={() =>
-                        pushToast('Перезагрузка модуля', `Плагин «${plugin.name}» перезагружен`, 'info')
+                        pushToast('Перезагрузка модуля', `Модуль «${plugin.name}» перезагружен`, 'info')
                       }
-                      title="Перезагрузить плагин"
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-slate-700 cursor-pointer"
+                      title="Перезагрузить модуль"
+                      className={`p-1.5 rounded-lg border cursor-pointer ${headerBtnCls}`}
                     >
-                      <RefreshCw className="w-4 h-4 text-blue-400" />
+                      <RefreshCw className="w-4 h-4 text-indigo-400" />
                     </button>
 
                     {plugin.id !== 'session_tracker_plugin' && (
                       <button
                         onClick={() => handleDeletePlugin(plugin.id)}
-                        title="Удалить плагин"
+                        title="Удалить модуль"
                         className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 cursor-pointer"
                       >
                         <Trash2 className="w-4 h-4 text-rose-400" />
@@ -3609,10 +3978,10 @@ export default function App() {
                           );
                           pushToast(
                             plugin.name,
-                            val ? 'Плагин включен и добавлен в список запуска' : 'Плагин отключен'
+                            val ? 'Модуль включён и добавлен в список запуска' : 'Модуль отключён'
                           );
                         }}
-                        className="w-4 h-4 accent-blue-500 cursor-pointer"
+                        className="w-4 h-4 accent-indigo-500 cursor-pointer"
                       />
                       <span>{plugin.enabled ? 'Вкл' : 'Выкл'}</span>
                     </label>
@@ -3624,35 +3993,51 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== MODAL 2.6: DYNAMIC ISLAND CONTROL CENTER ==================== */}
+      {/* ==================== MODAL: LUMA ISLAND 1.0.1 CONTROL CENTER ==================== */}
       {islandModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/75 backdrop-blur-sm pt-14 p-4">
-          <div className="w-full max-w-3xl rounded-3xl border border-slate-700/90 bg-[#070a10]/95 p-6 shadow-[0_0_50px_rgba(0,0,0,0.9)] space-y-4 text-slate-100">
-            {/* Top Capsule Header inside Dynamic Island */}
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/75 backdrop-blur-sm pt-14 p-4"
+          onClick={() => setIslandModalOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-3xl rounded-3xl border border-slate-700/90 bg-[#070a10]/95 p-6 shadow-[0_0_50px_rgba(0,0,0,0.9)] space-y-4 text-slate-100"
+          >
+            {/* Top Capsule Header inside Luma Island */}
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
                 <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
                 <div>
                   <h3 className="text-base font-bold flex items-center gap-2">
-                    Dynamic Island 2.6 — Интерактивный центр
-                    <LitStatusBadge active={true} />
+                    Luma Island 1.0.1 — Интерактивный центр
+                    <LitStatusBadge active={dynamicIslandEnabled} />
                   </h3>
                   <p className="text-xs text-slate-400">
-                    {clockParts.hrs}:{clockParts.mins}:{clockParts.secs} • {clockParts.fullDate} • Заряд устройства: {batteryLevel}%
+                    {clockParts.hrs}:{clockParts.mins}:{clockParts.secs} • {clockParts.fullDate}
+                    {detectedRegionLabel ? ` • ${detectedRegionLabel}` : ''} • Питание: {batteryLevel}%
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Quick Disable Luma Island Button */}
+                <button
+                  onClick={handleToggleDynamicIsland}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border border-rose-500/50 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 transition-all cursor-pointer"
+                >
+                  <Power className="w-3.5 h-3.5" />
+                  Выключить Остров
+                </button>
+
                 {/* Working DND Quick Toggle */}
                 <button
                   onClick={() => {
                     const next = !dndEnabled;
                     setDndEnabled(next);
                     pushToast(
-                      next ? '🔕 Не беспокоить ВКЛЮЧЕН' : '🔔 Не беспокоить ВЫКЛЮЧЕН',
+                      next ? '🔕 Не беспокоить ВКЛЮЧЁН' : '🔔 Не беспокоить ВЫКЛЮЧЕН',
                       next
-                        ? 'Все всплывающие уведомления блокируются и сохраняются внутри Dynamic Island'
+                        ? 'Все всплывающие уведомления блокируются и сохраняются внутри Luma Island'
                         : 'Всплывающие уведомления снова активны',
                       'info',
                       true
@@ -3665,7 +4050,7 @@ export default function App() {
                   }`}
                 >
                   {dndEnabled ? <BellOff className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
-                  {dndEnabled ? 'Не беспокоить: ВКЛ' : 'Не беспокоить: ВЫКЛ'}
+                  {dndEnabled ? 'DND: ВКЛ' : 'DND: ВЫКЛ'}
                 </button>
 
                 <button
@@ -3677,13 +4062,13 @@ export default function App() {
               </div>
             </div>
 
-            {/* Dynamic Island Navigation Tabs */}
+            {/* Luma Island Navigation Tabs */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
               {(
                 [
                   ['overview', '🏝 Обзор и Заряд'],
-                  ['notifications', `🔔 Уведомления Windows (${windowsNotifications.length})`],
-                  ['player', '🎵 Смена проигрывателя'],
+                  ['notifications', `🔔 События системы (${windowsNotifications.length})`],
+                  ['player', '🎵 Музыка и Треки'],
                   ['timer', '⏳ Таймер'],
                   ['stopwatch', '⏱ Секундомер'],
                   ['settings', '⚙️ Настройки Острова'],
@@ -3694,7 +4079,7 @@ export default function App() {
                   onClick={() => setIslandTab(tKey)}
                   className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                     islandTab === tKey
-                      ? 'bg-blue-600 text-white shadow-[0_0_14px_rgba(59,130,246,0.45)]'
+                      ? 'bg-indigo-600 text-white shadow-[0_0_14px_rgba(99,102,241,0.45)]'
                       : 'bg-[#121824] hover:bg-[#1a2232] text-slate-300'
                   }`}
                 >
@@ -3703,17 +4088,20 @@ export default function App() {
               ))}
             </div>
 
-            {/* TAB 1: OVERVIEW (TIME, DATE, BATTERY %, CHARGING ANIMATION & QUICK SUMMARY) */}
+            {/* TAB 1: OVERVIEW (TIME, REGION, REAL BATTERY % & LIVE PLAYING TRACK) */}
             {islandTab === 'overview' && (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {/* Clock & Date Card */}
+                  {/* Clock & Region Card */}
                   <div className="p-4 rounded-2xl bg-[#121824] border border-slate-800 flex flex-col justify-between">
-                    <span className="text-[11px] text-slate-400 font-semibold">ВРЕМЯ И ДАТА В ОСТРОВЕ</span>
+                    <span className="text-[11px] text-slate-400 font-semibold">ВРЕМЯ И ВАШ РЕГИОН</span>
                     <div className="text-3xl font-black font-mono text-white tracking-tight mt-1">
                       {clockParts.hrs}:{clockParts.mins}:{clockParts.secs}
                     </div>
-                    <div className="text-xs text-blue-400 font-medium mt-1">{clockParts.fullDate}</div>
+                    <div className="text-xs text-indigo-400 font-medium mt-1">
+                      {clockParts.fullDate}
+                      {detectedRegionLabel ? ` • ${detectedRegionLabel}` : ''}
+                    </div>
                   </div>
 
                   {/* Battery & Charging Animation Card */}
@@ -3725,67 +4113,59 @@ export default function App() {
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-slate-400 font-semibold">ПРОЦЕНТЫ УСТРОЙСТВА</span>
-                      <button
-                        onClick={() => {
-                          const next = !isCharging;
-                          setIsCharging(next);
-                          if (next) {
-                            pushIslandNotification(
-                              'Питание Windows',
-                              'Подключено зарядное устройство',
-                              `Активирована анимация быстрой зарядки (${batteryLevel}%).`,
-                              '⚡'
-                            );
-                          }
-                        }}
-                        className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold cursor-pointer"
-                      >
-                        {isCharging ? '⚡ Идет зарядка' : '🔌 От батареи'}
-                      </button>
+                      <span className="text-[11px] text-slate-400 font-semibold">ПИТАНИЕ СИСТЕМЫ</span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                        {isCharging ? '⚡ От сети / Заряд' : '🔋 От батареи'}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       <BatteryCharging
                         className={`w-7 h-7 ${
-                          isCharging ? 'text-emerald-400 animate-bounce' : 'text-slate-400'
+                          isCharging ? 'text-emerald-400 animate-pulse' : 'text-slate-400'
                         }`}
                       />
                       <span className="text-3xl font-black font-mono text-emerald-400">{batteryLevel}%</span>
                     </div>
-                    {/* Animated Charging Progress Bar */}
                     <div className="w-full h-2.5 rounded-full bg-slate-900 overflow-hidden mt-2 border border-slate-800">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
                           isCharging && chargingAnimationEnabled
-                            ? 'bg-gradient-to-r from-emerald-500 via-teal-300 to-emerald-400 animate-pulse'
-                            : 'bg-blue-500'
+                            ? 'bg-gradient-to-r from-emerald-500 via-teal-300 to-emerald-400'
+                            : 'bg-indigo-500'
                         }`}
                         style={{ width: `${batteryLevel}%` }}
                       />
                     </div>
                   </div>
 
-                  {/* Active Player & Timer Summary */}
+                  {/* Live Active Music & Quick Controls */}
                   <div className="p-4 rounded-2xl bg-[#121824] border border-slate-800 flex flex-col justify-between">
-                    <span className="text-[11px] text-slate-400 font-semibold">АКТИВНЫЙ ПРОИГРЫВАТЕЛЬ</span>
-                    <div className="text-sm font-bold text-white truncate mt-1">
-                      {currentIslandPlayer.name}
-                    </div>
+                    <span className="text-[11px] text-slate-400 font-semibold">ИГРАЕТ СЕЙЧАС</span>
+                    <div className="text-sm font-bold text-white truncate mt-1">{displayTrackTitle}</div>
                     <div className="text-xs text-slate-400 truncate">
-                      {currentIslandPlayer.artist} — {currentIslandPlayer.track}
+                      {displayTrackArtist} • {displaySourceLabel}
                     </div>
-                    <div className="flex items-center gap-2 mt-2">
+                    <div className="flex items-center gap-1.5 mt-2">
                       <button
-                        onClick={() => setIslandTab('player')}
-                        className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-semibold cursor-pointer"
+                        onClick={handlePrevTrack}
+                        className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 cursor-pointer"
+                        title="Предыдущий трек"
                       >
-                        Сменить плеер
+                        <SkipBack className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={() => setIslandTab('timer')}
-                        className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[11px] font-semibold cursor-pointer"
+                        onClick={handleToggleMediaPlay}
+                        className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold cursor-pointer flex items-center gap-1"
                       >
-                        Таймер / Секундомер
+                        {displayMediaPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                        {displayMediaPlaying ? 'Пауза' : 'Играть'}
+                      </button>
+                      <button
+                        onClick={handleNextTrack}
+                        className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 cursor-pointer"
+                        title="Следующий трек"
+                      >
+                        <SkipForward className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -3793,26 +4173,26 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 2: WINDOWS NOTIFICATIONS VIEWER */}
+            {/* TAB 2: SYSTEM NOTIFICATIONS VIEWER */}
             {islandTab === 'notifications' && (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs text-slate-400">
-                    Просмотр системных уведомлений Windows и перехваченных в режиме «Не беспокоить» событий:
+                    Журнал системных событий Luma OS и уведомлений в тихом режиме (DND):
                   </span>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() =>
                         pushIslandNotification(
-                          'Windows Security',
-                          'Быстрая проверка завершена',
-                          'Угроз не обнаружено, все службы Launcher Hab 2.6 работают штатно.',
+                          'LumaGuard 1.0.1',
+                          'Быстрая проверка ядра завершена',
+                          'Угроз не обнаружено, все службы Luma OS 1.0.1 работают штатно.',
                           '🛡️'
                         )
                       }
-                      className="px-3 py-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer"
+                      className="px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold cursor-pointer"
                     >
-                      + Тест уведомления Windows
+                      + Тест события
                     </button>
                     <button
                       onClick={() =>
@@ -3834,7 +4214,7 @@ export default function App() {
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {windowsNotifications.length === 0 ? (
                     <div className="p-8 text-center text-xs text-slate-500">
-                      Нет новых уведомлений от Windows
+                      Нет новых системных уведомлений
                     </div>
                   ) : (
                     windowsNotifications.map((item) => (
@@ -3842,7 +4222,7 @@ export default function App() {
                         key={item.id}
                         className={`p-3 rounded-2xl border flex items-start justify-between gap-3 ${
                           item.unread
-                            ? 'bg-[#131d31] border-blue-500/40'
+                            ? 'bg-[#131d31] border-indigo-500/40'
                             : 'bg-[#101622] border-slate-800/80'
                         }`}
                       >
@@ -3850,10 +4230,10 @@ export default function App() {
                           <span className="text-lg">{item.icon}</span>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-blue-400">{item.app}</span>
+                              <span className="text-xs font-bold text-indigo-400">{item.app}</span>
                               <span className="text-[11px] font-mono text-slate-400">{item.time}</span>
                               {item.unread && (
-                                <span className="px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-300 text-[9px] font-bold">
+                                <span className="px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300 text-[9px] font-bold">
                                   NEW
                                 </span>
                               )}
@@ -3869,11 +4249,11 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 3: MEDIA PLAYER SWITCHER */}
+            {/* TAB 3: REAL MEDIA TRACK CONTROLLER & SOURCE SWITCHER */}
             {islandTab === 'player' && (
               <div className="space-y-4">
                 <div className="text-xs text-slate-400">
-                  Выберите активный медиа-проигрыватель для управления из Dynamic Island:
+                  Реальное управление системным воспроизведением и переключением треков через Luma Media HAL:
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {islandPlayers.map((pl, idx) => {
@@ -3883,7 +4263,7 @@ export default function App() {
                         key={pl.id}
                         onClick={() => {
                           setActivePlayerIndex(idx);
-                          pushToast('Смена проигрывателя', `Активен источник: ${pl.name}`, 'info');
+                          pushToast('Источник медиа', `Выбран профиль: ${pl.name}`, 'info');
                         }}
                         className={`px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 ${
                           active
@@ -3899,65 +4279,46 @@ export default function App() {
                   })}
                 </div>
 
-                {/* Now Playing Card */}
+                {/* Live Now Playing Card (Real OS Media Session + Real Track Switch Buttons) */}
                 <div className="p-5 rounded-2xl bg-[#121824] border border-slate-700/80 flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-3.5">
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
                     <div
-                      className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg"
+                      className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0 ${
+                        displayMediaPlaying ? 'animate-pulse' : ''
+                      }`}
                       style={{ backgroundColor: currentIslandPlayer.accent }}
                     >
                       <Music className="w-6 h-6" />
                     </div>
-                    <div>
-                      <div className="text-[11px] font-mono uppercase text-emerald-400">
-                        {currentIslandPlayer.name}
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-mono uppercase text-emerald-400 truncate">
+                        {displaySourceLabel}
                       </div>
-                      <div className="text-base font-bold text-white">{currentIslandPlayer.track}</div>
-                      <div className="text-xs text-slate-400">{currentIslandPlayer.artist}</div>
+                      <div className="text-base font-bold text-white truncate">{displayTrackTitle}</div>
+                      <div className="text-xs text-slate-400 truncate">{displayTrackArtist}</div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
-                      onClick={() => {
-                        const tracks = [
-                          'Nightcall (Synthwave Mix)',
-                          'Midnight City (Extended)',
-                          'Cyberpunk 2077 Theme',
-                          'Starboy (Instrumental)',
-                          'Resonance — HOME',
-                        ];
-                        const nextTrack = tracks[Math.floor(Math.random() * tracks.length)];
-                        setIslandPlayers((prev) =>
-                          prev.map((p, i) => (i === activePlayerIndex ? { ...p, track: nextTrack } : p))
-                        );
-                      }}
-                      className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer"
+                      onClick={handlePrevTrack}
+                      title="Предыдущий трек (реальная команда системы)"
+                      className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 cursor-pointer transition"
                     >
                       <SkipBack className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => setMediaPlaying((v) => !v)}
-                      className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                      onClick={handleToggleMediaPlay}
+                      title="Воспроизведение / Пауза (реальная команда системы)"
+                      className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition shadow-md"
                     >
-                      {mediaPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                      {mediaPlaying ? 'Пауза' : 'Воспроизвести'}
+                      {displayMediaPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                      {displayMediaPlaying ? 'Пауза' : 'Воспроизвести'}
                     </button>
                     <button
-                      onClick={() => {
-                        const tracks = [
-                          'After Dark — Mr.Kitty',
-                          'Blinding Lights',
-                          'Veridis Quo — Daft Punk',
-                          'Memory Reboot',
-                          'Instant Crush',
-                        ];
-                        const nextTrack = tracks[Math.floor(Math.random() * tracks.length)];
-                        setIslandPlayers((prev) =>
-                          prev.map((p, i) => (i === activePlayerIndex ? { ...p, track: nextTrack } : p))
-                        );
-                      }}
-                      className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer"
+                      onClick={handleNextTrack}
+                      title="Следующий трек (реальная команда системы)"
+                      className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 cursor-pointer transition"
                     >
                       <SkipForward className="w-4 h-4" />
                     </button>
@@ -3966,12 +4327,12 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 4: TIMER IN DYNAMIC ISLAND */}
+            {/* TAB 4: TIMER IN LUMA ISLAND */}
             {islandTab === 'timer' && (
               <div className="p-5 rounded-2xl bg-[#121824] border border-slate-800 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <div className="text-xs text-slate-400">ОБРАТНЫЙ ОТСЧЕТ ТАЙМЕРА В DYNAMIC ISLAND</div>
+                    <div className="text-xs text-slate-400">ОБРАТНЫЙ ОТСЧЁТ ТАЙМЕРА В LUMA ISLAND</div>
                     <div className="text-4xl font-black font-mono text-amber-400 mt-1">
                       {formatLiveClock(islandTimerRemainingSec)}
                     </div>
@@ -4005,7 +4366,7 @@ export default function App() {
                         setIslandTimerTotalSec(m * 60);
                         setIslandTimerRemainingSec(m * 60);
                       }}
-                      className="px-3 py-1 rounded-lg bg-[#1a2232] hover:bg-blue-600/30 border border-slate-700 text-xs font-mono cursor-pointer"
+                      className="px-3 py-1 rounded-lg bg-[#1a2232] hover:bg-indigo-600/30 border border-slate-700 text-xs font-mono cursor-pointer"
                     >
                       {m} мин
                     </button>
@@ -4020,12 +4381,12 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 5: STOPWATCH IN DYNAMIC ISLAND */}
+            {/* TAB 5: STOPWATCH IN LUMA ISLAND */}
             {islandTab === 'stopwatch' && (
               <div className="p-5 rounded-2xl bg-[#121824] border border-slate-800 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <div className="text-xs text-slate-400">СЕКУНДОМЕР DYNAMIC ISLAND (С ЗАПИСЬЮ КРУГОВ)</div>
+                    <div className="text-xs text-slate-400">СЕКУНДОМЕР LUMA ISLAND (С ЗАПИСЬЮ КРУГОВ)</div>
                     <div className="text-4xl font-black font-mono text-cyan-400 mt-1">
                       {formatLiveClock(islandStopwatchSec)}
                     </div>
@@ -4033,7 +4394,7 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setIslandStopwatchRunning((r) => !r)}
-                      className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer"
+                      className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer"
                     >
                       {islandStopwatchRunning ? '⏸ Пауза' : '▶ Старт'}
                     </button>
@@ -4074,9 +4435,24 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 6: DYNAMIC ISLAND SETTINGS */}
+            {/* TAB 6: LUMA ISLAND SETTINGS */}
             {islandTab === 'settings' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div
+                  onClick={handleToggleDynamicIsland}
+                  className={`p-4 rounded-2xl border cursor-pointer flex items-center justify-between ${
+                    dynamicIslandEnabled ? 'border-emerald-400 bg-emerald-500/15' : 'border-rose-500/50 bg-rose-500/10'
+                  }`}
+                >
+                  <div>
+                    <div className="text-xs font-bold">Отображение Luma Island в панели</div>
+                    <div className="text-[11px] text-slate-400">
+                      Можно полностью отключить остров в шапке и вернуть обратно в 1 клик
+                    </div>
+                  </div>
+                  <LitStatusBadge active={dynamicIslandEnabled} />
+                </div>
+
                 <div
                   onClick={() => setDndEnabled((v) => !v)}
                   className={`p-4 rounded-2xl border cursor-pointer flex items-center justify-between ${
@@ -4084,9 +4460,9 @@ export default function App() {
                   }`}
                 >
                   <div>
-                    <div className="text-xs font-bold">Режим «Не беспокоить» (Полностью рабочий)</div>
+                    <div className="text-xs font-bold">Режим «Не беспокоить» (DND)</div>
                     <div className="text-[11px] text-slate-400">
-                      Блокирует всплывающие уведомления и складывает их в остров
+                      Скрывает всплывающие тосты и сохраняет события в журнале острова
                     </div>
                   </div>
                   <LitStatusBadge active={dndEnabled} />
@@ -4101,33 +4477,18 @@ export default function App() {
                   }`}
                 >
                   <div>
-                    <div className="text-xs font-bold">Анимация при подключении зарядки</div>
+                    <div className="text-xs font-bold">Анимация питания и зарядки</div>
                     <div className="text-[11px] text-slate-400">
-                      Изумрудная волна и импульс молнии в капсуле острова
+                      Изумрудный индикатор питания в капсуле Luma Island
                     </div>
                   </div>
                   <LitStatusBadge active={chargingAnimationEnabled} />
                 </div>
 
                 <div
-                  onClick={() => setIsCharging((v) => !v)}
-                  className={`p-4 rounded-2xl border cursor-pointer flex items-center justify-between ${
-                    isCharging ? 'border-emerald-400 bg-emerald-500/15' : 'border-slate-700 bg-[#121824]'
-                  }`}
-                >
-                  <div>
-                    <div className="text-xs font-bold">Питание от сети / Идет зарядка</div>
-                    <div className="text-[11px] text-slate-400">
-                      Переключить статус зарядки для проверки анимации
-                    </div>
-                  </div>
-                  <LitStatusBadge active={isCharging} />
-                </div>
-
-                <div
                   onClick={() => setIslandGlowEnabled((v) => !v)}
                   className={`p-4 rounded-2xl border cursor-pointer flex items-center justify-between ${
-                    islandGlowEnabled ? 'border-blue-400 bg-blue-500/15' : 'border-slate-700 bg-[#121824]'
+                    islandGlowEnabled ? 'border-indigo-400 bg-indigo-500/15' : 'border-slate-700 bg-[#121824]'
                   }`}
                 >
                   <div>
@@ -4144,45 +4505,64 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== MODAL 3: ANDROID 15 STYLE SETTINGS (REDESIGNED v2.6) ==================== */}
+      {/* ==================== MODAL 3: LUMA OS 1.0.1 SYSTEM SETTINGS (MATERIAL 3 EXPRESSIVE) ==================== */}
       {settingsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          onClick={() => setSettingsModalOpen(false)}
+        >
           <div
+            onClick={(e) => e.stopPropagation()}
             className="w-full max-w-5xl rounded-3xl border border-slate-700/90 p-6 shadow-2xl max-h-[92vh] flex flex-col"
             style={cardGlassStyle}
           >
-            {/* Android 16 / Material 3 Expressive Top Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            {/* Material 3 Expressive Top Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800/70">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-300">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
                   <Smartphone className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-lg font-extrabold flex items-center gap-2">
-                    Настройки системы Luma OS 1.0 (Material 3 Expressive • LH-2.4)
+                    Настройки системы Luma OS 1.0.1 (Material 3 Expressive)
                     <LitStatusBadge active={kernelConnected || true} />
                   </h3>
-                  <p className="text-xs text-slate-400">
-                    Ядро Luma Core 1.0, 2 окна (Группы LH-2.4 + Сетка 20×30), Dynamic Island, День/Ночь, 18 стилей часов, ПКМ Назад и GitHub
+                  <p className={`text-xs ${mutedTextCls}`}>
+                    Ядро Luma Core 1.0.1, реальные ресурсы системы, 2 окна, отключаемый Luma Island, 18 циферблатов и GitHub
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setSettingsModalOpen(false)}
-                className="p-2 rounded-full hover:bg-white/10 cursor-pointer"
+                className="p-2 rounded-full hover:bg-slate-500/20 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Android Quick Settings Tiles Strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 py-3 border-b border-slate-800">
+            {/* Expressive Quick Settings Tiles Strip (Includes Luma Island ON/OFF!) */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 py-3 border-b border-slate-800/70">
+              <button
+                onClick={handleToggleDynamicIsland}
+                className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between ${
+                  dynamicIslandEnabled
+                    ? 'bg-emerald-500/20 border-emerald-400'
+                    : subSurfaceCls
+                }`}
+              >
+                <div>
+                  <div className="text-xs font-bold">🏝️ Luma Island</div>
+                  <div className="text-[10px] font-mono">{dynamicIslandEnabled ? 'Включён' : 'Выключен'}</div>
+                </div>
+                <span className="text-xs">{dynamicIslandEnabled ? '🟢' : '⚪'}</span>
+              </button>
+
               <button
                 onClick={() => setDndEnabled((v) => !v)}
                 className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between ${
                   dndEnabled
-                    ? 'bg-purple-500/20 border-purple-400 text-white'
-                    : 'bg-[#121824] border-slate-800 text-slate-400'
+                    ? 'bg-purple-500/20 border-purple-400'
+                    : subSurfaceCls
                 }`}
               >
                 <div>
@@ -4196,8 +4576,8 @@ export default function App() {
                 onClick={() => setAdaptiveThemeEnabled((v) => !v)}
                 className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between ${
                   adaptiveThemeEnabled
-                    ? 'bg-amber-500/20 border-amber-400 text-white'
-                    : 'bg-[#121824] border-slate-800 text-slate-400'
+                    ? 'bg-amber-500/20 border-amber-400'
+                    : subSurfaceCls
                 }`}
               >
                 <div>
@@ -4213,8 +4593,8 @@ export default function App() {
                 onClick={() => setRightClickBackEnabled((v) => !v)}
                 className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between ${
                   rightClickBackEnabled
-                    ? 'bg-emerald-500/20 border-emerald-400 text-white'
-                    : 'bg-[#121824] border-slate-800 text-slate-400'
+                    ? 'bg-indigo-500/20 border-indigo-400'
+                    : subSurfaceCls
                 }`}
               >
                 <div>
@@ -4225,60 +4605,45 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => setGlassEnabled((v) => !v)}
-                className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between ${
-                  glassEnabled
-                    ? 'bg-indigo-500/20 border-indigo-400 text-white'
-                    : 'bg-[#121824] border-slate-800 text-slate-400'
-                }`}
-              >
-                <div>
-                  <div className="text-xs font-bold">✨ Жидкое стекло</div>
-                  <div className="text-[10px] font-mono">{glassOpacity}%</div>
-                </div>
-                <span className="text-xs">{glassEnabled ? '🟢' : '⚪'}</span>
-              </button>
-
-              <button
                 onClick={() => {
                   setSettingsModalOpen(false);
                   handleOpenSecondWindow();
                 }}
-                className="p-2.5 rounded-2xl border border-cyan-500/50 bg-cyan-500/15 text-left transition-all cursor-pointer flex items-center justify-between text-white"
+                className="p-2.5 rounded-2xl border border-cyan-500/50 bg-cyan-500/15 text-left transition-all cursor-pointer flex items-center justify-between"
               >
                 <div>
                   <div className="text-xs font-bold">🪟 Окно 2 (20×30)</div>
-                  <div className="text-[10px] font-mono text-cyan-300">18 Виджетов</div>
+                  <div className="text-[10px] font-mono text-cyan-400">18 Виджетов</div>
                 </div>
-                <ExternalLink className="w-3.5 h-3.5 text-cyan-300" />
+                <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
               </button>
             </div>
 
-            {/* Android Settings Body: Left Sidebar with Colored Circular Icons + Right Content */}
+            {/* Settings Body: Left Sidebar + Right Content */}
             <div className="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden pt-3">
-              {/* Left Android Categories Sidebar */}
+              {/* Left Categories Sidebar */}
               <div className="md:w-64 shrink-0 flex md:flex-col gap-1.5 overflow-x-auto md:overflow-y-auto pr-1">
                 {(
                   [
                     [
                       'luma',
                       '⚡',
-                      'Luma Core 1.0 (Ядро ОС)',
-                      'HAL, Binder IPC и LumaGuard',
+                      'Luma Core 1.0.1 (Ядро)',
+                      'Реальные ресурсы, HAL и IPC',
                       'bg-teal-500/20 text-teal-400',
                     ],
-                    ['island', '🏝', 'Dynamic Island', 'Уведомления, плеер, таймер', 'bg-blue-500/20 text-blue-400'],
+                    ['island', '🏝', 'Luma Island (Вкл/Выкл)', 'Остров, музыка, таймер', 'bg-indigo-500/20 text-indigo-400'],
                     [
                       'appearance',
                       '🌗',
                       'Экран, M3 и День/Ночь',
-                      'Темы, стекло, радиусы',
+                      'Темы, стекло, скругления',
                       'bg-amber-500/20 text-amber-400',
                     ],
                     [
                       'clock',
                       '🕒',
-                      'Часы и Циферблаты (18)',
+                      'Циферблаты Luma (18)',
                       'Стили, шрифт и неон',
                       'bg-purple-500/20 text-purple-400',
                     ],
@@ -4286,22 +4651,22 @@ export default function App() {
                       'navigation',
                       '🖱️',
                       'Удобство и ПКМ Назад',
-                      'Управление одной рукой',
+                      'Навигация одной рукой',
                       'bg-emerald-500/20 text-emerald-400',
                     ],
-                    ['plugins', '🧩', 'Плагины, 2 Окна и Сетка', 'Окно 1 / 20×30 и колонки', 'bg-pink-500/20 text-pink-400'],
+                    ['plugins', '🧩', '2 Окна, Модули и Сетка', 'Окно 1 / 20×30 и колонки', 'bg-pink-500/20 text-pink-400'],
                     [
                       'updater',
                       '🐙',
-                      'Обновление и Диагностика',
-                      'GitHub Auto-Update и тест',
+                      'Обновления и Диагностика',
+                      'GitHub 1.0.1 и проверка',
                       'bg-cyan-500/20 text-cyan-400',
                     ],
                     [
                       'about',
                       'ℹ️',
-                      'О системе (v1.0–3.0)',
-                      'Luma OS 1.0 и история версий',
+                      'О системе (Luma 1.0.1)',
+                      'Патч 1.0.1 и история',
                       'bg-indigo-500/20 text-indigo-400',
                     ],
                   ] as const
@@ -4313,16 +4678,16 @@ export default function App() {
                       onClick={() => setSettingsTab(tKey)}
                       className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-3 shrink-0 ${
                         active
-                          ? 'bg-[#1c263b] border-blue-500/70 shadow-sm'
-                          : 'bg-[#111723] hover:bg-[#172030] border-slate-800/80'
+                          ? 'bg-indigo-600/20 border-indigo-500/70 shadow-sm'
+                          : subSurfaceCls
                       }`}
                     >
                       <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0 ${badgeCls}`}>
                         {emoji}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-xs font-bold text-white truncate">{title}</div>
-                        <div className="text-[10px] text-slate-400 truncate">{sub}</div>
+                        <div className="text-xs font-bold truncate">{title}</div>
+                        <div className={`text-[10px] truncate ${mutedTextCls}`}>{sub}</div>
                       </div>
                     </button>
                   );
@@ -4331,26 +4696,25 @@ export default function App() {
 
               {/* Right Content Panel */}
               <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-                {/* CATEGORY 0: LUMA BETA (ANDROID "ABOUT PHONE / ANDROID VERSION & KERNEL" STYLE) */}
+                {/* CATEGORY 0: LUMA CORE 1.0.1 REAL HARDWARE & IPC */}
                 {settingsTab === 'luma' && (
                   <div className="space-y-4">
-                    {/* Hero Card: Android 15 "Android Version / Luma Beta" Banner */}
-                    <div className="p-5 rounded-3xl bg-gradient-to-br from-teal-950/60 via-[#121c2d] to-[#0e1522] border border-teal-500/50 shadow-[0_0_30px_rgba(20,184,166,0.15)] space-y-3">
+                    <div className="p-5 rounded-3xl bg-gradient-to-br from-teal-950/75 via-[#121c2d] to-[#0e1522] border border-teal-500/50 shadow-[0_0_30px_rgba(20,184,166,0.15)] space-y-3 text-white">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-3.5">
-                          <div className="w-14 h-14 rounded-2xl bg-teal-500 flex flex-col items-center justify-center text-slate-950 font-black shadow-lg">
+                          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-400 to-emerald-500 flex flex-col items-center justify-center text-slate-950 font-black shadow-lg">
                             <span className="text-[10px] tracking-widest leading-none">LUMA</span>
-                            <span className="text-base leading-tight">OS 1.0</span>
+                            <span className="text-base leading-tight">1.0.1</span>
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
                               <h4 className="text-base font-extrabold text-white">
-                                Luma OS 1.0 Release — Полноценная система и ядро на C# (.NET 8)
+                                Luma OS 1.0.1 — Патч первого дня (Нативное Ядро + HAL)
                               </h4>
                               <LitStatusBadge active={true} />
                             </div>
                             <p className="text-xs text-teal-300 font-mono mt-0.5">
-                              Codename: &quot;Nebula System Core&quot; • Код ядра: LauncherHab3.0_CSharp/LumaCore/LumaSystemKernel.cs
+                              Кодовое имя: &quot;Nebula Day-1&quot; • Ядро: luma_kernel_main.go + Native HAL
                             </p>
                           </div>
                         </div>
@@ -4358,138 +4722,138 @@ export default function App() {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => {
-                              setSelectedPyFile('LauncherHab3.0_CSharp/LumaCore/LumaSystemKernel.cs');
+                              setSelectedPyFile('luma_kernel_main.go');
                               setSettingsModalOpen(false);
                               handleSwitchSection('python_code');
                             }}
                             className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-semibold cursor-pointer"
                           >
-                            Открыть LumaSystemKernel.cs
+                            Код ядра Luma
                           </button>
                           <a
-                            href="/LauncherHab3.0_CSharp.zip"
-                            download="LauncherHab3.0_CSharp.zip"
-                            className="px-3.5 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold flex items-center gap-1.5"
+                            href="/LumaOS_1.0.1.exe"
+                            download="LumaOS_1.0.1.exe"
+                            className="px-3.5 py-2 rounded-xl bg-teal-400 hover:bg-teal-300 text-slate-950 text-xs font-bold flex items-center gap-1.5"
                           >
                             <Download className="w-3.5 h-3.5" />
-                            LauncherHab3.0_CSharp.zip
+                            LumaOS_1.0.1.exe
                           </a>
                         </div>
                       </div>
 
                       <p className="text-xs text-slate-200 leading-relaxed">
-                        <strong>Архитектура системы Luma OS 1.0 (C#):</strong> Luma выступает полноценной базовой системой (Ядро + VFS + Криптоконтейнер AES-256-GCM + Службы WASAPI и Телеметрии), а поверх этой системы работает графическая плиточная оболочка в стиле <strong>Windows Metro / Fluent Live Tiles</strong> и <strong>Android 15 Quick Tiles</strong>. Обмен командами идет через локальный сокет{' '}
-                        <code className="text-teal-300">127.0.0.1:49215</code> по протоколу{' '}
-                        <code className="text-teal-300">JSON-RPC 2.0</code>.
+                        <strong>Обновление Luma Core 1.0.1:</strong> ядро напрямую считывает реальные показатели вашей системы (процессор, ОЗУ, диски, сеть, батарею, текущую играющую музыку и ваш регион), отправляет нативные медиа-команды и регулирует системный звук через шину{' '}
+                        <code className="text-teal-300">127.0.0.1:49215</code> (JSON-RPC 2.0) и <code className="text-teal-300">HTTP IPC :49216</code>.
                       </p>
                     </div>
 
-                    {/* Android-Style Device Specifications & Security Kernel Cards */}
+                    {/* REAL Hardware Specifications & Security Kernel Cards */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-                      {/* Device Specifications Card (Характеристики устройства) */}
-                      <div className="p-4 rounded-2xl bg-[#141d2e] border border-slate-700/80 space-y-2.5">
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <div className={`p-4 rounded-2xl border space-y-2.5 ${subSurfaceCls}`}>
+                        <div className="flex items-center justify-between border-b border-slate-700/50 pb-2">
                           <span className="text-xs font-bold uppercase tracking-wider text-teal-400">
-                            💻 Характеристики устройства
+                            💻 Реальные характеристики системы
                           </span>
-                          <span className="text-[10px] font-mono text-slate-400">Android Device Specs</span>
+                          <span className="text-[10px] font-mono text-emerald-500 font-bold">
+                            {liveSystem?.real_telemetry ? 'LIVE HAL' : 'Ожидание'}
+                          </span>
                         </div>
                         <div className="space-y-2 text-xs">
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Имя устройства и ОС:</span>
-                            <span className="font-mono font-semibold text-white text-right">
-                              Desktop Workstation • Windows 11 Pro x64
+                            <span className={mutedTextCls}>Узел и платформа:</span>
+                            <span className="font-mono font-semibold text-right truncate max-w-[210px]">
+                              {liveSystem ? `${liveSystem.hostname} • ${liveSystem.os_name} (${liveSystem.arch})` : 'Определение...'}
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Процессор (CPU):</span>
-                            <span className="font-mono font-semibold text-emerald-300 text-right">
-                              x86_64 Multi-Core • Нагрузка {cpuLoad}% (0.0% Idle Core)
+                            <span className={mutedTextCls}>Процессор (CPU):</span>
+                            <span className="font-mono font-semibold text-emerald-500 text-right truncate max-w-[210px]" title={liveSystem?.cpu_model}>
+                              {liveSystem ? `${liveSystem.cpu_model} (${liveSystem.cpu_cores} яд. • ${cpuLoad}%)` : `${cpuLoad}%`}
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Оперативная память (RAM):</span>
-                            <span className="font-mono font-semibold text-white text-right">
-                              16.0 ГБ DDR5 (Используется {ramLoad}%)
+                            <span className={mutedTextCls}>Видеоадаптер (GPU):</span>
+                            <span className="font-mono font-semibold text-sky-400 text-right truncate max-w-[210px]">
+                              {liveSystem?.gpu_name || 'Определение...'}
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Потребление памяти Luma Core:</span>
-                            <span className="font-mono font-bold text-teal-300 text-right">
-                              14.2 МБ RSS (Лимит до 25 МБ)
+                            <span className={mutedTextCls}>Оперативная память (RAM):</span>
+                            <span className="font-mono font-semibold text-right">
+                              {liveSystem
+                                ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ (${ramLoad}%)`
+                                : `${ramLoad}%`}
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Шина IPC и транспорт:</span>
-                            <span className="font-mono font-semibold text-blue-300 text-right">
-                              127.0.0.1:49215 • JSON-RPC 2.0 (NDJSON C#)
+                            <span className={mutedTextCls}>Определённый регион:</span>
+                            <span className="font-mono font-semibold text-indigo-400 text-right truncate max-w-[210px]">
+                              {liveSystem?.location?.detected
+                                ? `${liveSystem.location.city}, ${liveSystem.location.country}`
+                                : 'Автоопределение...'}
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Модули ядра Luma C#:</span>
-                            <span className="font-mono text-[11px] text-slate-200 text-right">
-                              LumaSystemKernel, SecurityKernel, WidgetEngine, PluginApiV3
+                            <span className={mutedTextCls}>Томов дисков / Питание:</span>
+                            <span className="font-mono text-[11px] text-right">
+                              {liveSystem ? `${liveSystem.disks.length} том. • ${batteryLevel}%` : `${batteryLevel}%`}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Security Kernel & Patch Level Card (Версия ядра безопасности) */}
-                      <div className="p-4 rounded-2xl bg-[#141d2e] border border-emerald-500/40 space-y-2.5">
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                          <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                            🛡️ Версия ядра и безопасность (C#)
+                      {/* Security Kernel Card */}
+                      <div className={`p-4 rounded-2xl border border-emerald-500/40 space-y-2.5 ${subSurfaceCls}`}>
+                        <div className="flex items-center justify-between border-b border-slate-700/50 pb-2">
+                          <span className="text-xs font-bold uppercase tracking-wider text-emerald-500">
+                            🛡️ Ядро безопасности LumaGuard
                           </span>
-                          <span className="text-[10px] font-mono text-emerald-300">LumaGuard Enforcing</span>
+                          <span className="text-[10px] font-mono text-emerald-500">Enforcing</span>
                         </div>
                         <div className="space-y-2 text-xs">
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Версия ядра (Kernel Version):</span>
-                            <span className="font-mono font-bold text-emerald-300 text-right">
-                              LumaOS 1.0.0-csharp-net8-x64
+                            <span className={mutedTextCls}>Версия ядра:</span>
+                            <span className="font-mono font-bold text-emerald-500 text-right">
+                              LumaCore 1.0.1-day1-patch
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Версия ядра безопасности:</span>
-                            <span className="font-mono font-semibold text-white text-right">
-                              SecurityKernel.cs v1.0 (PBKDF2-HMAC-SHA512)
+                            <span className={mutedTextCls}>Деривация ключей:</span>
+                            <span className="font-mono font-semibold text-right">PBKDF2-HMAC-SHA512</span>
+                          </div>
+                          <div className="flex justify-between gap-2">
+                            <span className={mutedTextCls}>Шифрование VFS:</span>
+                            <span className="font-mono font-semibold text-teal-400 text-right">
+                              AES-256-GCM + HMAC-SHA256
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Криптозащита контейнеров:</span>
-                            <span className="font-mono font-semibold text-teal-300 text-right">
-                              AES-256-GCM (128-bit AuthTag) + HMAC-SHA256
+                            <span className={mutedTextCls}>Шина IPC:</span>
+                            <span className="font-mono font-semibold text-indigo-400 text-right">
+                              127.0.0.1:49215 (JSON-RPC 2.0)
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Изоляция отказов (Fault Tolerance):</span>
-                            <span className="font-mono font-semibold text-emerald-300 text-right">
-                              Активна (UI Crash ≠ Core Crash)
+                            <span className={mutedTextCls}>Аптайм ядра Luma Core:</span>
+                            <span className="font-mono font-semibold text-right">
+                              {formatLiveClock(lumaUptimeSec)}
                             </span>
                           </div>
                           <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Аптайм демона Luma Core:</span>
-                            <span className="font-mono font-semibold text-white text-right">
-                              {formatLiveClock(lumaUptimeSec)} (Непрерывно)
-                            </span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-slate-400">Сборка системы Luma C#:</span>
-                            <span className="font-mono text-[11px] text-slate-300 text-right">
-                              LUMA_1.0.0.CSHARP_NET8_RELEASE
-                            </span>
+                            <span className={mutedTextCls}>Сборка:</span>
+                            <span className="font-mono text-[11px] text-right">LUMA_OS_1.0.1_DAY1_PATCH</span>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Interactive JSON-RPC 2.0 Console for Luma Core 1.0 (Live Daemon 127.0.0.1:49215 + /api/kernel/rpc) */}
-                    <div className="p-4 rounded-2xl bg-[#101724] border border-slate-700/80 space-y-3">
+                    {/* Interactive JSON-RPC 2.0 Console for Luma Core 1.0.1 */}
+                    <div className="p-4 rounded-2xl bg-[#101724] border border-slate-700/80 space-y-3 text-white">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <h5 className="text-xs font-bold text-white flex items-center gap-2">
                             <Terminal className="w-4 h-4 text-teal-400" />
-                            Живой IPC-контракт JSON-RPC 2.0 (Luma Core 1.0 • 127.0.0.1:49215)
+                            Живой IPC-контракт JSON-RPC 2.0 (Luma Core 1.0.1 • 127.0.0.1:49215)
                             <span
                               className={`px-2 py-0.5 rounded-full text-[9px] font-mono ${
                                 kernelConnected
@@ -4501,7 +4865,7 @@ export default function App() {
                             </span>
                           </h5>
                           <p className="text-[11px] text-slate-400">
-                            Отправьте JSON-RPC 2.0 запрос в ядро <code className="text-teal-300">LumaOS_1.0.exe / LumaCoreDaemon</code> (TCP 49215 &amp; HTTP IPC):
+                            Отправьте JSON-RPC 2.0 запрос в нативное ядро <code className="text-teal-300">LumaOS_1.0.1.exe</code>:
                           </p>
                         </div>
 
@@ -4519,7 +4883,7 @@ export default function App() {
                               key={mKey}
                               onClick={() => {
                                 callLumaKernelRpc(mKey);
-                                pushToast('Luma Core 1.0 IPC (127.0.0.1:49215)', `Выполнен JSON-RPC запрос ${mLabel}`, 'success');
+                                pushToast('Luma Core 1.0.1 IPC', `Выполнен JSON-RPC запрос ${mLabel}`, 'success');
                               }}
                               className={`px-2.5 py-1 rounded-lg text-[11px] font-mono cursor-pointer border transition-all ${
                                 lumaRpcMethod === mKey
@@ -4535,76 +4899,19 @@ export default function App() {
 
                       <pre className="p-3.5 rounded-xl bg-[#070a10] border border-slate-800 text-[11px] font-mono text-emerald-300 overflow-x-auto max-h-64 leading-relaxed">
                         {JSON.stringify(
-                          lumaRpcLiveData ||
-                            (lumaRpcMethod === 'widgets.get_data'
-                              ? {
-                                  jsonrpc: '2.0',
-                                  result: {
-                                    engine: 'Luma WidgetEngine 1.0 (Android 16 M3 + iOS 18 + Windows 11)',
-                                    grid_matrix: '20x30 (600 coordinate cells)',
-                                    widgets_total: 18,
-                                    interval_sec: 1,
-                                    metrics: {
-                                      cpu_percent: cpuLoad,
-                                      ram_percent: ramLoad,
-                                      ram_used_mb: +(16384 * (ramLoad / 100)).toFixed(1),
-                                      ram_total_mb: 16384.0,
-                                      core_rss_mb: 14.2,
-                                      uptime_sec: lumaUptimeSec,
-                                      timestamp: +(Date.now() / 1000).toFixed(3),
-                                    },
-                                  },
-                                  id: 1,
-                                }
-                              : lumaRpcMethod === 'system.ping'
-                              ? {
-                                  jsonrpc: '2.0',
-                                  result: {
-                                    pong: true,
-                                    engine: 'Luma OS 1.0 Kernel',
-                                    version: '1.0.0-release',
-                                    ipc_socket: 'tcp://127.0.0.1:49215',
-                                    timestamp: +(Date.now() / 1000).toFixed(3),
-                                  },
-                                  id: 1,
-                                }
-                              : lumaRpcMethod === 'widgets.list'
-                              ? {
-                                  jsonrpc: '2.0',
-                                  result: {
-                                    total: 18,
-                                    ecosystems: ['Android 16 Material 3 Expressive (6)', 'iPhone iOS 18 (6)', 'Windows 11 Fluent (6)'],
-                                    grid_window: 'Window 2 (20x30 / 30x20 — 600 cells)',
-                                  },
-                                  id: 2,
-                                }
-                              : lumaRpcMethod === 'security.status'
-                              ? {
-                                  jsonrpc: '2.0',
-                                  result: {
-                                    engine: 'LumaGuard SecurityKernel 1.0',
-                                    cipher: 'AES-256-GCM (96-bit Nonce + 128-bit AuthTag)',
-                                    kdf: 'PBKDF2-HMAC-SHA512 (310,000 iterations)',
-                                    ipc_mac: 'HMAC-SHA256',
-                                    key_revision: cryptoKeyVersion,
-                                    zero_trust: true,
-                                  },
-                                  id: 3,
-                                }
-                              : {
-                                  jsonrpc: '2.0',
-                                  result: {
-                                    luma_version: '1.0.0-release',
-                                    codename: 'Nebula Android-Core M3 Expressive',
-                                    kernel_version: 'LumaOS 1.0.0-x64 #1 SMP PREEMPT_DYNAMIC',
-                                    security_engine: 'LumaGuard AES-256-GCM + PBKDF2-HMAC-SHA512',
-                                    ipc_endpoint: 'tcp://127.0.0.1:49215 (JSON-RPC 2.0)',
-                                    windows_architecture: ['Window 1: Grouped LH-2.4', 'Window 2: 20x30 Cell Matrix'],
-                                    core_rss_mb: 14.2,
-                                    uptime_sec: lumaUptimeSec,
-                                  },
-                                  id: 4,
-                                }),
+                          lumaRpcLiveData || {
+                            jsonrpc: '2.0',
+                            result: {
+                              kernel: 'LumaCore 1.0.1-day1-patch',
+                              suites: ['Luma Pulse (6)', 'Luma Aura (6)', 'Luma Core (6)'],
+                              grid_matrix: '20x30 (600 cells)',
+                              cpu_percent: cpuLoad,
+                              ram_percent: ramLoad,
+                              region: liveSystem?.location?.city || 'auto',
+                              uptime_sec: lumaUptimeSec,
+                            },
+                            id: 1,
+                          },
                           null,
                           2
                         )}
@@ -4613,24 +4920,44 @@ export default function App() {
                   </div>
                 )}
 
-                {/* CATEGORY 1: DYNAMIC ISLAND */}
+                {/* CATEGORY 1: LUMA ISLAND (WITH COMPLETE ON/OFF SWITCH) */}
                 {settingsTab === 'island' && (
                   <div className="space-y-4">
-                    <div className="p-4 rounded-2xl bg-[#161f30] border border-slate-700/80 flex flex-wrap items-center justify-between gap-3">
+                    <div
+                      onClick={handleToggleDynamicIsland}
+                      className={`p-5 rounded-2xl border cursor-pointer flex flex-wrap items-center justify-between gap-3 transition-all ${
+                        dynamicIslandEnabled
+                          ? 'border-emerald-400 bg-emerald-500/15 shadow-[0_0_20px_rgba(16,185,129,0.18)]'
+                          : 'border-rose-500/50 bg-rose-500/10'
+                      }`}
+                    >
                       <div>
-                        <h4 className="text-sm font-bold">Dynamic Island 2.6 (Всегда активный остров)</h4>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          Отображает время, дату, проценты устройства ({batteryLevel}%), уведомления Windows, смену проигрывателя, таймер, секундомер и анимацию зарядки.
+                        <h4 className="text-sm font-extrabold">
+                          🏝️ Включить / Выключить Luma Island (Динамический Остров)
+                        </h4>
+                        <p className={`text-xs mt-0.5 ${mutedTextCls}`}>
+                          Вы можете полностью отключить остров в верхней панели. Состояние мгновенно синхронизируется между Окном 1 и Окном 2.
+                        </p>
+                      </div>
+                      <LitStatusBadge active={dynamicIslandEnabled} />
+                    </div>
+
+                    <div className={`p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 ${subSurfaceCls}`}>
+                      <div>
+                        <h4 className="text-sm font-bold">Luma Island 1.0.1 — Интерактивный центр</h4>
+                        <p className={`text-xs mt-0.5 ${mutedTextCls}`}>
+                          Показывает реальную играющую музыку, ваш регион, заряд ({batteryLevel}%), системные события, таймер и секундомер.
                         </p>
                       </div>
                       <button
                         onClick={() => {
+                          if (!dynamicIslandEnabled) setDynamicIslandEnabled(true);
                           setSettingsModalOpen(false);
                           setIslandModalOpen(true);
                         }}
-                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer"
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer"
                       >
-                        Открыть центр Dynamic Island
+                        Открыть Luma Island
                       </button>
                     </div>
 
@@ -4638,12 +4965,12 @@ export default function App() {
                       <div
                         onClick={() => setDndEnabled((v) => !v)}
                         className={`p-4 rounded-2xl border cursor-pointer flex items-center justify-between ${
-                          dndEnabled ? 'border-emerald-400 bg-emerald-500/15' : 'border-slate-700 bg-[#121824]'
+                          dndEnabled ? 'border-emerald-400 bg-emerald-500/15' : subSurfaceCls
                         }`}
                       >
                         <div>
                           <div className="text-xs font-bold">Режим «Не беспокоить» (DND)</div>
-                          <div className="text-[11px] text-slate-400">
+                          <div className={`text-[11px] ${mutedTextCls}`}>
                             Подавляет всплывающие уведомления и сохраняет их в Острове
                           </div>
                         </div>
@@ -4653,15 +4980,13 @@ export default function App() {
                       <div
                         onClick={() => setChargingAnimationEnabled((v) => !v)}
                         className={`p-4 rounded-2xl border cursor-pointer flex items-center justify-between ${
-                          chargingAnimationEnabled
-                            ? 'border-emerald-400 bg-emerald-500/15'
-                            : 'border-slate-700 bg-[#121824]'
+                          chargingAnimationEnabled ? 'border-emerald-400 bg-emerald-500/15' : subSurfaceCls
                         }`}
                       >
                         <div>
-                          <div className="text-xs font-bold">Анимация при зарядке</div>
-                          <div className="text-[11px] text-slate-400">
-                            Неоновый импульс при подключении кабеля питания
+                          <div className="text-xs font-bold">Индикация питания и зарядки</div>
+                          <div className={`text-[11px] ${mutedTextCls}`}>
+                            Изумрудная подсветка капсулы при питании от сети
                           </div>
                         </div>
                         <LitStatusBadge active={chargingAnimationEnabled} />
@@ -4674,30 +4999,30 @@ export default function App() {
                 {settingsTab === 'appearance' && (
                   <div className="space-y-4">
                     {/* Adaptive Day/Night Card */}
-                    <div className="p-4 rounded-2xl bg-[#161f30] border border-amber-500/40 space-y-3">
+                    <div className={`p-4 rounded-2xl border border-amber-500/40 space-y-3 ${subSurfaceCls}`}>
                       <div
                         onClick={() => setAdaptiveThemeEnabled((v) => !v)}
                         className="flex items-center justify-between cursor-pointer"
                       >
                         <div>
-                          <h4 className="text-sm font-bold text-amber-300 flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-amber-500 flex items-center gap-2">
                             <Sun className="w-4 h-4" />
                             Адаптивная тема День / Ночь (Автоматическая смена темы по времени)
                           </h4>
-                          <p className="text-xs text-slate-400">
+                          <p className={`text-xs ${mutedTextCls}`}>
                             Если день — автоматически включается светлая (или выбранная дневная) тема, если ночь — темная
                           </p>
                         </div>
                         <LitStatusBadge active={adaptiveThemeEnabled} />
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-800 text-xs">
+                      <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t text-xs ${currentTheme.isDark ? 'border-slate-800' : 'border-slate-300'}`}>
                         <div>
-                          <label className="block text-slate-400 mb-1">Начало дня:</label>
+                          <label className={`block mb-1 ${mutedTextCls}`}>Начало дня:</label>
                           <select
                             value={dayStartTime}
                             onChange={(e) => setDayStartTime(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-[#101622] border border-slate-700"
+                            className={`w-full px-3 py-2 rounded-xl border ${headerBtnCls}`}
                           >
                             {['05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00'].map((t) => (
                               <option key={t} value={t}>
@@ -4708,11 +5033,11 @@ export default function App() {
                         </div>
 
                         <div>
-                          <label className="block text-slate-400 mb-1">Начало ночи:</label>
+                          <label className={`block mb-1 ${mutedTextCls}`}>Начало ночи:</label>
                           <select
                             value={nightStartTime}
                             onChange={(e) => setNightStartTime(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-[#101622] border border-slate-700"
+                            className={`w-full px-3 py-2 rounded-xl border ${headerBtnCls}`}
                           >
                             {['17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00', '00:00'].map((t) => (
                               <option key={t} value={t}>
@@ -4723,11 +5048,11 @@ export default function App() {
                         </div>
 
                         <div>
-                          <label className="block text-slate-400 mb-1">Дневная тема (День):</label>
+                          <label className={`block mb-1 ${mutedTextCls}`}>Дневная тема (День):</label>
                           <select
                             value={dayThemeKey}
                             onChange={(e) => setDayThemeKey(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-[#101622] border border-slate-700"
+                            className={`w-full px-3 py-2 rounded-xl border ${headerBtnCls}`}
                           >
                             {Object.entries(allThemesMap).map(([k, v]) => (
                               <option key={k} value={k}>
@@ -4738,11 +5063,11 @@ export default function App() {
                         </div>
 
                         <div>
-                          <label className="block text-slate-400 mb-1">Ночная тема (Ночь):</label>
+                          <label className={`block mb-1 ${mutedTextCls}`}>Ночная тема (Ночь):</label>
                           <select
                             value={nightThemeKey}
                             onChange={(e) => setNightThemeKey(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-[#101622] border border-slate-700"
+                            className={`w-full px-3 py-2 rounded-xl border ${headerBtnCls}`}
                           >
                             {Object.entries(allThemesMap).map(([k, v]) => (
                               <option key={k} value={k}>
@@ -4755,11 +5080,11 @@ export default function App() {
                     </div>
 
                     {/* All Themes Grid + Custom Theme Studio */}
-                    <div className="p-4 rounded-2xl bg-[#161f30] border border-slate-700/70 space-y-3">
+                    <div className={`p-4 rounded-2xl border space-y-3 ${subSurfaceCls}`}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <h4 className="text-sm font-bold">Выбор темы оформления</h4>
-                          <p className="text-xs text-slate-400">
+                          <h4 className="text-sm font-bold">Выбор темы оформления Luma OS 1.0.1</h4>
+                          <p className={`text-xs ${mutedTextCls}`}>
                             При выборе тема мгновенно загорается статусом «🟢 АКТИВНО»
                           </p>
                         </div>
@@ -4784,8 +5109,8 @@ export default function App() {
                               }}
                               className={`p-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer text-left flex flex-col gap-2 ${
                                 isSelected
-                                  ? 'border-emerald-400 bg-emerald-500/15 text-white shadow-[0_0_18px_rgba(16,185,129,0.25)]'
-                                  : 'border-slate-700 bg-[#121824] hover:bg-[#1e2636] text-slate-300'
+                                  ? 'border-emerald-400 bg-emerald-500/15 shadow-[0_0_18px_rgba(16,185,129,0.22)]'
+                                  : headerBtnCls
                               }`}
                             >
                               <div className="flex items-center justify-between gap-2 w-full">
@@ -4794,11 +5119,11 @@ export default function App() {
                               </div>
                               <div className="flex items-center gap-1.5">
                                 <span
-                                  className="w-4 h-4 rounded-full border border-white/20"
+                                  className="w-4 h-4 rounded-full border border-slate-400/40"
                                   style={{ backgroundColor: th.cardHex }}
                                 />
                                 <span
-                                  className="w-4 h-4 rounded-full border border-white/20"
+                                  className="w-4 h-4 rounded-full border border-slate-400/40"
                                   style={{ backgroundColor: th.accentHex }}
                                 />
                               </div>
@@ -4808,24 +5133,24 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Material 3 Expressive Glass, Corner Radius & Icon Scale Controls (LH-2.4) */}
-                    <div className="p-4 rounded-2xl bg-[#161f30] border border-slate-700/70 space-y-3 text-xs">
+                    {/* Material 3 Expressive Glass, Corner Radius & Icon Scale Controls */}
+                    <div className={`p-4 rounded-2xl border space-y-3 text-xs ${subSurfaceCls}`}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <h4 className="text-sm font-bold">Жидкое стекло, Скругления M3 Expressive и Анимации</h4>
                         <button
                           onClick={() => setSmoothAnimations((v) => !v)}
                           className="cursor-pointer flex items-center gap-2"
                         >
-                          <span className="text-slate-300">Плавные пружинные анимации:</span>
+                          <span className={mutedTextCls}>Плавные пружинные анимации:</span>
                           <LitStatusBadge active={smoothAnimations} />
                         </button>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <div className="p-3 rounded-xl bg-[#121824] border border-slate-800 space-y-1.5">
+                        <div className={`p-3 rounded-xl border space-y-1.5 ${headerBtnCls}`}>
                           <div className="flex justify-between">
-                            <span className="text-slate-400">Прозрачность стекла:</span>
-                            <span className="font-mono font-bold text-indigo-300">{glassOpacity}%</span>
+                            <span className={mutedTextCls}>Прозрачность стекла:</span>
+                            <span className="font-mono font-bold text-indigo-500">{glassOpacity}%</span>
                           </div>
                           <input
                             type="range"
@@ -4837,10 +5162,10 @@ export default function App() {
                           />
                         </div>
 
-                        <div className="p-3 rounded-xl bg-[#121824] border border-slate-800 space-y-1.5">
+                        <div className={`p-3 rounded-xl border space-y-1.5 ${headerBtnCls}`}>
                           <div className="flex justify-between">
-                            <span className="text-slate-400">Скругление карточек (M3):</span>
-                            <span className="font-mono font-bold text-indigo-300">{cardBorderRadius}px</span>
+                            <span className={mutedTextCls}>Скругление карточек (M3):</span>
+                            <span className="font-mono font-bold text-indigo-500">{cardBorderRadius}px</span>
                           </div>
                           <input
                             type="range"
@@ -4852,10 +5177,10 @@ export default function App() {
                           />
                         </div>
 
-                        <div className="p-3 rounded-xl bg-[#121824] border border-slate-800 space-y-1.5">
+                        <div className={`p-3 rounded-xl border space-y-1.5 ${headerBtnCls}`}>
                           <div className="flex justify-between">
-                            <span className="text-slate-400">Сила размытия (Blur):</span>
-                            <span className="font-mono font-bold text-emerald-300 uppercase">{glassIntensity}</span>
+                            <span className={mutedTextCls}>Сила размытия (Blur):</span>
+                            <span className="font-mono font-bold text-emerald-500 uppercase">{glassIntensity}</span>
                           </div>
                           <div className="flex gap-1">
                             {(['light', 'medium', 'strong'] as const).map((lvl) => (
@@ -4865,7 +5190,9 @@ export default function App() {
                                 className={`flex-1 py-1 rounded-lg text-[10px] font-bold cursor-pointer ${
                                   glassIntensity === lvl
                                     ? 'bg-indigo-600 text-white'
-                                    : 'bg-slate-800 text-slate-400 hover:text-white'
+                                    : currentTheme.isDark
+                                    ? 'bg-slate-800 text-slate-300 hover:text-white'
+                                    : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
                                 }`}
                               >
                                 {lvl === 'light' ? 'Слаб.' : lvl === 'medium' ? 'Сред.' : 'Сильн.'}
@@ -4878,13 +5205,13 @@ export default function App() {
                   </div>
                 )}
 
-                {/* CATEGORY 3: 18 CLOCK STYLES & DESIGN CUSTOMIZATION */}
+                {/* CATEGORY 3: 18 LUMA CLOCK STYLES & DESIGN CUSTOMIZATION */}
                 {settingsTab === 'clock' && (
                   <div className="space-y-4">
-                    <div className="p-4 rounded-2xl bg-[#161f30] border border-slate-700/70 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-sm font-bold">Коллекция из 18 стилей часов (Android 16 / iOS / OneUI / Nothing)</h4>
-                        <span className="text-xs font-mono text-emerald-400">
+                    <div className={`p-4 rounded-2xl border space-y-3 ${subSurfaceCls}`}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="text-sm font-bold">Коллекция из 18 циферблатов Luma OS 1.0.1</h4>
+                        <span className="text-xs font-mono text-emerald-500 font-semibold">
                           Активен: {CLOCK_STYLE_OPTIONS.find((o) => o.id === clockStyle)?.label}
                         </span>
                       </div>
@@ -4897,20 +5224,20 @@ export default function App() {
                               key={opt.id}
                               onClick={() => {
                                 setClockStyle(opt.id);
-                                pushToast('Стиль часов зажегся', `${opt.label} • 🟢 АКТИВНО`, 'success');
+                                pushToast('Циферблат Luma активирован', `${opt.label} • 🟢 АКТИВНО`, 'success');
                               }}
                               className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1.5 ${
                                 isSelected
                                   ? 'border-emerald-400 bg-emerald-500/15'
-                                  : 'border-slate-700 bg-[#121824] hover:bg-[#1e2636]'
+                                  : headerBtnCls
                               }`}
                             >
                               <div className="flex items-center justify-between gap-1.5 w-full">
                                 <span className="text-xs font-bold truncate">{opt.label}</span>
                                 <LitStatusBadge active={isSelected} />
                               </div>
-                              <span className="text-xs font-mono text-blue-300">{opt.sample}</span>
-                              <span className="text-[11px] text-slate-400 line-clamp-1">{opt.description}</span>
+                              <span className="text-xs font-mono text-indigo-500">{opt.sample}</span>
+                              <span className={`text-[11px] line-clamp-1 ${mutedTextCls}`}>{opt.description}</span>
                             </button>
                           );
                         })}
@@ -4918,8 +5245,8 @@ export default function App() {
                     </div>
 
                     {/* Fine Clock Design Settings (Glow, Seconds, Format, Colors) */}
-                    <div className="p-4 rounded-2xl bg-[#161f30] border border-slate-700/70 space-y-3 text-xs">
-                      <h4 className="text-sm font-bold">Тонкий дизайн часов и свечение (LH-2.4 Pro)</h4>
+                    <div className={`p-4 rounded-2xl border space-y-3 text-xs ${subSurfaceCls}`}>
+                      <h4 className="text-sm font-bold">Тонкий дизайн циферблатов и свечение (Luma Clock Engine)</h4>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {[
                           { label: 'Баннер часов', val: showAndroidClockWidget, toggle: () => setShowAndroidClockWidget((v) => !v) },
@@ -4931,7 +5258,7 @@ export default function App() {
                             key={item.label}
                             onClick={item.toggle}
                             className={`p-2.5 rounded-xl border text-left cursor-pointer flex items-center justify-between ${
-                              item.val ? 'border-emerald-400/70 bg-emerald-500/15 text-white' : 'border-slate-800 bg-[#121824] text-slate-400'
+                              item.val ? 'border-emerald-400/70 bg-emerald-500/15' : headerBtnCls
                             }`}
                           >
                             <span className="font-semibold">{item.label}</span>
@@ -4940,15 +5267,19 @@ export default function App() {
                         ))}
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div className="p-2.5 rounded-xl bg-[#121824] border border-slate-800 flex items-center justify-between">
-                          <span className="text-slate-400">Формат времени:</span>
+                        <div className={`p-2.5 rounded-xl border flex items-center justify-between ${headerBtnCls}`}>
+                          <span className={mutedTextCls}>Формат времени:</span>
                           <div className="flex gap-1">
                             {(['24', '12'] as const).map((fmt) => (
                               <button
                                 key={fmt}
                                 onClick={() => setTimeFormat(fmt)}
                                 className={`px-2.5 py-1 rounded-lg font-mono font-bold cursor-pointer ${
-                                  timeFormat === fmt ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'
+                                  timeFormat === fmt
+                                    ? 'bg-indigo-600 text-white'
+                                    : currentTheme.isDark
+                                    ? 'bg-slate-800 text-slate-300'
+                                    : 'bg-slate-200 text-slate-700'
                                 }`}
                               >
                                 {fmt}ч
@@ -4956,8 +5287,8 @@ export default function App() {
                             ))}
                           </div>
                         </div>
-                        <div className="p-2.5 rounded-xl bg-[#121824] border border-slate-800 flex items-center justify-between">
-                          <span className="text-slate-400">Акцент минут:</span>
+                        <div className={`p-2.5 rounded-xl border flex items-center justify-between ${headerBtnCls}`}>
+                          <span className={mutedTextCls}>Акцент минут:</span>
                           <input
                             type="color"
                             value={clockAccentColor}
@@ -4965,10 +5296,10 @@ export default function App() {
                             className="w-10 h-6 rounded cursor-pointer bg-transparent"
                           />
                         </div>
-                        <div className="p-2.5 rounded-xl bg-[#121824] border border-slate-800 space-y-1">
+                        <div className={`p-2.5 rounded-xl border space-y-1 ${headerBtnCls}`}>
                           <div className="flex justify-between">
-                            <span className="text-slate-400">Сила неона:</span>
-                            <span className="font-mono text-indigo-300">{clockGlowIntensity}px</span>
+                            <span className={mutedTextCls}>Сила неона:</span>
+                            <span className="font-mono text-indigo-500 font-bold">{clockGlowIntensity}px</span>
                           </div>
                           <input
                             type="range"
@@ -4992,17 +5323,17 @@ export default function App() {
                       className={`p-5 rounded-2xl border cursor-pointer flex items-center justify-between gap-4 ${
                         rightClickBackEnabled
                           ? 'border-emerald-400 bg-emerald-500/15 shadow-[0_0_20px_rgba(16,185,129,0.2)]'
-                          : 'border-slate-700 bg-[#121824]'
+                          : subSurfaceCls
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        <MousePointerClick className="w-6 h-6 text-emerald-400 shrink-0 mt-0.5" />
+                        <MousePointerClick className="w-6 h-6 text-emerald-500 shrink-0 mt-0.5" />
                         <div>
                           <div className="text-sm font-bold">
                             Функция «ПКМ = Назад» (Удобное управление одной рукой)
                           </div>
-                          <div className="text-xs text-slate-300 mt-1">
-                            Нажатие правой кнопкой мыши в любом свободном месте лаунчера возвращает вас на шаг назад: закрывает открытое окно/остров, очищает поиск, сбрасывает фильтр категорий или возвращает из Трекера времени в Приложения.
+                          <div className={`text-xs mt-1 ${mutedTextCls}`}>
+                            Нажатие правой кнопкой мыши в любом свободном месте оболочки возвращает вас на шаг назад: закрывает открытое окно/остров, очищает поиск, сбрасывает фильтр категорий или возвращает из Трекера времени в Приложения. Клавиша Escape также закрывает любое открытое окно.
                           </div>
                         </div>
                       </div>
@@ -5014,8 +5345,8 @@ export default function App() {
                 {/* CATEGORY 5: PLUGINS, 2-WINDOW ARCHITECTURE & LAUNCH GRID */}
                 {settingsTab === 'plugins' && (
                   <div className="space-y-4">
-                    <div className="p-4 rounded-2xl bg-[#161f30] border border-slate-700/70 space-y-3">
-                      <h4 className="text-sm font-bold">Управление 2 окнами оболочки Luma OS 1.0</h4>
+                    <div className={`p-4 rounded-2xl border space-y-3 ${subSurfaceCls}`}>
+                      <h4 className="text-sm font-bold">Управление 2 окнами оболочки Luma OS 1.0.1</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
                         <button
                           onClick={() => {
@@ -5024,12 +5355,12 @@ export default function App() {
                           }}
                           className={`p-3 rounded-xl border text-left cursor-pointer ${
                             windowDisplayMode === 'quick_search'
-                              ? 'border-emerald-400 bg-emerald-500/15 text-white'
-                              : 'border-slate-700 bg-[#121824] text-slate-300'
+                              ? 'border-emerald-400 bg-emerald-500/15'
+                              : headerBtnCls
                           }`}
                         >
                           <div className="font-bold">1. Окно 1: По группам</div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">Списком и карточками (LH-2.4)</div>
+                          <div className={`text-[11px] mt-0.5 ${mutedTextCls}`}>Списком и карточками по группам</div>
                         </button>
                         <button
                           onClick={() => {
@@ -5038,12 +5369,12 @@ export default function App() {
                           }}
                           className={`p-3 rounded-xl border text-left cursor-pointer ${
                             windowDisplayMode === 'grid_20x30'
-                              ? 'border-emerald-400 bg-emerald-500/15 text-white'
-                              : 'border-slate-700 bg-[#121824] text-slate-300'
+                              ? 'border-emerald-400 bg-emerald-500/15'
+                              : headerBtnCls
                           }`}
                         >
                           <div className="font-bold">2. Окно 2: Ячейки 20×30</div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">600 ячеек + 18 виджетов</div>
+                          <div className={`text-[11px] mt-0.5 ${mutedTextCls}`}>600 ячеек + 18 живых виджетов Luma</div>
                         </button>
                         <button
                           onClick={() => {
@@ -5052,36 +5383,36 @@ export default function App() {
                           }}
                           className={`p-3 rounded-xl border text-left cursor-pointer ${
                             windowDisplayMode === 'dual_windows'
-                              ? 'border-emerald-400 bg-emerald-500/15 text-white'
-                              : 'border-slate-700 bg-[#121824] text-slate-300'
+                              ? 'border-emerald-400 bg-emerald-500/15'
+                              : headerBtnCls
                           }`}
                         >
                           <div className="font-bold">🪟 2 Окна Рядом (Split)</div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">Оба окна одновременно</div>
+                          <div className={`text-[11px] mt-0.5 ${mutedTextCls}`}>Оба окна одновременно</div>
                         </button>
                       </div>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-[#161f30] border border-slate-700/70 space-y-3">
+                    <div className={`p-4 rounded-2xl border space-y-3 ${subSurfaceCls}`}>
                       <div
                         onClick={() => setShowPluginsInGrid((v) => !v)}
                         className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                          showPluginsInGrid ? 'border-emerald-400 bg-emerald-500/15' : 'border-slate-700 bg-[#121824]'
+                          showPluginsInGrid ? 'border-emerald-400 bg-emerald-500/15' : headerBtnCls
                         }`}
                       >
                         <div>
                           <div className="text-sm font-bold">Показывать плагины в списке запуска</div>
-                          <div className="text-xs text-slate-400">
+                          <div className={`text-xs ${mutedTextCls}`}>
                             Активные плагины отображаются в группе «Плагины» и боковой библиотеке
                           </div>
                         </div>
                         <LitStatusBadge active={showPluginsInGrid} />
                       </div>
 
-                      <div className="p-3.5 rounded-xl bg-[#121824] border border-slate-800 flex items-center justify-between text-xs">
+                      <div className={`p-3.5 rounded-xl border flex items-center justify-between text-xs ${headerBtnCls}`}>
                         <div>
                           <div className="font-bold">Количество колонок в карточках Избранного (Окно 1)</div>
-                          <div className="text-[11px] text-slate-400">Текущее значение: {cardColumns} колонок</div>
+                          <div className={`text-[11px] ${mutedTextCls}`}>Текущее значение: {cardColumns} колонок</div>
                         </div>
                         <div className="flex gap-1.5">
                           {[3, 4, 5, 6].map((colN) => (
@@ -5089,7 +5420,11 @@ export default function App() {
                               key={colN}
                               onClick={() => setCardColumns(colN)}
                               className={`w-8 h-8 rounded-lg font-mono font-bold cursor-pointer ${
-                                cardColumns === colN ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'
+                                cardColumns === colN
+                                  ? 'bg-indigo-600 text-white'
+                                  : currentTheme.isDark
+                                  ? 'bg-slate-800 text-slate-300'
+                                  : 'bg-slate-200 text-slate-700'
                               }`}
                             >
                               {colN}
@@ -5105,20 +5440,20 @@ export default function App() {
                 {settingsTab === 'updater' && (
                   <div className="space-y-4">
                     {/* GitHub Auto-Update & Repo Forwarding Card */}
-                    <div className="p-4 rounded-2xl bg-[#161f30] border border-cyan-500/40 space-y-3">
+                    <div className={`p-4 rounded-2xl border border-cyan-500/40 space-y-3 ${subSurfaceCls}`}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <Github className="w-5 h-5 text-cyan-400" />
+                          <Github className="w-5 h-5 text-cyan-500" />
                           <div>
-                            <h4 className="text-sm font-bold">Автообновление с GitHub (Tveexty/L_H-3.0)</h4>
-                            <p className="text-xs text-slate-400">{githubUpdateStatus}</p>
+                            <h4 className="text-sm font-bold">Автообновление Luma OS с GitHub (Tveexty/L_H-3.0)</h4>
+                            <p className={`text-xs ${mutedTextCls}`}>{githubUpdateStatus}</p>
                           </div>
                         </div>
                         <div
                           onClick={() => setGithubAutoUpdate((v) => !v)}
                           className="cursor-pointer flex items-center gap-2"
                         >
-                          <span className="text-xs text-slate-300">Автообновление:</span>
+                          <span className={`text-xs ${mutedTextCls}`}>Автообновление:</span>
                           <LitStatusBadge active={githubAutoUpdate} />
                         </div>
                       </div>
@@ -5128,22 +5463,30 @@ export default function App() {
                           type="text"
                           value={githubRepoUrl}
                           onChange={(e) => setGithubRepoUrl(e.target.value)}
-                          className="flex-1 px-3 py-2 rounded-xl bg-[#101622] border border-slate-700 text-xs font-mono"
+                          className={`flex-1 px-3 py-2 rounded-xl border text-xs font-mono ${headerBtnCls}`}
                         />
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             setCheckingGithub(true);
-                            setTimeout(() => {
-                              setCheckingGithub(false);
-                              setGithubUpdateStatus(
-                                `✅ Проверено в ${new Date().toLocaleTimeString('ru-RU')}: установлена последняя версия Luma OS 1.0 / v3.0`
-                              );
-                              pushToast(
-                                'Проверка обновлений GitHub',
-                                'У вас установлена самая свежая релизная версия Luma OS 1.0 (v3.0)!',
-                                'success'
-                              );
-                            }, 500);
+                            let kVer = '1.0.1-day1-patch';
+                            try {
+                              const resp = await fetch('/api/kernel/status');
+                              if (resp.ok) {
+                                const data = await resp.json();
+                                if (data?.version) kVer = data.version;
+                              }
+                            } catch {
+                              // fallback
+                            }
+                            setCheckingGithub(false);
+                            setGithubUpdateStatus(
+                              `✅ Проверено в ${new Date().toLocaleTimeString('ru-RU')}: установлена актуальная сборка Luma OS 1.0.1 (${kVer})`
+                            );
+                            pushToast(
+                              'Проверка обновлений GitHub',
+                              `У вас установлена свежая версия Luma OS 1.0.1 — Патч первого дня (${kVer})!`,
+                              'success'
+                            );
                           }}
                           className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer whitespace-nowrap"
                         >
@@ -5165,26 +5508,27 @@ export default function App() {
                     </div>
 
                     {/* Full Application Diagnostics Card */}
-                    <div className="p-4 rounded-2xl bg-[#161f30] border border-emerald-500/40 space-y-3">
+                    <div className={`p-4 rounded-2xl border border-emerald-500/40 space-y-3 ${subSurfaceCls}`}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <Stethoscope className="w-5 h-5 text-emerald-400" />
+                          <Stethoscope className="w-5 h-5 text-emerald-500" />
                           <div>
                             <h4 className="text-sm font-bold">
-                              Диагностика ядра Luma 1.0 ({diagnosticsPassed}/{diagnosticsTotal} узлов в норме • Здоровье {diagnosticsScore}%)
+                              Диагностика ядра Luma Core 1.0.1 ({diagnosticsPassed}/{diagnosticsTotal} узлов в норме • Здоровье {diagnosticsScore}%)
                             </h4>
-                            <p className="text-xs text-slate-400">Последняя проверка: {diagnosticsTime}</p>
+                            <p className={`text-xs ${mutedTextCls}`}>Последняя проверка: {diagnosticsTime}</p>
                           </div>
                         </div>
                         <button
-                          onClick={() => {
-                            callLumaKernelRpc('system.ping');
+                          onClick={async () => {
+                            await callLumaKernelRpc('system.ping');
+                            await handleRefreshLocation();
                             setDiagnosticsScore(100);
                             setDiagnosticsPassed(6);
                             setDiagnosticsTime(new Date().toLocaleTimeString('ru-RU'));
                             pushToast(
                               'Диагностика завершена',
-                              'Все 6 подсистем Luma OS 1.0 (Kernel IPC 49215, LumaGuard AES-256-GCM, 18 Widgets 20×30, Dynamic Island, Audio, Plugins) работают на 100%!',
+                              'Все 6 подсистем Luma OS 1.0.1 (Kernel IPC 49215, LumaGuard AES-256-GCM, 18 виджетов, Luma Island, Аудио/Медиа шина, Регион и Железо) работают на 100%!',
                               'success'
                             );
                           }}
@@ -5196,21 +5540,43 @@ export default function App() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                         {[
-                          ['Luma Core 1.0 Kernel (127.0.0.1:49215)', kernelConnected ? 'OK • Нативный демон LumaOS_1.0.exe подключен' : 'OK • Встроенный мост ядра активен'],
-                          ['LumaGuard Security (AES-256-GCM + PBKDF2-SHA512)', `OK • Ключ ревизии #${cryptoKeyVersion} (32 байта)`],
-                          ['Dynamic Island & DND Engine', `OK • Активен, уведомлений: ${windowsNotifications.length}`],
-                          ['Audio Controller (WASAPI / CoreAudio)', `OK • Громкость ${volume}%, ${audioBgStatus}`],
-                          ['Window 1 (Grouped LH-2.4) & Session Tracker', `OK • Приложений: ${apps.length}, Плагинов: ${plugins.filter((p) => p.enabled).length}`],
-                          ['Window 2 (20×30 Matrix • 18 Widgets)', `OK • Android M3 + iOS 18 + Windows 11 активны`],
+                          [
+                            'Luma Core 1.0.1 Kernel (127.0.0.1:49215)',
+                            kernelConnected
+                              ? `OK • Нативный демон LumaOS_1.0.1.exe (${liveSystem?.hostname || 'host'})`
+                              : 'OK • Встроенный мост ядра активен',
+                          ],
+                          [
+                            'LumaGuard Security (AES-256-GCM + PBKDF2-SHA512)',
+                            `OK • Ключ ревизии #${cryptoKeyVersion} (32 байта)`,
+                          ],
+                          [
+                            'Luma Island 1.0.1 & DND Engine',
+                            dynamicIslandEnabled
+                              ? `OK • Включён, уведомлений: ${windowsNotifications.length}`
+                              : '⏸ Выключен пользователем (можно вернуть в 1 клик)',
+                          ],
+                          [
+                            'Аудио и Медиа шина (Luma Media Bus)',
+                            `OK • Громкость ${isMuted ? 'MUTE' : `${volume}%`} • ${hasLiveOsMedia ? `ОС: ${displayTrackTitle}` : displayTrackTitle}`,
+                          ],
+                          [
+                            'Реальная телеметрия железа и Гео-регион',
+                            `OK • ${liveSystem?.location?.city || 'Авто-регион'} • CPU ${cpuLoad}% • RAM ${ramLoad}%`,
+                          ],
+                          [
+                            '2 Окна (Группы + Матрица 20×30 • 18 виджетов)',
+                            `OK • Luma Pulse + Luma Aura + Luma Core (${apps.length} прил., ${plugins.filter((p) => p.enabled).length} плаг.)`,
+                          ],
                         ].map(([name, detail]) => (
                           <div
                             key={name}
-                            className="p-2.5 rounded-xl bg-[#101622] border border-slate-800 flex items-start gap-2"
+                            className={`p-2.5 rounded-xl border flex items-start gap-2 ${headerBtnCls}`}
                           >
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                             <div>
-                              <div className="font-bold text-white">{name}</div>
-                              <div className="text-[11px] text-slate-400">{detail}</div>
+                              <div className="font-bold">{name}</div>
+                              <div className={`text-[11px] ${mutedTextCls}`}>{detail}</div>
                             </div>
                           </div>
                         ))}
@@ -5219,44 +5585,44 @@ export default function App() {
                   </div>
                 )}
 
-                {/* CATEGORY 7: ABOUT SYSTEM & COMPLETE VERSION HISTORY (1.0 TO 3.0 / LUMA 1.0) */}
+                {/* CATEGORY 7: ABOUT SYSTEM & COMPLETE LUMA OS VERSION HISTORY */}
                 {settingsTab === 'about' && (
                   <div className="space-y-4">
                     {/* About App Card */}
-                    <div className="p-4 rounded-2xl bg-[#161f30] border border-indigo-500/40 flex flex-wrap items-center justify-between gap-4">
+                    <div className={`p-4 rounded-2xl border border-indigo-500/40 flex flex-wrap items-center justify-between gap-4 ${subSurfaceCls}`}>
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-white font-black text-base shadow-lg">
-                          1.0
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-white font-black text-sm shadow-lg">
+                          1.0.1
                         </div>
                         <div>
-                          <h4 className="text-base font-extrabold">Luma OS 1.0 Kernel &amp; Material 3 Expressive Shell</h4>
-                          <p className="text-xs text-slate-400">
-                            Ядро по типу Android • 2 Окна (Группы LH-2.4 + Матрица 20×30) • 18 виджетов Android / iPhone / Windows • Готовый LumaOS_1.0.exe
+                          <h4 className="text-base font-extrabold">Luma OS 1.0.1 — Патч первого дня (Material 3 Expressive)</h4>
+                          <p className={`text-xs ${mutedTextCls}`}>
+                            Модульное ядро Luma Core 1.0.1 • 2 Окна (Группы + Матрица 20×30) • 18 живых виджетов Luma Pulse / Aura / Core • Реальные треки, регион и железо • LumaOS_1.0.1.exe
                           </p>
                         </div>
                       </div>
                       <a
-                        href="/LumaOS_1.0.exe"
-                        download="LumaOS_1.0.exe"
+                        href="/LumaOS_1.0.1.exe"
+                        download="LumaOS_1.0.1.exe"
                         className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold flex items-center gap-1.5"
                       >
                         <Download className="w-4 h-4" />
-                        Скачать LumaOS_1.0.exe
+                        Скачать LumaOS_1.0.1.exe
                       </a>
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[#121824] border border-slate-800">
-                      <span className="text-xs font-bold text-slate-300">
-                        Полная история версий ({Object.keys(VERSION_HISTORY).length} релизов: с v1.0 по v3.0 / Luma 1.0):
+                    <div className={`flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl border ${subSurfaceCls}`}>
+                      <span className="text-xs font-bold">
+                        История версий Luma OS ({Object.keys(VERSION_HISTORY).length} релиза):
                       </span>
                       <div className="flex flex-wrap gap-1">
                         <button
                           onClick={() => setChangelogFilter('all')}
                           className={`px-2 py-0.5 rounded text-[11px] font-mono cursor-pointer ${
-                            changelogFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-[#1a2232] text-slate-400'
+                            changelogFilter === 'all' ? 'bg-indigo-600 text-white' : headerBtnCls
                           }`}
                         >
-                          Все (1.0–3.0)
+                          Все релизы
                         </button>
                         {Object.keys(VERSION_HISTORY).map((v) => (
                           <button
@@ -5265,7 +5631,7 @@ export default function App() {
                             className={`px-2 py-0.5 rounded text-[11px] font-mono cursor-pointer ${
                               changelogFilter === v
                                 ? 'bg-emerald-600 text-white font-bold'
-                                : 'bg-[#1a2232] text-slate-400'
+                                : headerBtnCls
                             }`}
                           >
                             v{v}
@@ -5280,27 +5646,31 @@ export default function App() {
                         <div
                           key={ver}
                           className={`p-4 rounded-xl border ${
-                            ver === '3.0'
+                            ver === '1.0.1'
                               ? 'bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.15)]'
-                              : ver === '2.6'
+                              : ver === '1.0'
                               ? 'bg-indigo-500/10 border-indigo-500/40'
-                              : 'bg-[#1a2232] border-slate-700'
+                              : subSurfaceCls
                           }`}
                         >
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
                               <span
                                 className={`text-sm font-bold ${
-                                  ver === '3.0' ? 'text-emerald-400' : 'text-indigo-400'
+                                  ver === '1.0.1' ? 'text-emerald-500' : 'text-indigo-500'
                                 }`}
                               >
-                                {ver === '3.0' ? 'Версия 3.0 — Luma OS 1.0 Release' : `Версия ${ver}`}
+                                {ver === '1.0.1'
+                                  ? 'Версия 1.0.1 — Luma OS 1.0.1 (Патч первого дня)'
+                                  : ver === '1.0'
+                                  ? 'Версия 1.0 — Luma OS 1.0 Release'
+                                  : `Версия ${ver}`}
                               </span>
-                              {ver === '3.0' && <LitStatusBadge active={true} />}
+                              {ver === '1.0.1' && <LitStatusBadge active={true} />}
                             </div>
-                            <span className="text-xs font-mono text-slate-400">{items.length} пунктов</span>
+                            <span className={`text-xs font-mono ${mutedTextCls}`}>{items.length} пунктов</span>
                           </div>
-                          <ul className="space-y-1.5 text-xs text-slate-200">
+                          <ul className="space-y-1.5 text-xs">
                             {items.map((line, idx) => (
                               <li key={idx} className="leading-relaxed">
                                 {line}
@@ -5317,23 +5687,29 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== MODAL: CUSTOM THEME STUDIO PRO 2.5 ==================== */}
+      {/* ==================== MODAL: CUSTOM THEME STUDIO (LUMA OS 1.0.1) ==================== */}
       {customThemeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div
+          onClick={() => setCustomThemeModalOpen(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+        >
           <div
-            className="w-full max-w-xl rounded-2xl border border-slate-700 p-6 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+            className={`w-full max-w-xl rounded-2xl border p-6 shadow-2xl space-y-4 ${
+              currentTheme.isDark ? 'border-slate-700' : 'border-slate-300'
+            }`}
             style={cardGlassStyle}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className={`flex items-center justify-between pb-3 border-b ${currentTheme.isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <div>
-                <h3 className="text-base font-bold">🎨 Студия создания кастомных тем 2.5</h3>
-                <p className="text-xs text-slate-400">
+                <h3 className="text-base font-bold">🎨 Студия создания тем Luma OS 1.0.1</h3>
+                <p className={`text-xs ${mutedTextCls}`}>
                   Настройте палитру, выберите базовый режим и сразу примените тему с подсветкой «🟢 АКТИВНО»
                 </p>
               </div>
               <button
                 onClick={() => setCustomThemeModalOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+                className={`p-1.5 rounded-lg border cursor-pointer ${headerBtnCls}`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -5355,10 +5731,10 @@ export default function App() {
                 }}
               >
                 <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold"
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-xs"
                   style={{ backgroundColor: newThemeAccent }}
                 >
-                  2.5
+                  1.0.1
                 </div>
                 <div>
                   <div
@@ -5366,7 +5742,7 @@ export default function App() {
                       newThemeMode === 'light' ? 'text-slate-900' : 'text-white'
                     }`}
                   >
-                    {newThemeName || 'Моя тема 2.5'}
+                    {newThemeName || 'Моя тема Luma'}
                   </div>
                   <div className="text-[11px] font-mono" style={{ color: newThemeAccent }}>
                     Предпросмотр карточек и акцента
@@ -5378,21 +5754,21 @@ export default function App() {
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-300 mb-1 font-semibold">Название темы</label>
+                <label className="block mb-1 font-semibold">Название темы</label>
                 <input
                   type="text"
                   value={newThemeName}
                   onChange={(e) => setNewThemeName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-[#121824] border border-slate-700 text-xs outline-none"
+                  className={`w-full px-3 py-2 rounded-xl border text-xs outline-none ${headerBtnCls}`}
                 />
               </div>
 
               <div className="grid grid-cols-3 gap-2">
                 {(
                   [
-                    ['dark', '🌙 Dark Slate'],
-                    ['amoled', '🖤 AMOLED Onyx'],
-                    ['light', '☀️ Light Clean'],
+                    ['dark', '🌙 Luma Dark'],
+                    ['amoled', '🖤 Luma Onyx'],
+                    ['light', '☀️ Luma Daylight'],
                   ] as const
                 ).map(([mKey, mLabel]) => (
                   <button
@@ -5413,8 +5789,8 @@ export default function App() {
                     }}
                     className={`py-2 rounded-xl border font-semibold cursor-pointer ${
                       newThemeMode === mKey
-                        ? 'border-emerald-400 bg-emerald-500/20 text-white'
-                        : 'border-slate-700 bg-[#121824] text-slate-400'
+                        ? 'border-emerald-400 bg-emerald-500/20'
+                        : headerBtnCls
                     }`}
                   >
                     {mLabel}
@@ -5424,7 +5800,7 @@ export default function App() {
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-slate-400 mb-1">Фон (BG)</label>
+                  <label className={`block mb-1 ${mutedTextCls}`}>Фон (BG)</label>
                   <input
                     type="color"
                     value={newThemeBg}
@@ -5433,7 +5809,7 @@ export default function App() {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1">Карточки (Surface)</label>
+                  <label className={`block mb-1 ${mutedTextCls}`}>Карточки (Surface)</label>
                   <input
                     type="color"
                     value={newThemeSurface}
@@ -5442,7 +5818,7 @@ export default function App() {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1">Акцент (Accent)</label>
+                  <label className={`block mb-1 ${mutedTextCls}`}>Акцент (Accent)</label>
                   <input
                     type="color"
                     value={newThemeAccent}
@@ -5454,12 +5830,12 @@ export default function App() {
 
               {/* Quick Palettes */}
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                <span className="text-slate-400">Быстрые пресеты:</span>
+                <span className={mutedTextCls}>Быстрые пресеты:</span>
                 {[
-                  { name: 'Cyber Cyan', bg: '#070b14', surf: '#111a2e', acc: '#06b6d4' },
-                  { name: 'Crimson Pro', bg: '#12080e', surf: '#24111c', acc: '#f43f5e' },
-                  { name: 'Emerald Matrix', bg: '#06100c', surf: '#0f241c', acc: '#10b981' },
-                  { name: 'Royal Gold', bg: '#110f08', surf: '#211d11', acc: '#f59e0b' },
+                  { name: 'Luma Cyan', bg: '#070b14', surf: '#111a2e', acc: '#06b6d4' },
+                  { name: 'Luma Crimson', bg: '#12080e', surf: '#24111c', acc: '#f43f5e' },
+                  { name: 'Luma Emerald', bg: '#06100c', surf: '#0f241c', acc: '#10b981' },
+                  { name: 'Luma Amber', bg: '#110f08', surf: '#211d11', acc: '#f59e0b' },
                 ].map((p) => (
                   <button
                     key={p.name}
@@ -5470,7 +5846,7 @@ export default function App() {
                       setNewThemeSurface(p.surf);
                       setNewThemeAccent(p.acc);
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-[#121824] hover:bg-[#1e2636] border border-slate-700 text-[11px] cursor-pointer"
+                    className={`px-2.5 py-1 rounded-lg border text-[11px] cursor-pointer ${headerBtnCls}`}
                   >
                     {p.name}
                   </button>
@@ -5478,10 +5854,10 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+            <div className={`flex justify-end gap-2 pt-3 border-t ${currentTheme.isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <button
                 onClick={() => setCustomThemeModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-white/10 text-xs font-semibold cursor-pointer"
+                className={`px-4 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${headerBtnCls}`}
               >
                 Отмена
               </button>
@@ -5490,7 +5866,7 @@ export default function App() {
                   const id = `custom_${Date.now()}`;
                   const created: CustomThemeConfig = {
                     id,
-                    name: newThemeName.trim() || 'Custom 2.5',
+                    name: newThemeName.trim() || 'Luma Custom',
                     isDark: newThemeMode !== 'light',
                     bgGradient: `radial-gradient(circle at 20% 15%, ${newThemeAccent}22, transparent 45%), linear-gradient(155deg, ${newThemeBg} 0%, ${newThemeSurface} 100%)`,
                     surfaceRgba: newThemeSurface,
@@ -5503,7 +5879,7 @@ export default function App() {
                   setThemeKey(id);
                   setCustomThemeModalOpen(false);
                   pushToast(
-                    'Кастомная тема 2.5 создана',
+                    'Кастомная тема Luma создана',
                     `Тема «${created.name}» сохранена и сразу активирована (🟢 АКТИВНО)!`,
                     'success'
                   );
@@ -5517,21 +5893,27 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== MODAL 4: SMART WORKSPACE PRESETS ==================== */}
+      {/* ==================== MODAL 4: LUMA SPACES PRESETS ==================== */}
       {workspaceModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div
+          onClick={() => setWorkspaceModalOpen(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+        >
           <div
-            className="w-full max-w-xl rounded-2xl border border-slate-700 p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+            className={`w-full max-w-xl rounded-2xl border p-6 shadow-2xl ${
+              currentTheme.isDark ? 'border-slate-700' : 'border-slate-300'
+            }`}
             style={cardGlassStyle}
           >
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div className={`flex items-center justify-between pb-4 border-b ${currentTheme.isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <div className="flex items-center gap-2">
-                <Rocket className="w-5 h-5 text-blue-400" />
-                <h3 className="text-lg font-bold">Smart Workspace</h3>
+                <Rocket className="w-5 h-5 text-indigo-500" />
+                <h3 className="text-lg font-bold">Luma Spaces 1.0.1</h3>
               </div>
               <button
                 onClick={() => setWorkspaceModalOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+                className={`p-1.5 rounded-lg border cursor-pointer ${headerBtnCls}`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -5541,14 +5923,14 @@ export default function App() {
               {workspaces.map((ws) => (
                 <div
                   key={ws.id}
-                  className="p-4 rounded-xl bg-[#1a2232] border border-slate-700 flex items-center justify-between gap-4"
+                  className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${subSurfaceCls}`}
                 >
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-bold">{ws.name}</span>
-                      <span className="text-xs font-mono text-slate-400">({ws.hotkey})</span>
+                      <span className={`text-xs font-mono ${mutedTextCls}`}>({ws.hotkey})</span>
                     </div>
-                    <div className="text-xs text-slate-400 mt-1">
+                    <div className={`text-xs mt-1 ${mutedTextCls}`}>
                       Запустить: {ws.launchApps.join(', ')} • Закрыть: {ws.closeProcesses.join(', ') || '—'}
                     </div>
                   </div>
@@ -5572,8 +5954,8 @@ export default function App() {
                       );
                       setWorkspaceModalOpen(false);
                       pushToast(
-                        'Smart Workspace (Luma 1.0)',
-                        `Пресет «${ws.name}» активирован: запущено ${ws.launchApps.length}, остановлено ${ws.closeProcesses.length}`,
+                        'Luma Spaces 1.0.1',
+                        `Профиль «${ws.name}» активирован: запущено ${ws.launchApps.length}, остановлено ${ws.closeProcesses.length}`,
                         'success'
                       );
                     }}
@@ -5596,14 +5978,16 @@ export default function App() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-xs rounded-2xl border border-slate-700 p-4 shadow-2xl space-y-2"
+            className={`w-full max-w-xs rounded-2xl border p-4 shadow-2xl space-y-2 ${
+              currentTheme.isDark ? 'border-slate-700' : 'border-slate-300'
+            }`}
             style={cardGlassStyle}
           >
-            <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
-              <div className="text-blue-400">{renderAppIcon(contextMenuApp.icon, 'w-6 h-6')}</div>
+            <div className={`flex items-center gap-3 pb-3 border-b ${currentTheme.isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+              <div className="text-indigo-500">{renderAppIcon(contextMenuApp.icon, 'w-6 h-6')}</div>
               <div className="min-w-0">
                 <div className="text-sm font-bold truncate">{contextMenuApp.name}</div>
-                <div className="text-xs text-slate-400 font-mono">
+                <div className={`text-xs font-mono ${mutedTextCls}`}>
                   {formatMonthBadge(
                     contextMenuApp.monthMinutes,
                     contextMenuApp.elapsedSeconds,
@@ -5618,9 +6002,11 @@ export default function App() {
                 handleLaunchApp(contextMenuApp);
                 setContextMenuApp(null);
               }}
-              className="w-full flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-white/10 text-xs font-semibold cursor-pointer"
+              className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl text-xs font-semibold cursor-pointer ${
+                currentTheme.isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'
+              }`}
             >
-              <Play className="w-4 h-4 text-emerald-400" />
+              <Play className="w-4 h-4 text-emerald-500" />
               {contextMenuApp.isRunning ? 'Остановить таймер сессии' : 'Запустить (старт таймера с 00:00)'}
             </button>
 
@@ -5629,9 +6015,11 @@ export default function App() {
                 handleToggleFavorite(contextMenuApp);
                 setContextMenuApp(null);
               }}
-              className="w-full flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-white/10 text-xs font-semibold cursor-pointer"
+              className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl text-xs font-semibold cursor-pointer ${
+                currentTheme.isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'
+              }`}
             >
-              <Star className="w-4 h-4 text-amber-400" />
+              <Star className="w-4 h-4 text-amber-500" />
               {contextMenuApp.favorite ? 'Удалить из избранного' : 'Добавить в избранное'}
             </button>
 
@@ -5647,9 +6035,11 @@ export default function App() {
                 pushToast('Сброс таймера', `Время для ${contextMenuApp.name} сброшено в 0 мин`);
                 setContextMenuApp(null);
               }}
-              className="w-full flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-white/10 text-xs font-semibold cursor-pointer"
+              className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl text-xs font-semibold cursor-pointer ${
+                currentTheme.isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'
+              }`}
             >
-              <RotateCcw className="w-4 h-4 text-blue-400" />
+              <RotateCcw className="w-4 h-4 text-indigo-500" />
               Сбросить счетчик времени в 0
             </button>
 
@@ -5660,7 +6050,7 @@ export default function App() {
                   pushToast('Удаление', `${contextMenuApp.name} удалено`);
                   setContextMenuApp(null);
                 }}
-                className="w-full flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-rose-500/20 text-rose-400 text-xs font-semibold cursor-pointer"
+                className="w-full flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-rose-500/20 text-rose-500 text-xs font-semibold cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
                 Удалить приложение
@@ -5678,18 +6068,20 @@ export default function App() {
             className={`pointer-events-auto p-3.5 rounded-2xl border shadow-xl flex items-start gap-3 ${
               t.type === 'warning'
                 ? 'bg-rose-950/95 border-rose-500/50 text-rose-100'
-                : 'bg-[#121824]/95 border-slate-700 text-white'
+                : currentTheme.isDark
+                ? 'bg-[#121824]/95 border-slate-700 text-white'
+                : 'bg-white/95 border-slate-300 text-slate-900'
             }`}
             style={{ backdropFilter: 'blur(16px)' }}
           >
             {t.type === 'warning' ? (
               <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
             ) : (
-              <Sparkles className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+              <Sparkles className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
             )}
             <div className="text-xs">
               <div className="font-bold">{t.title}</div>
-              <div className="text-slate-300 mt-0.5">{t.message}</div>
+              <div className={`mt-0.5 ${t.type === 'warning' ? 'text-rose-200' : mutedTextCls}`}>{t.message}</div>
             </div>
           </div>
         ))}

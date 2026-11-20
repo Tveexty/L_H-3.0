@@ -104,69 +104,123 @@ export interface BackupRecord {
   sizeKb: string;
 }
 
+export interface LiveDiskMetric {
+  mount: string;
+  label: string;
+  used_gb: number;
+  total_gb: number;
+  free_gb: number;
+  percent: number;
+}
+
+export interface LiveMediaSession {
+  available: boolean;
+  is_playing: boolean;
+  title: string;
+  artist: string;
+  source_app: string;
+  updated_at: number;
+}
+
+export interface LiveLocationInfo {
+  detected: boolean;
+  city: string;
+  region: string;
+  country: string;
+  timezone: string;
+  latitude: number;
+  longitude: number;
+  ip: string;
+  source: string;
+}
+
+export interface LiveSystemTelemetry {
+  hostname: string;
+  os_name: string;
+  arch: string;
+  cpu_model: string;
+  cpu_cores: number;
+  cpu_percent: number;
+  gpu_name: string;
+  gpu_percent: number;
+  gpu_temp_c: number;
+  ram_used_gb: number;
+  ram_total_gb: number;
+  ram_percent: number;
+  battery_present: boolean;
+  battery_percent: number;
+  battery_charging: boolean;
+  net_down_mbps: number;
+  net_up_mbps: number;
+  disks: LiveDiskMetric[];
+  media: LiveMediaSession;
+  location: LiveLocationInfo;
+  real_telemetry: boolean;
+}
+
 export const THEMES: Record<string, CustomThemeConfig> = {
   m3_expressive: {
     id: 'm3_expressive',
-    name: 'Material 3 Expressive (Android 16 / Luma 1.0)',
+    name: 'Luma Expressive (Глубокий Индиго)',
     isDark: true,
     bgGradient:
-      'radial-gradient(circle at 14% 12%, rgba(99, 102, 241, 0.22), transparent 42%), radial-gradient(circle at 86% 18%, rgba(168, 85, 247, 0.16), transparent 40%), radial-gradient(circle at 75% 85%, rgba(16, 185, 129, 0.12), transparent 45%), linear-gradient(155deg, #090b14 0%, #0e1222 52%, #12172b 100%)',
-    surfaceRgba: 'rgba(20, 25, 43, 0.88)',
-    cardHex: '#151b2e',
+      'radial-gradient(circle at 14% 12%, rgba(99, 102, 241, 0.24), transparent 42%), radial-gradient(circle at 86% 18%, rgba(168, 85, 247, 0.16), transparent 40%), radial-gradient(circle at 75% 85%, rgba(16, 185, 129, 0.12), transparent 45%), linear-gradient(155deg, #080b14 0%, #0d1222 52%, #11182c 100%)',
+    surfaceRgba: 'rgba(18, 24, 42, 0.90)',
+    cardHex: '#131a2d',
     accent: 'indigo',
     accentHex: '#6366f1',
   },
   dark: {
     id: 'dark',
-    name: 'Темная (Midnight Slate LH-2.4)',
+    name: 'Luma Полночный Графит',
     isDark: true,
     bgGradient:
-      'radial-gradient(circle at 16% 12%, rgba(59, 130, 246, 0.14), transparent 40%), radial-gradient(circle at 85% 82%, rgba(16, 185, 129, 0.08), transparent 45%), linear-gradient(155deg, #0b0f17 0%, #0d111a 55%, #111723 100%)',
-    surfaceRgba: 'rgba(21, 27, 38, 0.88)',
+      'radial-gradient(circle at 16% 12%, rgba(59, 130, 246, 0.15), transparent 40%), radial-gradient(circle at 85% 82%, rgba(16, 185, 129, 0.08), transparent 45%), linear-gradient(155deg, #0a0e17 0%, #0d111b 55%, #111723 100%)',
+    surfaceRgba: 'rgba(20, 26, 38, 0.90)',
     cardHex: '#151b26',
     accent: 'blue',
     accentHex: '#3b82f6',
   },
   amoled: {
     id: 'amoled',
-    name: 'Черный Оникс (AMOLED)',
+    name: 'Luma Оникс (AMOLED)',
     isDark: true,
     bgGradient:
-      'radial-gradient(circle at 20% 15%, rgba(16, 185, 129, 0.10), transparent 40%), linear-gradient(155deg, #05070b 0%, #080b11 60%, #0c1018 100%)',
-    surfaceRgba: 'rgba(13, 17, 24, 0.92)',
+      'radial-gradient(circle at 20% 15%, rgba(16, 185, 129, 0.10), transparent 40%), linear-gradient(155deg, #04060a 0%, #070a10 60%, #0b0f17 100%)',
+    surfaceRgba: 'rgba(12, 16, 23, 0.94)',
     cardHex: '#0d1118',
     accent: 'emerald',
     accentHex: '#10b981',
   },
   light: {
     id: 'light',
-    name: 'Светлая (Material 3 Day)',
+    name: 'Luma Светлый Кристалл',
     isDark: false,
     bgGradient:
       'radial-gradient(circle at 20% 15%, rgba(99, 102, 241, 0.14), transparent 45%), radial-gradient(circle at 80% 85%, rgba(14, 165, 233, 0.12), transparent 45%), linear-gradient(145deg, #eef2ff 0%, #f8fafc 60%, #e2e8f0 100%)',
-    surfaceRgba: 'rgba(255, 255, 255, 0.86)',
+    surfaceRgba: 'rgba(255, 255, 255, 0.88)',
     cardHex: '#ffffff',
-    accent: 'blue',
+    accent: 'indigo',
     accentHex: '#4f46e5',
   },
   purple: {
     id: 'purple',
-    name: 'Фиолетовая (Expressive Berry)',
+    name: 'Luma Аметист Нео',
     isDark: true,
     bgGradient:
-      'radial-gradient(circle at 22% 18%, rgba(168, 85, 247, 0.20), transparent 45%), radial-gradient(circle at 80% 78%, rgba(217, 70, 239, 0.14), transparent 45%), linear-gradient(145deg, #0f0b1d 0%, #17122b 55%, #120e24 100%)',
-    surfaceRgba: 'rgba(26, 20, 48, 0.88)',
+      'radial-gradient(circle at 22% 18%, rgba(168, 85, 247, 0.22), transparent 45%), radial-gradient(circle at 80% 78%, rgba(217, 70, 239, 0.14), transparent 45%), linear-gradient(145deg, #0f0b1d 0%, #17122b 55%, #120e24 100%)',
+    surfaceRgba: 'rgba(26, 20, 48, 0.90)',
     cardHex: '#1a1430',
     accent: 'purple',
     accentHex: '#a855f7',
   },
   spring: {
     id: 'spring',
-    name: 'Весна (Sakura Expressive)',
+    name: 'Luma Весенний Кварц',
     isDark: false,
     bgGradient:
       'radial-gradient(circle at 22% 18%, rgba(236, 72, 153, 0.14), transparent 45%), radial-gradient(circle at 80% 78%, rgba(244, 114, 182, 0.12), transparent 45%), linear-gradient(145deg, #fff5f8 0%, #fce7f3 60%, #fbcfe8 100%)',
-    surfaceRgba: 'rgba(255, 245, 250, 0.84)',
+    surfaceRgba: 'rgba(255, 245, 250, 0.88)',
     cardHex: '#ffffff',
     accent: 'pink',
     accentHex: '#ec4899',
@@ -182,121 +236,120 @@ export const CLOCK_STYLE_OPTIONS: {
 }[] = [
   {
     id: 'android_vertical',
-    label: 'Android 14 Вертикальный (HH / MM)',
+    label: 'Luma Вертикальный (HH / MM)',
     sample: '14 / 32',
-    description: 'Крупные вертикальные часы в стиле экрана блокировки Android 14 / Pixel',
+    description: 'Крупный двухстрочный вертикальный циферблат с акцентом минут',
   },
   {
     id: 'stacked',
-    label: 'Двухэтажный (Stacked Compact)',
+    label: 'Luma Двухэтажный Компакт',
     sample: '14 : 32',
-    description: 'Компактные часы в два этажа с датой сбоку',
+    description: 'Компактные часы в два этажа с датой и днём недели сбоку',
   },
   {
     id: 'standard',
-    label: 'Классический (Горизонтальный)',
+    label: 'Luma Классический',
     sample: '14:32:08',
-    description: 'Традиционные цифровые часы с секундами и датой снизу',
+    description: 'Чёткие цифровые часы с секундами и датой снизу',
   },
   {
     id: 'pill_glass',
-    label: 'Стеклянная капсула (OneUI Pill)',
+    label: 'Luma Стеклянная Капсула',
     sample: '14:32 • Пн, 02.11',
-    description: 'Стильная капсула в одну строку с иконкой и датой',
+    description: 'Выразительная капсула в одну строку с иконкой и датой',
   },
   {
     id: 'split_flip',
-    label: 'Раздельные карточки (Flip Clock)',
+    label: 'Luma Перекидные Карточки',
     sample: '[14] [32] [08]',
-    description: 'Часы и минуты на отдельных темных карточках',
+    description: 'Часы, минуты и секунды на раздельных объемных карточках',
   },
   {
     id: 'cyber_mono',
-    label: 'Кибер-Моно (Терминал)',
+    label: 'Luma Терминал Моно',
     sample: '[ 14 : 32 : 08 ]',
-    description: 'Моноширинный киберпанк-стиль в квадратных скобках',
+    description: 'Моноширинный технический стиль в квадратных скобках',
   },
   {
     id: 'minimal',
-    label: 'Минималистичный (Чистый)',
+    label: 'Luma Чистый Минимал',
     sample: '14:32',
-    description: 'Чистое время без лишних рамок',
+    description: 'Максимально лёгкое отображение времени без лишних рамок',
   },
   {
     id: 'compact_badge',
-    label: 'Компактный бейдж с днем недели',
+    label: 'Luma Бейдж Дня',
     sample: 'Пн • 14:32',
-    description: 'Акцентный бейдж дня недели и текущее время',
+    description: 'Акцентная плашка дня недели рядом с текущим временем',
   },
-  // +10 НОВЫХ СТИЛЕЙ В ВЕРСИИ 2.5
   {
     id: 'nothing_dot',
-    label: 'Nothing OS (Dot-Matrix)',
+    label: 'Luma Точечная Матрица',
     sample: '::14 · 32 · 08::',
-    description: 'Точечно-матричный индустриальный шрифт в стиле Nothing Phone (2)',
+    description: 'Индустриальный точечно-матричный стиль с мягким ритмом',
     isNew25: true,
   },
   {
     id: 'ios_standby',
-    label: 'iOS 17 StandBy (Ночной док)',
-    sample: '14:32 STANDBY',
-    description: 'Крупные контрастные часы ночного режима iOS 17 StandBy',
+    label: 'Luma Ночной Док (Aura)',
+    sample: '14:32 AURA',
+    description: 'Контрастные ночные часы для комфортного чтения в темноте',
     isNew25: true,
   },
   {
     id: 'samsung_oneui',
-    label: 'Samsung OneUI 6 Lock',
-    sample: '14 / 32 OneUI',
-    description: 'Фирменный двойной блок Samsung One UI 6 с акцентом минут',
+    label: 'Luma Дуо-Блок',
+    sample: '14 / 32 DUO',
+    description: 'Выразительный двойной блок с выделением минут цветом темы',
     isNew25: true,
   },
   {
     id: 'neon_synthwave',
-    label: 'Neon Synthwave 80s',
+    label: 'Luma Неон Волна',
     sample: '⚡ 14:32:08',
-    description: 'Неоновый ретро-футуризм с мягким свечением цифр',
+    description: 'Ретро-футуристичный циферблат с мягким неоновым ореолом',
     isNew25: true,
   },
   {
     id: 'retro_casio',
-    label: 'Retro LCD (Casio F-91W)',
+    label: 'Luma Кварц Ретро',
     sample: "LCD 14:32'08",
-    description: 'Кварцевый ЖК-индикатор в стиле классических часов Casio',
+    description: 'Классический кварцевый ЖК-индикатор с миллиметровой точностью',
     isNew25: true,
   },
   {
     id: 'macos_sonoma',
-    label: 'macOS Sonoma Lockscreen',
-    sample: '14:32 Sonoma',
-    description: 'Элегантная типографика экрана блокировки macOS Sonoma',
+    label: 'Luma Горизонт',
+    sample: '14:32 Горизонт',
+    description: 'Чистая воздушная типографика в стиле рабочего стола Luma',
     isNew25: true,
   },
   {
     id: 'futuristic_hud',
-    label: 'Sci-Fi Tactical HUD',
+    label: 'Luma Тактический HUD',
     sample: 'SYS//14:32.08',
-    description: 'Тактический телеметрический дисплей с системным префиксом',
+    description: 'Телеметрический циферблат ядра с системным префиксом',
     isNew25: true,
   },
   {
     id: 'analog_hybrid',
-    label: 'Гибридный Хронограф',
+    label: 'Luma Хронограф',
     sample: '◔ 14:32:08',
-    description: 'Сочетание часового индикатора хронографа и цифрового блока',
+    description: 'Сочетание символа хронографа и точного цифрового блока',
     isNew25: true,
   },
   {
     id: 'vertical_neon_bar',
-    label: 'Неоновая Вертикаль (Бар)',
+    label: 'Luma Неоновая Вертикаль',
     sample: '14 ┃ 32',
-    description: 'Вертикальная колонка с яркой неоновой полосой акцента',
+    description: 'Вертикальная колонка с яркой акцентной линией сбоку',
     isNew25: true,
   },
   {
     id: 'material_expressive',
-    label: 'Material You Expressive (Pixel 9)',
-    sample: '14 / 32 Pixel',
-    description: 'Выразительный адаптивный стиль Google Pixel 9 Material You',
+    label: 'Luma Скульпт Expressive',
+    sample: '14 / 32 Luma',
+    description: 'Фирменный выразительный стиль Luma OS 1.0.1 Material 3 Expressive',
     isNew25: true,
   },
 ];
@@ -675,92 +728,92 @@ export const INITIAL_DETOX_GROUPS: DetoxGroup[] = [
 export const INITIAL_PLUGINS: PluginItem[] = [
   {
     id: 'session_tracker_plugin',
-    name: 'Game & App Session Tracker (C#)',
-    version: '3.0.0',
-    author: 'Luma OS Core Team',
+    name: 'Luma Session Tracker',
+    version: '1.0.1',
+    author: 'Luma Core Team',
     category: 'Аналитика и Детокс',
     icon: 'BarChart3',
     description:
-      'Отслеживает время с 00:00 в реальном времени после запуска каждого приложения или игры, выводит таймер и часы на плитках, строит графики (день/неделя/месяц) и контролирует лимиты детокса.',
+      'Отслеживает время с 00:00 в реальном времени после запуска каждого приложения или игры, выводит живой таймер на карточках и контролирует лимиты цифрового баланса.',
     enabled: true,
-    file: 'LauncherHab3.0_CSharp/Plugins/SessionTrackerPlugin.cs',
-    hooks: ['OnInitializeAsync', 'OnAppLaunched', 'OnTickAsync', 'FormatLiveTileBadge', 'GetTilePayload'],
+    file: 'luma_kernel_main.go',
+    hooks: ['OnInitialize', 'OnAppLaunched', 'OnTick', 'GetWidgetPayload'],
     showInLauncher: true,
     customIntervalSec: 1,
     notificationsEnabled: true,
   },
   {
     id: 'focus_mode_plugin',
-    name: 'Focus Mode (Pomodoro C#)',
-    version: '3.0.0',
-    author: 'Luma OS Core Team',
+    name: 'Luma Focus Flow (Помидор)',
+    version: '1.0.1',
+    author: 'Luma Core Team',
     category: 'Продуктивность',
     icon: 'Clock',
     description:
-      'Режим концентрации с Pomodoro-таймером на 25 минут и автоматическим закрытием отвлекающих мессенджеров в среде .NET 8.',
+      'Режим глубокой концентрации с таймером на 25 минут и защитой от отвлекающих уведомлений.',
     enabled: true,
-    file: 'LauncherHab3.0_CSharp/Plugins/BuiltInPluginsPack.cs',
-    hooks: ['OnInitializeAsync', 'OnTickAsync', 'GetTilePayload'],
+    file: 'luma_kernel_main.go',
+    hooks: ['OnInitialize', 'OnTick', 'GetWidgetPayload'],
     showInLauncher: true,
     customIntervalSec: 60,
     notificationsEnabled: true,
   },
   {
     id: 'smart_music_controller',
-    name: 'Smart Music Controller (WASAPI C#)',
-    version: '3.0.0',
-    author: 'Luma OS Core Team',
+    name: 'Luma Media Controller',
+    version: '1.0.1',
+    author: 'Luma Core Team',
     category: 'Медиа',
     icon: 'Music',
-    description: 'Встроенный мини-плеер C# (WASAPI / Windows SMTC) для быстрого переключения треков на плитках.',
+    description: 'Нативный контроллер медиасессии Luma HAL: чтение текущего трека и переключение музыки в системе.',
     enabled: true,
-    file: 'LauncherHab3.0_CSharp/Plugins/BuiltInPluginsPack.cs',
-    hooks: ['OnInitializeAsync', 'GetTilePayload'],
+    file: 'system_windows.go',
+    hooks: ['OnInitialize', 'OnMediaControl', 'GetWidgetPayload'],
     showInLauncher: true,
-    customIntervalSec: 30,
+    customIntervalSec: 3,
     notificationsEnabled: true,
   },
   {
     id: 'smart_weather_plugin',
-    name: 'Smart Weather Open-Meteo (C#)',
-    version: '3.0.0',
-    author: 'Luma OS Core Team',
+    name: 'Luma Погода (Авто-регион)',
+    version: '1.0.1',
+    author: 'Luma Core Team',
     category: 'Виджеты',
     icon: 'Cloud',
-    description: 'Живая плитка погоды C# (Open-Meteo API): температура, ветер и почасовой прогноз для любого города.',
+    description: 'Автоопределение вашего региона и живой почасовой прогноз погоды Open-Meteo.',
     enabled: true,
-    file: 'LauncherHab3.0_CSharp/Plugins/BuiltInPluginsPack.cs',
-    hooks: ['OnInitializeAsync', 'GetTilePayload'],
+    file: 'luma_kernel_main.go',
+    hooks: ['OnInitialize', 'OnLocationDetect', 'GetWidgetPayload'],
     showInLauncher: true,
     customIntervalSec: 300,
     notificationsEnabled: true,
   },
   {
     id: 'idea_notebook_plugin',
-    name: 'Idea Notebook (C# VFS)',
-    version: '3.0.0',
-    author: 'Luma OS Core Team',
+    name: 'Luma Notes (VFS AES-256)',
+    version: '1.0.1',
+    author: 'Luma Core Team',
     category: 'Утилиты',
     icon: 'FileText',
-    description: 'Быстрые заметки и To-Do списки с шифрованием AES-256-GCM в виртуальной ФС ядра Luma OS.',
+    description: 'Быстрые заметки и списки задач с шифрованием AES-256-GCM в виртуальной ФС ядра Luma Core.',
     enabled: true,
-    file: 'LauncherHab3.0_CSharp/Plugins/BuiltInPluginsPack.cs',
-    hooks: ['OnInitializeAsync', 'GetTilePayload'],
+    file: 'luma_kernel_main.go',
+    hooks: ['OnInitialize', 'OnVfsSync', 'GetWidgetPayload'],
     showInLauncher: true,
     customIntervalSec: 60,
     notificationsEnabled: true,
   },
   {
     id: 'smart_file_finder',
-    name: 'Smart File Finder (C# .NET 8)',
-    version: '3.0.0',
-    author: 'Luma OS Core Team',
+    name: 'Luma Быстрый Поиск',
+    version: '1.0.1',
+    author: 'Luma Core Team',
     category: 'Система',
     icon: 'Search',
-    description: 'Сверхбыстрый асинхронный поиск локальных файлов через Directory.EnumerateFiles (.NET 8).',
+    description: 'Мгновенный поиск приложений, плагинов и локальных системных модулей ядра Luma.',
     enabled: true,
-    file: 'LauncherHab3.0_CSharp/Plugins/BuiltInPluginsPack.cs',
-    hooks: ['OnInitializeAsync', 'SearchLocalFiles', 'GetTilePayload'],
+    file: 'luma_kernel_main.go',
+    hooks: ['OnInitialize', 'OnSearch', 'GetWidgetPayload'],
     showInLauncher: true,
     customIntervalSec: 60,
     notificationsEnabled: true,
@@ -770,60 +823,60 @@ export const INITIAL_PLUGINS: PluginItem[] = [
 export const PLUGIN_CATALOG: CatalogPluginItem[] = [
   {
     id: 'system_cleaner_plugin',
-    name: 'System Cleaner & RAM Optimizer (C#)',
-    version: '3.0.0',
-    author: 'Luma OS Store',
+    name: 'Luma Cleaner & RAM Optimizer',
+    version: '1.0.1',
+    author: 'Luma Store',
     category: 'Система',
     icon: 'Activity',
-    description: 'Очистка временного кэша системы и оптимизация Working Set процессов в 1 клик через Win32 API.',
-    file: 'LauncherHab3.0_CSharp/Plugins/BuiltInPluginsPack.cs',
-    hooks: ['OnInitializeAsync', 'GetTilePayload'],
+    description: 'Очистка временного кэша системы и оптимизация памяти процессов в 1 клик через Luma HAL.',
+    file: 'system_windows.go',
+    hooks: ['OnInitialize', 'GetWidgetPayload'],
   },
   {
     id: 'game_booster_plugin',
-    name: 'Game Booster Pro (FPS & Ping C#)',
-    version: '3.0.0',
-    author: 'Luma OS Store',
+    name: 'Luma Game Booster Pro',
+    version: '1.0.1',
+    author: 'Luma Store',
     category: 'Игры',
     icon: 'Gamepad2',
-    description: 'Повышение приоритета игровых процессов (ProcessPriorityClass.High) и мониторинг пинга перед запуском.',
-    file: 'LauncherHab3.0_CSharp/Plugins/BuiltInPluginsPack.cs',
-    hooks: ['OnInitializeAsync', 'OnTickAsync', 'GetTilePayload'],
+    description: 'Повышение приоритета игровых процессов и контроль сетевой задержки перед запуском.',
+    file: 'luma_kernel_main.go',
+    hooks: ['OnInitialize', 'OnTick', 'GetWidgetPayload'],
   },
   {
     id: 'quick_clipboard_plugin',
-    name: 'Quick Clipboard History (C#)',
-    version: '3.0.0',
-    author: 'Luma OS Store',
+    name: 'Luma Clipboard Vault',
+    version: '1.0.1',
+    author: 'Luma Store',
     category: 'Продуктивность',
     icon: 'Copy',
-    description: 'Менеджер буфера обмена Windows с шифрованием истории сниппетов через Luma SecurityKernel.',
-    file: 'LauncherHab3.0_CSharp/Plugins/BuiltInPluginsPack.cs',
-    hooks: ['OnInitializeAsync', 'GetTilePayload'],
+    description: 'Защищённый менеджер буфера обмена с шифрованием истории в LumaGuard AES-256-GCM.',
+    file: 'luma_kernel_main.go',
+    hooks: ['OnInitialize', 'GetWidgetPayload'],
   },
 ];
 
 export const INITIAL_WORKSPACES: WorkspacePreset[] = [
   {
     id: 'gaming',
-    name: 'Игровой режим',
+    name: 'Игровой режим Luma',
     hotkey: 'ctrl+shift+g',
-    closeProcesses: ['chrome', 'browser', 'discordcanary'],
+    closeProcesses: ['chrome', 'browser', 'discord'],
     launchApps: ['steam', 'telegram'],
   },
   {
     id: 'dev',
-    name: 'Режим разработчика C#',
+    name: 'Режим разработчика Luma',
     hotkey: 'ctrl+shift+d',
     closeProcesses: [],
-    launchApps: ['cmd', 'chrome'],
+    launchApps: ['vscode', 'cmd', 'github'],
   },
   {
     id: 'focus',
-    name: 'Фокус и Детокс',
+    name: 'Фокус и Баланс',
     hotkey: 'ctrl+shift+f',
-    closeProcesses: ['steam', 'vk', 'telegram'],
-    launchApps: ['winword'],
+    closeProcesses: ['steam', 'vk', 'telegram', 'discord'],
+    launchApps: ['notion', 'winword'],
   },
 ];
 
@@ -834,6 +887,8 @@ export interface IslandMediaPlayer {
   accent: string;
   track: string;
   artist: string;
+  playlist?: { track: string; artist: string }[];
+  trackIndex?: number;
 }
 
 export type IslandPlayerItem = IslandMediaPlayer;
@@ -854,12 +909,20 @@ export type IslandNotificationItem = WindowsNotificationItem;
 
 export const INITIAL_ISLAND_PLAYERS: IslandMediaPlayer[] = [
   {
-    id: 'windows_smtc',
-    name: 'Windows Media (SMTC)',
+    id: 'luma_system_media',
+    name: 'Luma Media Hub (Системный поток)',
     color: '#6366f1',
     accent: '#6366f1',
-    track: 'Synthwave Night Drive',
-    artist: 'System Audio Session',
+    track: 'Ожидание активного медиапотока...',
+    artist: 'Luma Audio Engine • Реальный контроль треков',
+    trackIndex: 0,
+    playlist: [
+      { track: 'Synthwave Night Drive', artist: 'Luma Audio Session' },
+      { track: 'Midnight City (Extended)', artist: 'M83 • Luma Stream' },
+      { track: 'Nightcall', artist: 'Kavinsky • Outrun Mix' },
+      { track: 'Resonance', artist: 'HOME • Ambient Synth' },
+      { track: 'Memory Reboot', artist: 'VØJ & Narvent' },
+    ],
   },
   {
     id: 'yandex_music',
@@ -868,63 +931,89 @@ export const INITIAL_ISLAND_PLAYERS: IslandMediaPlayer[] = [
     accent: '#f59e0b',
     track: 'Моя Волна • Поток',
     artist: 'Яндекс Музыка HQ',
+    trackIndex: 0,
+    playlist: [
+      { track: 'Моя Волна • Поток', artist: 'Яндекс Музыка HQ' },
+      { track: 'После полуночи', artist: 'Инди-Волна' },
+      { track: 'Неоновый рассвет', artist: 'Электронный поток' },
+      { track: 'Фокус и Код', artist: 'Lo-Fi Beats' },
+    ],
   },
   {
     id: 'spotify',
-    name: 'Spotify Desktop',
+    name: 'Spotify',
     color: '#10b981',
     accent: '#10b981',
     track: 'Midnight City (Lo-Fi Mix)',
     artist: 'Spotify Connect',
+    trackIndex: 0,
+    playlist: [
+      { track: 'Midnight City (Lo-Fi Mix)', artist: 'Spotify Connect' },
+      { track: 'Blinding Lights (Instrumental)', artist: 'Synth Club' },
+      { track: 'Veridis Quo', artist: 'Daft Punk' },
+      { track: 'Instant Crush', artist: 'Daft Punk & Julian Casablancas' },
+    ],
   },
   {
     id: 'vk_music',
     name: 'VK Музыка',
     color: '#60a5fa',
     accent: '#60a5fa',
-    track: 'Киберпанк Плейлист',
+    track: 'Ночной Плейлист',
     artist: 'VK Audio',
+    trackIndex: 0,
+    playlist: [
+      { track: 'Ночной Плейлист', artist: 'VK Audio' },
+      { track: 'Тёплый синт', artist: 'VK Mix' },
+      { track: 'Пульс города', artist: 'VK Beats' },
+    ],
   },
   {
     id: 'telegram_audio',
-    name: 'Telegram Плеер',
+    name: 'Telegram Аудио',
     color: '#38bdf8',
     accent: '#38bdf8',
-    track: 'Голосовой / Аудио подкаст',
-    artist: 'Telegram Desktop',
+    track: 'Аудиопоток / Подкаст',
+    artist: 'Telegram Плеер',
+    trackIndex: 0,
+    playlist: [
+      { track: 'Аудиопоток / Подкаст', artist: 'Telegram Плеер' },
+      { track: 'Tech Deep Dive #42', artist: 'Luma Podcast' },
+      { track: 'Утренний брифинг', artist: 'Telegram Audio' },
+    ],
   },
 ];
 
 export const INITIAL_WINDOWS_NOTIFICATIONS: WindowsNotificationItem[] = [
   {
-    id: 'win_1',
-    app: 'Luma OS Security Kernel 1.0',
-    title: 'Криптоядро LumaGuard AES-256-GCM активно',
-    message: 'Угроз не обнаружено. Контейнер PBKDF2-HMAC-SHA512 (310 000 итераций) + HMAC-SHA256 IPC синхронизированы.',
+    id: 'luma_notif_1',
+    app: 'Luma OS 1.0.1 • Патч первого дня',
+    title: 'Обновление 1.0.1 активно — все службы в норме',
+    message: 'Подключена реальная телеметрия ПК, авто-регион и погода, переключение системных треков и отключаемый Luma Island.',
     time: 'Сейчас',
-    icon: '🛡️',
+    icon: '🚀',
     color: '#10b981',
     unread: true,
     read: false,
   },
   {
-    id: 'win_2',
-    app: 'Оболочка Luma Shell (Material 3 Expressive)',
-    title: 'Два окна готовы: Окно 1 (По группам) + Окно 2 (20×30)',
-    message: 'Все 18 живых виджетов Android 16, iOS 18 и Windows 11 подключены к матрице 20×30 (600 ячеек).',
+    id: 'luma_notif_2',
+    app: 'LumaGuard Криптоядро 1.0.1',
+    title: 'Контейнер AES-256-GCM + PBKDF2-SHA512 проверен',
+    message: 'Угроз не обнаружено. Шина IPC 127.0.0.1:49215 защищена подписью HMAC-SHA256.',
     time: '1 мин назад',
-    icon: '🪟',
+    icon: '🛡️',
     color: '#6366f1',
     unread: true,
     read: false,
   },
   {
-    id: 'win_3',
-    app: 'Luma Core Daemon 1.0',
-    title: 'Шина Binder / JSON-RPC 2.0 (127.0.0.1:49215)',
-    message: 'Автономное ядро Luma Core 1.0 (HAL + ProcessManager + WidgetEngine + VFS) работает в штатном режиме.',
+    id: 'luma_notif_3',
+    app: 'Оболочка Luma Shell (2 Окна)',
+    title: 'Окно 1 (По группам) и Окно 2 (Матрица 20×30) синхронизированы',
+    message: '18 фирменных виджетов Luma Pulse, Luma Aura и Luma Core готовы к работе.',
     time: '2 мин назад',
-    icon: '🧠',
+    icon: '🪟',
     color: '#a855f7',
     unread: true,
     read: false,
@@ -934,334 +1023,91 @@ export const INITIAL_WINDOWS_NOTIFICATIONS: WindowsNotificationItem[] = [
 export const PYTHON_PROJECT_FILES: { path: string; title: string; badge: string; summary: string }[] = [
   {
     path: 'luma_kernel_main.go',
-    title: 'luma_kernel_main.go (LumaOS_1.0.exe Native Kernel)',
-    badge: 'LUMA CORE 1.0',
+    title: 'luma_kernel_main.go (Ядро Luma OS 1.0.1)',
+    badge: 'LUMA CORE 1.0.1',
     summary:
-      'Исходный код готового исполняемого файла LumaOS_1.0.exe: ядро по типу Android (TCP JSON-RPC 2.0 127.0.0.1:49215, HTTP IPC 49216, криптоядро AES-256-GCM + PBKDF2-HMAC-SHA512 + VFS, движок 18 виджетов и автозапуск 2 окон).',
+      'Главный модуль ядра LumaOS_1.0.1.exe: TCP JSON-RPC 2.0 (127.0.0.1:49215), HTTP IPC (49216), реальная телеметрия, медиа-управление, авто-регион, шифрованная VFS AES-256-GCM и автозапуск 2 окон.',
   },
   {
-    path: 'Luma_Core/luma_core.py',
-    title: 'Luma_Core/luma_core.py (Python Kernel Daemon)',
-    badge: 'PYTHON CORE',
+    path: 'system_windows.go',
+    title: 'system_windows.go (Нативный HAL & Медиа-мост)',
+    badge: 'HAL NATIVE',
     summary:
-      'Кроссплатформенный фоновый демон ядра Luma Core на Python (JSON-RPC 2.0, ProcessManager с Watchdog и виджет-телеметрия).',
+      'Нативный сбор реальных ресурсов CPU/RAM/Дисков/Батареи/Сети, чтение текущего играющего трека из системной медиасессии, переключение треков и регулировка системной громкости.',
   },
   {
-    path: 'LauncherHab3.0_CSharp/Program.cs',
-    title: 'Program.cs',
-    badge: 'ENTRY C#',
+    path: 'system_unix.go',
+    title: 'system_unix.go (POSIX HAL & Телеметрия)',
+    badge: 'HAL POSIX',
     summary:
-      'Главная точка входа C# (.NET 8): запускает полноценное ядро системы Luma OS (LumaSystemKernel), фоновый IPC-демон и монтирует плиточный интерфейс (Windows / Android) поверх системы.',
+      'Кроссплатформенный сбор реальных показателей CPU, RAM, томов дисков, сетевого трафика и MPRIS-медиасессии.',
   },
   {
-    path: 'LauncherHab3.0_CSharp/LumaCore/LumaSystemKernel.cs',
-    title: 'LumaCore/LumaSystemKernel.cs',
-    badge: 'LUMA OS KERNEL',
+    path: 'system_types.go',
+    title: 'system_types.go (Контракты телеметрии Luma)',
+    badge: 'TYPES 1.0.1',
     summary:
-      'Полноценное ядро операционной системы Luma на C#: диспетчер 8 системных служб, виртуальная файловая система (VFS), шифрованный реестр и управление плиточной оболочкой (Windows Metro / Android 15 / Luma Glass).',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/LumaCore/LumaCoreDaemon.cs',
-    title: 'LumaCore/LumaCoreDaemon.cs',
-    badge: 'LUMA DAEMON C#',
-    summary:
-      'Независимый фоновый демон Luma 1.0 на C# (JSON-RPC 2.0 сокет 127.0.0.1:49215, ProcessManager с Watchdog-перезапуском, WidgetEngine и PluginHostV3).',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/LumaCore/SecurityKernel.cs',
-    title: 'LumaCore/SecurityKernel.cs',
-    badge: 'SECURITY 3.0',
-    summary:
-      'Ядро безопасности Luma 1.0 на C#: аутентифицированное шифрование AES-256-GCM (96-бит Nonce + 128-бит AuthTag), PBKDF2-HMAC-SHA512 (310 000 итераций) и HMAC-подпись IPC пакетов.',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/LumaCore/WidgetEngine.cs',
-    title: 'LumaCore/WidgetEngine.cs',
-    badge: '12 WIDGETS C#',
-    summary:
-      'Движок всех 12 интерактивных системных виджетов Luma на C#: CPU/RAM 2x1, Диски C/D 2x1, Аудио WASAPI 1x1, Заметки & To-Do 2x2, Часы/Аптайм 1x1, Быстрый запуск 2x1, Сеть 1x1/2x1, Плеер 2x1, Помидор 1x1, Погода 1x1/2x1, Калькулятор 2x1 и Питание 1x1.',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/LumaCore/PluginApiV3.cs',
-    title: 'LumaCore/PluginApiV3.cs',
-    badge: 'PLUGIN API 3.0',
-    summary:
-      'Контракт ILumaPluginV3 на C#: изолированный AssemblyLoadContext (.NET 8), флаги разрешений (Permissions), регистрация кастомных плиток (1x1, 2x1, 2x2) и шифрованное хранилище.',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/LumaCore/IpcClientBridge.cs',
-    title: 'LumaCore/IpcClientBridge.cs',
-    badge: 'JSON-RPC C#',
-    summary:
-      'Асинхронный клиент и транспортный мост JSON-RPC 2.0 (NDJSON поверх TCP 127.0.0.1:49215) для связи плиточной оболочки с ядром Luma OS.',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/UI/MainWindow.xaml.cs',
-    title: 'UI/MainWindow.xaml.cs',
-    badge: 'TILE SHELL C#',
-    summary:
-      'Главное окно плиточной оболочки поверх системы Luma OS в стиле живых плиток Windows / Android с переключением в классический Быстрый поиск, папками и размерами 1x1, 2x1, 2x2.',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/UI/TileShellDashboardWindow.cs',
-    title: 'UI/TileShellDashboardWindow.cs',
-    badge: 'WIN/ANDROID UI',
-    summary:
-      'Контроллер плиточного рабочего стола поверх Luma OS: переключение режимов плиток Windows Metro Fluent / Android 15 Material / Luma Glass и навигация одной рукой «ПКМ = Назад».',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/Modules/DynamicIslandService.cs',
-    title: 'Modules/DynamicIslandService.cs',
-    badge: 'ISLAND C#',
-    summary:
-      'Системная служба Dynamic Island на C#: перехват уведомлений Windows, переключение плееров SMTC, таймер, секундомер с кругами, индикация зарядки и режим «Не беспокоить».',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/Modules/AudioControllerWasapi.cs',
-    title: 'Modules/AudioControllerWasapi.cs',
-    badge: 'WASAPI AUDIO',
-    summary:
-      'Неблокирующий контроллер системной громкости Windows CoreAudio / WASAPI на C# с выполнением COM-операций в фоновом потоке.',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/Modules/AppAndWorkspaceManager.cs',
-    title: 'Modules/AppAndWorkspaceManager.cs',
-    badge: 'APPS & HOTKEYS',
-    summary:
-      'Менеджер приложений, папок, рабочих пространств (Smart Workspaces) и глобальных горячих клавиш Win32 (user32.dll RegisterHotKey) на C#.',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/Modules/ThemeAndGlassEngine.cs',
-    title: 'Modules/ThemeAndGlassEngine.cs',
-    badge: 'THEMES & GLASS',
-    summary:
-      'Движок адаптивной темы «День / Ночь» по расписанию, 18 стилей часов и генератор жидкого стекла #AARRGGBB (Windows Acrylic / Mica & Android Blur) на C#.',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/Modules/DiagnosticsAndUpdater.cs',
-    title: 'Modules/DiagnosticsAndUpdater.cs',
-    badge: 'DIAGNOSTICS C#',
-    summary:
-      'Служба самодиагностики 6 узлов системы Luma OS, атомарного сохранения JSON (UTF-8) и автообновления через GitHub Releases API на C#.',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/Plugins/SessionTrackerPlugin.cs',
-    title: 'Plugins/SessionTrackerPlugin.cs',
-    badge: 'TRACKER C#',
-    summary:
-      'Плагин посекундного учета времени приложений и игр с 00:00 (Zero-Start) на C# с выводом живого таймера (🟢 00:00:15) на плитках и контролем лимитов детокса.',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/Plugins/BuiltInPluginsPack.cs',
-    title: 'Plugins/BuiltInPluginsPack.cs',
-    badge: 'PLUGINS PACK C#',
-    summary:
-      'Набор системных плагинов Luma OS на C# (.NET 8): FocusModePomodoroPlugin, SmartWeatherPlugin, SmartMusicControllerPlugin, IdeaNotebookAndFinderPlugin.',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/LauncherHab3.csproj',
-    title: 'LauncherHab3.csproj',
-    badge: '.NET 8 CSPROJ',
-    summary:
-      'Манифест сборки проекта C# (.NET 8 Windows WPF + WinUI + NAudio.Wasapi + CommunityToolkit.Mvvm) для системы Luma OS и плиточного интерфейса.',
-  },
-  {
-    path: 'LauncherHab3.0_CSharp/README_CSHARP_3.0.md',
-    title: 'README_CSHARP_3.0.md',
-    badge: 'DOCS C#',
-    summary:
-      'Полная документация по архитектуре системы Luma OS 1.0 на языке C# (.NET 8) и плиточной оболочке Windows / Android.',
+      'Структуры данных реальных ресурсов, дисков, медиасессии и геолокации ядра Luma Core 1.0.1.',
   },
   {
     path: 'src/components/LumaGrid20x30Window.tsx',
     title: 'src/components/LumaGrid20x30Window.tsx',
-    badge: 'WINDOW 2 (20×30)',
+    badge: 'ОКНО 2 (20×30)',
     summary:
-      'Второе окно оболочки Luma 1.0 с координатной матрицей 20×30 (600 ячеек) и 18 самыми популярными виджетами из Android 16 Material 3 Expressive, iPhone iOS 18 и Windows 11.',
+      'Второе окно Luma OS 1.0.1: координатная матрица 20×30 (600 ячеек), конструктор позиций и 18 живых виджетов линеек Luma Pulse, Luma Aura и Luma Core.',
+  },
+  {
+    path: 'Luma_Core/luma_core.py',
+    title: 'Luma_Core/luma_core.py (Резервный демон)',
+    badge: 'PYTHON CORE',
+    summary:
+      'Резервный кроссплатформенный фоновый демон ядра Luma Core с JSON-RPC 2.0 и трекингом процессов.',
+  },
+  {
+    path: 'LauncherHab3.0_CSharp/LumaCore/LumaSystemKernel.cs',
+    title: 'LumaCore/LumaSystemKernel.cs',
+    badge: 'C# KERNEL',
+    summary:
+      'Эталонная реализация ядра Luma Core на C# (.NET 8) с VFS и шифрованным реестром.',
+  },
+  {
+    path: 'LauncherHab3.0_CSharp/LumaCore/SecurityKernel.cs',
+    title: 'LumaCore/SecurityKernel.cs',
+    badge: 'LUMAGUARD',
+    summary:
+      'Модуль криптозащиты LumaGuard: AES-256-GCM, PBKDF2-HMAC-SHA512 и подпись пакетов HMAC-SHA256.',
   },
 ];
 
-// Полная история версий с 1.0 до 3.0
+// Полная история версий (с акцентом на Патч первого дня 1.0.1)
 export const VERSION_HISTORY: Record<string, string[]> = {
-  '3.0': [
-    '🚀 LUMA OS 1.0 KERNEL & SHELL (MATERIAL 3 EXPRESSIVE) — РЕЛИЗНОЕ ЯДРО ПО ТИПУ ANDROID, ДВУХОКОННАЯ АРХИТЕКТУРА (СПИСОК ПО ГРУППАМ + ЯЧЕЙКИ 20×30), 18 ВИДЖЕТОВ ANDROID/iOS/WINDOWS И ГОТОВЫЙ LUMAOS_1.0.EXE',
-    '🧠 АРХИТЕКТУРА ЯДРА LUMA CORE 1.0 (ANDROID-LIKE KERNEL) — уровни HAL (Hardware Abstraction), Activity & Process Manager с Watchdog-перезапуском, Binder / JSON-RPC 2.0 IPC (127.0.0.1:49215), VFS и криптоядро LumaGuard (AES-256-GCM + PBKDF2-HMAC-SHA512 310k + HMAC-SHA256)',
-    '✨ ДИЗАЙН MATERIAL 3 EXPRESSIVE — выразительные формы (Squircle / Scallop / Tonal Pills), пружинная микро-анимация, динамические палитры и мгновенное зажигание статуса «🟢 АКТИВНО» из LH-2.4',
-    '🪟 ОКНО 1 (КАК В ФАЙЛЕ LH-2.4 — СПИСКОМ ПО ГРУППАМ) — левая панель «Библиотека» с живым поиском и фильтрами + рабочая область с категориями по группам (Избранное, Плагины, Games, Browser, Social, Media, Music, Development, Office, System) в режимах «Списком по группам» и «Карточками по группам»',
-    '📐 ОКНО 2 (СЕТКА ЯЧЕЕК 20×30 — 600 КООРДИНАТНЫХ ЯЧЕЕК) — точная матрица 20×30 / 30×20 с видимыми координатами [X, Y], перемещением в любую ячейку в 1 клик, масштабированием W×H и синхронизацией между окнами через BroadcastChannel и IPC ядра',
-    '🌍 18 САМЫХ ПОПУЛЯРНЫХ ВИДЖЕТОВ ИЗ ANDROID, iPHONE И WINDOWS — 6 виджетов Android 16 M3 Expressive (Scallop Clock, Quick Settings Shade, Pixel Weather Live, Digital Wellbeing, Keep Notes, M3 Calculator), 6 виджетов iPhone iOS 18 (Fitness Rings, Battery Matrix, StandBy Vinyl Player, Calendar & World Clock, Pomodoro Focus, Stocks & Crypto) и 6 виджетов Windows 11 (CPU/GPU/RAM Telemetry, NVMe Disks C:/D:, Network I/O & IPC, Quick Utilities, Power & Win+L, LumaGuard Security)',
-    '📦 ГОТОВЫЙ К ЗАПУСКУ ФАЙЛ LumaOS_1.0.exe — автономный Windows .exe файл со встроенным ядром Luma 1.0 и графической оболочкой без необходимости установки зависимостей',
-  ],
-  '2.9': [
-    '🚀 LAUNCHER HAB 2.9 & LUMA KERNEL — ФИНАЛЬНАЯ СИНХРОНИЗАЦИЯ ТРЕХ ОКОН И АВТОЗАПУСК ДЕМОНА C#',
-    '🧠 АВТОМАТИЧЕСКИЙ ЗАПУСК LUMA CORE — лаунчер сам поднимает фоновый демон ядра C# при старте, если порт 127.0.0.1:49215 свободен',
-    '🪟 РЕЖИМ ТРЕХ ОКОН — бесшовная работа Библиотеки, Быстрого запуска (Quick Launch) и Дашборда плиток Luma (Tiles Dashboard)',
-    '🛡️ СТАБИЛЬНОСТЬ UTF-8 И COREAUDIO WASAPI — устранены конфликты кодировок JSON на Windows и синхронизированы потоки аудио C#',
-  ],
-  '2.8': [
-    '🚀 LAUNCHER HAB 2.8 — РАСШИРЕННЫЙ ДАШБОРД ПЛИТОК LUMA И УЛУЧШЕННЫЙ IPC КЛИЕНТ C#',
-    '📡 АСИНХРОННЫЙ МОСТ IpcClientBridge.cs — неблокирующий обмен пакетами JSON-RPC 2.0 между плиточной оболочкой и фоновым ядром',
-    '📝 СИНХРОНИЗАЦИЯ БЫСТРЫХ ЗАМЕТОК В ПАМЯТИ ЯДРА — мгновенное сохранение заметок между перезапусками графического клиента',
-  ],
-  '2.7': [
-    '🚀 LAUNCHER HAB 2.7 — ЯДРО LUMA И СЕРВИС ВИДЖЕТОВ WIDGETENGINE.CS',
-    '⚙️ HEADLESS-ДЕМОН LumaCoreDaemon.cs — фоновый TCP-сервер на 127.0.0.1:49215 с нулевой нагрузкой на CPU в простое',
-    '🧩 СЕРВИС ВИДЖЕТОВ WidgetEngine.cs — архитектура системных плиток, телеметрии CPU/RAM и заметок на C#',
-  ],
-  '2.6': [
-    '🚀 LAUNCHER HAB 2.6 — DYNAMIC ISLAND, НАСТРОЙКИ В СТИЛЕ ANDROID, АДАПТИВНАЯ ТЕМА ДЕНЬ/НОЧЬ, АВТООБНОВЛЕНИЕ С GITHUB И ПКМ «НАЗАД»',
-    '🏝️ ВСЕГДА АКТИВНЫЙ DYNAMIC ISLAND — интерактивный остров в верхней панели с постоянным отображением статуса, времени, даты и процентов заряда устройства',
-    '🔔 ПРОСМОТР УВЕДОМЛЕНИЙ ОТ WINDOWS В ОСТРОВЕ — перехват и журнал системных и прикладных уведомлений Windows с очисткой и фильтрацией',
-    '🎵 СМЕНА ПРОИГРЫВАТЕЛЯ В DYNAMIC ISLAND — переключение между Windows Media (SMTC), Яндекс Музыкой, Spotify, VK Музыкой и Telegram Audio + управление треками',
-    '⏱️ ВСТРОЕННЫЙ ТАЙМЕР И СЕКУНДОМЕР В ОСТРОВЕ — обратный отсчет с пресетами (1/5/15/25 мин) и секундомер с записью кругов (Laps) и выводом прямо на капсулу',
-    '⚡ АНИМАЦИЯ ЗАРЯДКИ УСТРОЙСТВА — неоновая изумрудная волна и пульсация молнии в Dynamic Island при подключении питания и отображение процентов батареи',
-    '🌙 ПОЛНОСТЬЮ РАБОЧИМ РЕЖИМ «НЕ БЕСПОКОИТЬ» (DND) — блокирует всплывающие баннеры и звуки, тихо сохраняя все уведомления внутри Dynamic Island',
-    '📱 ПОЛНОСТЬЮ ПЕРЕРИСОВАННЫЕ НАСТРОЙКИ В СТИЛЕ ANDROID 15 — боковое меню с цветными иконками, плитки быстрых настроек (Quick Settings Tiles) и скругленные карточки',
-    '🌗 АДАПТИВНАЯ ТЕМА «ДЕНЬ / НОЧЬ» ПО РАСПИСАНИЮ — автоматическая смена темы (днем — светлая/белая, ночью — темная) с выбором точного времени смены и конкретных тем',
-    '🔄 АВТООБНОВЛЕНИЕ И ПРОВЕРКА НОВОЙ ВЕРСИИ С GITHUB — проверка релизов через GitHub API, переход на репозиторий GitHub в 1 клик и автопроверка при запуске',
-    '🩺 ДИАГНОСТИКА ПРИЛОЖЕНИЯ И РАЗДЕЛ «О ПРИЛОЖЕНИИ» — комплексная проверка файловой системы, шифрования PBKDF2, плагинов, ресурсов ОС и экспорт отчета',
-    '🖱️ ФУНКЦИЯ «НАЗАД» НА ПКМ (ПРАВУЮ КНОПКУ МЫШИ) — удобная навигация одной рукой: клик ПКМ возвращает на предыдущий экран, сбрасывает фильтр или закрывает поиск',
-  ],
-  '2.5': [
-    '🚀 LAUNCHER HAB 2.5 — МЕГА-ПЕРСОНАЛИЗАЦИЯ, 18 СТИЛЕЙ ЧАСОВ, КАСТОМНЫЕ ТЕМЫ PRO, API 2.5 И PBKDF2 ШИФРОВАНИЕ',
-    '💡 МГНОВЕННАЯ ПОДСВЕТКА АКТИВНЫХ НАСТРОЕК («ЗАЖИГАНИЕ» СТАТУСА) — при выборе любого стиля, переключателя или пресета элемент мгновенно загорается неоновой рамкой и меняет статус с «⚪ НЕАКТИВНО» на «🟢 АКТИВНО»',
-    '🕒 +10 НОВЫХ СТИЛЕЙ ЧАСОВ (ВСЕГО 18 СТИЛЕЙ) — добавлены Nothing OS (Dot-Matrix), iOS 17 StandBy, Samsung OneUI 6, Neon Synthwave 80s, Retro LCD Casio F-91W, macOS Sonoma, Sci-Fi Tactical HUD, Гибридный Хронограф, Неоновая Вертикаль и Material You Expressive',
-    '✨ РАСШИРЕННЫЙ ДИЗАЙН ЧАСОВ — настройка неонового свечения (Glow), скругления рамки часов, прозрачности подложки, акцентного цвета минут, жирности шрифта и мигающего разделителя',
-    '🎨 СТУДИЯ СОЗДАНИЯ КАСТОМНЫХ ТЕМ 2.5 — живое интерактивное превью темы, выбор режима (Dark / AMOLED / Light), настройка цветовых каналов, радиуса скругления карточек, масштаба иконок и свечения при наведении',
-    '🔐 ОБНОВЛЕННОЕ ШИФРОВАНИЕ ДАННЫХ 2.5 — деривация ключей PBKDF2-HMAC-SHA512, контроль целостности HMAC-SHA256 и ротация ключей',
-    '🔌 УЛУЧШЕННЫЙ APPLICATION & PLUGIN API — шифрованное хранилище секретов для плагинов, хуки смены темы/часов и диагностика безопасности',
-    '📜 ПОЛНАЯ ИСТОРИЯ ОБНОВЛЕНИЙ — добавлен полный архив изменений всех версий программы',
-  ],
-  '2.4': [
-    '🚀 LAUNCHER HAB 2.4 — DARK SLATE PRO, LIVE SESSION TRACKER (С 0) И ANDROID 14 ЧАСЫ',
-    '🎨 ИСПРАВЛЕНЫ ЦВЕТА И РАМКИ (#AARRGGBB) — убраны желтые полосы, внедрен графитовый стиль Midnight Slate',
-    '🔐 ИСПРАВЛЕНО СОХРАНЕНИЕ И ШИФРОВАНИЕ НАСТРОЕК — валидный 32-байтовый ключ AES-256 без потери данных',
-    '⏱️ GAME & APP SESSION TRACKER С 0 — честный отсчет времени с 00:00 при запуске приложения и живой таймер на карточках',
-    '🧩 ПЛАГИНЫ В СПИСКЕ ЗАПУСКА И МАГАЗИН РАСШИРЕНИЙ — скачивание, настройка, включение и удаление плагинов в 1 клик',
-    '🕒 ВЕРТИКАЛЬНЫЕ ЧАСЫ ANDROID 14 — крупный вертикальный виджет часов (HH / MM) и 8 современных стилей',
-    '🔊 ФОНОВЫЙ КОНТРОЛЛЕР СИСТЕМНОЙ ГРОМКОСТИ WASAPI — плавная регулировка громкости в фоновом потоке',
-  ],
-  '2.3': [
-    '🎨 УЛУЧШЕННЫЙ LIQUID GLASS ИНТЕРФЕЙС – переработанный стеклянный дизайн, плавные эффекты прозрачности и более современный внешний вид',
-    '🖥 FLOATING HUD – новая плавающая панель с системной информацией и быстрым доступом к функциям',
-    '🗑 ФИКСИРОВАННАЯ КОРЗИНА – корзина закреплена в правом нижнем углу интерфейса',
-    '🔎 ИСТОРИЯ ПОИСКА – система поиска теперь сохраняет предыдущие запросы для более быстрого доступа',
-    '💾 УЛУЧШЕННАЯ СИСТЕМА РЕЗЕРВНОГО КОПИРОВАНИЯ – стабильное сохранение и восстановление настроек и данных пользователя',
-    '🕒 НОВЫЕ СТИЛИ ЧАСОВ – добавлены дополнительные варианты отображения времени и даты с кастомизацией цвета',
-    '🎨 УЛУЧШЕННАЯ ПАНЕЛЬ НАСТРОЙК – более гармоничный дизайн и удобная навигация',
-    '🔌 СИСТЕМА ПЛАГИНОВ – поддержка расширений LauncherHub для добавления новых возможностей',
-    '🎯 FOCUS MODE PLUGIN – режим концентрации с Pomodoro таймером и минималистичным интерфейсом',
-    '🌦 SMART WEATHER PLUGIN – отображение температуры, влажности и скорости ветра',
-    '🎵 SMART MUSIC CONTROLLER – управление музыкой через встроенный мини-плеер',
-    '📂 SMART FILE FINDER И IDEA NOTEBOOK – быстрый поиск файлов и встроенный блокнот для идей',
-  ],
-  '2.2': [
-    '🚀 LAUNCHER HAB 2.2 - ОПТИМИЗАЦИЯ И КАСТОМИЗАЦИЯ',
-    '⚡ ОПТИМИЗАЦИЯ ПРОИЗВОДИТЕЛЬНОСТИ - снижение потребления памяти на 25% и ускорение загрузки',
-    '🎨 КАСТОМИЗАЦИЯ ВРЕМЕНИ И ДАТЫ - выбор шрифтов, размеров, цветов и форматов отображения',
-    '💾 СИСТЕМА РЕЗЕРВНОГО КОПИРОВАНИЯ - автоматическое и ручное создание бэкапов настроек',
-    '🔍 КЭШИРОВАНИЕ ПОИСКА - мгновенный поиск по приложениям с интеллектуальным кэшированием',
-    '🎯 ВИРТУАЛИЗАЦИЯ СПИСКОВ - плавная работа с большими библиотеками приложений (1000+)',
-    '🛠️ УЛУЧШЕННОЕ УПРАВЛЕНИЕ ПАМЯТЬЮ - автоматическая очистка неиспользуемых ресурсов',
-    '📊 МОНИТОРИНГ ПРОИЗВОДИТЕЛЬНОСТИ - отслеживание использования CPU, памяти и кэша',
-    '🔧 ГИБКИЕ НАСТРОЙКИ ПРОИЗВОДИТЕЛЬНОСТИ - индивидуальная настройка кэширования и виртуализации',
-  ],
-  '2.1': [
-    '🚀 LAUNCHER HAB 2.1 - НОВЫЕ ВОЗМОЖНОСТИ И РАСШИРЕНИЯ',
-    '🔌 СИСТЕМА ПЛАГИНОВ - поддержка сторонних расширений и модулей',
-    '🔊 УПРАВЛЕНИЕ АУДИО - встроенный контроллер громкости с поддержкой всех ОС',
-    '🎨 СОЗДАНИЕ ТЕМ - визуальный редактор пользовательских цветовых схем',
-    '💫 РАСШИРЕННОЕ СТЕКЛО - тонкая настройка прозрачности стеклянного эффекта',
-    '🏷️ СИСТЕМА ТЕГОВ - организация приложений с помощью пользовательских меток',
-    '🔍 ПОИСК ПО ТЕГАМ - быстрая фильтрация приложений по категориям и тегам',
-    '📊 ПРОДВИНУТЫЕ НАСТРОЙКИ - новые вкладки для управления всеми функциями',
-    '🛠️ УЛУЧШЕННАЯ АРХИТЕКТУРА - модульная структура для легкого расширения',
-    '🔒 БЕЗОПАСНОСТЬ ПЛАГИНОВ - изолированная среда выполнения стороннего кода',
-    '🎯 АВТОМАТИЧЕСКОЕ ОБНАРУЖЕНИЕ - сканирование папки plugins при запуске',
-  ],
-  '2.0': [
-    '🎉 КРУПНОЕ ОБНОВЛЕНИЕ LAUNCHER HAB 2.0!',
-    '✨ Полностью переработанный дизайн с эффектом жидкого стекла (Glass Morphism)',
-    '🎬 Плавные анимации в стиле Android с поддержкой кривых Безье',
-    '🔐 Шифрование пользовательских данных с использованием алгоритма AES-256-GCM',
-    '📡 Расширенный мониторинг системы: отслеживание Bluetooth, Wi-Fi и геолокации',
-    '🎨 7 предустановленных цветовых тем (Темная, Светлая, Синяя, Зеленая, Фиолетовая, Оранжевая, Розовая)',
-    '⚡ Настройка интенсивности стеклянного эффекта (Слабая, Средняя, Сильная)',
-    '🔄 Улучшенная система фильтрации с диалоговым меню',
-    '📱 Адаптивная сетка карточек приложений с эффектами наведения',
-    '🔔 Интеллектуальная система уведомлений о действиях пользователя',
-    '🛡️ Повышенная стабильность работы и обработка ошибок',
-    '💾 Автоматическое сохранение всех настроек в зашифрованном виде',
-  ],
-  '1.9': [
-    'Добавлен мониторинг системных ресурсов (CPU, память, батарея, сеть)',
-    'Реализована система автоматического определения установленных приложений',
-    'Улучшена производительность при работе с большими списками приложений',
-    'Добавлена поддержка пользовательских путей к приложениям',
-    'Исправлены ошибки при запуске веб-приложений',
-  ],
-  '1.8': [
-    'Внедрена система избранных приложений (до 10 элементов)',
-    'Добавлена панель быстрого доступа к часто используемым программам',
-    'Реализовано контекстное меню для управления приложениями',
-    'Улучшен поиск с поддержкой фильтрации по категориям',
-    'Обновлен интерфейс боковой панели',
-  ],
-  '1.7': [
-    'Добавлена возможность добавления собственных приложений и сайтов',
-    'Реализован выбор иконок для пользовательских элементов',
-    'Внедрена система категорий (Браузеры, Медиа, Музыка, Соцсети, Игры, Система, Офис)',
-    'Улучшена навигация по категориям приложений',
-    'Добавлены подсказки при наведении на элементы интерфейса',
-  ],
-  '1.6': [
-    'Разработана базовая система тем оформления (Темная и Светлая)',
-    'Добавлены часы и дата в заголовок приложения',
-    'Реализовано автообновление времени каждую секунду',
-    'Улучшена адаптивность интерфейса при изменении размера окна',
-    'Исправлены проблемы с отображением кириллицы',
-  ],
-  '1.5': [
-    'Добавлена функция поиска по приложениям в реальном времени',
-    'Реализована фильтрация приложений по типам (Все, Приложения, Сайты, Система)',
-    'Улучшена визуальная обратная связь при взаимодействии с элементами',
-    'Оптимизирована загрузка иконок приложений',
-    'Добавлена поддержка горячих клавиш',
-  ],
-  '1.4': [
-    'Расширена база предустановленных приложений (более 30 программ)',
-    'Добавлена проверка наличия приложений в системе',
-    'Реализовано перенаправление на официальные сайты для неустановленных программ',
-    'Улучшена обработка ошибок при запуске приложений',
-    'Обновлен дизайн карточек приложений',
-  ],
-  '1.3': [
-    'Добавлена поддержка запуска системных утилит Windows и Linux',
-    'Реализована кроссплатформенная совместимость (Windows, Linux, macOS)',
-    'Улучшена система определения путей к исполняемым файлам',
-    'Добавлен индикатор загрузки при запуске тяжелых приложений',
-    'Исправлены ошибки при работе в различных окружениях',
-  ],
-  '1.2': [
-    'Внедрено сохранение настроек между сеансами работы',
-    'Добавлено диалоговое окно настроек приложения',
-    'Реализована возможность сброса избранного и пользовательских путей',
-    'Улучшена структура хранения конфигурационных файлов',
-    'Повышена общая стабильность приложения',
-  ],
-  '1.1': [
-    'Добавлена боковая панель со списком всех приложений',
-    'Реализовано разделение интерфейса на функциональные зоны',
-    'Улучшено отображение статуса установки приложений',
-    'Добавлены базовые анимации при наведении курсора',
-    'Исправлены мелкие визуальные недочеты',
+  '1.0.1': [
+    '🩹 ПАТЧ ПЕРВОГО ДНЯ — LUMA OS 1.0.1: ПОЛНОСТЬЮ РАБОЧИЕ МЕДИА, РЕАЛЬНАЯ ТЕЛЕМЕТРИЯ СИСТЕМЫ, АВТО-РЕГИОН И ПОГОДА, ОТКЛЮЧАЕМЫЙ LUMA ISLAND, ФИРМЕННЫЙ БРЕНДИНГ И ИСПРАВЛЕНИЕ 12 БАГОВ',
+    '🎵 РЕАЛЬНОЕ ПЕРЕКЛЮЧЕНИЕ ТРЕКОВ И ОПРЕДЕЛЕНИЕ ИГРАЮЩЕЙ МУЗЫКИ — ядро Luma Core 1.0.1 читает реальный активный трек и исполнителя в вашей системе и отправляет реальные системные медиа-команды (Следующий / Предыдущий / Пауза-Воспроизведение) и реальную громкость через /api/kernel/media и /api/kernel/audio',
+    '🏝️ ПОЛНОЕ ОТКЛЮЧЕНИЕ ДИНАМИЧЕСКОГО ОСТРОВА (LUMA ISLAND) — добавлен переключатель в Быстрых настройках, Настройках Luma Island, самом окне острова и виджете Быстрого управления Окна 2 с мгновенной синхронизацией между окнами',
+    '💻 100% РЕАЛЬНЫЙ ПРОСМОТР ВАШЕЙ СИСТЕМЫ — точные реальные показания процессора (модель и % загрузки), ОЗУ (использовано/всего ГБ), всех дисков (реальный объём и заполнение), батареи и зарядки, а также реальной скорости сети (Мбит/с) без случайных заглушек',
+    '🌍 АВТООПРЕДЕЛЕНИЕ ВАШЕГО РЕГИОНА И ПОГОДЫ — ядро автоматически определяет ваш город, регион, страну, часовой пояс и подгружает живую погоду Open-Meteo именно для вашего региона (с возможностью 1 кликом обновить регион или выбрать любой город)',
+    '✨ 100% ФИРМЕННЫЙ БРЕНДИНГ LUMA OS — убраны все сторонние названия ОС и брендов; 18 виджетов переведены в 3 авторские линейки: Luma Pulse, Luma Aura и Luma Core; обновлены все 18 циферблатов, темы и дизайн в стиле Material 3 Expressive',
+    '🛠️ ИСПРАВЛЕНО 12 НАЙДЕННЫХ БАГОВ — устранён перезапуск 1-секундного таймера виджетов, убраны эхо-штормы BroadcastChannel, исправлена контрастность светлой темы, исправлен конфликт ПКМ на карточках с «ПКМ = Назад», подключены реальные Корзина/Блокировка/Сон, добавлено закрытие модалок по клавише Escape и выпущен обновлённый LumaOS_1.0.1.exe',
   ],
   '1.0': [
-    '🚀 Первый официальный релиз Launcher Hab!',
-    'Базовый функционал запуска приложений и веб-сайтов',
-    'Плиточный и модульный интерфейс рабочего стола на C# (.NET)',
-    'Поддержка основных браузеров и медиа-плееров',
-    'Фундамент для будущих обновлений и расширений',
+    '🚀 LUMA OS 1.0 — ПЕРВЫЙ ОФИЦИАЛЬНЫЙ РЕЛИЗ ЯДРА LUMA CORE И ДВУХОКОННОЙ ОБОЛОЧКИ MATERIAL 3 EXPRESSIVE',
+    '🧠 АРХИТЕКТУРА ЯДРА LUMA CORE 1.0 — уровни Luma HAL, Activity & Process Manager, JSON-RPC 2.0 IPC (127.0.0.1:49215), шифрованная VFS и криптоядро LumaGuard (AES-256-GCM + PBKDF2-HMAC-SHA512 + HMAC-SHA256)',
+    '🪟 ОКНО 1 (БИБЛИОТЕКА ПО ГРУППАМ) — боковая панель навигации с живым поиском и фильтрами + рабочая область с категориями и трекером сессий с 00:00',
+    '📐 ОКНО 2 (МАТРИЦА 20×30 — 600 КООРДИНАТНЫХ ЯЧЕЕК) — точная сетка 20×30 / 30×20 с координатами [X, Y], конструктором расстановки, папками и 18 интерактивными виджетами',
+    '🎨 18 ЦИФЕРБЛАТОВ И СТУДИЯ ТЕМ LUMA — живое превью, адаптивный режим День/Ночь по расписанию и эффект жидкого стекла',
+  ],
+  '0.9-rc': [
+    '🧪 LUMA OS 0.9 RELEASE CANDIDATE — ИНТЕРАКТИВНЫЙ LUMA ISLAND, БЫСТРЫЕ ПЛИТКИ И ПЛАГИНЫ',
+    '🏝️ МОДУЛЬ LUMA ISLAND — интерактивная верхняя капсула с часами, зарядом, медиа-пультом, уведомлениями, таймером и секундомером',
+    '🧩 ДВИЖОК РАСШИРЕНИЙ LUMA PLUGIN API — изолированный запуск плагинов, магазин расширений и шифрованное хранилище секретов',
+    '🖱️ НАВИГАЦИЯ ОДНОЙ РУКОЙ (ПКМ «НАЗАД») — мгновенный возврат и сброс фильтров правой кнопкой мыши',
+  ],
+  '0.8-beta': [
+    '⚙️ LUMA CORE 0.8 BETA — ФОНОВЫЙ ДЕМОН IPC И СИСТЕМА ТЕЛЕМЕТРИИ',
+    '📡 ДВУХСТОРОННЯЯ ШИНА IPC (TCP 49215 + HTTP 49216) — стабильный обмен JSON-RPC 2.0 между графическими окнами и фоновым ядром',
+    '🔐 КРИПТОЯДРО LUMAGUARD — деривация ключей PBKDF2-HMAC-SHA512, шифрование AES-256-GCM и проверка целостности HMAC-SHA256',
+    '⏱️ LIVE SESSION TRACKER — учёт времени в приложениях с 00:00 и лимиты цифрового баланса',
   ],
 };
 

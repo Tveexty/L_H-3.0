@@ -1,28 +1,28 @@
 @echo off
 chcp 65001 >nul
 setlocal EnableDelayedExpansion
-title Luma OS 1.0 ^& Launcher Hab 3.0 — Запуск в 1 клик (2 Окна + Ядро Luma 1.0)
+title Luma OS 1.0.1 — Патч первого дня (Ядро Luma Core 1.0.1 + 2 Окна)
 
 echo ============================================================================
-echo   🚀 LUMA OS 1.0 KERNEL ^& SHELL (MATERIAL 3 EXPRESSIVE • 2 ОКНА)
-echo   - Окно 1: Список по группам (структура LH-2.4 + трекер с 00:00)
-echo   - Окно 2: Матрица ячеек 20x30 (18 виджетов Android / iPhone / Windows)
-echo   - Ядро Luma Core 1.0: JSON-RPC 2.0 (127.0.0.1:49215) + AES-256-GCM
+echo   🚀 LUMA OS 1.0.1 KERNEL ^& SHELL (ПАТЧ ПЕРВОГО ДНЯ • MATERIAL 3 EXPRESSIVE)
+echo   - Окно 1: Список и карточки по группам + трекер с 00:00 + Luma Island
+echo   - Окно 2: Матрица ячеек 20x30 (18 живых виджетов Luma Pulse / Aura / Core)
+echo   - Ядро Luma Core 1.0.1: Реальная телеметрия, медиа-шина, авто-регион, AES-256-GCM
 echo ============================================================================
 echo.
 
 cd /d "%~dp0"
 
-:: 1. Мгновенный запуск автономного исполняемого файла LumaOS_1.0.exe (без зависимостей!)
-if exist "LumaOS_1.0.exe" (
-    echo [LumaOS 1.0 EXE] Запуск готового исполняемого файла LumaOS_1.0.exe ^(Ядро + 2 Окна^)...
-    start "Luma OS 1.0 Kernel & Shell" "LumaOS_1.0.exe"
+:: 1. Мгновенный запуск автономного исполняемого файла LumaOS_1.0.1.exe (без зависимостей!)
+if exist "LumaOS_1.0.1.exe" (
+    echo [LumaOS 1.0.1 EXE] Запуск готового исполняемого файла LumaOS_1.0.1.exe ^(Ядро + 2 Окна^)...
+    start "Luma OS 1.0.1 Kernel & Shell" "LumaOS_1.0.1.exe"
     echo.
-    echo ✅ Ядро Luma Core 1.0 и оба окна ^(Окно 1: По группам + Окно 2: Ячейки 20x30^) запущены!
+    echo ✅ Ядро Luma Core 1.0.1 и оба окна ^(Окно 1: По группам + Окно 2: Ячейки 20x30^) запущены!
     exit /b 0
 )
 
-:: 2. Резервный запуск C# .NET 8 / Python Flet (если LumaOS_1.0.exe перемещен)
+:: 2. Резервный запуск (если LumaOS_1.0.1.exe перемещен)
 where dotnet >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
     if exist "LauncherHab3.0_CSharp\LauncherHab3.csproj" (

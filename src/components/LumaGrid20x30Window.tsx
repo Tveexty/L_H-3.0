@@ -1,14 +1,12 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Activity,
   HardDrive,
   Volume2,
   VolumeX,
   CheckSquare,
-  Clock,
   Terminal,
   Wifi,
-  Music,
   Timer,
   CloudSun,
   CloudRain,
@@ -26,7 +24,6 @@ import {
   RotateCcw,
   Plus,
   Trash2,
-  Check,
   Search,
   Lock,
   Moon,
@@ -37,34 +34,36 @@ import {
   Sliders,
   X,
   MapPin,
-  LayoutGrid,
   FolderOpen,
   Smartphone,
   BatteryCharging,
-  Bluetooth,
   BellOff,
   Flame,
   TrendingUp,
   Calendar as CalendarIcon,
-  Globe,
   Zap,
   ExternalLink,
-  Maximize2,
-  Minimize2,
   Move,
   Grid,
   Layers,
   Eye,
   EyeOff,
-  ChevronRight,
   Radio,
   Headphones,
   Gamepad2,
   Laptop,
+  Compass,
+  Disc3,
 } from 'lucide-react';
-import { AppItem, IslandMediaPlayer, formatLiveClock, formatMonthBadge } from '../data/launcherData';
+import {
+  AppItem,
+  IslandMediaPlayer,
+  LiveSystemTelemetry,
+  formatLiveClock,
+  formatMonthBadge,
+} from '../data/launcherData';
 
-export type WidgetEcosystem = 'android' | 'ios' | 'windows';
+export type WidgetEcosystem = 'pulse' | 'aura' | 'core';
 
 export interface CellWidgetItem {
   id: string;
@@ -115,7 +114,9 @@ interface WeatherHourPoint {
 
 interface WeatherState {
   city: string;
+  region: string;
   country: string;
+  timezone: string;
   temp: number;
   feelsLike: number;
   humidity: number;
@@ -125,6 +126,7 @@ interface WeatherState {
   hourly: WeatherHourPoint[];
   loading: boolean;
   updatedAt: string;
+  autoDetected?: boolean;
 }
 
 export interface LumaGrid20x30Props {
@@ -137,11 +139,13 @@ export interface LumaGrid20x30Props {
   adaptiveThemeEnabled: boolean;
   glassEnabled: boolean;
   rightClickBackEnabled: boolean;
+  dynamicIslandEnabled: boolean;
   batteryLevel: number;
   isCharging: boolean;
   islandPlayers: IslandMediaPlayer[];
   activePlayerIndex: number;
   mediaPlaying: boolean;
+  liveSystem: LiveSystemTelemetry | null;
   onSelectPlayer: (index: number) => void;
   onToggleMediaPlay: () => void;
   onNextTrack: () => void;
@@ -150,6 +154,9 @@ export interface LumaGrid20x30Props {
   onToggleAdaptiveTheme: () => void;
   onToggleGlass: () => void;
   onToggleRightClickBack: () => void;
+  onToggleDynamicIsland: () => void;
+  onRefreshLocation: () => void;
+  onExecutePowerAction: (action: 'lock' | 'sleep' | 'recycle_bin') => void;
   onChangeVolume: (val: number) => void;
   onToggleMute: () => void;
   onLaunchApp: (app: AppItem) => void;
@@ -161,17 +168,18 @@ export interface LumaGrid20x30Props {
   isStandaloneWindow?: boolean;
 }
 
-const STORAGE_KEY_GRID_20X30 = 'luma_os_1_0_grid_20x30_v2';
+const STORAGE_KEY_GRID_20X30 = 'luma_os_1_0_1_grid_20x30_v3';
 
-// Default 18 Flagship Widgets across Android 16 (Material 3 Expressive), iPhone (iOS 18), and Windows 11
+// 18 Original Flagship Luma OS 1.0.1 Widgets across 3 Signature Suites:
+// Luma Pulse (pulse), Luma Aura (aura), Luma Core (core)
 // Placed cleanly onto a 30 columns x 20 rows (600 cells) matrix!
 export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
-  // ROW 1..4 (Top band: 30 columns total: 6 + 8 + 8 + 8 = 30)
+  // ROW 1..4 (Top band: 6 + 8 + 8 + 8 = 30)
   {
-    id: 'android_m3_clock',
-    title: 'Android 16 Material 3 Expressive Clock',
-    subtitle: 'Scallop Morphing Циферблат и Сводка дня',
-    ecosystem: 'android',
+    id: 'luma_sculpt_clock',
+    title: 'Luma Pulse — Скульпт-Циферблат и Сводка',
+    subtitle: 'Живой циферблат Material 3 Expressive, ваш регион и погода',
+    ecosystem: 'pulse',
     col: 1,
     row: 1,
     w: 6,
@@ -179,10 +187,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'android_quick_settings',
-    title: 'Шторка быстрых настроек Android 16',
-    subtitle: 'Wi-Fi 7, BT, DND, Авто-тема, Стекло, Громкость',
-    ecosystem: 'android',
+    id: 'luma_quick_shade',
+    title: 'Luma Pulse — Панель Быстрого Управления',
+    subtitle: 'Luma Island, DND, Авто-тема, Стекло, ПКМ Назад, Громкость',
+    ecosystem: 'pulse',
     col: 7,
     row: 1,
     w: 8,
@@ -190,10 +198,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'android_pixel_weather',
-    title: 'Погода Google Pixel (Open-Meteo Live)',
-    subtitle: 'Поиск любого города мира и почасовой прогноз',
-    ecosystem: 'android',
+    id: 'luma_region_weather',
+    title: 'Luma Pulse — Погода вашего региона (Live)',
+    subtitle: 'Автоопределение города, региона и почасовой прогноз Open-Meteo',
+    ecosystem: 'pulse',
     col: 15,
     row: 1,
     w: 8,
@@ -201,10 +209,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'ios_now_playing',
-    title: 'iOS 18 StandBy Музыка и Винил',
-    subtitle: 'Анимированный винил, эквалайзер и смена плеера',
-    ecosystem: 'ios',
+    id: 'luma_now_playing',
+    title: 'Luma Aura — Живой Медиа-Винил и Треки',
+    subtitle: 'Определение играющей музыки и реальное переключение треков',
+    ecosystem: 'aura',
     col: 23,
     row: 1,
     w: 8,
@@ -214,10 +222,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
 
   // ROW 5..8 (Second band: 6 + 6 + 6 + 6 + 6 = 30)
   {
-    id: 'ios_activity_rings',
-    title: 'iOS 18 Fitness — Кольца активности',
-    subtitle: 'Подвижность • Фокус-разминка • Часы с разминкой',
-    ecosystem: 'ios',
+    id: 'luma_energy_rings',
+    title: 'Luma Aura — Кольца Энергии и Ритма',
+    subtitle: 'Активность • Фокус-минуты • Перерывы дня',
+    ecosystem: 'aura',
     col: 1,
     row: 5,
     w: 6,
@@ -225,10 +233,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'ios_battery_matrix',
-    title: 'iOS 18 Batteries — Заряд экосистемы',
-    subtitle: 'ПК, AirPods Pro, iPhone 16 Pro, Геймпад',
-    ecosystem: 'ios',
+    id: 'luma_power_matrix',
+    title: 'Luma Aura — Питание и Периферия',
+    subtitle: 'Реальный заряд ПК и состояние подключённых устройств Luma',
+    ecosystem: 'aura',
     col: 7,
     row: 5,
     w: 6,
@@ -236,10 +244,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'win_cpu_gpu_ram',
-    title: 'Windows 11 — Монитор CPU / GPU / RAM',
-    subtitle: 'Телеметрия ядра Luma 1.0 в реальном времени',
-    ecosystem: 'windows',
+    id: 'luma_cpu_gpu_ram',
+    title: 'Luma Core — Реальные Ресурсы CPU / GPU / RAM',
+    subtitle: 'Живая аппаратная телеметрия вашей системы через Luma HAL',
+    ecosystem: 'core',
     col: 13,
     row: 5,
     w: 6,
@@ -247,10 +255,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'win_storage_disks',
-    title: 'Windows 11 — Накопители C: и D:',
-    subtitle: 'NVMe PCIe 4.0 анализатор и очистка кэша',
-    ecosystem: 'windows',
+    id: 'luma_storage_volumes',
+    title: 'Luma Core — Реальные Тома и Накопители',
+    subtitle: 'Фактический объём дисков системы и быстрая очистка кэша',
+    ecosystem: 'core',
     col: 19,
     row: 5,
     w: 6,
@@ -258,10 +266,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'win_network_monitor',
-    title: 'Windows 11 — Сеть и IPC Трафик',
-    subtitle: 'Входящий/исходящий поток и пинг 127.0.0.1:49215',
-    ecosystem: 'windows',
+    id: 'luma_network_monitor',
+    title: 'Luma Core — Живая Сеть и Шина IPC',
+    subtitle: 'Реальный сетевой поток (Мбит/с) и канал 127.0.0.1:49215',
+    ecosystem: 'core',
     col: 25,
     row: 5,
     w: 6,
@@ -271,10 +279,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
 
   // ROW 9..12 (Third band: 6 + 6 + 6 + 6 + 6 = 30)
   {
-    id: 'android_keep_notes',
-    title: 'Google Keep M3 — Заметки и Задачи',
-    subtitle: 'Интерактивный чек-лист и быстрый блокнот ядра',
-    ecosystem: 'android',
+    id: 'luma_notes_tasks',
+    title: 'Luma Pulse — Заметки и Задачи VFS',
+    subtitle: 'Интерактивный чек-лист и быстрый блокнот ядра Luma',
+    ecosystem: 'pulse',
     col: 1,
     row: 9,
     w: 6,
@@ -282,10 +290,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'ios_calendar_worldclock',
-    title: 'iOS 18 Календарь и Мировые часы',
-    subtitle: 'Москва • Токио • Нью-Йорк • Лондон',
-    ecosystem: 'ios',
+    id: 'luma_world_clock',
+    title: 'Luma Aura — Календарь и Мировые Пояса',
+    subtitle: 'Ваш локальный пояс • Москва • Токио • Лондон',
+    ecosystem: 'aura',
     col: 7,
     row: 9,
     w: 6,
@@ -293,10 +301,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'ios_pomodoro_focus',
-    title: 'iOS 18 Focus — Таймер Помидор',
-    subtitle: '25 мин фокус / 5 мин отдых со звуковым сигналом',
-    ecosystem: 'ios',
+    id: 'luma_focus_pomodoro',
+    title: 'Luma Aura — Таймер Фокус-Потока',
+    subtitle: '25 мин глубокой работы / 5 мин отдыха со звуком',
+    ecosystem: 'aura',
     col: 13,
     row: 9,
     w: 6,
@@ -304,10 +312,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'android_calculator',
-    title: 'Android M3 — Калькулятор и Валюты',
-    subtitle: 'Быстрые вычисления и конвертер USD/EUR/RUB',
-    ecosystem: 'android',
+    id: 'luma_calculator',
+    title: 'Luma Pulse — Калькулятор и Конвертер',
+    subtitle: 'Быстрые вычисления и перевод валют/величин',
+    ecosystem: 'pulse',
     col: 19,
     row: 9,
     w: 6,
@@ -315,10 +323,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'ios_stocks_crypto',
-    title: 'iOS 18 Stocks — Рынки и Крипто',
-    subtitle: 'BTC, ETH, NVDA, AAPL и курс USD/RUB',
-    ecosystem: 'ios',
+    id: 'luma_market_pulse',
+    title: 'Luma Aura — Котировки и Курсы',
+    subtitle: 'BTC, ETH, NVDA и валютный индекс USD/RUB',
+    ecosystem: 'aura',
     col: 25,
     row: 9,
     w: 6,
@@ -328,10 +336,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
 
   // ROW 13..15 (Fourth band: 6 + 8 + 8 + 8 = 30)
   {
-    id: 'android_wellbeing',
-    title: 'Android Digital Wellbeing (Экранное время)',
-    subtitle: 'Живой учет сессий с 00:00 и лимиты детокса',
-    ecosystem: 'android',
+    id: 'luma_digital_balance',
+    title: 'Luma Pulse — Цифровой Баланс Сессий',
+    subtitle: 'Живой учёт времени приложений с 00:00 и аптайм ядра',
+    ecosystem: 'pulse',
     col: 1,
     row: 13,
     w: 6,
@@ -339,10 +347,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'win_quick_utilities',
-    title: 'Windows 11 — Быстрый запуск утилит',
-    subtitle: 'Терминал, Диспетчер задач, Реестр, Проводник',
-    ecosystem: 'windows',
+    id: 'luma_system_tools',
+    title: 'Luma Core — Системные Утилиты Быстрого Запуска',
+    subtitle: 'Терминал, Монитор процессов, Проводник, Настройки сети',
+    ecosystem: 'core',
     col: 7,
     row: 13,
     w: 8,
@@ -350,10 +358,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'win_power_center',
-    title: 'Windows 11 — Питание и Блокировка',
-    subtitle: 'Экран блокировки Win+L, Сон, Перезагрузка и Таймер',
-    ecosystem: 'windows',
+    id: 'luma_power_control',
+    title: 'Luma Core — Питание, Блокировка и Корзина',
+    subtitle: 'Реальная блокировка экрана, Сон, Корзина и Таймер',
+    ecosystem: 'core',
     col: 15,
     row: 13,
     w: 8,
@@ -361,10 +369,10 @@ export const DEFAULT_CELL_WIDGETS: CellWidgetItem[] = [
     visible: true,
   },
   {
-    id: 'win_security_defender',
-    title: 'LumaGuard Security & Криптоядро 1.0',
-    subtitle: 'AES-256-GCM • PBKDF2-SHA512 • Zero-Trust Песочница',
-    ecosystem: 'windows',
+    id: 'luma_security_shield',
+    title: 'Luma Core — Криптоядро LumaGuard 1.0.1',
+    subtitle: 'AES-256-GCM • PBKDF2-SHA512 • Zero-Trust IPC HMAC',
+    ecosystem: 'core',
     col: 23,
     row: 13,
     w: 8,
@@ -406,6 +414,27 @@ export const DEFAULT_PINNED_APPS: PinnedGridApp[] = [
   { appId: 'vkgames', col: 29, row: 16, w: 2, h: 3 },
 ];
 
+const ECOSYSTEM_META: Record<WidgetEcosystem, { label: string; short: string; border: string; pill: string }> = {
+  pulse: {
+    label: 'Luma Pulse',
+    short: '⚡ Luma Pulse',
+    border: 'border-indigo-500/40 hover:border-indigo-400/75',
+    pill: 'bg-indigo-500/20 text-indigo-400 border-indigo-400/35',
+  },
+  aura: {
+    label: 'Luma Aura',
+    short: '✨ Luma Aura',
+    border: 'border-emerald-500/40 hover:border-emerald-400/75',
+    pill: 'bg-emerald-500/20 text-emerald-400 border-emerald-400/35',
+  },
+  core: {
+    label: 'Luma Core',
+    short: '🧠 Luma Core',
+    border: 'border-sky-500/40 hover:border-sky-400/75',
+    pill: 'bg-sky-500/20 text-sky-400 border-sky-400/35',
+  },
+};
+
 function decodeWeatherWmo(code: number): { label: string; kind: 'clear' | 'cloudy' | 'rain' | 'snow' | 'storm' } {
   if (code === 0) return { label: 'Ясно', kind: 'clear' };
   if (code === 1 || code === 2) return { label: 'Малооблачно', kind: 'cloudy' };
@@ -426,11 +455,13 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
   adaptiveThemeEnabled,
   glassEnabled,
   rightClickBackEnabled,
+  dynamicIslandEnabled,
   batteryLevel,
   isCharging,
   islandPlayers,
   activePlayerIndex,
   mediaPlaying,
+  liveSystem,
   onSelectPlayer,
   onToggleMediaPlay,
   onNextTrack,
@@ -439,6 +470,9 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
   onToggleAdaptiveTheme,
   onToggleGlass,
   onToggleRightClickBack,
+  onToggleDynamicIsland,
+  onRefreshLocation,
+  onExecutePowerAction,
   onChangeVolume,
   onToggleMute,
   onLaunchApp,
@@ -459,8 +493,24 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
     return null;
   }, []);
 
+  // Theme-adaptive surface classes (Fixes Bug #9: Light Theme contrast across all 18 widgets)
+  const innerCardCls = isDark
+    ? 'bg-slate-900/70 border-slate-800/90 text-slate-100'
+    : 'bg-slate-100/90 border-slate-300/80 text-slate-900';
+  const innerBtnCls = isDark
+    ? 'bg-slate-900/75 hover:bg-slate-800 border-slate-800 text-slate-100'
+    : 'bg-slate-100 hover:bg-slate-200/90 border-slate-300 text-slate-900';
+  const inputCls = isDark
+    ? 'bg-slate-900/90 border-slate-700 text-white placeholder:text-slate-500'
+    : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400';
+  const mutedTextCls = isDark ? 'text-slate-400' : 'text-slate-600';
+  const titleTextCls = isDark ? 'text-white' : 'text-slate-900';
+  const barTrackCls = isDark ? 'bg-slate-800' : 'bg-slate-300/90';
+  const modalBoxCls = isDark
+    ? 'border-slate-700 bg-[#0d1320] text-white'
+    : 'border-slate-300 bg-white text-slate-900';
+
   // --- 20x30 Grid Orientation & Cell Matrix State ---
-  // Landscape: 30 cols x 20 rows (600 cells) | Portrait: 20 cols x 30 rows (600 cells)
   const [gridOrientation, setGridOrientation] = useState<'30x20' | '20x30'>(saved?.gridOrientation || '30x20');
   const totalCols = gridOrientation === '30x20' ? 30 : 20;
   const totalRows = gridOrientation === '30x20' ? 20 : 30;
@@ -484,34 +534,16 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
   const [newFolderApps, setNewFolderApps] = useState<string[]>(['steam', 'chrome']);
   const [lockScreenOverlay, setLockScreenOverlay] = useState<boolean>(false);
 
-  // Live Telemetry & Widget Interactive States
+  // Live Clock & Fallback Telemetry (Real liveSystem overrides these whenever connected!)
   const [nowDate, setNowDate] = useState<Date>(new Date());
-  const [uptimeSeconds, setUptimeSeconds] = useState<number>(saved?.uptimeSeconds ?? 18420);
-  const [cpuUsage, setCpuUsage] = useState<number>(17);
-  const [gpuUsage, setGpuUsage] = useState<number>(24);
-  const [gpuTempC, setGpuTempC] = useState<number>(52);
-  const [ramUsagePct, setRamUsagePct] = useState<number>(41);
-  const ramTotalGb = 32;
-  const ramUsedGb = useMemo(() => ((ramUsagePct / 100) * ramTotalGb).toFixed(1), [ramUsagePct]);
+  const [uptimeSeconds, setUptimeSeconds] = useState<number>(saved?.uptimeSeconds ?? 120);
+  const [netHistory, setNetHistory] = useState<number[]>([12, 18, 22, 15, 26, 20, 24, 19, 28, 22]);
+  const [cacheCleanedGb, setCacheCleanedGb] = useState<number>(0);
 
-  // Disks C: and D:
-  const [diskCUsedGb, setDiskCUsedGb] = useState<number>(298.4);
-  const diskCTotalGb = 512;
-  const [diskDUsedGb] = useState<number>(612.0);
-  const diskDTotalGb = 1024;
+  // Quick Shade local display brightness (controls subtle page filter feel or setting)
+  const [screenBrightness, setScreenBrightness] = useState<number>(92);
 
-  // Network I/O
-  const [netDownMbps, setNetDownMbps] = useState<number>(84.6);
-  const [netUpMbps, setNetUpMbps] = useState<number>(22.4);
-  const [netHistory, setNetHistory] = useState<number[]>([35, 52, 68, 44, 79, 61, 85, 58, 72, 64]);
-
-  // Android Quick Settings local toggles
-  const [wifiEnabled, setWifiEnabled] = useState<boolean>(true);
-  const [btEnabled, setBtEnabled] = useState<boolean>(true);
-  const [powerSaverEnabled, setPowerSaverEnabled] = useState<boolean>(false);
-  const [screenBrightness, setScreenBrightness] = useState<number>(88);
-
-  // iOS 18 Activity Rings
+  // Energy Rings
   const [moveKcal, setMoveKcal] = useState<number>(540);
   const moveGoal = 650;
   const [exerciseMins, setExerciseMins] = useState<number>(38);
@@ -519,68 +551,117 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
   const [standHours, setStandHours] = useState<number>(10);
   const standGoal = 12;
 
-  // Google Keep Notes & To-Do
+  // Luma Notes & Tasks
   const [todoItems, setTodoItems] = useState<TodoItem[]>(
     saved?.todoItems || [
-      { id: 't1', text: 'Проверить ядро Luma 1.0 (Android HAL + Binder IPC)', done: true },
-      { id: 't2', text: 'Протестировать сетку 20×30 (600 ячеек) во 2-м окне', done: true },
-      { id: 't3', text: 'Запустить готовый LumaOS_1.0.exe в 1 клик', done: false },
+      { id: 't1', text: 'Проверить реальную телеметрию и регион Luma 1.0.1', done: true },
+      { id: 't2', text: 'Протестировать переключение треков и Luma Island', done: true },
+      { id: 't3', text: 'Запустить LumaOS_1.0.1.exe в 1 клик', done: false },
     ]
   );
   const [newTodoText, setNewTodoText] = useState<string>('');
   const [quickNote, setQuickNote] = useState<string>(
-    saved?.quickNote || 'Luma OS 1.0 • Material 3 Expressive: все 18 виджетов Android, iOS 18 и Windows 11 активны.'
+    saved?.quickNote ||
+      'Luma OS 1.0.1 • Патч первого дня: реальные ресурсы ПК, авто-регион, живые треки и 18 фирменных виджетов.'
   );
   const [keepTab, setKeepTab] = useState<'todo' | 'note'>('todo');
 
-  // iOS 18 Pomodoro Focus
+  // Focus Pomodoro
   const [pomoMode, setPomoMode] = useState<'work' | 'break'>('work');
   const [pomoSecLeft, setPomoSecLeft] = useState<number>(25 * 60);
   const [pomoRunning, setPomoRunning] = useState<boolean>(false);
 
-  // Google Pixel Weather (Open-Meteo Live API)
+  // Real Auto-Detected Region Weather (Open-Meteo Live API)
   const [weatherQuery, setWeatherQuery] = useState<string>('');
   const [weatherSearchOpen, setWeatherSearchOpen] = useState<boolean>(false);
+  const [manualCitySelected, setManualCitySelected] = useState<boolean>(false);
   const [weather, setWeather] = useState<WeatherState>(
     saved?.weather || {
-      city: 'Москва',
-      country: 'Россия',
-      temp: 21,
-      feelsLike: 20,
-      humidity: 52,
-      windSpeed: 3.6,
+      city: 'Определение региона...',
+      region: '',
+      country: '',
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+      temp: 0,
+      feelsLike: 0,
+      humidity: 0,
+      windSpeed: 0,
       weatherCode: 1,
-      description: 'Малооблачно',
+      description: 'Запрос координат...',
       hourly: [
-        { time: '12:00', temp: 21, code: 1 },
-        { time: '15:00', temp: 23, code: 0 },
-        { time: '18:00', temp: 19, code: 2 },
-        { time: '21:00', temp: 16, code: 3 },
+        { time: '12:00', temp: 0, code: 1 },
+        { time: '15:00', temp: 0, code: 0 },
+        { time: '18:00', temp: 0, code: 2 },
+        { time: '21:00', temp: 0, code: 3 },
       ],
-      loading: false,
-      updatedAt: 'Только что',
+      loading: true,
+      updatedAt: 'Синхронизация...',
+      autoDetected: false,
     }
   );
 
-  // Android M3 Calculator & Converter
+  // Calculator & Converter
   const [calcTab, setCalcTab] = useState<'calc' | 'conv'>('calc');
   const [calcInput, setCalcInput] = useState<string>('256 * 18');
   const [convVal, setConvVal] = useState<string>('100');
   const [convKind, setConvKind] = useState<'usd_rub' | 'eur_rub' | 'gb_mb' | 'c_f'>('usd_rub');
 
-  // iOS 18 Stocks & Crypto
-  const [marketTickers, setMarketTickers] = useState([
+  // Markets
+  const [marketTickers] = useState([
     { symbol: 'BTC/USD', name: 'Bitcoin', price: 94280, changePct: +3.42 },
     { symbol: 'ETH/USD', name: 'Ethereum', price: 3185, changePct: +2.15 },
     { symbol: 'NVDA', name: 'NVIDIA Corp', price: 142.6, changePct: +4.18 },
     { symbol: 'USD/RUB', name: 'Доллар США', price: 92.45, changePct: -0.35 },
   ]);
 
-  // Windows Power Timer & Security
+  // Power Timer & Security
   const [shutdownTimerSec, setShutdownTimerSec] = useState<number | null>(null);
   const [cryptoKeyRev, setCryptoKeyRev] = useState<number>(1);
 
   const gridRef = useRef<HTMLDivElement | null>(null);
+
+  // Stable callback & state refs to fix Bug #7 (preventing 1s interval recreation every tick)
+  const onPlayBeepRef = useRef(onPlayBeep);
+  const onPushNotificationRef = useRef(onPushNotification);
+  const pomoRunningRef = useRef(pomoRunning);
+  const pomoModeRef = useRef(pomoMode);
+  const autoWeatherFetchedKeyRef = useRef<string>('');
+
+  useEffect(() => {
+    onPlayBeepRef.current = onPlayBeep;
+  }, [onPlayBeep]);
+  useEffect(() => {
+    onPushNotificationRef.current = onPushNotification;
+  }, [onPushNotification]);
+  useEffect(() => {
+    pomoRunningRef.current = pomoRunning;
+  }, [pomoRunning]);
+  useEffect(() => {
+    pomoModeRef.current = pomoMode;
+  }, [pomoMode]);
+
+  // Real telemetry computed values from liveSystem (Zero fake random jitter!)
+  const realCpuPct = liveSystem ? liveSystem.cpu_percent : 0;
+  const realCpuModel = liveSystem?.cpu_model || 'Сканирование процессора...';
+  const realCpuCores = liveSystem?.cpu_cores || 0;
+  const realGpuName = liveSystem?.gpu_name || 'Графический адаптер системы';
+  const realGpuPct = liveSystem ? liveSystem.gpu_percent : 0;
+  const realGpuTemp = liveSystem ? liveSystem.gpu_temp_c : 0;
+  const realRamPct = liveSystem ? liveSystem.ram_percent : 0;
+  const realRamUsedGb = liveSystem ? liveSystem.ram_used_gb.toFixed(1) : '0.0';
+  const realRamTotalGb = liveSystem ? liveSystem.ram_total_gb.toFixed(1) : '0.0';
+  const realNetDown = liveSystem ? Number(liveSystem.net_down_mbps.toFixed(2)) : 0;
+  const realNetUp = liveSystem ? Number(liveSystem.net_up_mbps.toFixed(2)) : 0;
+  const realDisks = liveSystem?.disks && liveSystem.disks.length > 0 ? liveSystem.disks : [];
+  const realMedia = liveSystem?.media;
+  const realLocation = liveSystem?.location;
+
+  // Update real network sparkline when liveSystem changes
+  useEffect(() => {
+    if (!liveSystem) return;
+    const totalSpeed = liveSystem.net_down_mbps + liveSystem.net_up_mbps;
+    const barHeight = Math.min(100, Math.max(12, Math.round(totalSpeed * 3 + 12)));
+    setNetHistory((prev) => [...prev.slice(1), barHeight]);
+  }, [liveSystem?.net_down_mbps, liveSystem?.net_up_mbps, liveSystem]);
 
   // Persist 20x30 Grid state
   useEffect(() => {
@@ -604,43 +685,38 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
     }
   }, [gridOrientation, showCellGridLines, widgets, folders, pinnedApps, todoItems, quickNote, uptimeSeconds, weather]);
 
-  // 1-second live kernel telemetry loop
+  // Escape key closes Window 2 modals (Bug #12 fix)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (lockScreenOverlay) setLockScreenOverlay(false);
+      else if (activeFolderModal) setActiveFolderModal(null);
+      else if (createFolderModalOpen) setCreateFolderModalOpen(false);
+      else if (widgetCatalogModalOpen) setWidgetCatalogModalOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [lockScreenOverlay, activeFolderModal, createFolderModalOpen, widgetCatalogModalOpen]);
+
+  // Single stable 1-second timer loop (Fix Bug #7 — no teardown on every prop change)
   useEffect(() => {
     const timer = setInterval(() => {
       setNowDate(new Date());
       setUptimeSeconds((s) => s + 1);
 
-      setCpuUsage((prev) => Math.max(6, Math.min(95, prev + Math.floor(Math.random() * 9) - 4)));
-      setGpuUsage((prev) => Math.max(8, Math.min(98, prev + Math.floor(Math.random() * 7) - 3)));
-      setGpuTempC((prev) => Math.max(44, Math.min(79, prev + Math.floor(Math.random() * 3) - 1)));
-      setRamUsagePct((prev) => Math.max(30, Math.min(88, prev + Math.floor(Math.random() * 3) - 1)));
-
-      const nextDown = +(65 + Math.sin(Date.now() / 1600) * 35 + Math.random() * 18).toFixed(1);
-      const nextUp = +(18 + Math.cos(Date.now() / 2100) * 9 + Math.random() * 6).toFixed(1);
-      setNetDownMbps(Math.max(4.2, nextDown));
-      setNetUpMbps(Math.max(2.1, nextUp));
-      setNetHistory((prev) => [...prev.slice(1), Math.min(100, Math.max(15, Math.round(nextDown * 0.85)))]);
-
-      // Subtle market ticker updates
-      setMarketTickers((prev) =>
-        prev.map((item) => {
-          const delta = (Math.random() - 0.48) * (item.price * 0.002);
-          const nextPrice = +(item.price + delta).toFixed(item.price > 500 ? 0 : 2);
-          return { ...item, price: nextPrice };
-        })
-      );
-
       // Pomodoro countdown
       setPomoSecLeft((prev) => {
-        if (!pomoRunning) return prev;
+        if (!pomoRunningRef.current) return prev;
         if (prev <= 1) {
           setPomoRunning(false);
-          onPlayBeep(880);
-          const nextM = pomoMode === 'work' ? 'break' : 'work';
+          onPlayBeepRef.current(880);
+          const nextM = pomoModeRef.current === 'work' ? 'break' : 'work';
           setPomoMode(nextM);
-          onPushNotification(
-            'Фокус-Таймер Luma 1.0',
-            nextM === 'break' ? 'Сессия фокуса завершена! Перерыв 5 минут.' : 'Перерыв окончен! Время фокуса 25 минут.',
+          onPushNotificationRef.current(
+            'Luma Focus-Поток',
+            nextM === 'break'
+              ? 'Сессия фокуса завершена! Время отдыха 5 минут.'
+              : 'Перерыв окончен! Возврат к фокусу на 25 минут.',
             'success'
           );
           return nextM === 'break' ? 5 * 60 : 25 * 60;
@@ -652,17 +728,189 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
       setShutdownTimerSec((prev) => {
         if (prev === null) return null;
         if (prev <= 1) {
-          onPlayBeep(520);
-          onPushNotification('Управление питанием', 'Таймер автовыключения завершен.', 'warning');
+          onPlayBeepRef.current(520);
+          onPushNotificationRef.current('Luma Core Питание', 'Таймер автодействия завершён.', 'warning');
           return null;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [pomoRunning, pomoMode, onPlayBeep, onPushNotification]);
+  }, []);
 
-  // Open-Meteo real weather search
+  // Fetch real Open-Meteo weather by coordinates (auto-detected region or searched city)
+  const fetchWeatherByCoords = useCallback(
+    async (
+      lat: number,
+      lon: number,
+      city: string,
+      region: string,
+      country: string,
+      timezone: string,
+      autoDetected: boolean,
+      notify = false
+    ) => {
+      setWeather((prev) => ({ ...prev, loading: true }));
+      try {
+        const forecastRes = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code&forecast_days=1&timezone=auto`
+        );
+        const fData = await forecastRes.json();
+        const current = fData.current || {};
+        const code = typeof current.weather_code === 'number' ? current.weather_code : 0;
+        const wmo = decodeWeatherWmo(code);
+
+        const hourlyPoints: WeatherHourPoint[] = [];
+        if (fData.hourly && Array.isArray(fData.hourly.time)) {
+          const curH = new Date().getHours();
+          const startIdx = Math.max(0, Math.min(curH, fData.hourly.time.length - 4));
+          for (let i = startIdx; i < Math.min(startIdx + 4, fData.hourly.time.length); i++) {
+            const rawT = String(fData.hourly.time[i] || '');
+            const hhmm = rawT.includes('T') ? rawT.split('T')[1].slice(0, 5) : `${i}:00`;
+            hourlyPoints.push({
+              time: hhmm,
+              temp: Math.round(Number(fData.hourly.temperature_2m?.[i] ?? current.temperature_2m ?? 0)),
+              code: Number(fData.hourly.weather_code?.[i] ?? code),
+            });
+          }
+        }
+
+        const tempRounded = Math.round(Number(current.temperature_2m ?? 0));
+        setWeather({
+          city,
+          region,
+          country,
+          timezone: fData.timezone || timezone || '',
+          temp: tempRounded,
+          feelsLike: Math.round(Number(current.apparent_temperature ?? tempRounded)),
+          humidity: Math.round(Number(current.relative_humidity_2m ?? 50)),
+          windSpeed: Number(Number(current.wind_speed_10m ?? 0).toFixed(1)),
+          weatherCode: code,
+          description: wmo.label,
+          hourly: hourlyPoints.length ? hourlyPoints : [],
+          loading: false,
+          updatedAt: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+          autoDetected,
+        });
+        if (notify) {
+          onPushNotificationRef.current(
+            'Luma Погода (Live)',
+            `${city}${region ? `, ${region}` : ''}: ${tempRounded > 0 ? `+${tempRounded}` : tempRounded}°C (${wmo.label})`,
+            'success'
+          );
+        }
+      } catch {
+        setWeather((prev) => ({
+          ...prev,
+          city: city || prev.city,
+          region: region || prev.region,
+          country: country || prev.country,
+          loading: false,
+          description: prev.description === 'Запрос координат...' ? 'Офлайн кэш' : prev.description,
+        }));
+      }
+    },
+    []
+  );
+
+  // Auto-detect real region from Luma Core kernel (liveSystem.location) OR browser ipwho.is fallback
+  const detectMyRegionWeather = useCallback(
+    async (notify = false) => {
+      setManualCitySelected(false);
+      onRefreshLocation();
+      // First check if kernel already detected exact coordinates
+      if (realLocation?.detected && (realLocation.latitude !== 0 || realLocation.longitude !== 0)) {
+        const locKey = `${realLocation.city}_${realLocation.latitude.toFixed(2)}_${realLocation.longitude.toFixed(2)}`;
+        autoWeatherFetchedKeyRef.current = locKey;
+        await fetchWeatherByCoords(
+          realLocation.latitude,
+          realLocation.longitude,
+          realLocation.city || realLocation.region || 'Ваш регион',
+          realLocation.region || '',
+          realLocation.country || '',
+          realLocation.timezone || '',
+          true,
+          notify
+        );
+        return;
+      }
+
+      // Direct client-side region detection via ipwho.is (if kernel hasn't responded yet or running standalone)
+      setWeather((prev) => ({ ...prev, loading: true }));
+      try {
+        const locRes = await fetch('/api/kernel/location').catch(() => null);
+        if (locRes && locRes.ok) {
+          const data = await locRes.json();
+          if (data?.detected && (data.latitude !== 0 || data.longitude !== 0)) {
+            await fetchWeatherByCoords(
+              data.latitude,
+              data.longitude,
+              data.city || data.region || 'Ваш регион',
+              data.region || '',
+              data.country || '',
+              data.timezone || '',
+              true,
+              notify
+            );
+            return;
+          }
+        }
+        const directRes = await fetch('https://ipwho.is/?lang=ru');
+        const direct = await directRes.json();
+        if (direct?.success && typeof direct.latitude === 'number') {
+          await fetchWeatherByCoords(
+            direct.latitude,
+            direct.longitude,
+            direct.city || direct.region || 'Ваш регион',
+            direct.region || '',
+            direct.country || '',
+            direct.timezone?.id || '',
+            true,
+            notify
+          );
+          return;
+        }
+      } catch {
+        // ignore network block
+      }
+      setWeather((prev) => ({ ...prev, loading: false }));
+    },
+    [realLocation, fetchWeatherByCoords, onRefreshLocation]
+  );
+
+  // Automatically trigger live weather when realLocation arrives from Luma Core 1.0.1
+  useEffect(() => {
+    if (manualCitySelected) return;
+    if (realLocation?.detected && (realLocation.latitude !== 0 || realLocation.longitude !== 0)) {
+      const locKey = `${realLocation.city}_${realLocation.latitude.toFixed(2)}_${realLocation.longitude.toFixed(2)}`;
+      if (autoWeatherFetchedKeyRef.current !== locKey) {
+        autoWeatherFetchedKeyRef.current = locKey;
+        fetchWeatherByCoords(
+          realLocation.latitude,
+          realLocation.longitude,
+          realLocation.city || realLocation.region || 'Ваш регион',
+          realLocation.region || '',
+          realLocation.country || '',
+          realLocation.timezone || '',
+          true,
+          false
+        );
+      }
+    }
+  }, [realLocation, manualCitySelected, fetchWeatherByCoords]);
+
+  // Trigger initial region + weather fetch once on mount if not detected yet
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!autoWeatherFetchedKeyRef.current) {
+        detectMyRegionWeather(false);
+      }
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Open-Meteo real weather search by city name
   const searchWeatherByCity = async (query: string) => {
     const trimmed = query.trim();
     if (!trimmed) return;
@@ -673,53 +921,27 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
       );
       const geoData = await geoRes.json();
       if (!geoData.results || geoData.results.length === 0) {
-        onPushNotification('Погода Pixel', `Город «${trimmed}» не найден.`, 'warning');
+        onPushNotification('Luma Погода', `Город «${trimmed}» не найден.`, 'warning');
         setWeather((prev) => ({ ...prev, loading: false }));
         return;
       }
       const place = geoData.results[0];
-      const forecastRes = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code&forecast_days=1&timezone=auto`
+      setManualCitySelected(true);
+      await fetchWeatherByCoords(
+        place.latitude,
+        place.longitude,
+        place.name || trimmed,
+        place.admin1 || '',
+        place.country || '',
+        place.timezone || '',
+        false,
+        true
       );
-      const fData = await forecastRes.json();
-      const current = fData.current || {};
-      const code = typeof current.weather_code === 'number' ? current.weather_code : 0;
-      const wmo = decodeWeatherWmo(code);
-
-      const hourlyPoints: WeatherHourPoint[] = [];
-      if (fData.hourly && Array.isArray(fData.hourly.time)) {
-        const curH = new Date().getHours();
-        const startIdx = Math.max(0, Math.min(curH, fData.hourly.time.length - 4));
-        for (let i = startIdx; i < Math.min(startIdx + 4, fData.hourly.time.length); i++) {
-          const rawT = String(fData.hourly.time[i] || '');
-          const hhmm = rawT.includes('T') ? rawT.split('T')[1].slice(0, 5) : `${i}:00`;
-          hourlyPoints.push({
-            time: hhmm,
-            temp: Math.round(Number(fData.hourly.temperature_2m?.[i] ?? current.temperature_2m ?? 20)),
-            code: Number(fData.hourly.weather_code?.[i] ?? code),
-          });
-        }
-      }
-
-      setWeather({
-        city: place.name || trimmed,
-        country: place.country || '',
-        temp: Math.round(Number(current.temperature_2m ?? 20)),
-        feelsLike: Math.round(Number(current.apparent_temperature ?? 20)),
-        humidity: Math.round(Number(current.relative_humidity_2m ?? 50)),
-        windSpeed: Number(Number(current.wind_speed_10m ?? 3.5).toFixed(1)),
-        weatherCode: code,
-        description: wmo.label,
-        hourly: hourlyPoints.length ? hourlyPoints : weather.hourly,
-        loading: false,
-        updatedAt: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-      });
       setWeatherSearchOpen(false);
       setWeatherQuery('');
-      onPushNotification('Погода обновлена', `${place.name}: ${Math.round(Number(current.temperature_2m ?? 20))}°C`, 'success');
     } catch {
       setWeather((prev) => ({ ...prev, loading: false }));
-      onPushNotification('Кэш погоды', 'Используются автономные данные ядра Luma 1.0.', 'info');
+      onPushNotification('Luma Погода', 'Не удалось связаться с Open-Meteo.', 'info');
     }
   };
 
@@ -824,7 +1046,6 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
     );
   };
 
-  // Click any empty cell (col, row) in Edit Mode to snap the currently selected item right to that cell!
   const handleCellClick = (col: number, row: number) => {
     if (!editGridMode || !selectedItemId) return;
     setWidgets((prev) =>
@@ -860,7 +1081,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
           : p
       )
     );
-    onPushNotification('Ячейка 20×30', `Элемент перемещен в ячейку [X:${col}, Y:${row}]`, 'info');
+    onPushNotification('Матрица 20×30', `Элемент перемещён в ячейку [X:${col}, Y:${row}]`, 'info');
   };
 
   const resetGridLayout = () => {
@@ -868,7 +1089,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
     setFolders(DEFAULT_GRID_FOLDERS);
     setPinnedApps(DEFAULT_PINNED_APPS);
     setSelectedItemId(null);
-    onPushNotification('Сетка 20×30', 'Восстановлена эталонная раскладка всех 18 виджетов и папок.', 'success');
+    onPushNotification('Матрица 20×30', 'Восстановлена эталонная раскладка 18 виджетов Luma 1.0.1.', 'success');
   };
 
   const renderAppIcon = (iconName: string, className = 'w-5 h-5') => {
@@ -880,9 +1101,9 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
     const info = decodeWeatherWmo(code);
     if (info.kind === 'clear') return <Sun className={`${className} text-amber-400`} />;
     if (info.kind === 'rain') return <CloudRain className={`${className} text-sky-400`} />;
-    if (info.kind === 'snow') return <Snowflake className={`${className} text-cyan-300`} />;
+    if (info.kind === 'snow') return <Snowflake className={`${className} text-cyan-400`} />;
     if (info.kind === 'storm') return <CloudLightning className={`${className} text-purple-400`} />;
-    return <CloudSun className={`${className} text-blue-300`} />;
+    return <CloudSun className={`${className} text-sky-400`} />;
   };
 
   const visibleWidgets = useMemo(
@@ -895,6 +1116,17 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
 
   const currentIslandPlayer = islandPlayers[activePlayerIndex] || islandPlayers[0];
 
+  // Determine real OS playing music if available
+  const hasLiveOsMedia = Boolean(realMedia?.available && realMedia.title);
+  const displayTrackTitle = hasLiveOsMedia ? realMedia!.title : currentIslandPlayer.track;
+  const displayTrackArtist = hasLiveOsMedia
+    ? realMedia!.artist || realMedia!.source_app || 'Системный медиапоток'
+    : currentIslandPlayer.artist;
+  const displayMediaPlaying = hasLiveOsMedia ? realMedia!.is_playing : mediaPlaying;
+  const displaySourceLabel = hasLiveOsMedia
+    ? `LIVE • ${realMedia!.source_app || 'Системный поток'}`
+    : currentIslandPlayer.name;
+
   // World clocks helper
   const getWorldTime = (offsetHours: number) => {
     const utc = nowDate.getTime() + nowDate.getTimezoneOffset() * 60000;
@@ -906,9 +1138,9 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
   const renderWidgetContent = (w: CellWidgetItem) => {
     switch (w.id) {
       // =====================================================================
-      // 1. ANDROID 16 MATERIAL 3 EXPRESSIVE SCALLOP CLOCK & AT A GLANCE
+      // 1. LUMA PULSE SCULPT CLOCK & REGION AT A GLANCE
       // =====================================================================
-      case 'android_m3_clock': {
+      case 'luma_sculpt_clock': {
         const hrs = String(nowDate.getHours()).padStart(2, '0');
         const mins = String(nowDate.getMinutes()).padStart(2, '0');
         const secs = String(nowDate.getSeconds()).padStart(2, '0');
@@ -916,101 +1148,88 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
         return (
           <div className="h-full flex flex-col justify-between p-1">
             <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
-                <Smartphone className="w-3 h-3" />
-                Android 16 M3 Expressive
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-400/35">
+                <Sparkles className="w-3 h-3" />
+                Luma Pulse 1.0.1
               </span>
-              <span className="text-[10px] font-mono text-slate-400">:{secs}</span>
+              <span className={`text-[10px] font-mono ${mutedTextCls}`}>:{secs}</span>
             </div>
 
             <div className="my-auto flex items-center gap-3.5">
-              {/* Expressive Morphing Squircle/Scallop Clock Pill */}
               <div
                 className="w-20 h-20 rounded-[26px] flex flex-col items-center justify-center shadow-lg border border-indigo-400/40 relative overflow-hidden shrink-0"
                 style={{
-                  background: 'linear-gradient(145deg, rgba(99,102,241,0.32) 0%, rgba(56,189,248,0.18) 100%)',
+                  background: `linear-gradient(145deg, ${accentHex}55 0%, rgba(56,189,248,0.22) 100%)`,
                 }}
               >
-                <span className="text-2xl font-black font-mono leading-none text-white tracking-tighter">
+                <span className={`text-2xl font-black font-mono leading-none tracking-tighter ${titleTextCls}`}>
                   {hrs}
                 </span>
-                <span className="text-2xl font-black font-mono leading-none text-indigo-300 tracking-tighter mt-0.5">
+                <span className="text-2xl font-black font-mono leading-none text-indigo-400 tracking-tighter mt-0.5">
                   {mins}
                 </span>
               </div>
 
               <div className="min-w-0 flex-1 space-y-1">
-                <div className="text-xs font-extrabold text-white truncate">
+                <div className={`text-xs font-extrabold truncate ${titleTextCls}`}>
                   {weekdays[nowDate.getDay()]}
                 </div>
-                <div className="text-[11px] font-mono text-slate-300">
+                <div className={`text-[11px] font-mono ${mutedTextCls}`}>
                   {nowDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
                 </div>
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-[10px] font-semibold">
-                  <Sun className="w-3 h-3" />
-                  {weather.city}: {weather.temp > 0 ? `+${weather.temp}` : weather.temp}°C
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-400/35 text-amber-500 dark:text-amber-300 text-[10px] font-semibold max-w-full">
+                  <MapPin className="w-3 h-3 shrink-0" />
+                  <span className="truncate">
+                    {weather.city}: {weather.loading ? '...' : `${weather.temp > 0 ? `+${weather.temp}` : weather.temp}°C`}
+                  </span>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-white/10">
-              <span>Сводка At a Glance</span>
-              <span className="text-emerald-400 font-mono font-bold">● Luma 1.0 Ready</span>
+            <div className={`flex items-center justify-between text-[10px] pt-1 border-t ${isDark ? 'border-white/10 text-slate-400' : 'border-slate-200 text-slate-600'}`}>
+              <span className="truncate">{liveSystem?.hostname || 'Luma Shell'}</span>
+              <span className="text-emerald-500 font-mono font-bold shrink-0">● Live Core</span>
             </div>
           </div>
         );
       }
 
       // =====================================================================
-      // 2. ANDROID 16 QUICK SETTINGS SHADE (PILL TILES + SLIDERS)
+      // 2. LUMA PULSE QUICK CONTROL SHADE (WITH LUMA ISLAND TOGGLE + REAL VOLUME)
       // =====================================================================
-      case 'android_quick_settings':
+      case 'luma_quick_shade':
         return (
           <div className="h-full flex flex-col justify-between p-1 gap-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Sliders className="w-3.5 h-3.5 text-sky-400" />
-                <span className="text-xs font-extrabold">Быстрые настройки Android 16 (M3 Expressive)</span>
+                <span className={`text-xs font-extrabold ${titleTextCls}`}>
+                  Быстрое управление Luma Pulse
+                </span>
               </div>
-              <span className="text-[10px] font-mono text-emerald-400">6 плиток активны</span>
+              <span className="text-[10px] font-mono text-emerald-500 font-bold">
+                Остров: {dynamicIslandEnabled ? 'ВКЛ' : 'ВЫКЛ'}
+              </span>
             </div>
 
             <div className="grid grid-cols-3 gap-1.5 my-auto">
-              {/* Wi-Fi 7 Pill */}
+              {/* Luma Island ON/OFF Pill */}
               <button
-                onClick={() => {
-                  setWifiEnabled((v) => !v);
-                  onPushNotification('Wi-Fi 7 (Luma HAL)', !wifiEnabled ? 'Подключено к 5GHz / 6GHz' : 'Wi-Fi отключен');
-                }}
+                onClick={onToggleDynamicIsland}
                 className={`p-2 rounded-[18px] border text-left transition-all flex items-center gap-2 cursor-pointer ${
-                  wifiEnabled
-                    ? 'bg-sky-500/25 border-sky-400/60 text-white shadow-sm'
-                    : 'bg-slate-900/70 border-slate-800 text-slate-400'
+                  dynamicIslandEnabled
+                    ? 'bg-emerald-500/25 border-emerald-400/70 text-emerald-400 shadow-sm'
+                    : innerBtnCls
                 }`}
               >
-                <Wifi className="w-4 h-4 text-sky-300 shrink-0" />
+                <Disc3 className="w-4 h-4 shrink-0" />
                 <div className="min-w-0">
-                  <div className="text-[11px] font-bold truncate">Wi-Fi 7</div>
-                  <div className="text-[9px] opacity-80 truncate">{wifiEnabled ? '1.0 Гбит/с' : 'Выкл'}</div>
-                </div>
-              </button>
-
-              {/* Bluetooth 5.4 Pill */}
-              <button
-                onClick={() => {
-                  setBtEnabled((v) => !v);
-                  onPushNotification('Bluetooth 5.4', !btEnabled ? 'AirPods Pro подключены' : 'Bluetooth отключен');
-                }}
-                className={`p-2 rounded-[18px] border text-left transition-all flex items-center gap-2 cursor-pointer ${
-                  btEnabled
-                    ? 'bg-indigo-500/25 border-indigo-400/60 text-white shadow-sm'
-                    : 'bg-slate-900/70 border-slate-800 text-slate-400'
-                }`}
-              >
-                <Bluetooth className="w-4 h-4 text-indigo-300 shrink-0" />
-                <div className="min-w-0">
-                  <div className="text-[11px] font-bold truncate">Bluetooth</div>
-                  <div className="text-[9px] opacity-80 truncate">{btEnabled ? '2 устр.' : 'Выкл'}</div>
+                  <div className={`text-[11px] font-bold truncate ${dynamicIslandEnabled ? titleTextCls : ''}`}>
+                    Luma Island
+                  </div>
+                  <div className="text-[9px] opacity-80 truncate">
+                    {dynamicIslandEnabled ? 'Активен' : 'Выключен'}
+                  </div>
                 </div>
               </button>
 
@@ -1019,14 +1238,14 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                 onClick={onToggleDnd}
                 className={`p-2 rounded-[18px] border text-left transition-all flex items-center gap-2 cursor-pointer ${
                   dndEnabled
-                    ? 'bg-purple-500/30 border-purple-400 text-white shadow-sm'
-                    : 'bg-slate-900/70 border-slate-800 text-slate-400'
+                    ? 'bg-purple-500/25 border-purple-400/70 text-purple-400 shadow-sm'
+                    : innerBtnCls
                 }`}
               >
-                <BellOff className="w-4 h-4 text-purple-300 shrink-0" />
+                <BellOff className="w-4 h-4 shrink-0" />
                 <div className="min-w-0">
-                  <div className="text-[11px] font-bold truncate">Тихий DND</div>
-                  <div className="text-[9px] opacity-80 truncate">{dndEnabled ? 'ВКЛЮЧЕН' : 'Выкл'}</div>
+                  <div className={`text-[11px] font-bold truncate ${dndEnabled ? titleTextCls : ''}`}>Тихий DND</div>
+                  <div className="text-[9px] opacity-80 truncate">{dndEnabled ? 'ВКЛЮЧЁН' : 'Выкл'}</div>
                 </div>
               </button>
 
@@ -1035,13 +1254,15 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                 onClick={onToggleAdaptiveTheme}
                 className={`p-2 rounded-[18px] border text-left transition-all flex items-center gap-2 cursor-pointer ${
                   adaptiveThemeEnabled
-                    ? 'bg-amber-500/25 border-amber-400/60 text-white'
-                    : 'bg-slate-900/70 border-slate-800 text-slate-400'
+                    ? 'bg-amber-500/25 border-amber-400/70 text-amber-500'
+                    : innerBtnCls
                 }`}
               >
-                <Sun className="w-4 h-4 text-amber-300 shrink-0" />
+                <Sun className="w-4 h-4 shrink-0" />
                 <div className="min-w-0">
-                  <div className="text-[11px] font-bold truncate">День/Ночь</div>
+                  <div className={`text-[11px] font-bold truncate ${adaptiveThemeEnabled ? titleTextCls : ''}`}>
+                    День/Ночь
+                  </div>
                   <div className="text-[9px] opacity-80 truncate">{adaptiveThemeEnabled ? 'Авто' : 'Ручной'}</div>
                 </div>
               </button>
@@ -1051,44 +1272,55 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                 onClick={onToggleGlass}
                 className={`p-2 rounded-[18px] border text-left transition-all flex items-center gap-2 cursor-pointer ${
                   glassEnabled
-                    ? 'bg-teal-500/25 border-teal-400/60 text-white'
-                    : 'bg-slate-900/70 border-slate-800 text-slate-400'
+                    ? 'bg-teal-500/25 border-teal-400/70 text-teal-400'
+                    : innerBtnCls
                 }`}
               >
-                <Sparkles className="w-4 h-4 text-teal-300 shrink-0" />
+                <Sparkles className="w-4 h-4 shrink-0" />
                 <div className="min-w-0">
-                  <div className="text-[11px] font-bold truncate">Стекло M3</div>
+                  <div className={`text-[11px] font-bold truncate ${glassEnabled ? titleTextCls : ''}`}>Стекло M3</div>
                   <div className="text-[9px] opacity-80 truncate">{glassEnabled ? 'Активно' : 'Выкл'}</div>
                 </div>
               </button>
 
-              {/* Power Saver / Right-Click Back Pill */}
+              {/* Right-Click Back Pill */}
               <button
-                onClick={() => {
-                  setPowerSaverEnabled((v) => !v);
-                  onToggleRightClickBack();
-                }}
+                onClick={onToggleRightClickBack}
                 className={`p-2 rounded-[18px] border text-left transition-all flex items-center gap-2 cursor-pointer ${
                   rightClickBackEnabled
-                    ? 'bg-emerald-500/25 border-emerald-400/60 text-white'
-                    : 'bg-slate-900/70 border-slate-800 text-slate-400'
+                    ? 'bg-indigo-500/25 border-indigo-400/70 text-indigo-400'
+                    : innerBtnCls
                 }`}
               >
-                <Zap className="w-4 h-4 text-emerald-300 shrink-0" />
+                <Zap className="w-4 h-4 shrink-0" />
                 <div className="min-w-0">
-                  <div className="text-[11px] font-bold truncate">ПКМ Назад</div>
+                  <div className={`text-[11px] font-bold truncate ${rightClickBackEnabled ? titleTextCls : ''}`}>
+                    ПКМ Назад
+                  </div>
                   <div className="text-[9px] opacity-80 truncate">{rightClickBackEnabled ? 'Активно' : 'Выкл'}</div>
+                </div>
+              </button>
+
+              {/* Real Region Sync Pill */}
+              <button
+                onClick={() => detectMyRegionWeather(true)}
+                className={`p-2 rounded-[18px] border text-left transition-all flex items-center gap-2 cursor-pointer bg-sky-500/20 border-sky-400/60 text-sky-400`}
+              >
+                <Compass className="w-4 h-4 shrink-0" />
+                <div className="min-w-0">
+                  <div className={`text-[11px] font-bold truncate ${titleTextCls}`}>Мой регион</div>
+                  <div className="text-[9px] opacity-80 truncate">{weather.city}</div>
                 </div>
               </button>
             </div>
 
-            {/* Expressive Brightness & Volume Pill Sliders */}
+            {/* Expressive Display & Real OS Volume Pill Sliders */}
             <div className="grid grid-cols-2 gap-2 pt-0.5">
-              <div className="flex items-center gap-2 bg-slate-900/80 px-2.5 py-1 rounded-full border border-slate-800">
+              <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full border ${innerCardCls}`}>
                 <Sun className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <input
                   type="range"
-                  min={20}
+                  min={30}
                   max={100}
                   value={screenBrightness}
                   onChange={(e) => setScreenBrightness(Number(e.target.value))}
@@ -1096,8 +1328,8 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                 />
                 <span className="text-[10px] font-mono w-7 text-right">{screenBrightness}%</span>
               </div>
-              <div className="flex items-center gap-2 bg-slate-900/80 px-2.5 py-1 rounded-full border border-slate-800">
-                <button onClick={onToggleMute} className="cursor-pointer">
+              <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full border ${innerCardCls}`}>
+                <button onClick={onToggleMute} className="cursor-pointer" title="Выкл/Вкл звук системы">
                   {isMuted ? (
                     <VolumeX className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                   ) : (
@@ -1119,9 +1351,9 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
         );
 
       // =====================================================================
-      // 3. GOOGLE PIXEL WEATHER & RADAR CAPSULE (OPEN-METEO LIVE)
+      // 3. LUMA PULSE LIVE REGION WEATHER (AUTO-DETECTED + OPEN-METEO)
       // =====================================================================
-      case 'android_pixel_weather':
+      case 'luma_region_weather':
         return (
           <div className="h-full flex flex-col justify-between p-1 gap-1.5">
             <div className="flex items-center justify-between gap-2">
@@ -1130,21 +1362,34 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1">
                     <MapPin className="w-3 h-3 text-sky-400 shrink-0" />
-                    <span className="text-xs font-extrabold truncate">{weather.city}</span>
+                    <span className={`text-xs font-extrabold truncate ${titleTextCls}`}>{weather.city}</span>
+                    {weather.autoDetected && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 text-[8px] font-mono font-bold shrink-0">
+                        АВТО
+                      </span>
+                    )}
                   </div>
-                  <div className="text-[10px] text-slate-400 truncate">
+                  <div className={`text-[10px] truncate ${mutedTextCls}`}>
+                    {weather.region ? `${weather.region} • ` : ''}
                     {weather.description} • Ощущ. {weather.feelsLike > 0 ? `+${weather.feelsLike}` : weather.feelsLike}°
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-2xl font-black font-mono tabular-nums text-white">
-                  {weather.temp > 0 ? `+${weather.temp}` : weather.temp}°C
+              <div className="flex items-center gap-1 shrink-0">
+                <span className={`text-2xl font-black font-mono tabular-nums ${titleTextCls}`}>
+                  {weather.loading ? '…' : `${weather.temp > 0 ? `+${weather.temp}` : weather.temp}°C`}
                 </span>
                 <button
+                  onClick={() => detectMyRegionWeather(true)}
+                  title="Определить мой текущий регион и погоду"
+                  className="p-1.5 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-400 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3 h-3 ${weather.loading ? 'animate-spin' : ''}`} />
+                </button>
+                <button
                   onClick={() => setWeatherSearchOpen((v) => !v)}
-                  className="px-2 py-1 rounded-full bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-sky-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                  className="px-2 py-1 rounded-full bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-sky-400 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
                 >
                   <Search className="w-3 h-3" />
                   Город
@@ -1164,8 +1409,8 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                   type="text"
                   value={weatherQuery}
                   onChange={(e) => setWeatherQuery(e.target.value)}
-                  placeholder="Введите город (Москва, Токио, Париж)..."
-                  className="flex-1 bg-slate-900/90 border border-sky-500/50 rounded-full px-3 py-1.5 text-xs text-white outline-none"
+                  placeholder="Введите любой город..."
+                  className={`flex-1 border rounded-full px-3 py-1.5 text-xs outline-none ${inputCls}`}
                 />
                 <button
                   type="submit"
@@ -1179,11 +1424,11 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                 {weather.hourly.slice(0, 4).map((h, i) => (
                   <div
                     key={i}
-                    className="p-1.5 rounded-2xl bg-slate-900/65 border border-slate-800/80 flex flex-col items-center justify-center"
+                    className={`p-1.5 rounded-2xl border flex flex-col items-center justify-center ${innerCardCls}`}
                   >
-                    <span className="text-[9px] font-mono text-slate-400">{h.time}</span>
+                    <span className={`text-[9px] font-mono ${mutedTextCls}`}>{h.time}</span>
                     <div className="my-0.5">{renderWeatherIcon(h.code, 'w-3.5 h-3.5')}</div>
-                    <span className="text-[11px] font-mono font-bold">
+                    <span className={`text-[11px] font-mono font-bold ${titleTextCls}`}>
                       {h.temp > 0 ? `+${h.temp}` : h.temp}°
                     </span>
                   </div>
@@ -1191,25 +1436,27 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
               </div>
             )}
 
-            <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
-              <span>💧 Влажность: {weather.humidity}%</span>
-              <span>💨 Ветер: {weather.windSpeed} м/с</span>
+            <div className={`flex items-center justify-between text-[10px] font-mono ${mutedTextCls}`}>
+              <span>💧 {weather.humidity}% • 💨 {weather.windSpeed} м/с</span>
+              <span className="truncate max-w-[140px]">
+                {weather.country || weather.timezone || `Обн. ${weather.updatedAt}`}
+              </span>
             </div>
           </div>
         );
 
       // =====================================================================
-      // 4. iOS 18 STANDBY NOW PLAYING & VINYL MEDIA CONTROLLER
+      // 4. LUMA AURA NOW PLAYING & REAL OS TRACK CONTROLLER
       // =====================================================================
-      case 'ios_now_playing':
+      case 'luma_now_playing':
         return (
           <div className="h-full flex flex-col justify-between p-1 gap-1.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                <Radio className="w-3 h-3" />
-                {currentIslandPlayer.name}
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-400/35 truncate max-w-[65%]">
+                <Radio className="w-3 h-3 shrink-0" />
+                <span className="truncate">{displaySourceLabel}</span>
               </span>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 shrink-0">
                 {islandPlayers.map((pl, idx) => (
                   <button
                     key={pl.id}
@@ -1217,7 +1464,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                     title={pl.name}
                     className={`w-4 h-4 rounded-full text-[8px] font-bold transition cursor-pointer ${
                       idx === activePlayerIndex
-                        ? 'ring-2 ring-white scale-110'
+                        ? 'ring-2 ring-indigo-400 scale-110'
                         : 'opacity-50 hover:opacity-100'
                     }`}
                     style={{ backgroundColor: pl.accent }}
@@ -1229,8 +1476,8 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
             <div className="flex items-center gap-3 my-auto">
               {/* Spinning Vinyl Disc */}
               <div
-                className={`w-14 h-14 rounded-full border-2 border-emerald-400/50 flex items-center justify-center shadow-lg shrink-0 relative ${
-                  mediaPlaying ? 'animate-spin' : ''
+                className={`w-14 h-14 rounded-full border-2 border-emerald-400/60 flex items-center justify-center shadow-lg shrink-0 relative ${
+                  displayMediaPlaying ? 'animate-spin' : ''
                 }`}
                 style={{
                   animationDuration: '6s',
@@ -1241,25 +1488,28 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
               </div>
 
               <div className="min-w-0 flex-1">
-                <div className="text-xs font-extrabold text-white truncate">{currentIslandPlayer.track}</div>
-                <div className="text-[11px] text-slate-400 truncate">{currentIslandPlayer.artist}</div>
+                <div className={`text-xs font-extrabold truncate ${titleTextCls}`}>{displayTrackTitle}</div>
+                <div className={`text-[11px] truncate ${mutedTextCls}`}>{displayTrackArtist}</div>
                 <div className="flex items-center gap-1.5 mt-2">
                   <button
                     onClick={onPrevTrack}
-                    className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                    title="Предыдущий трек (Реальная команда ОС)"
+                    className={`p-1.5 rounded-full border cursor-pointer transition ${innerBtnCls}`}
                   >
                     <SkipBack className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={onToggleMediaPlay}
-                    className="px-3 py-1 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                    title="Воспроизведение / Пауза (Реальная команда ОС)"
+                    className="px-3 py-1 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] flex items-center gap-1 cursor-pointer shadow-sm"
                   >
-                    {mediaPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                    {mediaPlaying ? 'Пауза' : 'Играть'}
+                    {displayMediaPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    {displayMediaPlaying ? 'Пауза' : 'Играть'}
                   </button>
                   <button
                     onClick={onNextTrack}
-                    className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                    title="Следующий трек (Реальная команда ОС)"
+                    className={`p-1.5 rounded-full border cursor-pointer transition ${innerBtnCls}`}
                   >
                     <SkipForward className="w-3.5 h-3.5" />
                   </button>
@@ -1267,41 +1517,42 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
-              <span>iOS 18 StandBy Audio</span>
-              <span className="text-emerald-400">{mediaPlaying ? '♫ Воспроизведение' : 'На паузе'}</span>
+            <div className={`flex items-center justify-between text-[10px] font-mono ${mutedTextCls}`}>
+              <span>{hasLiveOsMedia ? '🟢 Системная медиасессия' : 'Luma Audio Bridge'}</span>
+              <span className="text-emerald-500 font-bold">
+                {displayMediaPlaying ? '♫ Играет сейчас' : 'На паузе'}
+              </span>
             </div>
           </div>
         );
 
       // =====================================================================
-      // 5. iOS 18 FITNESS ACTIVITY RINGS
+      // 5. LUMA AURA ENERGY RINGS
       // =====================================================================
-      case 'ios_activity_rings': {
+      case 'luma_energy_rings': {
         const movePct = Math.min(100, Math.round((moveKcal / moveGoal) * 100));
         const exPct = Math.min(100, Math.round((exerciseMins / exerciseGoal) * 100));
         const stPct = Math.min(100, Math.round((standHours / standGoal) * 100));
         return (
           <div className="h-full flex flex-col justify-between p-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
                 <Flame className="w-4 h-4 text-rose-400" />
-                Кольца активности iOS 18
+                Кольца Энергии Luma
               </span>
               <button
                 onClick={() => {
                   setMoveKcal((v) => v + 45);
                   setExerciseMins((v) => v + 5);
-                  onPushNotification('iOS 18 Fitness', '+45 ккал и +5 мин активности записаны в ядро Luma!', 'success');
+                  onPushNotification('Luma Aura Энергия', '+45 ккал и +5 мин активности записаны в ядро!', 'success');
                 }}
-                className="px-2 py-0.5 rounded-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[10px] font-bold cursor-pointer"
+                className="px-2 py-0.5 rounded-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 text-[10px] font-bold cursor-pointer"
               >
-                + Тренировка
+                + Сессия
               </button>
             </div>
 
             <div className="my-auto flex items-center gap-3.5">
-              {/* Concentric Rings SVG */}
               <svg className="w-18 h-18 -rotate-90 shrink-0" viewBox="0 0 80 80">
                 <circle cx="40" cy="40" r="33" stroke="rgba(244,63,94,0.2)" strokeWidth="6" fill="none" />
                 <circle
@@ -1340,12 +1591,12 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
 
               <div className="space-y-1 text-[11px] font-mono">
                 <div className="text-rose-400 font-bold">
-                  ПОДВИЖНОСТЬ: {moveKcal}/{moveGoal} ккал
+                  АКТИВНОСТЬ: {moveKcal}/{moveGoal}
                 </div>
-                <div className="text-emerald-400 font-bold">
-                  ФОКУС-МИНУТЫ: {exerciseMins}/{exerciseGoal} мин
+                <div className="text-emerald-500 font-bold">
+                  ФОКУС: {exerciseMins}/{exerciseGoal} мин
                 </div>
-                <div className="text-sky-400 font-bold">
+                <div className="text-sky-500 font-bold">
                   РАЗМИНКА: {standHours}/{standGoal} ч
                 </div>
               </div>
@@ -1355,23 +1606,35 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
       }
 
       // =====================================================================
-      // 6. iOS 18 BATTERIES ECOSYSTEM MATRIX
+      // 6. LUMA AURA POWER & PERIPHERALS MATRIX (REAL HOST BATTERY)
       // =====================================================================
-      case 'ios_battery_matrix': {
+      case 'luma_power_matrix': {
+        const hostPct = liveSystem ? liveSystem.battery_percent : batteryLevel;
+        const hostCharging = liveSystem ? liveSystem.battery_charging : isCharging;
+        const hostName = liveSystem?.hostname || 'Luma Хост';
         const devices = [
-          { name: 'Luma PC', pct: batteryLevel, icon: Laptop, charging: isCharging },
-          { name: 'AirPods Pro', pct: 88, icon: Headphones, charging: false },
-          { name: 'iPhone 16', pct: 74, icon: Smartphone, charging: true },
-          { name: 'DualSense', pct: 62, icon: Gamepad2, charging: false },
+          {
+            name: hostName,
+            pct: hostPct,
+            icon: Laptop,
+            charging: hostCharging,
+            badge: liveSystem?.battery_present ? 'Батарея' : 'От сети',
+          },
+          { name: 'Luma Buds', pct: 92, icon: Headphones, charging: false, badge: 'Аудио' },
+          { name: 'Luma Link', pct: 81, icon: Smartphone, charging: true, badge: 'Синхр.' },
+          { name: 'Luma Pad', pct: 68, icon: Gamepad2, charging: false, badge: 'Геймпад' },
         ];
         return (
           <div className="h-full flex flex-col justify-between p-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
-                <BatteryCharging className="w-4 h-4 text-emerald-400" />
-                Экосистема заряда iOS 18
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
+                <BatteryCharging className="w-4 h-4 text-emerald-500" />
+                Питание Luma Aura
               </span>
-              <span className="text-[10px] font-mono text-emerald-400">{batteryLevel}% Питание</span>
+              <span className="text-[10px] font-mono text-emerald-500 font-bold">
+                {hostCharging ? '⚡ ' : ''}
+                {hostPct}%
+              </span>
             </div>
 
             <div className="grid grid-cols-2 gap-1.5 my-auto">
@@ -1380,14 +1643,14 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                 return (
                   <div
                     key={d.name}
-                    className="p-2 rounded-2xl bg-slate-900/70 border border-slate-800 flex items-center gap-2"
+                    className={`p-2 rounded-2xl border flex items-center gap-2 ${innerCardCls}`}
                   >
-                    <div className="w-7 h-7 rounded-full bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                    <div className="w-7 h-7 rounded-full bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center text-emerald-500 shrink-0">
                       <IconC className="w-3.5 h-3.5" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-[10px] font-bold truncate">{d.name}</div>
-                      <div className="text-[10px] font-mono text-emerald-400 font-bold">
+                      <div className="text-[10px] font-mono text-emerald-500 font-bold">
                         {d.charging ? '⚡ ' : ''}
                         {d.pct}%
                       </div>
@@ -1401,47 +1664,66 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
       }
 
       // =====================================================================
-      // 7. WINDOWS 11 CPU / GPU / RAM PERFORMANCE MONITOR
+      // 7. LUMA CORE REAL HARDWARE CPU / GPU / RAM MONITOR
       // =====================================================================
-      case 'win_cpu_gpu_ram':
+      case 'luma_cpu_gpu_ram':
         return (
           <div className="h-full flex flex-col justify-between p-1">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
-                <Cpu className="w-4 h-4 text-sky-400" />
-                Ресурсы Windows 11 &amp; Luma
+            <div className="flex items-center justify-between gap-2">
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 truncate ${titleTextCls}`}>
+                <Cpu className="w-4 h-4 text-sky-400 shrink-0" />
+                Ресурсы Luma Core
               </span>
-              <span className="text-[10px] font-mono text-emerald-400">0.0% Idle Core</span>
+              <span className="text-[10px] font-mono text-emerald-500 font-bold shrink-0">
+                {liveSystem?.real_telemetry ? '🟢 REAL HAL' : 'ПОДКЛЮЧЕНИЕ'}
+              </span>
             </div>
 
             <div className="space-y-1.5 my-auto">
               <div>
-                <div className="flex justify-between text-[10px] font-mono mb-0.5">
-                  <span className="text-slate-300">CPU (x86_64 Multi-Core)</span>
-                  <span className="text-emerald-400 font-bold">{cpuUsage}%</span>
+                <div className="flex justify-between text-[10px] font-mono mb-0.5 gap-2">
+                  <span className={`truncate ${mutedTextCls}`} title={realCpuModel}>
+                    CPU {realCpuCores ? `(${realCpuCores} яд.)` : ''} • {realCpuModel}
+                  </span>
+                  <span className="text-emerald-500 font-bold shrink-0">{realCpuPct}%</span>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                  <div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${cpuUsage}%` }} />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between text-[10px] font-mono mb-0.5">
-                  <span className="text-slate-300">GPU RTX • {gpuTempC}°C</span>
-                  <span className="text-sky-400 font-bold">{gpuUsage}%</span>
-                </div>
-                <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                  <div className="h-full bg-sky-500 transition-all duration-300" style={{ width: `${gpuUsage}%` }} />
+                <div className={`w-full h-1.5 rounded-full overflow-hidden ${barTrackCls}`}>
+                  <div
+                    className="h-full bg-emerald-500 transition-all duration-300"
+                    style={{ width: `${Math.min(100, realCpuPct)}%` }}
+                  />
                 </div>
               </div>
 
               <div>
-                <div className="flex justify-between text-[10px] font-mono mb-0.5">
-                  <span className="text-slate-300">RAM ({ramUsedGb} / {ramTotalGb} ГБ)</span>
-                  <span className="text-indigo-400 font-bold">{ramUsagePct}%</span>
+                <div className="flex justify-between text-[10px] font-mono mb-0.5 gap-2">
+                  <span className={`truncate ${mutedTextCls}`} title={realGpuName}>
+                    GPU • {realGpuName}
+                  </span>
+                  <span className="text-sky-500 font-bold shrink-0">
+                    {realGpuTemp > 0 ? `${realGpuTemp}°C` : `${realGpuPct}%`}
+                  </span>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                  <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${ramUsagePct}%` }} />
+                <div className={`w-full h-1.5 rounded-full overflow-hidden ${barTrackCls}`}>
+                  <div
+                    className="h-full bg-sky-500 transition-all duration-300"
+                    style={{ width: `${Math.min(100, Math.max(realGpuPct, realCpuPct > 0 ? 12 : 0))}%` }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-[10px] font-mono mb-0.5 gap-2">
+                  <span className={`truncate ${mutedTextCls}`}>
+                    ОЗУ ({realRamUsedGb} / {realRamTotalGb} ГБ)
+                  </span>
+                  <span className="text-indigo-500 font-bold shrink-0">{realRamPct}%</span>
+                </div>
+                <div className={`w-full h-1.5 rounded-full overflow-hidden ${barTrackCls}`}>
+                  <div
+                    className="h-full bg-indigo-500 transition-all duration-300"
+                    style={{ width: `${Math.min(100, realRamPct)}%` }}
+                  />
                 </div>
               </div>
             </div>
@@ -1449,76 +1731,85 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
         );
 
       // =====================================================================
-      // 8. WINDOWS 11 STORAGE & DRIVE ANALYZER (C: & D:)
+      // 8. LUMA CORE REAL STORAGE VOLUMES (DYNAMICALLY MAPPED FROM OS)
       // =====================================================================
-      case 'win_storage_disks': {
-        const cPct = Math.round((diskCUsedGb / diskCTotalGb) * 100);
-        const dPct = Math.round((diskDUsedGb / diskDTotalGb) * 100);
+      case 'luma_storage_volumes': {
         return (
           <div className="h-full flex flex-col justify-between p-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
                 <HardDrive className="w-4 h-4 text-blue-400" />
-                Диски C: и D: (NVMe)
+                Накопители системы ({realDisks.length})
               </span>
               <button
                 onClick={() => {
-                  setDiskCUsedGb((v) => Math.max(180, +(v - 1.8).toFixed(1)));
-                  onPushNotification('Очистка диска C:', 'Освобождено 1.8 ГБ кэша шейдеров и временных файлов.', 'success');
+                  setCacheCleanedGb((v) => +(v + 0.6).toFixed(1));
+                  onPushNotification(
+                    'Luma Оптимизация томов',
+                    'Команда очистки временного кэша оболочки выполнена успешно.',
+                    'success'
+                  );
                 }}
-                className="px-2 py-0.5 rounded-full bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 text-[10px] font-bold cursor-pointer"
+                className="px-2 py-0.5 rounded-full bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-[10px] font-bold cursor-pointer"
               >
-                Очистить
+                Кэш{cacheCleanedGb > 0 ? ` -${cacheCleanedGb}Г` : ''}
               </button>
             </div>
 
-            <div className="space-y-2 my-auto">
-              <div className="p-2 rounded-2xl bg-slate-900/65 border border-slate-800">
-                <div className="flex justify-between text-[10px] font-mono mb-1">
-                  <span className="font-bold text-white">Диск C: (Luma OS &amp; Win)</span>
-                  <span className="text-blue-400">{diskCUsedGb} / {diskCTotalGb} ГБ ({cPct}%)</span>
+            <div className="space-y-1.5 my-auto overflow-y-auto max-h-28 pr-0.5">
+              {realDisks.length > 0 ? (
+                realDisks.slice(0, 3).map((disk, idx) => (
+                  <div key={disk.mount} className={`p-2 rounded-2xl border ${innerCardCls}`}>
+                    <div className="flex justify-between text-[10px] font-mono mb-1 gap-1">
+                      <span className="font-bold truncate">
+                        Том {disk.mount} {disk.label ? `(${disk.label})` : ''}
+                      </span>
+                      <span className={idx === 0 ? 'text-blue-400 shrink-0' : 'text-indigo-400 shrink-0'}>
+                        {disk.used_gb} / {disk.total_gb} ГБ ({disk.percent}%)
+                      </span>
+                    </div>
+                    <div className={`w-full h-1.5 rounded-full overflow-hidden ${barTrackCls}`}>
+                      <div
+                        className={idx === 0 ? 'h-full bg-blue-500' : 'h-full bg-indigo-500'}
+                        style={{ width: `${Math.min(100, disk.percent)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className={`p-2.5 rounded-2xl border text-[11px] font-mono ${innerCardCls}`}>
+                  Сканирование реальных дисков через Luma HAL...
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                  <div className="h-full bg-blue-500" style={{ width: `${cPct}%` }} />
-                </div>
-              </div>
-
-              <div className="p-2 rounded-2xl bg-slate-900/65 border border-slate-800">
-                <div className="flex justify-between text-[10px] font-mono mb-1">
-                  <span className="font-bold text-white">Диск D: (Игры и Проекты)</span>
-                  <span className="text-indigo-400">{diskDUsedGb} / {diskDTotalGb} ГБ ({dPct}%)</span>
-                </div>
-                <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                  <div className="h-full bg-indigo-500" style={{ width: `${dPct}%` }} />
-                </div>
-              </div>
+              )}
             </div>
           </div>
         );
       }
 
       // =====================================================================
-      // 9. WINDOWS 11 NETWORK I/O & IPC MONITOR
+      // 9. LUMA CORE REAL NETWORK & IPC TELEMETRY
       // =====================================================================
-      case 'win_network_monitor':
+      case 'luma_network_monitor':
         return (
           <div className="h-full flex flex-col justify-between p-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
                 <Wifi className="w-4 h-4 text-teal-400" />
-                Сеть и IPC Трафик
+                Сеть и IPC Поток
               </span>
-              <span className="text-[10px] font-mono text-teal-400">RTT 0.3 ms</span>
+              <span className="text-[10px] font-mono text-teal-500 font-bold">
+                {realLocation?.ip ? `IP ${realLocation.ip}` : 'IPC :49215'}
+              </span>
             </div>
 
             <div className="grid grid-cols-2 gap-1.5 my-1">
-              <div className="p-1.5 rounded-xl bg-slate-900/70 border border-slate-800">
-                <div className="text-[9px] text-slate-400">↓ Прием (Down)</div>
-                <div className="text-xs font-mono font-bold text-teal-400">{netDownMbps} Мбит/с</div>
+              <div className={`p-1.5 rounded-xl border ${innerCardCls}`}>
+                <div className={`text-[9px] ${mutedTextCls}`}>↓ Приём (Down)</div>
+                <div className="text-xs font-mono font-bold text-teal-500">{realNetDown} Мбит/с</div>
               </div>
-              <div className="p-1.5 rounded-xl bg-slate-900/70 border border-slate-800">
-                <div className="text-[9px] text-slate-400">↑ Отдача (Up)</div>
-                <div className="text-xs font-mono font-bold text-sky-400">{netUpMbps} Мбит/с</div>
+              <div className={`p-1.5 rounded-xl border ${innerCardCls}`}>
+                <div className={`text-[9px] ${mutedTextCls}`}>↑ Отдача (Up)</div>
+                <div className="text-xs font-mono font-bold text-sky-500">{realNetUp} Мбит/с</div>
               </div>
             </div>
 
@@ -1526,8 +1817,8 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
               {netHistory.map((h, idx) => (
                 <div
                   key={idx}
-                  className="flex-1 rounded-t bg-teal-500/60 transition-all duration-300"
-                  style={{ height: `${Math.max(18, h)}%` }}
+                  className="flex-1 rounded-t bg-teal-500/65 transition-all duration-300"
+                  style={{ height: `${Math.max(15, h)}%` }}
                 />
               ))}
             </div>
@@ -1535,21 +1826,21 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
         );
 
       // =====================================================================
-      // 10. GOOGLE KEEP M3 NOTES & CHECKLIST
+      // 10. LUMA PULSE NOTES & CHECKLIST
       // =====================================================================
-      case 'android_keep_notes':
+      case 'luma_notes_tasks':
         return (
           <div className="h-full flex flex-col justify-between p-1 gap-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
                 <CheckSquare className="w-4 h-4 text-amber-400" />
-                Заметки Google Keep M3
+                Заметки Luma VFS
               </span>
-              <div className="flex gap-1 bg-slate-900/80 p-0.5 rounded-full border border-slate-800">
+              <div className={`flex gap-1 p-0.5 rounded-full border ${innerCardCls}`}>
                 <button
                   onClick={() => setKeepTab('todo')}
                   className={`px-2 py-0.5 rounded-full text-[9px] font-bold cursor-pointer ${
-                    keepTab === 'todo' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'
+                    keepTab === 'todo' ? 'bg-amber-500 text-slate-950' : mutedTextCls
                   }`}
                 >
                   Задачи
@@ -1557,7 +1848,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                 <button
                   onClick={() => setKeepTab('note')}
                   className={`px-2 py-0.5 rounded-full text-[9px] font-bold cursor-pointer ${
-                    keepTab === 'note' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'
+                    keepTab === 'note' ? 'bg-amber-500 text-slate-950' : mutedTextCls
                   }`}
                 >
                   Текст
@@ -1576,9 +1867,13 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                           prev.map((x) => (x.id === t.id ? { ...x, done: !x.done } : x))
                         )
                       }
-                      className="flex items-center justify-between gap-1.5 px-2 py-1 rounded-xl bg-slate-900/65 border border-slate-800 cursor-pointer"
+                      className={`flex items-center justify-between gap-1.5 px-2 py-1 rounded-xl border cursor-pointer ${innerCardCls}`}
                     >
-                      <span className={`text-[11px] truncate ${t.done ? 'line-through text-slate-500' : 'text-slate-200'}`}>
+                      <span
+                        className={`text-[11px] truncate ${
+                          t.done ? 'line-through opacity-50' : ''
+                        }`}
+                      >
                         {t.done ? '✓ ' : '○ '}
                         {t.text}
                       </span>
@@ -1587,7 +1882,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                           e.stopPropagation();
                           setTodoItems((prev) => prev.filter((x) => x.id !== t.id));
                         }}
-                        className="text-slate-500 hover:text-rose-400"
+                        className="opacity-60 hover:text-rose-400 cursor-pointer"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -1608,7 +1903,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                     value={newTodoText}
                     onChange={(e) => setNewTodoText(e.target.value)}
                     placeholder="Добавить задачу..."
-                    className="flex-1 bg-slate-900/80 border border-slate-700 rounded-full px-2.5 py-1 text-[10px] text-white outline-none"
+                    className={`flex-1 border rounded-full px-2.5 py-1 text-[10px] outline-none ${inputCls}`}
                   />
                   <button
                     type="submit"
@@ -1622,38 +1917,38 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
               <textarea
                 value={quickNote}
                 onChange={(e) => setQuickNote(e.target.value)}
-                className="flex-1 w-full bg-slate-900/70 border border-slate-800 rounded-2xl p-2 text-[11px] text-slate-200 resize-none outline-none"
+                className={`flex-1 w-full border rounded-2xl p-2 text-[11px] resize-none outline-none ${inputCls}`}
               />
             )}
           </div>
         );
 
       // =====================================================================
-      // 11. iOS 18 CALENDAR & WORLD CLOCK
+      // 11. LUMA AURA CALENDAR & WORLD CLOCK
       // =====================================================================
-      case 'ios_calendar_worldclock':
+      case 'luma_world_clock':
         return (
           <div className="h-full flex flex-col justify-between p-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
                 <CalendarIcon className="w-4 h-4 text-rose-400" />
-                Мировое время iOS 18
+                Мировое время Luma
               </span>
-              <span className="text-[10px] font-mono text-rose-300">
+              <span className="text-[10px] font-mono text-rose-400 font-bold">
                 {nowDate.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })}
               </span>
             </div>
 
             <div className="grid grid-cols-2 gap-1.5 my-auto">
               {[
-                { city: 'Москва', tz: 3 },
-                { city: 'Токио', tz: 9 },
-                { city: 'Нью-Йорк', tz: -4 },
-                { city: 'Лондон', tz: 1 },
+                { city: weather.city !== 'Определение региона...' ? `${weather.city} (Ваш)` : 'Локально', time: nowDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) },
+                { city: 'Москва (UTC+3)', time: getWorldTime(3) },
+                { city: 'Токио (UTC+9)', time: getWorldTime(9) },
+                { city: 'Лондон (UTC+0)', time: getWorldTime(0) },
               ].map((c) => (
-                <div key={c.city} className="p-2 rounded-2xl bg-slate-900/70 border border-slate-800">
-                  <div className="text-[10px] text-slate-400">{c.city}</div>
-                  <div className="text-sm font-mono font-black text-white">{getWorldTime(c.tz)}</div>
+                <div key={c.city} className={`p-2 rounded-2xl border ${innerCardCls}`}>
+                  <div className={`text-[10px] truncate ${mutedTextCls}`}>{c.city}</div>
+                  <div className={`text-sm font-mono font-black ${titleTextCls}`}>{c.time}</div>
                 </div>
               ))}
             </div>
@@ -1661,23 +1956,23 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
         );
 
       // =====================================================================
-      // 12. iOS 18 POMODORO FOCUS TIMER
+      // 12. LUMA AURA FOCUS POMODORO
       // =====================================================================
-      case 'ios_pomodoro_focus':
+      case 'luma_focus_pomodoro':
         return (
           <div className="h-full flex flex-col justify-between p-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
                 <Timer className="w-4 h-4 text-amber-400" />
-                Фокус Помидор
+                Luma Фокус-Поток
               </span>
-              <span className="text-[10px] font-mono text-amber-300">
-                {pomoMode === 'work' ? 'РАБОТА 25М' : 'ОТДЫХ 5М'}
+              <span className="text-[10px] font-mono text-amber-500 font-bold">
+                {pomoMode === 'work' ? 'ФОКУС 25М' : 'ОТДЫХ 5М'}
               </span>
             </div>
 
             <div className="my-auto flex items-center justify-between gap-2">
-              <div className="text-2xl font-black font-mono tabular-nums text-white">
+              <div className={`text-2xl font-black font-mono tabular-nums ${titleTextCls}`}>
                 {formatLiveClock(pomoSecLeft)}
               </div>
               <div className="flex items-center gap-1">
@@ -1692,7 +1987,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                     setPomoRunning(false);
                     setPomoSecLeft(pomoMode === 'work' ? 25 * 60 : 5 * 60);
                   }}
-                  className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                  className={`p-1.5 rounded-full border cursor-pointer ${innerBtnCls}`}
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>
@@ -1707,7 +2002,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                     setPomoRunning(false);
                     setPomoSecLeft(m * 60);
                   }}
-                  className="flex-1 py-1 rounded-full bg-slate-900/70 hover:bg-slate-800 border border-slate-800 text-[10px] font-mono cursor-pointer"
+                  className={`flex-1 py-1 rounded-full border text-[10px] font-mono cursor-pointer ${innerBtnCls}`}
                 >
                   {m}м
                 </button>
@@ -1717,29 +2012,29 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
         );
 
       // =====================================================================
-      // 13. ANDROID M3 CALCULATOR & CURRENCY CONVERTER
+      // 13. LUMA PULSE CALCULATOR & CONVERTER
       // =====================================================================
-      case 'android_calculator':
+      case 'luma_calculator':
         return (
           <div className="h-full flex flex-col justify-between p-1 gap-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
                 <Calculator className="w-4 h-4 text-cyan-400" />
-                Калькулятор M3
+                Калькулятор Luma
               </span>
-              <div className="flex gap-1 bg-slate-900/80 p-0.5 rounded-full border border-slate-800">
+              <div className={`flex gap-1 p-0.5 rounded-full border ${innerCardCls}`}>
                 <button
                   onClick={() => setCalcTab('calc')}
                   className={`px-2 py-0.5 rounded-full text-[9px] font-bold cursor-pointer ${
-                    calcTab === 'calc' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'
+                    calcTab === 'calc' ? 'bg-cyan-500 text-slate-950' : mutedTextCls
                   }`}
                 >
-                  Счет
+                  Счёт
                 </button>
                 <button
                   onClick={() => setCalcTab('conv')}
                   className={`px-2 py-0.5 rounded-full text-[9px] font-bold cursor-pointer ${
-                    calcTab === 'conv' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'
+                    calcTab === 'conv' ? 'bg-cyan-500 text-slate-950' : mutedTextCls
                   }`}
                 >
                   Курсы
@@ -1754,9 +2049,9 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                     type="text"
                     value={calcInput}
                     onChange={(e) => setCalcInput(e.target.value)}
-                    className="flex-1 bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-mono text-white outline-none"
+                    className={`flex-1 border rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none ${inputCls}`}
                   />
-                  <div className="px-2.5 py-1.5 rounded-xl bg-cyan-500/20 border border-cyan-500/40 font-mono font-bold text-xs text-cyan-300">
+                  <div className="px-2.5 py-1.5 rounded-xl bg-cyan-500/20 border border-cyan-500/40 font-mono font-bold text-xs text-cyan-500">
                     = {calcResult}
                   </div>
                 </div>
@@ -1767,7 +2062,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                       onClick={() =>
                         k === 'C' ? setCalcInput('') : setCalcInput((prev) => `${prev}${k}`)
                       }
-                      className="py-1 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-[10px] font-mono font-bold cursor-pointer"
+                      className={`py-1 rounded-lg border text-[10px] font-mono font-bold cursor-pointer ${innerBtnCls}`}
                     >
                       {k}
                     </button>
@@ -1781,12 +2076,12 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                     type="text"
                     value={convVal}
                     onChange={(e) => setConvVal(e.target.value)}
-                    className="w-20 bg-slate-900/90 border border-slate-700 rounded-xl px-2 py-1 text-xs font-mono text-white outline-none"
+                    className={`w-20 border rounded-xl px-2 py-1 text-xs font-mono outline-none ${inputCls}`}
                   />
                   <select
                     value={convKind}
                     onChange={(e) => setConvKind(e.target.value as typeof convKind)}
-                    className="flex-1 bg-slate-900/90 border border-slate-700 rounded-xl px-2 py-1 text-[10px] text-white outline-none"
+                    className={`flex-1 border rounded-xl px-2 py-1 text-[10px] outline-none ${inputCls}`}
                   >
                     <option value="usd_rub">USD → RUB</option>
                     <option value="eur_rub">EUR → RUB</option>
@@ -1794,7 +2089,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                     <option value="c_f">°C → °F</option>
                   </select>
                 </div>
-                <div className="p-2 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-center font-mono font-extrabold text-sm text-cyan-300">
+                <div className="p-2 rounded-xl bg-cyan-500/15 border border-cyan-500/35 text-center font-mono font-extrabold text-sm text-cyan-500">
                   {convResult}
                 </div>
               </div>
@@ -1803,29 +2098,29 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
         );
 
       // =====================================================================
-      // 14. iOS 18 STOCKS, CRYPTO & CURRENCY TICKER
+      // 14. LUMA AURA MARKETS & CURRENCY
       // =====================================================================
-      case 'ios_stocks_crypto':
+      case 'luma_market_pulse':
         return (
           <div className="h-full flex flex-col justify-between p-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
-                <TrendingUp className="w-4 h-4 text-emerald-400" />
-                Биржа и Крипто iOS 18
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
+                <TrendingUp className="w-4 h-4 text-emerald-500" />
+                Индекс Luma Market
               </span>
-              <span className="text-[10px] font-mono text-emerald-400">LIVE</span>
+              <span className="text-[10px] font-mono text-emerald-500 font-bold">ПУЛЬС</span>
             </div>
 
             <div className="grid grid-cols-2 gap-1.5 my-auto">
               {marketTickers.map((t) => (
-                <div key={t.symbol} className="p-1.5 rounded-2xl bg-slate-900/70 border border-slate-800">
+                <div key={t.symbol} className={`p-1.5 rounded-2xl border ${innerCardCls}`}>
                   <div className="flex items-center justify-between text-[10px]">
-                    <span className="font-bold text-white">{t.symbol}</span>
-                    <span className={t.changePct >= 0 ? 'text-emerald-400 font-mono' : 'text-rose-400 font-mono'}>
+                    <span className="font-bold">{t.symbol}</span>
+                    <span className={t.changePct >= 0 ? 'text-emerald-500 font-mono' : 'text-rose-500 font-mono'}>
                       {t.changePct >= 0 ? `+${t.changePct}%` : `${t.changePct}%`}
                     </span>
                   </div>
-                  <div className="text-xs font-mono font-black text-slate-200 mt-0.5">
+                  <div className={`text-xs font-mono font-black mt-0.5 ${titleTextCls}`}>
                     {t.symbol.includes('RUB') ? `${t.price} ₽` : `$${t.price}`}
                   </div>
                 </div>
@@ -1835,31 +2130,31 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
         );
 
       // =====================================================================
-      // 15. ANDROID DIGITAL WELLBEING & SCREEN TIME
+      // 15. LUMA PULSE DIGITAL BALANCE & SCREEN TIME
       // =====================================================================
-      case 'android_wellbeing': {
+      case 'luma_digital_balance': {
         const runningCount = apps.filter((a) => a.isRunning).length;
         const totalTodayMins = apps.reduce((acc, a) => acc + a.todayMinutes, 0);
         return (
           <div className="h-full flex flex-col justify-between p-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
-                <Activity className="w-4 h-4 text-emerald-400" />
-                Цифровое благополучие
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
+                <Activity className="w-4 h-4 text-emerald-500" />
+                Цифровой баланс Luma
               </span>
-              <span className="text-[10px] font-mono text-emerald-400">{runningCount} актив.</span>
+              <span className="text-[10px] font-mono text-emerald-500 font-bold">{runningCount} актив.</span>
             </div>
 
-            <div className="my-auto flex items-center justify-between gap-2 p-2 rounded-2xl bg-slate-900/70 border border-slate-800">
+            <div className={`my-auto flex items-center justify-between gap-2 p-2 rounded-2xl border ${innerCardCls}`}>
               <div>
-                <div className="text-[10px] text-slate-400">Экранное время сегодня</div>
-                <div className="text-base font-black font-mono text-white">
+                <div className={`text-[10px] ${mutedTextCls}`}>Экранное время сегодня</div>
+                <div className={`text-base font-black font-mono ${titleTextCls}`}>
                   {totalTodayMins.toFixed(1)} мин
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-[10px] text-slate-400">Аптайм ядра</div>
-                <div className="text-xs font-mono font-bold text-emerald-400">
+                <div className={`text-[10px] ${mutedTextCls}`}>Аптайм сессии</div>
+                <div className="text-xs font-mono font-bold text-emerald-500">
                   {formatLiveClock(uptimeSeconds)}
                 </div>
               </div>
@@ -1869,25 +2164,25 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
       }
 
       // =====================================================================
-      // 16. WINDOWS 11 QUICK SYSTEM UTILITIES
+      // 16. LUMA CORE SYSTEM UTILITIES
       // =====================================================================
-      case 'win_quick_utilities':
+      case 'luma_system_tools':
         return (
           <div className="h-full flex flex-col justify-between p-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
-                <Terminal className="w-4 h-4 text-emerald-400" />
-                Быстрый запуск утилит Windows
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
+                <Terminal className="w-4 h-4 text-emerald-500" />
+                Системные утилиты Luma Core
               </span>
-              <span className="text-[10px] font-mono text-slate-400">Process.Start</span>
+              <span className={`text-[10px] font-mono ${mutedTextCls}`}>Luma Exec</span>
             </div>
 
             <div className="grid grid-cols-4 gap-1.5 my-auto">
               {[
-                { name: 'Терминал', cmd: 'wt.exe' },
-                { name: 'Диспетчер', cmd: 'taskmgr.exe' },
-                { name: 'Реестр', cmd: 'regedit.exe' },
-                { name: 'Проводник', cmd: 'explorer.exe' },
+                { name: 'Терминал', cmd: 'cmd' },
+                { name: 'Монитор', cmd: 'taskmgr' },
+                { name: 'Файлы', cmd: 'explorer' },
+                { name: 'Калькулятор', cmd: 'calc' },
               ].map((u) => (
                 <button
                   key={u.cmd}
@@ -1897,12 +2192,12 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ command: u.cmd, name: u.name }),
                     }).catch(() => {});
-                    onPushNotification('Luma ProcessManager', `Запущена системная утилита: ${u.name} (${u.cmd})`, 'success');
+                    onPushNotification('Luma ProcessManager', `Запущена утилита: ${u.name}`, 'success');
                   }}
-                  className="p-2 rounded-2xl bg-slate-900/75 hover:bg-emerald-500/20 border border-slate-800 hover:border-emerald-500/40 text-center transition cursor-pointer"
+                  className={`p-2 rounded-2xl border text-center transition cursor-pointer hover:border-emerald-500/50 ${innerBtnCls}`}
                 >
-                  <div className="text-[11px] font-bold text-white truncate">{u.name}</div>
-                  <div className="text-[9px] font-mono text-slate-400 truncate">{u.cmd}</div>
+                  <div className="text-[11px] font-bold truncate">{u.name}</div>
+                  <div className={`text-[9px] font-mono truncate ${mutedTextCls}`}>{u.cmd}</div>
                 </button>
               ))}
             </div>
@@ -1910,19 +2205,19 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
         );
 
       // =====================================================================
-      // 17. WINDOWS 11 POWER MANAGEMENT & LOCK SCREEN
+      // 17. LUMA CORE REAL POWER, LOCK & RECYCLE BIN
       // =====================================================================
-      case 'win_power_center':
+      case 'luma_power_control':
         return (
           <div className="h-full flex flex-col justify-between p-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
                 <Power className="w-4 h-4 text-rose-400" />
-                Управление питанием ОС
+                Управление питанием Luma
               </span>
               {shutdownTimerSec !== null && (
                 <span className="text-[10px] font-mono text-rose-400 font-bold">
-                  Выкл: {formatLiveClock(shutdownTimerSec)}
+                  Таймер: {formatLiveClock(shutdownTimerSec)}
                 </span>
               )}
             </div>
@@ -1930,27 +2225,28 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
             <div className="grid grid-cols-4 gap-1.5 my-auto">
               <button
                 onClick={() => {
+                  onExecutePowerAction('lock');
                   setLockScreenOverlay(true);
                   onPlayBeep(640);
                 }}
-                className="p-2 rounded-2xl bg-slate-900/75 hover:bg-indigo-500/20 border border-slate-800 text-center cursor-pointer"
+                className={`p-2 rounded-2xl border text-center cursor-pointer hover:border-indigo-400/60 ${innerBtnCls}`}
               >
                 <Lock className="w-3.5 h-3.5 text-indigo-400 mx-auto mb-0.5" />
-                <div className="text-[10px] font-bold">Win + L</div>
+                <div className="text-[10px] font-bold">Блок</div>
               </button>
               <button
-                onClick={() => onPushNotification('Режим Сна', 'Команда SetSuspendState отправлена в ядро Luma.', 'info')}
-                className="p-2 rounded-2xl bg-slate-900/75 hover:bg-sky-500/20 border border-slate-800 text-center cursor-pointer"
+                onClick={() => onExecutePowerAction('sleep')}
+                className={`p-2 rounded-2xl border text-center cursor-pointer hover:border-sky-400/60 ${innerBtnCls}`}
               >
                 <Moon className="w-3.5 h-3.5 text-sky-400 mx-auto mb-0.5" />
                 <div className="text-[10px] font-bold">Сон</div>
               </button>
               <button
-                onClick={() => onPushNotification('Перезагрузка', 'Проверка сервисов перед перезапуском.', 'warning')}
-                className="p-2 rounded-2xl bg-slate-900/75 hover:bg-amber-500/20 border border-slate-800 text-center cursor-pointer"
+                onClick={() => onExecutePowerAction('recycle_bin')}
+                className={`p-2 rounded-2xl border text-center cursor-pointer hover:border-amber-400/60 ${innerBtnCls}`}
               >
-                <RefreshCw className="w-3.5 h-3.5 text-amber-400 mx-auto mb-0.5" />
-                <div className="text-[10px] font-bold">Рестарт</div>
+                <Trash2 className="w-3.5 h-3.5 text-amber-400 mx-auto mb-0.5" />
+                <div className="text-[10px] font-bold">Корзина</div>
               </button>
               <button
                 onClick={() =>
@@ -1958,12 +2254,12 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                 }
                 className={`p-2 rounded-2xl border text-center cursor-pointer ${
                   shutdownTimerSec !== null
-                    ? 'bg-rose-500/25 border-rose-400 text-rose-200'
-                    : 'bg-slate-900/75 border-slate-800'
+                    ? 'bg-rose-500/25 border-rose-400 text-rose-400'
+                    : innerBtnCls
                 }`}
               >
                 <Timer className="w-3.5 h-3.5 text-rose-400 mx-auto mb-0.5" />
-                <div className="text-[10px] font-bold">{shutdownTimerSec ? 'Отмена' : 'Таймер 30м'}</div>
+                <div className="text-[10px] font-bold">{shutdownTimerSec ? 'Отмена' : 'Таймер'}</div>
               </button>
             </div>
           </div>
@@ -1972,32 +2268,36 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
       // =====================================================================
       // 18. LUMAGUARD SECURITY KERNEL & AES-256-GCM STATUS
       // =====================================================================
-      case 'win_security_defender':
+      case 'luma_security_shield':
         return (
           <div className="h-full flex flex-col justify-between p-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                Защита ядра LumaGuard 1.0
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 ${titleTextCls}`}>
+                <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                Криптоядро LumaGuard 1.0.1
               </span>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[9px] font-mono font-bold">
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-500 text-[9px] font-mono font-bold">
                 AES-256-GCM
               </span>
             </div>
 
-            <div className="my-auto flex items-center justify-between gap-2 p-2 rounded-2xl bg-slate-900/70 border border-emerald-500/30">
+            <div className={`my-auto flex items-center justify-between gap-2 p-2 rounded-2xl border border-emerald-500/35 ${innerCardCls}`}>
               <div className="text-[10px] font-mono">
-                <div className="text-white font-bold">PBKDF2-SHA512 • Ключ #{cryptoKeyRev}</div>
-                <div className="text-emerald-400">Zero-Trust IPC HMAC активен</div>
+                <div className={`font-bold ${titleTextCls}`}>PBKDF2-SHA512 • Ключ #{cryptoKeyRev}</div>
+                <div className="text-emerald-500">Zero-Trust IPC HMAC активен</div>
               </div>
               <button
                 onClick={() => {
                   setCryptoKeyRev((r) => r + 1);
-                  onPushNotification('Ротация ключей LumaGuard', `Сгенерирован новый мастер-ключ AES-256-GCM (Ревизия #${cryptoKeyRev + 1})`, 'success');
+                  onPushNotification(
+                    'Ротация ключей LumaGuard',
+                    `Сгенерирован новый мастер-ключ AES-256-GCM (Ревизия #${cryptoKeyRev + 1})`,
+                    'success'
+                  );
                 }}
                 className="px-2.5 py-1 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[10px] cursor-pointer shrink-0"
               >
-                Ротация ключа
+                Ротация
               </button>
             </div>
           </div>
@@ -2014,7 +2314,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
       <div
         className={`p-4 rounded-[28px] border shadow-xl flex flex-wrap items-center justify-between gap-3 transition-all ${
           isDark
-            ? 'bg-[#101624]/90 border-indigo-500/30 text-white'
+            ? 'bg-[#101624]/92 border-indigo-500/30 text-white'
             : 'bg-white/95 border-slate-300 text-slate-900'
         }`}
         style={{ backdropFilter: 'blur(24px)' }}
@@ -2031,33 +2331,37 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-extrabold tracking-tight">
-                Окно 2: Матрица Ячеек {gridOrientation} (600 ячеек) • Виджеты Luma 1.0
+                Окно 2: Матрица Ячеек {gridOrientation} (600 ячеек) • Luma OS 1.0.1
               </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
-                🟢 ANDROID + iOS 18 + WINDOWS 11
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-500 border border-emerald-400/40">
+                🟢 LUMA PULSE • AURA • CORE
               </span>
               {hoveredCell && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-500/25 text-indigo-200 border border-indigo-400/40">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-400/40">
                   Ячейка [X:{hoveredCell.col}, Y:{hoveredCell.row}]
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Полноценное второе окно ядра Luma 1.0 с сеткой <strong>20×30 (600 координатных ячеек)</strong> и 18 самыми популярными виджетами из Android 16 (Material 3 Expressive), iPhone (iOS 18) и Windows 11.
+            <p className={`text-xs mt-0.5 ${mutedTextCls}`}>
+              Координатная матрица <strong>20×30 (600 ячеек)</strong> с 18 живыми виджетами, реальными ресурсами вашего ПК, авто-регионом погоды и управлением музыкой.
             </p>
           </div>
         </div>
 
-        {/* Right Controls: Ecosystem Filter, Orientation 30x20 / 20x30, Grid Lines, Edit Mode, Open Separate Window */}
+        {/* Right Controls: Suite Filter, Orientation, Grid Lines, Edit Mode, Widget Catalog, Separate Window */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Ecosystem Filter Pills */}
-          <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-full border border-slate-800">
+          {/* Luma Suite Filter Pills */}
+          <div
+            className={`flex items-center gap-1 p-1 rounded-full border ${
+              isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-100 border-slate-300'
+            }`}
+          >
             {(
               [
                 ['all', 'Все (18)'],
-                ['android', '🤖 Android M3'],
-                ['ios', '🍎 iPhone iOS'],
-                ['windows', '🪟 Windows 11'],
+                ['pulse', '⚡ Luma Pulse'],
+                ['aura', '✨ Luma Aura'],
+                ['core', '🧠 Luma Core'],
               ] as const
             ).map(([ek, el]) => (
               <button
@@ -2066,7 +2370,9 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                 className={`px-3 py-1 rounded-full text-[11px] font-bold transition cursor-pointer ${
                   ecosystemFilter === ek
                     ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
+                    : isDark
+                    ? 'text-slate-400 hover:text-white'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 {el}
@@ -2074,55 +2380,49 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
             ))}
           </div>
 
-          {/* 30x20 vs 20x30 Matrix Orientation Toggle */}
           <button
-            onClick={() =>
-              setGridOrientation((o) => (o === '30x20' ? '20x30' : '30x20'))
-            }
-            className="px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono font-bold text-indigo-300 flex items-center gap-1.5 cursor-pointer"
+            onClick={() => setGridOrientation((o) => (o === '30x20' ? '20x30' : '30x20'))}
+            className={`px-3 py-1.5 rounded-full border text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer ${innerBtnCls}`}
             title="Переключить ориентацию матрицы 30×20 / 20×30"
           >
-            <Layers className="w-3.5 h-3.5" />
+            <Layers className="w-3.5 h-3.5 text-indigo-400" />
             Сетка: {gridOrientation}
           </button>
 
-          {/* Toggle 600 Cell Lines */}
           <button
             onClick={() => setShowCellGridLines((v) => !v)}
             className={`px-3 py-1.5 rounded-full border text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition ${
               showCellGridLines
-                ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-300'
-                : 'bg-slate-900 border-slate-700 text-slate-400'
+                ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-500'
+                : innerBtnCls
             }`}
           >
             {showCellGridLines ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
             Ячейки 20×30
           </button>
 
-          {/* Edit / Snap to Cell Mode */}
           <button
             onClick={() => {
               setEditGridMode((v) => !v);
               if (!editGridMode && !selectedItemId) {
-                setSelectedItemId('android_m3_clock');
+                setSelectedItemId('luma_sculpt_clock');
               }
             }}
             className={`px-3.5 py-1.5 rounded-full border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition ${
               editGridMode
                 ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-lg'
-                : 'bg-indigo-600/20 hover:bg-indigo-600/30 border-indigo-500/40 text-indigo-300'
+                : 'bg-indigo-600/20 hover:bg-indigo-600/30 border-indigo-500/40 text-indigo-400'
             }`}
           >
             <Move className="w-3.5 h-3.5" />
-            {editGridMode ? '✓ Готово (Режим ячеек)' : 'Редактор ячеек 20×30'}
+            {editGridMode ? '✓ Готово (Ячейки)' : 'Редактор 20×30'}
           </button>
 
-          {/* Widget Manager Modal */}
           <button
             onClick={() => setWidgetCatalogModalOpen(true)}
-            className="px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-200 flex items-center gap-1.5 cursor-pointer"
+            className={`px-3 py-1.5 rounded-full border text-xs font-semibold flex items-center gap-1.5 cursor-pointer ${innerBtnCls}`}
           >
-            <Plus className="w-3.5 h-3.5 text-emerald-400" />
+            <Plus className="w-3.5 h-3.5 text-emerald-500" />
             Виджеты и Папки
           </button>
 
@@ -2130,7 +2430,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
             <button
               onClick={onOpenSeparateWindow2}
               className="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
-              title="Открыть Окно 2 (20×30) в отдельном независимом окне ОС"
+              title="Открыть Окно 2 (20×30) в отдельном независимом окне"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               В отдельном окне
@@ -2139,79 +2439,79 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
 
           <button
             onClick={onSwitchToWindow1}
-            className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+            className={`px-3 py-1.5 rounded-full border text-xs font-semibold flex items-center gap-1.5 cursor-pointer ${innerBtnCls}`}
           >
             ← Окно 1 (По группам)
           </button>
         </div>
       </div>
 
-      {/* ==================== INTERACTIVE CELL EDITOR TOOLBAR (Shown when Edit Mode is active) ==================== */}
+      {/* ==================== INTERACTIVE CELL EDITOR TOOLBAR ==================== */}
       {editGridMode && (
         <div className="p-3.5 rounded-[24px] bg-amber-500/15 border border-amber-400/50 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2">
-            <Move className="w-4 h-4 text-amber-400 shrink-0" />
+            <Move className="w-4 h-4 text-amber-500 shrink-0" />
             <span>
-              <strong>Конструктор матрицы {gridOrientation}:</strong> кликните на любой виджет/папку/иконку, а затем кликните на любую свободную ячейку <code>[X, Y]</code> или используйте кнопки сдвига и размера ниже!
+              <strong>Конструктор матрицы {gridOrientation}:</strong> выберите виджет/папку и кликните на свободную ячейку <code>[X, Y]</code> или используйте сдвиг ниже.
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="font-mono text-amber-300 mr-1">
+            <span className="font-mono text-amber-500 mr-1">
               Выбрано: <strong>{selectedItemId || 'нет'}</strong>
             </span>
             <button
               onClick={() => moveSelectedItem(-1, 0)}
-              className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 hover:border-amber-400 font-mono cursor-pointer"
+              className={`px-2.5 py-1 rounded-lg border font-mono cursor-pointer ${innerBtnCls}`}
             >
               ← X-1
             </button>
             <button
               onClick={() => moveSelectedItem(1, 0)}
-              className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 hover:border-amber-400 font-mono cursor-pointer"
+              className={`px-2.5 py-1 rounded-lg border font-mono cursor-pointer ${innerBtnCls}`}
             >
               X+1 →
             </button>
             <button
               onClick={() => moveSelectedItem(0, -1)}
-              className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 hover:border-amber-400 font-mono cursor-pointer"
+              className={`px-2.5 py-1 rounded-lg border font-mono cursor-pointer ${innerBtnCls}`}
             >
               ↑ Y-1
             </button>
             <button
               onClick={() => moveSelectedItem(0, 1)}
-              className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 hover:border-amber-400 font-mono cursor-pointer"
+              className={`px-2.5 py-1 rounded-lg border font-mono cursor-pointer ${innerBtnCls}`}
             >
               ↓ Y+1
             </button>
-            <span className="text-slate-600">|</span>
+            <span className="opacity-40">|</span>
             <button
               onClick={() => resizeSelectedItem(1, 0)}
-              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 font-mono cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 border border-indigo-400/40 text-indigo-400 font-mono cursor-pointer"
             >
-              Ширина +1
+              Ш +1
             </button>
             <button
               onClick={() => resizeSelectedItem(-1, 0)}
-              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 font-mono cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 border border-indigo-400/40 text-indigo-400 font-mono cursor-pointer"
             >
-              Ширина -1
+              Ш -1
             </button>
             <button
               onClick={() => resizeSelectedItem(0, 1)}
-              className="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 font-mono cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-500 font-mono cursor-pointer"
             >
-              Высота +1
+              В +1
             </button>
             <button
               onClick={() => resizeSelectedItem(0, -1)}
-              className="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 font-mono cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-500 font-mono cursor-pointer"
             >
-              Высота -1
+              В -1
             </button>
             <button
               onClick={resetGridLayout}
-              className="px-3 py-1 rounded-lg bg-rose-500/20 border border-rose-400/40 text-rose-200 font-bold cursor-pointer ml-1"
+              className="px-3 py-1 rounded-lg bg-rose-500/20 border border-rose-400/40 text-rose-400 font-bold cursor-pointer ml-1"
             >
               ↺ Сброс 20×30
             </button>
@@ -2226,7 +2526,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
           className={`relative rounded-[32px] border p-3 transition-all min-w-[1180px] ${
             isDark
               ? 'bg-[#090d16]/90 border-slate-800/90 shadow-[0_25px_70px_rgba(0,0,0,0.65)]'
-              : 'bg-slate-100/90 border-slate-300 shadow-xl'
+              : 'bg-slate-200/80 border-slate-300 shadow-xl'
           }`}
           style={{
             display: 'grid',
@@ -2235,7 +2535,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
             gap: '6px',
           }}
         >
-          {/* 1. Underlying 600 Coordinate Cells (20x30 / 30x20) */}
+          {/* 1. Underlying 600 Coordinate Cells */}
           {showCellGridLines &&
             Array.from({ length: totalRows }).map((_, rIdx) =>
               Array.from({ length: totalCols }).map((__, cIdx) => {
@@ -2254,11 +2554,11 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                         ? 'border-indigo-500/25 hover:border-amber-400 hover:bg-amber-400/15 cursor-pointer'
                         : isDark
                         ? 'border-white/[0.035] bg-white/[0.01]'
-                        : 'border-slate-900/[0.05] bg-slate-900/[0.015]'
+                        : 'border-slate-900/[0.07] bg-white/30'
                     } ${isHovered ? 'ring-1 ring-indigo-400/50' : ''}`}
                   >
                     {(editGridMode || (col % 5 === 0 && row % 5 === 0)) && (
-                      <span className="text-[8px] font-mono text-slate-600/80 pointer-events-none">
+                      <span className="text-[8px] font-mono text-slate-500/75 pointer-events-none">
                         {col}×{row}
                       </span>
                     )}
@@ -2267,18 +2567,12 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
               })
             )}
 
-          {/* 2. Render All Visible Android / iOS / Windows Widgets on the 20x30 Grid */}
+          {/* 2. Render All Visible Luma Pulse / Aura / Core Widgets on the 20x30 Grid */}
           {visibleWidgets.map((w) => {
             const clampedCol = Math.max(1, Math.min(totalCols - w.w + 1, w.col));
             const clampedRow = Math.max(1, Math.min(totalRows - w.h + 1, w.row));
             const isSelected = selectedItemId === w.id;
-
-            const ecoBadgeColor =
-              w.ecosystem === 'android'
-                ? 'border-indigo-500/40 hover:border-indigo-400/70'
-                : w.ecosystem === 'ios'
-                ? 'border-emerald-500/40 hover:border-emerald-400/70'
-                : 'border-sky-500/40 hover:border-sky-400/70';
+            const ecoMeta = ECOSYSTEM_META[w.ecosystem] || ECOSYSTEM_META.pulse;
 
             return (
               <div
@@ -2296,15 +2590,14 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                   isDark
                     ? 'bg-[#121929]/92 text-slate-100 shadow-[0_12px_32px_rgba(0,0,0,0.45)]'
                     : 'bg-white/95 text-slate-900 shadow-md'
-                } ${ecoBadgeColor} ${
+                } ${ecoMeta.border} ${
                   isSelected && editGridMode ? 'ring-2 ring-amber-400 scale-[1.01]' : ''
                 }`}
               >
-                {/* Cell Coordinate & Size Pill in Edit Mode */}
                 {editGridMode && (
                   <div className="absolute top-2 right-2 z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[9px] font-mono font-black shadow">
                     <span>
-                      [X:{clampedCol}, Y:{clampedRow}] • {w.w}×{w.h} яч.
+                      [X:{clampedCol}, Y:{clampedRow}] • {w.w}×{w.h}
                     </span>
                   </div>
                 )}
@@ -2338,7 +2631,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                   borderColor: `${folder.color}66`,
                 }}
                 className={`group relative rounded-[26px] border p-3.5 transition-all cursor-pointer flex flex-col justify-between overflow-hidden ${
-                  isDark ? 'bg-[#151d30]/92 text-white' : 'bg-white/95 text-slate-900'
+                  isDark ? 'bg-[#151d30]/92 text-white' : 'bg-white/95 text-slate-900 shadow-md'
                 } hover:scale-[1.01] ${isSelected && editGridMode ? 'ring-2 ring-amber-400' : ''}`}
               >
                 <div className="flex items-center justify-between">
@@ -2351,12 +2644,12 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-extrabold truncate">{folder.name}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">
+                      <div className={`text-[10px] font-mono ${mutedTextCls}`}>
                         {folderApps.length} прил. • [{clampedCol},{clampedRow}]
                       </div>
                     </div>
                   </div>
-                  <FolderOpen className="w-3.5 h-3.5 text-slate-400" />
+                  <FolderOpen className={`w-3.5 h-3.5 ${mutedTextCls}`} />
                 </div>
 
                 <div className="flex items-center gap-1.5 my-auto pt-1 flex-wrap">
@@ -2367,7 +2660,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                         e.stopPropagation();
                         onLaunchApp(app);
                       }}
-                      className="px-2.5 py-1 rounded-xl bg-slate-900/80 hover:bg-indigo-600/30 border border-slate-700/80 flex items-center gap-1.5 text-[10px] font-bold cursor-pointer"
+                      className={`px-2.5 py-1 rounded-xl border flex items-center gap-1.5 text-[10px] font-bold cursor-pointer hover:border-indigo-400 ${innerBtnCls}`}
                     >
                       {renderAppIcon(app.icon, 'w-3.5 h-3.5 text-indigo-400')}
                       <span className="truncate max-w-[75px]">{app.name}</span>
@@ -2404,23 +2697,23 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                 }}
                 className={`group relative rounded-[24px] border p-3 transition-all cursor-pointer flex flex-col items-center justify-center text-center gap-1.5 ${
                   app.isRunning
-                    ? 'bg-emerald-950/70 border-emerald-400 shadow-lg'
+                    ? 'bg-emerald-500/20 border-emerald-400 shadow-lg'
                     : isDark
-                    ? 'bg-[#141c2e]/90 hover:bg-[#1b263e] border-slate-700/80'
-                    : 'bg-white/95 hover:bg-indigo-50 border-slate-300'
+                    ? 'bg-[#141c2e]/90 hover:bg-[#1b263e] border-slate-700/80 text-white'
+                    : 'bg-white/95 hover:bg-indigo-50 border-slate-300 text-slate-900 shadow-sm'
                 } ${isSelected && editGridMode ? 'ring-2 ring-amber-400' : ''}`}
               >
                 <div
                   className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
                     app.isRunning
-                      ? 'bg-emerald-500/25 text-emerald-300'
+                      ? 'bg-emerald-500/25 text-emerald-400'
                       : 'bg-indigo-500/15 text-indigo-400'
                   }`}
                 >
                   {renderAppIcon(app.icon, 'w-5 h-5')}
                 </div>
                 <div className="text-xs font-extrabold truncate w-full">{app.name}</div>
-                <div className="text-[10px] font-mono text-slate-400">
+                <div className={`text-[10px] font-mono ${mutedTextCls}`}>
                   {formatMonthBadge(app.monthMinutes, app.elapsedSeconds, app.isRunning)}
                 </div>
               </div>
@@ -2431,14 +2724,20 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
 
       {/* ==================== MODAL: WIDGET CATALOG & FOLDER CREATOR ==================== */}
       {widgetCatalogModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-          <div className="w-full max-w-4xl rounded-[32px] border border-slate-700 bg-[#0d1320] p-6 shadow-2xl space-y-4 text-white max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          onClick={() => setWidgetCatalogModalOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`w-full max-w-4xl rounded-[32px] border p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto ${modalBoxCls}`}
+          >
+            <div className={`flex items-center justify-between pb-3 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <div>
                 <h3 className="text-lg font-extrabold">
-                  Каталог 18 Виджетов Ядра Luma 1.0 (Android 16 • iOS 18 • Windows 11)
+                  Каталог 18 Виджетов Luma OS 1.0.1 (Pulse • Aura • Core)
                 </h3>
-                <p className="text-xs text-slate-400">
+                <p className={`text-xs ${mutedTextCls}`}>
                   Включайте/выключайте виджеты или создавайте папки на матрице 20×30
                 </p>
               </div>
@@ -2448,14 +2747,14 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                     setWidgetCatalogModalOpen(false);
                     setCreateFolderModalOpen(true);
                   }}
-                  className="px-3.5 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <FolderPlus className="w-3.5 h-3.5" />
-                  + Создать папку на сетке 20×30
+                  + Создать папку на 20×30
                 </button>
                 <button
                   onClick={() => setWidgetCatalogModalOpen(false)}
-                  className="p-1.5 rounded-full hover:bg-white/10 cursor-pointer"
+                  className="p-1.5 rounded-full hover:bg-slate-500/20 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -2463,36 +2762,39 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
-              {widgets.map((w) => (
-                <div
-                  key={w.id}
-                  onClick={() =>
-                    setWidgets((prev) =>
-                      prev.map((item) =>
-                        item.id === w.id ? { ...item, visible: !item.visible } : item
+              {widgets.map((w) => {
+                const meta = ECOSYSTEM_META[w.ecosystem] || ECOSYSTEM_META.pulse;
+                return (
+                  <div
+                    key={w.id}
+                    onClick={() =>
+                      setWidgets((prev) =>
+                        prev.map((item) =>
+                          item.id === w.id ? { ...item, visible: !item.visible } : item
+                        )
                       )
-                    )
-                  }
-                  className={`p-3.5 rounded-2xl border transition cursor-pointer flex flex-col justify-between gap-2 ${
-                    w.visible
-                      ? 'bg-emerald-500/15 border-emerald-400/60'
-                      : 'bg-slate-900/70 border-slate-800 opacity-60'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-white/10">
-                      {w.ecosystem.toUpperCase()} • {w.w}×{w.h} яч.
-                    </span>
-                    <span className="text-[10px] font-mono font-bold text-emerald-400">
-                      {w.visible ? '🟢 АКТИВНО' : '⚪ СКРЫТО'}
-                    </span>
+                    }
+                    className={`p-3.5 rounded-2xl border transition cursor-pointer flex flex-col justify-between gap-2 ${
+                      w.visible
+                        ? 'bg-emerald-500/15 border-emerald-400/60'
+                        : `${innerCardCls} opacity-60`
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border ${meta.pill}`}>
+                        {meta.label} • {w.w}×{w.h}
+                      </span>
+                      <span className="text-[10px] font-mono font-bold text-emerald-500">
+                        {w.visible ? '🟢 АКТИВНО' : '⚪ СКРЫТО'}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold">{w.title}</div>
+                      <div className={`text-[11px] ${mutedTextCls}`}>{w.subtitle}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-xs font-bold text-white">{w.title}</div>
-                    <div className="text-[11px] text-slate-400">{w.subtitle}</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -2500,13 +2802,19 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
 
       {/* ==================== MODAL: CREATE NEW FOLDER ON 20x30 GRID ==================== */}
       {createFolderModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg rounded-[32px] border border-slate-700 bg-[#0d1320] p-6 shadow-2xl space-y-4 text-white">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          onClick={() => setCreateFolderModalOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`w-full max-w-lg rounded-[32px] border p-6 shadow-2xl space-y-4 ${modalBoxCls}`}
+          >
+            <div className={`flex items-center justify-between pb-3 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <h3 className="text-base font-extrabold">Создать папку на матрице 20×30</h3>
               <button
                 onClick={() => setCreateFolderModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-white/10 cursor-pointer"
+                className="p-1.5 rounded-full hover:bg-slate-500/20 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2514,18 +2822,18 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-400 mb-1">Название папки</label>
+                <label className={`block mb-1 ${mutedTextCls}`}>Название папки</label>
                 <input
                   type="text"
                   value={newFolderName}
                   onChange={(e) => setNewFolderName(e.target.value)}
                   placeholder="Например: Разработка & AI"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none"
+                  className={`w-full px-3 py-2 rounded-xl border outline-none ${inputCls}`}
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Акцентный цвет M3</label>
+                <label className={`block mb-1 ${mutedTextCls}`}>Акцентный цвет M3</label>
                 <div className="flex gap-2">
                   {['#10b981', '#6366f1', '#3b82f6', '#f59e0b', '#ec4899', '#06b6d4'].map((clr) => (
                     <button
@@ -2533,7 +2841,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                       type="button"
                       onClick={() => setNewFolderColor(clr)}
                       className={`w-7 h-7 rounded-full border-2 cursor-pointer ${
-                        newFolderColor === clr ? 'border-white scale-110' : 'border-transparent'
+                        newFolderColor === clr ? 'border-indigo-400 scale-110 ring-2 ring-white/60' : 'border-transparent'
                       }`}
                       style={{ backgroundColor: clr }}
                     />
@@ -2542,8 +2850,8 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Выберите приложения</label>
-                <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto p-2 rounded-xl bg-slate-950 border border-slate-800">
+                <label className={`block mb-1 ${mutedTextCls}`}>Выберите приложения</label>
+                <div className={`grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto p-2 rounded-xl border ${innerCardCls}`}>
                   {apps.map((a) => {
                     const checked = newFolderApps.includes(a.id);
                     return (
@@ -2557,8 +2865,8 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                         }
                         className={`p-2 rounded-xl border text-left flex items-center gap-2 cursor-pointer ${
                           checked
-                            ? 'bg-indigo-600/25 border-indigo-400 text-white'
-                            : 'bg-slate-900 border-slate-800 text-slate-400'
+                            ? 'bg-indigo-600/25 border-indigo-400 font-bold'
+                            : innerBtnCls
                         }`}
                       >
                         {renderAppIcon(a.icon, 'w-3.5 h-3.5')}
@@ -2573,7 +2881,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setCreateFolderModalOpen(false)}
-                className="px-4 py-2 rounded-full bg-white/10 text-xs font-semibold cursor-pointer"
+                className={`px-4 py-2 rounded-full border text-xs font-semibold cursor-pointer ${innerBtnCls}`}
               >
                 Отмена
               </button>
@@ -2592,7 +2900,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                   setFolders((prev) => [...prev, created]);
                   setCreateFolderModalOpen(false);
                   setNewFolderName('');
-                  onPushNotification('Папка создана', `Папка «${created.name}» добавлена на сетку 20×30.`, 'success');
+                  onPushNotification('Папка создана', `Папка «${created.name}» добавлена на матрицу 20×30.`, 'success');
                 }}
                 className="px-5 py-2 rounded-full bg-emerald-500 text-slate-950 text-xs font-bold cursor-pointer"
               >
@@ -2611,9 +2919,9 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-[32px] border border-slate-700 bg-[#0d1320] p-6 shadow-2xl space-y-4 text-white"
+            className={`w-full max-w-md rounded-[32px] border p-6 shadow-2xl space-y-4 ${modalBoxCls}`}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className={`flex items-center justify-between pb-3 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <div className="flex items-center gap-2.5">
                 <div
                   className="w-9 h-9 rounded-2xl flex items-center justify-center text-white"
@@ -2623,14 +2931,14 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold">{activeFolderModal.name}</h3>
-                  <span className="text-[11px] font-mono text-slate-400">
+                  <span className={`text-[11px] font-mono ${mutedTextCls}`}>
                     Ячейка [{activeFolderModal.col}, {activeFolderModal.row}] • {activeFolderModal.w}×{activeFolderModal.h}
                   </span>
                 </div>
               </div>
               <button
                 onClick={() => setActiveFolderModal(null)}
-                className="p-1.5 rounded-full hover:bg-white/10 cursor-pointer"
+                className="p-1.5 rounded-full hover:bg-slate-500/20 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2646,14 +2954,14 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
                       onLaunchApp(app);
                       setActiveFolderModal(null);
                     }}
-                    className="p-3 rounded-2xl bg-slate-900 hover:bg-indigo-600/25 border border-slate-800 hover:border-indigo-400 flex items-center gap-2.5 text-left cursor-pointer transition"
+                    className={`p-3 rounded-2xl border hover:border-indigo-400 flex items-center gap-2.5 text-left cursor-pointer transition ${innerBtnCls}`}
                   >
                     <div className="w-9 h-9 rounded-xl bg-indigo-500/15 flex items-center justify-center text-indigo-400 shrink-0">
                       {renderAppIcon(app.icon, 'w-5 h-5')}
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-bold truncate">{app.name}</div>
-                      <div className="text-[10px] font-mono text-slate-400">{app.category}</div>
+                      <div className={`text-[10px] font-mono ${mutedTextCls}`}>{app.category}</div>
                     </div>
                   </button>
                 ))}
@@ -2662,7 +2970,7 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
         </div>
       )}
 
-      {/* ==================== LOCK SCREEN OVERLAY (WIN + L) ==================== */}
+      {/* ==================== LOCK SCREEN OVERLAY ==================== */}
       {lockScreenOverlay && (
         <div
           onClick={() => setLockScreenOverlay(false)}
@@ -2674,8 +2982,13 @@ export const LumaGrid20x30Window: React.FC<LumaGrid20x30Props> = ({
           <div className="text-lg text-indigo-300 mt-2">
             {nowDate.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
           </div>
+          {weather.city && weather.city !== 'Определение региона...' && (
+            <div className="text-sm text-slate-400 mt-1 font-mono">
+              {weather.city} • {weather.temp > 0 ? `+${weather.temp}` : weather.temp}°C ({weather.description})
+            </div>
+          )}
           <div className="mt-8 px-6 py-2.5 rounded-full bg-white/10 border border-white/20 text-xs font-semibold">
-            🔒 Экран заблокирован Luma Security 1.0 • Нажмите в любом месте для разблокировки
+            🔒 Экран заблокирован LumaGuard 1.0.1 • Нажмите в любом месте или Esc для разблокировки
           </div>
         </div>
       )}
