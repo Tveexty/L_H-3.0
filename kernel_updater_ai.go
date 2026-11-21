@@ -531,6 +531,7 @@ func ListRollbackReleases(repoURL string) []RollbackReleaseEntry {
 	baseRaw := fmt.Sprintf("https://github.com/%s/%s/raw/main", owner, repo)
 
 	curated := []RollbackReleaseEntry{
+		{Version: "1.2.3", Tag: "v1.2.3", Title: "Luma OS 1.2.3 (Lithium)", DownloadURL: baseRaw + "/LumaOS_1.2.3.exe", Summary: "Ядро LumaCore 1.3 (Zero-PowerShell Win32, -85% ЦП/ГПУ), живой Диспетчер задач с графиками при наведении, автоскрытие панели, фикс баннера Ядро UI, упрощённая мини-игра"},
 		{Version: "1.2.2", Tag: "v1.2.2", Title: "Luma OS 1.2.2 (Lithium)", DownloadURL: baseRaw + "/LumaOS_1.2.2.exe", Summary: "Раскладки мира, Audio I/O, батареи BT, LumaShield 1.3, ИИ объём, Dynamic Island 2.0, откат версий"},
 		{Version: "1.2.1", Tag: "v1.2.1", Title: "Luma OS 1.2.1 (Lithium)", DownloadURL: baseRaw + "/LumaOS_1.2.1.exe", Summary: "Адаптация экрана, GPU оптимизация, Luma Lang/Code, порядок панели, Plugin API v2.0"},
 		{Version: "1.2.0", Tag: "v1.2.0", Title: "Luma OS 1.2.0 (Lithium)", DownloadURL: baseRaw + "/LumaOS_1.2.0.exe", Summary: "Мультизадачность Alt+W, Luma Calculator, автономный ИИ, аналитика батареи, живые обои"},

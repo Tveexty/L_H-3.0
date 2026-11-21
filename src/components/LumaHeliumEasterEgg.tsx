@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Sparkles, X, RotateCcw, Volume2, VolumeX, Trophy, Zap, Play, Pause } from 'lucide-react';
+import { Sparkles, X, RotateCcw, Volume2, VolumeX, Trophy, Zap, Play, Pause, Heart } from 'lucide-react';
+import lithiumHeroImg from '../assets/luma-lithium-hero.jpg';
 
 interface HeroCardProps {
   onTriggerEasterEgg: () => void;
@@ -8,76 +9,85 @@ interface HeroCardProps {
 }
 
 /**
- * Flagship sculptural 3D Lithium crystal orb hero banner for Luma OS 1.2 (Lithium · Li-3).
- * Features interactive 3D pointer parallax, liquid glass specular sweep, and launches the
- * Lithium Awakening animation -> playable LITHIUM ORBIT (Li-3) 3-electron mini-game on click!
+ * Flagship sculptural 3D Lithium crystal orb hero banner for Luma OS 1.2.3 (Lithium · Li-3).
+ * Uses content-hashed Vite asset + dual CSS background + eager <img> inside an isolated layer
+ * (without Chromium 3D perspective clipping) so the artwork NEVER disappears inside WebView2!
  */
 export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
   onTriggerEasterEgg,
-  kernelVersion = '1.2',
-  securityVersion = '1.2',
+  kernelVersion = '1.3',
+  securityVersion = '1.3',
 }) => {
-  const cardRef = useRef<HTMLButtonElement | null>(null);
-  const [tilt, setTilt] = useState({ rx: 0, ry: 0, gx: 50, gy: 35 });
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [glowPos, setGlowPos] = useState({ gx: 50, gy: 38 });
   const [ripple, setRipple] = useState(false);
 
-  const handleMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = cardRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const px = (e.clientX - rect.left) / rect.width;
-    const py = (e.clientY - rect.top) / rect.height;
-    setTilt({
-      rx: (0.5 - py) * 7,
-      ry: (px - 0.5) * 9,
-      gx: px * 100,
-      gy: py * 100,
-    });
+    const px = ((e.clientX - rect.left) / rect.width) * 100;
+    const py = ((e.clientY - rect.top) / rect.height) * 100;
+    setGlowPos({ gx: px, gy: py });
   };
 
   const handleClick = () => {
     setRipple(true);
-    setTimeout(() => setRipple(false), 450);
+    window.setTimeout(() => setRipple(false), 400);
     onTriggerEasterEgg();
   };
 
   return (
-    <button
+    <div
       ref={cardRef}
-      type="button"
+      role="button"
+      tabIndex={0}
       onMouseMove={handleMove}
-      onMouseLeave={() => setTilt({ rx: 0, ry: 0, gx: 50, gy: 35 })}
+      onMouseLeave={() => setGlowPos({ gx: 50, gy: 38 })}
       onClick={handleClick}
-      className="group relative w-full h-56 sm:h-64 rounded-3xl overflow-hidden border border-white/15 shadow-2xl cursor-pointer text-left select-none transition-transform duration-200 focus:outline-none"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
+      className="group relative block w-full h-56 sm:h-64 rounded-3xl overflow-hidden border border-white/15 shadow-xl cursor-pointer text-left select-none transition-transform duration-200 hover:scale-[1.006] active:scale-[0.99] focus:outline-none"
       style={{
-        transform: `perspective(1000px) rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg) scale(${ripple ? 0.985 : 1})`,
+        isolation: 'isolate',
+        backgroundColor: '#04121b',
+        backgroundImage: `url("${lithiumHeroImg}")`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
       }}
       title="Нажмите, чтобы запустить анимацию Lithium и мини-игру Li-3!"
     >
-      {/* Bespoke 3D Sculpted Lithium Crystal Orb Artwork */}
+      {/* Guaranteed eager image layer over identical CSS background so WebView2 GPU never drops the texture */}
       <img
-        src="/luma-lithium-hero.jpg"
-        alt="Luma OS 1.2 Lithium"
-        className="absolute inset-0 w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
+        src={lithiumHeroImg}
+        alt="Luma OS 1.2.3 Lithium"
+        loading="eager"
+        decoding="sync"
+        draggable={false}
+        className="pointer-events-none absolute inset-0 w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-[1.03]"
       />
 
       {/* Dynamic pointer glass specular sheen */}
       <div
-        className="pointer-events-none absolute inset-0 transition-opacity duration-300 opacity-75 group-hover:opacity-100"
+        className="pointer-events-none absolute inset-0 transition-opacity duration-200 opacity-70 group-hover:opacity-100"
         style={{
-          background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.24) 0%, rgba(16,185,129,0.16) 28%, transparent 62%)`,
+          background: `radial-gradient(circle at ${glowPos.gx}% ${glowPos.gy}%, rgba(255,255,255,0.22) 0%, rgba(16,185,129,0.14) 30%, transparent 62%)`,
         }}
       />
 
-      {/* Subtle readability vignette */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#041418]/35 via-transparent to-[#020a10]/70" />
+      {/* Subtle readability vignette (preserves full crystal orb brightness in center) */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#041418]/30 via-transparent to-[#020a10]/65" />
 
       {/* Top badges */}
       <div className="relative z-10 flex items-center justify-between px-5 pt-4">
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/12 backdrop-blur-md border border-white/20 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/35 border border-white/20 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
           LUMACORE {kernelVersion} · SHIELD {securityVersion}
         </span>
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/25 backdrop-blur-md border border-white/15 text-[10px] font-mono text-white/90 group-hover:bg-white/20 transition">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/35 border border-white/15 text-[10px] font-mono text-white/95 group-hover:bg-white/20 transition">
           <Sparkles className="w-3 h-3 text-emerald-200" />
           Пасхалка Lithium
         </span>
@@ -86,17 +96,17 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
       {/* Centered Flagship Glass Typography */}
       <div className="relative z-10 flex flex-col items-center justify-center text-center h-[calc(100%-56px)] pb-4 px-4">
         <div
-          className="text-6xl sm:text-7xl font-black tracking-tight leading-none select-none transition-transform duration-500 group-hover:scale-105"
+          className="text-6xl sm:text-7xl font-black tracking-tight leading-none select-none transition-transform duration-300 group-hover:scale-105"
           style={{
             backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #d1fae5 55%, #67e8f9 100%)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
-            filter: 'drop-shadow(0 8px 26px rgba(16, 185, 129, 0.55))',
+            filter: 'drop-shadow(0 6px 20px rgba(16, 185, 129, 0.55))',
           }}
         >
-          1.2
+          1.2.3
         </div>
-        <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white/95 drop-shadow-[0_2px_12px_rgba(0,0,0,0.45)]">
+        <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
           LumaOS
         </div>
         <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-emerald-100/95">
@@ -107,15 +117,15 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
       </div>
 
       {ripple && (
-        <div className="pointer-events-none absolute inset-0 bg-white/25 animate-ping rounded-3xl" />
+        <div className="pointer-events-none absolute inset-0 bg-white/20 animate-ping rounded-3xl" />
       )}
-    </button>
+    </div>
   );
 };
 
 export const LumaLithiumHeroCard = LumaHeliumHeroCard;
 
-// ==================== FULL-SCREEN CINEMATIC ANIMATION + PLAYABLE MINI-GAME «LITHIUM ORBIT · Li-3» ====================
+// ==================== FULL-SCREEN CINEMATIC ANIMATION + REBALANCED MINI-GAME «LITHIUM ORBIT · Li-3» ====================
 
 interface EasterEggModalProps {
   open: boolean;
@@ -159,6 +169,7 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
   });
   const [combo, setCombo] = useState(1);
   const [wave, setWave] = useState(1);
+  const [lives, setLives] = useState(3);
   const [energy, setEnergy] = useState(100);
   const [paused, setPaused] = useState(false);
   const [gameOver, setGameOver] = useState(false);
@@ -170,10 +181,10 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
   soundOnRef.current = soundOn;
 
   const gameStateRef = useRef({
-    px: 400,
-    py: 260,
-    tx: 400,
-    ty: 260,
+    px: 410,
+    py: 240,
+    tx: 410,
+    ty: 240,
     keys: new Set<string>(),
     entities: [] as OrbEntity[],
     particles: [] as Particle[],
@@ -181,6 +192,9 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
     score: 0,
     combo: 1,
     comboTimer: 0,
+    lives: 3,
+    invulnFrames: 0,
+    fusionCount: 0,
     energy: 100,
     pulseRadius: 0,
     pulseAlpha: 0,
@@ -191,7 +205,7 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
     paused: false,
   });
 
-  const playTone = (freq: number, dur = 0.09, type: OscillatorType = 'sine', gain = 0.07) => {
+  const playTone = (freq: number, dur = 0.09, type: OscillatorType = 'sine', gain = 0.06) => {
     if (!soundOnRef.current) return;
     try {
       if (!audioCtxRef.current) {
@@ -222,15 +236,15 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
     setIntroProgress(0);
     setGameOver(false);
     setPaused(false);
-    playTone(340, 0.28, 'sine', 0.06);
-    const t1 = window.setTimeout(() => playTone(510, 0.3, 'triangle', 0.06), 450);
-    const t2 = window.setTimeout(() => playTone(680, 0.35, 'sine', 0.07), 950);
-    const t3 = window.setTimeout(() => playTone(1020, 0.45, 'sine', 0.07), 1550);
+    playTone(340, 0.25, 'sine', 0.05);
+    const t1 = window.setTimeout(() => playTone(510, 0.25, 'triangle', 0.05), 380);
+    const t2 = window.setTimeout(() => playTone(680, 0.3, 'sine', 0.06), 780);
+    const t3 = window.setTimeout(() => playTone(1020, 0.35, 'sine', 0.06), 1250);
 
     const started = performance.now();
     let raf = 0;
     const tick = (now: number) => {
-      const p = Math.min(1, (now - started) / 2150);
+      const p = Math.min(1, (now - started) / 1750);
       setIntroProgress(p);
       if (p < 1) {
         raf = requestAnimationFrame(tick);
@@ -251,16 +265,19 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
 
   const resetGame = () => {
     const st = gameStateRef.current;
-    st.px = 400;
-    st.py = 250;
-    st.tx = 400;
-    st.ty = 250;
+    st.px = 410;
+    st.py = 240;
+    st.tx = 410;
+    st.ty = 240;
     st.entities = [];
     st.particles = [];
     st.trail = [];
     st.score = 0;
     st.combo = 1;
     st.comboTimer = 0;
+    st.lives = 3;
+    st.invulnFrames = 60; // Brief spawn grace shield!
+    st.fusionCount = 0;
     st.energy = 100;
     st.pulseRadius = 0;
     st.pulseAlpha = 0;
@@ -272,6 +289,7 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
     setScore(0);
     setCombo(1);
     setWave(1);
+    setLives(3);
     setEnergy(100);
     setGameOver(false);
     setPaused(false);
@@ -279,29 +297,29 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
 
   const triggerFusionPulse = () => {
     const st = gameStateRef.current;
-    if (st.over || st.paused || st.energy < 40) return;
-    st.energy = Math.max(0, st.energy - 40);
-    st.pulseRadius = 20;
+    if (st.over || st.paused || st.energy < 28) return;
+    st.energy = Math.max(0, st.energy - 28);
+    st.pulseRadius = 22;
     st.pulseAlpha = 1;
-    st.shake = 10;
+    st.shake = 7;
     setEnergy(Math.round(st.energy));
-    playTone(240, 0.24, 'sawtooth', 0.07);
-    playTone(920, 0.32, 'sine', 0.08);
+    playTone(260, 0.2, 'triangle', 0.06);
+    playTone(920, 0.28, 'sine', 0.07);
     const kept: OrbEntity[] = [];
     for (const e of st.entities) {
       const dist = Math.hypot(e.x - st.px, e.y - st.py);
-      if (e.kind === 'shard' && dist < 260) {
-        st.score += 18 * st.combo;
-        for (let i = 0; i < 12; i++) {
+      if (e.kind === 'shard' && dist < 320) {
+        st.score += 20 * st.combo;
+        for (let i = 0; i < 10; i++) {
           const a = Math.random() * Math.PI * 2;
-          const sp = 1.5 + Math.random() * 4.5;
+          const sp = 1.5 + Math.random() * 4.0;
           st.particles.push({
             x: e.x,
             y: e.y,
             vx: Math.cos(a) * sp,
             vy: Math.sin(a) * sp,
-            life: 28,
-            maxLife: 28,
+            life: 24,
+            maxLife: 24,
             color: '#34d399',
             size: 3,
           });
@@ -349,20 +367,20 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
     const W = 820;
     const H = 480;
 
-    const spawnBurst = (x: number, y: number, color: string, count = 14) => {
+    const spawnBurst = (x: number, y: number, color: string, count = 12) => {
       const st = gameStateRef.current;
       for (let i = 0; i < count; i++) {
         const a = Math.random() * Math.PI * 2;
-        const sp = 1.2 + Math.random() * 4.2;
+        const sp = 1.2 + Math.random() * 3.8;
         st.particles.push({
           x,
           y,
           vx: Math.cos(a) * sp,
           vy: Math.sin(a) * sp,
-          life: 24 + Math.random() * 14,
-          maxLife: 38,
+          life: 22 + Math.random() * 12,
+          maxLife: 34,
           color,
-          size: 2 + Math.random() * 2.5,
+          size: 2 + Math.random() * 2.2,
         });
       }
     };
@@ -372,16 +390,18 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
       st.frame++;
 
       if (!st.paused && !st.over) {
-        const speed = 6.4;
+        const speed = 7.4;
         if (st.keys.has('w') || st.keys.has('arrowup')) st.ty = Math.max(24, st.ty - speed);
         if (st.keys.has('s') || st.keys.has('arrowdown')) st.ty = Math.min(H - 24, st.ty + speed);
         if (st.keys.has('a') || st.keys.has('arrowleft')) st.tx = Math.max(24, st.tx - speed);
         if (st.keys.has('d') || st.keys.has('arrowright')) st.tx = Math.min(W - 24, st.tx + speed);
 
-        st.px += (st.tx - st.px) * 0.2;
-        st.py += (st.ty - st.py) * 0.2;
+        st.px += (st.tx - st.px) * 0.24;
+        st.py += (st.ty - st.py) * 0.24;
         st.trail.push({ x: st.px, y: st.py });
-        if (st.trail.length > 24) st.trail.shift();
+        if (st.trail.length > 20) st.trail.shift();
+
+        if (st.invulnFrames > 0) st.invulnFrames--;
 
         if (st.comboTimer > 0) {
           st.comboTimer--;
@@ -391,15 +411,16 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
           }
         }
         if (st.energy < 100) {
-          st.energy = Math.min(100, st.energy + 0.16);
+          st.energy = Math.min(100, st.energy + 0.28);
           if (st.frame % 6 === 0) setEnergy(Math.round(st.energy));
         }
 
-        const curWave = 1 + Math.floor(st.score / 240);
+        const curWave = 1 + Math.floor(st.score / 320);
         if (st.frame % 15 === 0) setWave(curWave);
 
+        // Relaxed, enjoyable spawn curve: more photons/fusion, slower & rarer red shards
         st.spawnTick++;
-        const spawnEvery = Math.max(15, 38 - curWave * 3);
+        const spawnEvery = Math.max(24, 48 - curWave * 2);
         if (st.spawnTick >= spawnEvery) {
           st.spawnTick = 0;
           const side = Math.floor(Math.random() * 4);
@@ -410,21 +431,22 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
           else { sx = -20; sy = Math.random() * H; }
 
           const roll = Math.random();
-          const kind: OrbEntity['kind'] = roll < 0.45 ? 'photon' : roll < 0.56 ? 'fusion' : 'shard';
-          const aimX = kind === 'shard' ? st.px + (Math.random() - 0.5) * 140 : W * 0.2 + Math.random() * W * 0.6;
-          const aimY = kind === 'shard' ? st.py + (Math.random() - 0.5) * 140 : H * 0.2 + Math.random() * H * 0.6;
+          const kind: OrbEntity['kind'] = roll < 0.56 ? 'photon' : roll < 0.72 ? 'fusion' : 'shard';
+          // Shards aim loosely with wide scatter instead of sniping the player directly
+          const aimX = kind === 'shard' ? st.px + (Math.random() - 0.5) * 260 : W * 0.2 + Math.random() * W * 0.6;
+          const aimY = kind === 'shard' ? st.py + (Math.random() - 0.5) * 260 : H * 0.2 + Math.random() * H * 0.6;
           const ang = Math.atan2(aimY - sy, aimX - sx);
           const spd =
             kind === 'shard'
-              ? 2.1 + Math.min(4.2, curWave * 0.35) + Math.random() * 1.4
-              : 1.5 + Math.random() * 1.5;
+              ? 1.35 + Math.min(2.2, curWave * 0.20) + Math.random() * 0.85
+              : 1.35 + Math.random() * 1.2;
 
           st.entities.push({
             x: sx,
             y: sy,
             vx: Math.cos(ang) * spd,
             vy: Math.sin(ang) * spd,
-            r: kind === 'shard' ? 11 + Math.random() * 5 : kind === 'fusion' ? 12 : 9,
+            r: kind === 'shard' ? 10 + Math.random() * 3.5 : kind === 'fusion' ? 13 : 10,
             kind,
             hue: kind === 'fusion' ? 188 : 148 + Math.random() * 30,
             spin: Math.random() * Math.PI * 2,
@@ -433,31 +455,68 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
 
         const nextEntities: OrbEntity[] = [];
         for (const e of st.entities) {
+          // Gentle magnetic attraction on friendly orbs when close to the Lithium atom!
+          if (e.kind !== 'shard') {
+            const dx = st.px - e.x;
+            const dy = st.py - e.y;
+            const distM = Math.hypot(dx, dy);
+            if (distM > 1 && distM < 115) {
+              e.vx += (dx / distM) * 0.28;
+              e.vy += (dy / distM) * 0.28;
+            }
+          }
+
           e.x += e.vx;
           e.y += e.vy;
-          e.spin += 0.06;
+          e.spin += 0.05;
           if (e.x < -60 || e.x > W + 60 || e.y < -60 || e.y > H + 60) continue;
 
           const d = Math.hypot(e.x - st.px, e.y - st.py);
-          if (d < e.r + 16) {
+          // Generous pickup radius for photons/fusion, forgiving smaller hitbox for shards!
+          const hitDist = e.kind === 'shard' ? e.r + 10 : e.r + 24;
+          if (d < hitDist) {
             if (e.kind === 'photon' || e.kind === 'fusion') {
-              const pts = e.kind === 'fusion' ? 40 : 12;
+              const pts = e.kind === 'fusion' ? 45 : 15;
               st.score += pts * st.combo;
               st.combo = Math.min(9, st.combo + 1);
-              st.comboTimer = 170;
-              st.energy = Math.min(100, st.energy + (e.kind === 'fusion' ? 35 : 9));
+              st.comboTimer = 240;
+              st.energy = Math.min(100, st.energy + (e.kind === 'fusion' ? 38 : 12));
+              if (e.kind === 'fusion') {
+                st.fusionCount++;
+                if (st.lives < 3 && st.fusionCount % 3 === 0) {
+                  st.lives++;
+                  setLives(st.lives);
+                  playTone(1120, 0.22, 'sine', 0.07);
+                }
+              }
               setScore(st.score);
               setCombo(st.combo);
               setEnergy(Math.round(st.energy));
-              spawnBurst(e.x, e.y, e.kind === 'fusion' ? '#67e8f9' : '#34d399', e.kind === 'fusion' ? 22 : 12);
-              playTone(e.kind === 'fusion' ? 880 : 540 + st.combo * 42, 0.09, 'sine', 0.06);
+              spawnBurst(e.x, e.y, e.kind === 'fusion' ? '#67e8f9' : '#34d399', e.kind === 'fusion' ? 18 : 10);
+              playTone(e.kind === 'fusion' ? 880 : 540 + st.combo * 38, 0.08, 'sine', 0.05);
               continue;
             } else {
+              if (st.invulnFrames > 0) {
+                // Shield absorbs impact safely!
+                spawnBurst(e.x, e.y, '#67e8f9', 8);
+                continue;
+              }
+              st.lives--;
+              setLives(st.lives);
+              st.shake = 12;
+              if (st.lives > 0) {
+                // Shield absorbed the hit! Grant 1.5s invulnerability + protective knockback
+                st.invulnFrames = 95;
+                st.pulseRadius = 26;
+                st.pulseAlpha = 0.85;
+                spawnBurst(st.px, st.py, '#fbbf24', 24);
+                playTone(220, 0.22, 'triangle', 0.07);
+                continue;
+              }
               st.over = true;
-              st.shake = 16;
               setGameOver(true);
-              spawnBurst(st.px, st.py, '#fb7185', 36);
-              playTone(140, 0.38, 'sawtooth', 0.08);
+              spawnBurst(st.px, st.py, '#fb7185', 32);
+              playTone(140, 0.35, 'sawtooth', 0.07);
               setBestScore((prev) => {
                 const best = Math.max(prev, st.score);
                 try {
@@ -475,8 +534,8 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         st.entities = nextEntities;
 
         if (st.pulseAlpha > 0) {
-          st.pulseRadius += 15;
-          st.pulseAlpha = Math.max(0, st.pulseAlpha - 0.045);
+          st.pulseRadius += 16;
+          st.pulseAlpha = Math.max(0, st.pulseAlpha - 0.042);
         }
         if (st.shake > 0) st.shake *= 0.86;
       }
@@ -484,8 +543,8 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
       st.particles = st.particles.filter((p) => {
         p.x += p.vx;
         p.y += p.vy;
-        p.vx *= 0.96;
-        p.vy *= 0.96;
+        p.vx *= 0.95;
+        p.vy *= 0.95;
         p.life--;
         return p.life > 0;
       });
@@ -522,7 +581,7 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
       for (let i = 1; i < st.trail.length; i++) {
         const a = i / st.trail.length;
         ctx.strokeStyle = `rgba(52, 211, 153, ${a * 0.55})`;
-        ctx.lineWidth = a * 9;
+        ctx.lineWidth = a * 8;
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(st.trail[i - 1].x, st.trail[i - 1].y);
@@ -536,12 +595,10 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         ctx.rotate(e.spin);
         if (e.kind === 'shard') {
           ctx.fillStyle = '#fb7185';
-          ctx.shadowColor = '#e11d48';
-          ctx.shadowBlur = 14;
           ctx.beginPath();
           for (let i = 0; i < 4; i++) {
             const ang = (i * Math.PI) / 2;
-            ctx.lineTo(Math.cos(ang) * e.r * 1.25, Math.sin(ang) * e.r * 1.25);
+            ctx.lineTo(Math.cos(ang) * e.r * 1.2, Math.sin(ang) * e.r * 1.2);
             ctx.lineTo(Math.cos(ang + Math.PI / 4) * e.r * 0.45, Math.sin(ang + Math.PI / 4) * e.r * 0.45);
           }
           ctx.closePath();
@@ -552,8 +609,6 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
           grad.addColorStop(0.55, e.kind === 'fusion' ? '#67e8f9' : `hsl(${e.hue}, 90%, 62%)`);
           grad.addColorStop(1, 'transparent');
           ctx.fillStyle = grad;
-          ctx.shadowColor = e.kind === 'fusion' ? '#22d3ee' : '#10b981';
-          ctx.shadowBlur = 16;
           ctx.beginPath();
           ctx.arc(0, 0, e.r, 0, Math.PI * 2);
           ctx.fill();
@@ -561,63 +616,62 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         ctx.restore();
       }
 
-      // Player Lithium-3 Atom (Nucleus + 2 inner shell electrons + 1 outer valence electron!)
+      // Player Lithium-3 Atom (with visual shield ring during invulnerability)
       if (!st.over) {
         ctx.save();
         ctx.translate(st.px, st.py);
+        if (st.invulnFrames > 0) {
+          ctx.strokeStyle = `rgba(103, 232, 249, ${0.45 + 0.4 * Math.sin(st.frame * 0.4)})`;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(0, 0, 32, 0, Math.PI * 2);
+          ctx.stroke();
+        }
 
         // Inner 1s orbit (2 electrons)
         ctx.strokeStyle = 'rgba(110, 231, 183, 0.48)';
         ctx.lineWidth = 1.3;
         ctx.beginPath();
-        ctx.arc(0, 0, 19, 0, Math.PI * 2);
+        ctx.arc(0, 0, 18, 0, Math.PI * 2);
         ctx.stroke();
 
         // Outer 2s valence orbit (1 electron)
         ctx.strokeStyle = 'rgba(103, 232, 249, 0.35)';
         ctx.lineWidth = 1.1;
         ctx.beginPath();
-        ctx.arc(0, 0, 27, 0, Math.PI * 2);
+        ctx.arc(0, 0, 26, 0, Math.PI * 2);
         ctx.stroke();
 
         const t = st.frame * 0.11;
         for (const offset of [0, Math.PI]) {
-          const ex = Math.cos(t + offset) * 19;
-          const ey = Math.sin(t + offset) * 19;
+          const ex = Math.cos(t + offset) * 18;
+          const ey = Math.sin(t + offset) * 18;
           ctx.fillStyle = '#6ee7b7';
-          ctx.shadowColor = '#10b981';
-          ctx.shadowBlur = 10;
           ctx.beginPath();
-          ctx.arc(ex, ey, 3.4, 0, Math.PI * 2);
+          ctx.arc(ex, ey, 3.2, 0, Math.PI * 2);
           ctx.fill();
         }
 
-        // 3rd valence electron
-        const vx = Math.cos(-t * 0.72) * 27;
-        const vy = Math.sin(-t * 0.72) * 27;
+        const vx = Math.cos(-t * 0.72) * 26;
+        const vy = Math.sin(-t * 0.72) * 26;
         ctx.fillStyle = '#e0f2fe';
-        ctx.shadowColor = '#22d3ee';
-        ctx.shadowBlur = 12;
         ctx.beginPath();
-        ctx.arc(vx, vy, 3.8, 0, Math.PI * 2);
+        ctx.arc(vx, vy, 3.6, 0, Math.PI * 2);
         ctx.fill();
 
-        const coreGrad = ctx.createRadialGradient(-3, -3, 2, 0, 0, 14);
+        const coreGrad = ctx.createRadialGradient(-3, -3, 2, 0, 0, 13);
         coreGrad.addColorStop(0, '#ffffff');
         coreGrad.addColorStop(0.5, '#6ee7b7');
         coreGrad.addColorStop(1, '#0d9488');
         ctx.fillStyle = coreGrad;
-        ctx.shadowColor = '#10b981';
-        ctx.shadowBlur = 20;
         ctx.beginPath();
-        ctx.arc(0, 0, 13, 0, Math.PI * 2);
+        ctx.arc(0, 0, 12.5, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = '#022c22';
         ctx.font = 'bold 9px monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.shadowBlur = 0;
         ctx.fillText('Li', 0, 0.5);
         ctx.restore();
       }
@@ -647,18 +701,27 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-[#020a0d]/90 backdrop-blur-2xl p-4"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-[#020a0d]/90 backdrop-blur-xl p-4"
       onClick={(e) => e.stopPropagation()}
     >
       {phase === 'intro' ? (
-        <div className="relative flex flex-col items-center justify-center w-full max-w-2xl h-[460px] rounded-3xl overflow-hidden border border-white/15 bg-[#031216] shadow-2xl">
+        <div
+          className="relative flex flex-col items-center justify-center w-full max-w-2xl h-[460px] rounded-3xl overflow-hidden border border-white/15 bg-[#031216] shadow-2xl"
+          style={{
+            backgroundImage: `url("${lithiumHeroImg}")`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        >
           <img
-            src="/luma-lithium-hero.jpg"
+            src={lithiumHeroImg}
             alt="Lithium Awakening"
+            loading="eager"
+            decoding="sync"
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000"
             style={{
-              transform: `scale(${1 + introProgress * 0.22})`,
-              opacity: 0.42 + introProgress * 0.45,
+              transform: `scale(${1 + introProgress * 0.2})`,
+              opacity: 0.45 + introProgress * 0.45,
             }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#02090c] via-[#041f24]/50 to-[#02090c]/80" />
@@ -692,13 +755,13 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
               }}
             >
               <div className="text-7xl font-black tracking-tight bg-gradient-to-b from-white via-emerald-100 to-cyan-300 bg-clip-text text-transparent drop-shadow-[0_0_32px_rgba(16,185,129,0.7)]">
-                1.2
+                1.2.3
               </div>
               <div className="text-xl font-bold tracking-[0.28em] text-white uppercase mt-1">
                 LUMA LITHIUM
               </div>
               <div className="text-[11px] font-mono text-emerald-200/90 mt-2 tracking-widest">
-                ЗАПУСК ОРБИТЫ Li-3 · 3 ЭЛЕКТРОНА...
+                ЗАПУСК ОРБИТЫ Li-3 · 3 ЩИТА · 3 ЭЛЕКТРОНА...
               </div>
             </div>
           </div>
@@ -719,14 +782,27 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
                 Li
               </div>
               <div>
-                <div className="text-xs font-extrabold tracking-wide uppercase">LITHIUM ORBIT · Пасхалка 1.2</div>
+                <div className="text-xs font-extrabold tracking-wide uppercase">LITHIUM ORBIT · Пасхалка 1.2.3</div>
                 <div className="text-[10px] font-mono text-zinc-400">
-                  Мышь / WASD — полёт · Пробел — кристальный импульс
+                  Мышь / WASD — полёт · Клик / Пробел — импульс (28%) · 3 щита
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 text-xs font-mono">
+            <div className="flex items-center gap-2 text-xs font-mono">
+              <div
+                className="px-2 py-1 rounded-xl bg-white/[0.06] border border-white/10 inline-flex items-center gap-1"
+                title="Щиты ядра Li-3 (восстанавливаются каждые 3 голубых сферы)"
+              >
+                {[0, 1, 2].map((idx) => (
+                  <Heart
+                    key={idx}
+                    className={`w-3.5 h-3.5 transition ${
+                      idx < lives ? 'text-rose-400 fill-rose-400' : 'text-zinc-600'
+                    }`}
+                  />
+                ))}
+              </div>
               <div className="px-2.5 py-1 rounded-xl bg-white/[0.06] border border-white/10">
                 СЧЁТ <span className="text-emerald-300 font-bold">{score}</span>
               </div>
@@ -739,9 +815,9 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
               </div>
               <button
                 onClick={triggerFusionPulse}
-                disabled={energy < 40 || gameOver}
+                disabled={energy < 28 || gameOver}
                 className="px-2.5 py-1 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 disabled:opacity-35 inline-flex items-center gap-1 cursor-pointer"
-                title="Импульс (Пробел)"
+                title="Импульс (Пробел или Клик — 28% энергии)"
               >
                 <Zap className="w-3.5 h-3.5" />
                 {energy}%

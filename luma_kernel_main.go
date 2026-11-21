@@ -47,9 +47,9 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.2.2"
+	KernelVersion       = "1.2.3"
 	KernelCodename      = "Lithium"
-	KernelEngineVersion = "1.2"
+	KernelEngineVersion = "1.3"
 	SecurityCoreVersion = "1.3"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
@@ -88,6 +88,8 @@ type LumaKernel struct {
 	location    LocationInfo
 	rpcRequests uint64
 	aiEnabled   bool
+	snapCache   HostHardwareSnapshot
+	snapCacheAt time.Time
 }
 
 func (k *LumaKernel) IsAIEnabled() bool {
@@ -399,9 +401,20 @@ func (k *LumaKernel) SignIPC(payload []byte) string {
 
 func (k *LumaKernel) SystemSnapshot() HostHardwareSnapshot {
 	k.mu.RLock()
+	if time.Since(k.snapCacheAt) < 350*time.Millisecond && k.snapCache.Hostname != "" {
+		cached := k.snapCache
+		k.mu.RUnlock()
+		return cached
+	}
 	loc := k.location
 	k.mu.RUnlock()
-	return k.probe.Collect(loc)
+
+	snap := k.probe.Collect(loc)
+	k.mu.Lock()
+	k.snapCache = snap
+	k.snapCacheAt = time.Now()
+	k.mu.Unlock()
+	return snap
 }
 
 func (k *LumaKernel) TelemetrySnapshot() map[string]interface{} {
@@ -416,40 +429,42 @@ func (k *LumaKernel) TelemetrySnapshot() map[string]interface{} {
 	rssMB := math.Round((float64(memStats.Sys)/(1024.0*1024.0))*10) / 10
 
 	return map[string]interface{}{
-		"kernel":                "LumaCore",
-		"version":               KernelVersion,
-		"codename":              KernelCodename,
-		"kernel_engine_version": KernelEngineVersion,
-		"security_core_version": SecurityCoreVersion,
-		"device_model":          hw.DeviceModel,
-		"manufacturer":          hw.Manufacturer,
-		"os":                    hw.OSName,
-		"hostname":              hw.Hostname,
-		"arch":                  hw.Arch,
-		"cpu_model":             hw.CPUModel,
-		"cpu_cores":             hw.CPUCores,
-		"cpu_percent":           hw.CPUPercent,
-		"gpu_name":              hw.GPUName,
-		"ram_used_gb":           hw.RAMUsedGB,
-		"ram_total_gb":          hw.RAMTotalGB,
-		"ram_percent":           hw.RAMPercent,
-		"battery_present":       hw.BatteryPresent,
-		"battery_percent":       hw.BatteryPercent,
-		"battery_charging":      hw.BatteryCharging,
-		"net_down_mbps":         hw.NetDownMbps,
-		"net_up_mbps":           hw.NetUpMbps,
-		"disks":                 hw.Disks,
-		"media":                 hw.Media,
-		"location":              hw.Location,
-		"core_rss_mb":           rssMB,
-		"uptime_sec":            int(uptime),
-		"ipc_endpoint":          fmt.Sprintf("tcp://127.0.0.1:%d", DefaultRpcPort),
-		"vfs_path":              k.vfsDir,
-		"security_engine":       "LumaShield 1.2 · AES-256-GCM + PBKDF2-HMAC-SHA512 + Zero-Conflict AV",
-		"shell_config":          getShellConfig(),
-		"widgets_count":         len(k.widgets),
-		"rpc_requests":          k.rpcRequests,
-		"active_procs":          len(k.processes),
+		"kernel":                 "LumaCore",
+		"version":                KernelVersion,
+		"codename":               KernelCodename,
+		"kernel_engine_version":  KernelEngineVersion,
+		"security_core_version":  SecurityCoreVersion,
+		"zero_powershell_engine": true,
+		"goroutines":             runtime.NumGoroutine(),
+		"device_model":           hw.DeviceModel,
+		"manufacturer":           hw.Manufacturer,
+		"os":                     hw.OSName,
+		"hostname":               hw.Hostname,
+		"arch":                   hw.Arch,
+		"cpu_model":              hw.CPUModel,
+		"cpu_cores":              hw.CPUCores,
+		"cpu_percent":            hw.CPUPercent,
+		"gpu_name":               hw.GPUName,
+		"ram_used_gb":            hw.RAMUsedGB,
+		"ram_total_gb":           hw.RAMTotalGB,
+		"ram_percent":            hw.RAMPercent,
+		"battery_present":        hw.BatteryPresent,
+		"battery_percent":        hw.BatteryPercent,
+		"battery_charging":       hw.BatteryCharging,
+		"net_down_mbps":          hw.NetDownMbps,
+		"net_up_mbps":            hw.NetUpMbps,
+		"disks":                  hw.Disks,
+		"media":                  hw.Media,
+		"location":               hw.Location,
+		"core_rss_mb":            rssMB,
+		"uptime_sec":             int(uptime),
+		"ipc_endpoint":           fmt.Sprintf("tcp://127.0.0.1:%d", DefaultRpcPort),
+		"vfs_path":               k.vfsDir,
+		"security_engine":        "LumaShield 1.3 · AES-256-GCM + PBKDF2-HMAC-SHA512 + Real-Time Guard",
+		"shell_config":           getShellConfig(),
+		"widgets_count":          len(k.widgets),
+		"rpc_requests":           k.rpcRequests,
+		"active_procs":           len(k.processes),
 		"real_telemetry":        true,
 		"timestamp":             float64(time.Now().UnixMilli()) / 1000.0,
 	}
@@ -812,12 +827,16 @@ func main() {
 			ID      string `json:"id"`
 			Name    string `json:"name"`
 			URL     string `json:"url"`
+			Target  string `json:"target"`
 			Command string `json:"command"`
 			Type    string `json:"type"`
 			Args    string `json:"args"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&payload)
 		target := payload.URL
+		if target == "" {
+			target = payload.Target
+		}
 		if target == "" {
 			target = payload.Command
 		}
@@ -2172,12 +2191,12 @@ func main() {
 		})
 	})
 
-	// Serve standalone executable download for LumaOS_1.2.2.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.2.3.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.2.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.3.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -2185,12 +2204,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.2.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.3.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.2.3.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.2.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.0.exe", serveExe)
@@ -2229,15 +2249,24 @@ func main() {
 		})
 	}
 
-	// Serve SPA & static assets
-	mux.Handle("/", fileServer)
+	// Serve SPA & static assets with smart Cache-Control so WebView2 NEVER serves stale HTML/images after upgrades
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/assets/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+		}
+		fileServer.ServeHTTP(w, r)
+	})
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.2.2 (LITHIUM) — LUMACORE 1.2 & LUMASHIELD 1.3")
-	log.Printf("  - Desktop Environment:         http://%s/", addr)
-	log.Printf("  - Kernel JSON-RPC 2.0 Socket:  tcp://127.0.0.1:%d", *rpcPort)
-	log.Printf("  - Real Telemetry & Security:   http://%s/api/kernel/status", addr)
+	log.Printf("  LUMA OS 1.2.3 (LITHIUM) — LUMACORE 1.3 & LUMASHIELD 1.3")
+	log.Printf("  - Zero-PowerShell Win32 Engine: ENABLED")
+	log.Printf("  - Desktop Environment:          http://%s/", addr)
+	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)
+	log.Printf("  - Real Telemetry & Security:    http://%s/api/kernel/status", addr)
 	log.Printf("=================================================================")
 
 	if !*headless && runtime.GOOS == "windows" {

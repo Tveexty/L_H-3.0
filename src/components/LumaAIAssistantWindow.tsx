@@ -58,7 +58,7 @@ export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
     models: ['luma-lang-1.2', 'luma-code-1.2', 'luma-hybrid-1.2'],
     defaultBaseUrl: 'internal://luma-ai-1.2',
     needsKey: false,
-    hint: 'Два автономных движка прямо в ядре LumaCore 1.2: Языковая модель (Luma Lang 1.2 — 45+ тем оффлайн + живой поиск Wikipedia, математика, конвертер, диагностика ПК) и Кодер (Luma Code 1.2 — 12 языков программирования).',
+    hint: 'Два автономных движка прямо в ядре LumaCore 1.3: Языковая модель (Luma Lang 1.2 — 45+ тем оффлайн + живой поиск Wikipedia, математика, конвертер, диагностика ПК) и Кодер (Luma Code 1.2 — 12 языков программирования).',
   },
   {
     id: 'gemini',
@@ -169,7 +169,7 @@ export const DEFAULT_LUMA_AI_CONFIG: LumaAIConfig = {
   models: {},
   baseUrls: {},
   systemPrompt:
-    'Ты — встроенный системный ИИ-ассистент Luma OS 1.2.2 (Lithium). Отвечай чётко, структурированно и на языке пользователя.',
+    'Ты — встроенный системный ИИ-ассистент Luma OS 1.2.3 (Lithium). Отвечай чётко, структурированно и на языке пользователя.',
   temperature: 0.7,
   includeSystemContext: true,
 };
@@ -493,7 +493,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
         onPushToast('Luma AI', data?.error || 'Требуется настройка провайдера', 'warning');
       }
     } catch {
-      onPushToast('Luma AI', 'Нет ответа от шлюза LumaCore 1.2', 'warning');
+      onPushToast('Luma AI', 'Нет ответа от шлюза LumaCore 1.3', 'warning');
     } finally {
       setLoading(false);
     }

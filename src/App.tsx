@@ -32,6 +32,7 @@ import {
   Disc3,
   Download,
   ExternalLink,
+  Eye,
   EyeOff,
   FileCode,
   FileText,
@@ -359,6 +360,75 @@ function StatusPill({ active }: { active: boolean }) {
   );
 }
 
+const LumaTaskbarClock = React.memo(function LumaTaskbarClock({
+  orientation,
+  timeFormat,
+  showSeconds,
+  showDate,
+  clockAccentColor,
+  clockBlinkColon,
+  locale,
+  mutedCls,
+}: {
+  orientation: 'vertical' | 'horizontal';
+  timeFormat: '12' | '24';
+  showSeconds: boolean;
+  showDate: boolean;
+  clockAccentColor: string;
+  clockBlinkColon: boolean;
+  locale: string;
+  mutedCls: string;
+}) {
+  const [tickNow, setTickNow] = useState<Date>(() => new Date());
+
+  useEffect(() => {
+    const stepMs = showSeconds || clockBlinkColon ? 1000 : 15000;
+    const id = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setTickNow(new Date());
+    }, stepMs);
+    const onVis = () => {
+      if (!document.hidden) setTickNow(new Date());
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [showSeconds, clockBlinkColon]);
+
+  const hrs24 = tickNow.getHours();
+  const hrs = timeFormat === '12' ? String(hrs24 % 12 || 12).padStart(2, '0') : String(hrs24).padStart(2, '0');
+  const mins = String(tickNow.getMinutes()).padStart(2, '0');
+  const secs = String(tickNow.getSeconds()).padStart(2, '0');
+  const colon = clockBlinkColon && tickNow.getSeconds() % 2 === 1 ? ' ' : ':';
+  const dateShort = tickNow.toLocaleDateString(locale, { weekday: 'short', day: '2-digit', month: '2-digit' });
+
+  if (orientation === 'vertical') {
+    return (
+      <>
+        <span className="text-[11px] font-bold tabular-nums">{hrs}</span>
+        <span className="text-[11px] font-bold tabular-nums" style={{ color: clockAccentColor }}>
+          {mins}
+        </span>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <span className="text-xs font-bold tabular-nums">
+        {hrs}
+        <span style={{ color: clockAccentColor }}>{colon}</span>
+        {mins}
+        {showSeconds ? `:${secs}` : ''}
+      </span>
+      {showDate && <span className={`text-[9px] uppercase ${mutedCls}`}>{dateShort}</span>}
+    </>
+  );
+});
+
+
 const INITIAL_WINDOWS: Record<DexWinId, DexWinState> = {
   explorer: { open: false, minimized: false, z: 20, desktop: 1 },
   taskmgr: { open: false, minimized: false, z: 20, desktop: 1 },
@@ -424,7 +494,7 @@ export default function App() {
     savedState?.telemetryIntervalMs === 1500 || savedState?.telemetryIntervalMs === 6000 ? savedState.telemetryIntervalMs : 3000
   );
   const [glassEnabled, setGlassEnabled] = useState<boolean>(savedState?.glassEnabled ?? true);
-  const [glassIntensity, setGlassIntensity] = useState<GlassIntensity>(savedState?.glassIntensity || 'medium');
+  const [glassIntensity, setGlassIntensity] = useState<GlassIntensity>(savedState?.glassIntensity || 'light');
   const [glassOpacity, setGlassOpacity] = useState<number>(savedState?.glassOpacity ?? 88);
   const [animationPreset, setAnimationPreset] = useState<AnimationPreset>(
     savedState?.animationPreset === 'spring' ||
@@ -450,6 +520,27 @@ export default function App() {
   const [taskbarPosition, setTaskbarPosition] = useState<TaskbarPosition>(
     savedState?.taskbarPosition === 'left' || savedState?.taskbarPosition === 'top' ? savedState.taskbarPosition : 'bottom'
   );
+  const [taskbarAutoHide, setTaskbarAutoHide] = useState<boolean>(savedState?.taskbarAutoHide ?? false);
+  const [taskbarHoverOpen, setTaskbarHoverOpen] = useState<boolean>(false);
+  const taskbarHideTimerRef = useRef<number | null>(null);
+  const lastSpotlightToggleRef = useRef<number>(0);
+
+  const openTaskbarHover = () => {
+    if (taskbarHideTimerRef.current) {
+      window.clearTimeout(taskbarHideTimerRef.current);
+      taskbarHideTimerRef.current = null;
+    }
+    setTaskbarHoverOpen(true);
+  };
+
+  const scheduleTaskbarHoverClose = () => {
+    if (!taskbarAutoHide) return;
+    if (taskbarHideTimerRef.current) window.clearTimeout(taskbarHideTimerRef.current);
+    taskbarHideTimerRef.current = window.setTimeout(() => {
+      setTaskbarHoverOpen(false);
+      taskbarHideTimerRef.current = null;
+    }, 380);
+  };
   const [taskbarSize, setTaskbarSize] = useState<TaskbarSizePreset>(
     savedState?.taskbarSize === 'compact' || savedState?.taskbarSize === 'large' ? savedState.taskbarSize : 'standard'
   );
@@ -706,7 +797,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.2.2 (Lithium) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.2.3 (Lithium) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -739,7 +830,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.2.2 (Lithium)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.2.3 (Lithium)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -754,8 +845,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 1.2',
-      message: 'Инициализация оболочки Luma OS 1.2.2 (Lithium) и шины IPC 127.0.0.1:49215',
+      source: 'LumaCore 1.3',
+      message: 'Инициализация оболочки Luma OS 1.2.3 (Lithium) и шины IPC 127.0.0.1:49215',
       level: 'success',
     },
   ]);
@@ -921,7 +1012,7 @@ export default function App() {
       const bundle = {
         schema: 'luma_os_backup_v1',
         exported_at: new Date().toISOString(),
-        version: '1.2.2 (Lithium)',
+        version: '1.2.3 (Lithium)',
         desktop_layout: desktopRaw ? JSON.parse(desktopRaw) : null,
         shell_state: shellRaw ? JSON.parse(shellRaw) : null,
       };
@@ -1145,10 +1236,32 @@ export default function App() {
   useEffect(() => {
     if (!islandAutoClipboard) return;
     readOsClipboardNow(true);
-    const id = window.setInterval(() => readOsClipboardNow(true), 3000);
+    const id = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      readOsClipboardNow(true);
+    }, 3500);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [islandAutoClipboard]);
+
+  // --- LumaCore 1.3 Zero-GPU Idle Saver (freezes all CSS animations & background polling while hidden/minimized) ---
+  useEffect(() => {
+    const syncIdle = () => {
+      const hidden = typeof document !== 'undefined' && document.hidden;
+      document.documentElement.dataset.lumaIdle = hidden ? 'true' : 'false';
+      if (!hidden) {
+        void pollSystemTelemetry();
+        void pollHostWindows();
+      }
+    };
+    syncIdle();
+    document.addEventListener('visibilitychange', syncIdle);
+    return () => {
+      document.removeEventListener('visibilitychange', syncIdle);
+      delete document.documentElement.dataset.lumaIdle;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- Sync dark mode, design style, animation preset, ALL 8 THEME RGB CHANNELS, accent, font & UI scale ---
   useEffect(() => {
@@ -1172,10 +1285,10 @@ export default function App() {
     const blurPx = !glassEnabled || saverReduce
       ? '0px'
       : glassIntensity === 'light'
-      ? '10px'
+      ? '8px'
       : glassIntensity === 'strong'
-      ? '34px'
-      : '20px';
+      ? '22px'
+      : '12px';
 
     const activeAccent = customAccentOverride || currentTheme.accentHex || '#d71921';
     const activeAccentHover = customAccentOverride ? activeAccent : currentTheme.accentHoverHex || activeAccent;
@@ -1371,6 +1484,7 @@ export default function App() {
       desktopCols,
       wallpaper,
       taskbarPosition,
+      taskbarAutoHide,
       taskbarSize,
       taskbarSizePx,
       taskbarShowLabels,
@@ -1487,6 +1601,7 @@ export default function App() {
     desktopCols,
     wallpaper,
     taskbarPosition,
+    taskbarAutoHide,
     taskbarSize,
     taskbarShowLabels,
     taskbarShowHostWindows,
@@ -1563,6 +1678,7 @@ export default function App() {
           if (Array.isArray(st.taskbarOrder) && st.taskbarOrder.length > 0) setTaskbarOrder(st.taskbarOrder);
           if (Array.isArray(st.hostWinOrder)) setHostWinOrder(st.hostWinOrder);
           if (typeof st.taskbarCollapseSysFolder === 'boolean') setTaskbarCollapseSysFolder(st.taskbarCollapseSysFolder);
+          if (typeof st.taskbarAutoHide === 'boolean') setTaskbarAutoHide(st.taskbarAutoHide);
         }
         shellDiskHydratedRef.current = true;
       })
@@ -1593,6 +1709,9 @@ export default function App() {
   // --- Global Keyboard Shortcuts (Capture-Phase Alt+R + Win32 Hook + Ctrl+K, F11, Alt+W, Alt+D, Escape) ---
   useEffect(() => {
     const toggleSpotlightSafe = () => {
+      const nowMs = Date.now();
+      if (nowMs - lastSpotlightToggleRef.current < 240) return;
+      lastSpotlightToggleRef.current = nowMs;
       setSpotlightOpen((v) => !v);
       setStartMenuOpen(false);
       setMultitaskingOpen(false);
@@ -1697,28 +1816,43 @@ export default function App() {
     isFullscreen,
   ]);
 
-  // --- Single 1s System Ticker (Clock, Running App Timers, Island Timer/Stopwatch, Adaptive Day/Night) ---
+  // --- LumaCore 1.3 Zero-Idle-Render Tickers ---
+  // 1) Root clock state ONLY updates when Settings -> Clock preview is visible (1s) or Adaptive Day/Night is enabled (30s).
+  //    Taskbar clock uses isolated memoized <LumaTaskbarClock /> so App.tsx stays at 0 re-renders/min when idle!
+  const clockPreviewActive = windows.settings.open && settingsTab === 'clock';
   useEffect(() => {
+    if (!clockPreviewActive && !adaptiveThemeEnabled) return;
+    setNow(new Date());
+    const stepMs = clockPreviewActive ? 1000 : 30000;
     const id = window.setInterval(() => {
-      const d = new Date();
-      setNow(d);
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setNow(new Date());
+    }, stepMs);
+    return () => window.clearInterval(id);
+  }, [clockPreviewActive, adaptiveThemeEnabled]);
 
-      setApps((prev) => {
-        if (!prev.some((a) => a.isRunning)) return prev;
-        return prev.map((a) => {
-          if (!a.isRunning) return a;
-          const nextSec = a.elapsedSeconds + 1;
-          const incMin = nextSec % 60 === 0 ? 1 : 0;
-          return {
-            ...a,
-            elapsedSeconds: nextSec,
-            todayMinutes: a.todayMinutes + incMin,
-            weekMinutes: a.weekMinutes + incMin,
-            monthMinutes: a.monthMinutes + incMin,
-          };
+  // 2) Active timers (Running App session clock + Island Timer/Stopwatch) ONLY run while active!
+  const hasRunningApp = useMemo(() => apps.some((a) => a.isRunning), [apps]);
+  useEffect(() => {
+    if (!hasRunningApp && !islandTimerRunning && !islandStopwatchRunning) return;
+    const id = window.setInterval(() => {
+      if (hasRunningApp) {
+        setApps((prev) => {
+          if (!prev.some((a) => a.isRunning)) return prev;
+          return prev.map((a) => {
+            if (!a.isRunning) return a;
+            const nextSec = a.elapsedSeconds + 1;
+            const incMin = nextSec % 60 === 0 ? 1 : 0;
+            return {
+              ...a,
+              elapsedSeconds: nextSec,
+              todayMinutes: a.todayMinutes + incMin,
+              weekMinutes: a.weekMinutes + incMin,
+              monthMinutes: a.monthMinutes + incMin,
+            };
+          });
         });
-      });
-
+      }
       if (islandTimerRunning) {
         setIslandTimerRemainingSec((s) => {
           if (s <= 1) {
@@ -1733,7 +1867,7 @@ export default function App() {
       }
     }, 1000);
     return () => window.clearInterval(id);
-  }, [islandTimerRunning, islandStopwatchRunning]);
+  }, [hasRunningApp, islandTimerRunning, islandStopwatchRunning]);
 
   // --- Adaptive Day / Night Scheduler ---
   useEffect(() => {
@@ -1750,8 +1884,9 @@ export default function App() {
     }
   }, [adaptiveThemeEnabled, dayStartTime, nightStartTime, dayThemeKey, nightThemeKey, now, themeKey, allThemesMap]);
 
-  // --- Poll REAL Host Telemetry & REAL Running Host OS Windows from Luma Core 1.0 (OS 1.0.4) ---
+  // --- Poll REAL Host Telemetry & REAL Running Host OS Windows from LumaCore 1.3 (Zero-PowerShell Engine) ---
   const pollSystemTelemetry = async () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
     try {
       const res = await fetch('/api/kernel/system');
       if (!res.ok) return;
@@ -1770,6 +1905,7 @@ export default function App() {
   };
 
   const pollHostWindows = async () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
     try {
       const r = await fetch('/api/kernel/windows');
       if (!r.ok) return;
@@ -1797,7 +1933,7 @@ export default function App() {
         pushToast('Окно ОС', d?.detail || `Переключено на ${win?.title || win?.name || `PID ${pid}`}`, 'info');
       }
     } catch {
-      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.2.2.exe', 'info');
+      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.2.3.exe', 'info');
     }
   };
 
@@ -1862,7 +1998,7 @@ export default function App() {
     }, 2600);
   };
 
-  // --- Audio Input/Output Devices Switcher (1.2.2) ---
+  // --- Audio Input/Output Devices Switcher (1.2.3) ---
   const fetchAudioDevices = async (force = false) => {
     try {
       const r = await fetch(`/api/kernel/audio/devices${force ? '?refresh=1' : ''}`);
@@ -1891,11 +2027,11 @@ export default function App() {
         triggerIslandPulse(label, dev.name, 'audio');
       }
     } catch {
-      pushToast('Аудиоустройство', 'Доступно при подключении к ядру LumaCore 1.2', 'info');
+      pushToast('Аудиоустройство', 'Доступно при подключении к ядру LumaCore 1.3', 'info');
     }
   };
 
-  // --- Wireless Peripheral Batteries Loader (1.2.2) ---
+  // --- Wireless Peripheral Batteries Loader (1.2.3) ---
   const fetchWirelessBatteries = async (force = false) => {
     try {
       const r = await fetch(`/api/kernel/wireless/batteries${force ? '?refresh=1' : ''}`);
@@ -1908,7 +2044,7 @@ export default function App() {
     }
   };
 
-  // --- World Keyboard Layout Manager & Switcher (120+ Languages, 1.2.2) ---
+  // --- World Keyboard Layout Manager & Switcher (120+ Languages, 1.2.3) ---
   const fetchKeyboardLayouts = async () => {
     try {
       const r = await fetch('/api/kernel/keyboard/layouts');
@@ -1964,7 +2100,7 @@ export default function App() {
     }
   };
 
-  // --- Version Rollback Releases Loader & Executor (1.2.2) ---
+  // --- Version Rollback Releases Loader & Executor (1.2.3) ---
   const fetchRollbackReleases = async () => {
     setRollbackLoading(true);
     try {
@@ -2007,9 +2143,10 @@ export default function App() {
     void fetchAudioDevices(false);
     void fetchWirelessBatteries(false);
     const id = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       void fetchKeyboardLayouts();
       void fetchWirelessBatteries(false);
-    }, 15000);
+    }, 45000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -2141,7 +2278,7 @@ export default function App() {
         pushToast('Питание', d?.detail || `Выполнено: ${action}`, 'info');
       }
     } catch {
-      pushToast('Питание', 'Доступно при запуске LumaOS_1.2.2.exe', 'info');
+      pushToast('Питание', 'Доступно при запуске LumaOS_1.2.3.exe', 'info');
     }
   };
 
@@ -2174,7 +2311,7 @@ export default function App() {
         pushToast('Режим оболочки Windows', 'Параметры применены к системе', 'success');
       }
     } catch {
-      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.2.2.exe)', 'info');
+      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.2.3.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -2262,7 +2399,7 @@ export default function App() {
         }
       }
     } catch {
-      setGithubUpdateStatus('Нет ответа от службы обновлений LumaCore 1.2');
+      setGithubUpdateStatus('Нет ответа от службы обновлений LumaCore 1.3');
       if (!silent) {
         pushToast('Обновления GitHub', 'Нет ответа от службы обновлений', 'warning');
       }
@@ -2603,7 +2740,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.2.2.exe', 'info');
+      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.2.3.exe', 'info');
     }
   };
 
@@ -2838,13 +2975,6 @@ export default function App() {
     : currentIslandPlayer.artist;
   const displayMediaPlaying = hasLiveOsMedia ? liveSystem!.media.is_playing : mediaPlaying;
 
-  const hrs24 = now.getHours();
-  const displayHrs = timeFormat === '12' ? String(hrs24 % 12 || 12).padStart(2, '0') : String(hrs24).padStart(2, '0');
-  const displayMins = String(now.getMinutes()).padStart(2, '0');
-  const displaySecs = String(now.getSeconds()).padStart(2, '0');
-  const colon = clockBlinkColon && now.getSeconds() % 2 === 1 ? ' ' : ':';
-  const dateShort = now.toLocaleDateString(locale, { weekday: 'short', day: '2-digit', month: '2-digit' });
-
   // Harmonious Theme-Adaptive Surface Tokens (Cohesive across ALL 8 themes!)
   const isDark = currentTheme.isDark;
   const isPixel = designStyle === 'pixelbook';
@@ -2911,11 +3041,26 @@ export default function App() {
     ...Object.values(windows).map((w) => (w.open && !w.minimized && (w.desktop ?? 1) === activeDesktop ? w.z : 0))
   );
 
+  // Auto-Hide Taskbar state (keeps taskbar visible while hovered or any taskbar menu/popover is open)
+  const isTaskbarShown =
+    !taskbarAutoHide ||
+    taskbarHoverOpen ||
+    resizingTaskbar ||
+    startMenuOpen ||
+    controlCenterOpen ||
+    taskListOpen ||
+    sysFolderOpen ||
+    kbdPopoverOpen ||
+    Boolean(taskbarCtxMenu) ||
+    Boolean(taskbarAppMenuId) ||
+    taskbarHostWinPid !== null;
+  const effectiveTaskbarSizePx = taskbarAutoHide ? 0 : taskbarSizePx;
+
   const handleTaskbarContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const menuW = 248;
-    const menuH = 268;
+    const menuH = 304;
     const x = Math.min(e.clientX, window.innerWidth - menuW - 12);
     const y = Math.min(e.clientY, window.innerHeight - menuH - 12);
     setTaskbarCtxMenu({ x: Math.max(12, x), y: Math.max(12, y) });
@@ -2931,10 +3076,10 @@ export default function App() {
   // Smart Island vertical placement so it never overlaps top or bottom taskbar
   const islandAnchorCls =
     islandPosition === 'bottom'
-      ? taskbarPosition === 'bottom'
+      ? taskbarPosition === 'bottom' && isTaskbarShown
         ? 'bottom-16'
         : 'bottom-3'
-      : taskbarPosition === 'top'
+      : taskbarPosition === 'top' && isTaskbarShown
       ? 'top-16'
       : 'top-2.5';
 
@@ -3034,7 +3179,7 @@ export default function App() {
           })
         }
         locale={locale}
-        taskbarSizePx={taskbarSizePx}
+        taskbarSizePx={effectiveTaskbarSizePx}
         wallpaperImageUrl={wallpaperImageUrl}
         wallpaperBlur={wallpaperBlur}
         wallpaperDim={wallpaperDim}
@@ -3212,7 +3357,7 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
-          taskbarSizePx={taskbarSizePx}
+          taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.apps || null}
           zIndex={windows.apps.z}
           initialWidth={1060}
@@ -3645,7 +3790,7 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
-          taskbarSizePx={taskbarSizePx}
+          taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.explorer || null}
           zIndex={windows.explorer.z}
           initialWidth={1080}
@@ -3694,7 +3839,7 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
-          taskbarSizePx={taskbarSizePx}
+          taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.taskmgr || null}
           zIndex={windows.taskmgr.z}
           initialWidth={980}
@@ -3747,7 +3892,7 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
-          taskbarSizePx={taskbarSizePx}
+          taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.terminal || null}
           zIndex={windows.terminal.z}
           initialWidth={840}
@@ -3801,7 +3946,7 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
-          taskbarSizePx={taskbarSizePx}
+          taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.tracker || null}
           zIndex={windows.tracker.z}
           initialWidth={860}
@@ -3893,13 +4038,13 @@ export default function App() {
       {isWinVisible('kernel') && (
         <DexWindow
           id="kernel"
-          title="Ядро LumaCore 1.2 (ПО 1.2.2 Lithium)"
+          title="Ядро LumaCore 1.3 (ПО 1.2.3 Lithium)"
           subtitle={kernelConnected ? 'CONNECTED · 127.0.0.1:49215' : 'STANDALONE'}
           icon={<Code2 className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
-          taskbarSizePx={taskbarSizePx}
+          taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.kernel || null}
           zIndex={windows.kernel.z}
           initialWidth={1040}
@@ -3940,12 +4085,12 @@ export default function App() {
                   Диспетчер задач
                 </button>
                 <a
-                  href="/LumaOS_1.2.2.exe"
-                  download="LumaOS_1.2.2.exe"
+                  href="/LumaOS_1.2.3.exe"
+                  download="LumaOS_1.2.3.exe"
                   className="px-3.5 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  LumaOS_1.2.2.exe
+                  LumaOS_1.2.3.exe
                 </a>
               </div>
             </div>
@@ -3959,7 +4104,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 1.2`,
+                        sub: `${ramLoad}% занято · LumaCore 1.3`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -3985,8 +4130,8 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.2.2 (Lithium)'],
-                      ['Версия Ядра', '1.0 (LumaCore)'],
+                      ['Версия ПО', '1.2.3 (Lithium)'],
+                      ['Версия Ядра', '1.3 (LumaCore)'],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
                       ['LumaGuard', `AES-256 #${cryptoKeyVersion}`],
                       ['Окна ОС', String(hostWindows.length)],
@@ -4045,8 +4190,8 @@ export default function App() {
                       {JSON.stringify(
                         lumaRpcLiveData || {
                           kernel: 'LumaCore',
-                          kernel_engine_version: '1.0',
-                          software_version: '1.2.2 (Lithium)',
+                          kernel_engine_version: '1.3',
+                          software_version: '1.2.3 (Lithium)',
                           ipc: 'tcp://127.0.0.1:49215',
                           real_telemetry: Boolean(liveSystem?.real_telemetry),
                         },
@@ -4180,12 +4325,12 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.2.2 (Lithium)"
+          subtitle="Luma OS 1.2.3 (Lithium)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
-          taskbarSizePx={taskbarSizePx}
+          taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.settings || null}
           zIndex={windows.settings.z}
           initialWidth={1060}
@@ -4222,15 +4367,15 @@ export default function App() {
               <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-0.5">
                 {(
                   [
-                    ['kernel_ui', t('tabKernelUI', 'Ядро UI'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.2.2 lithium ядра 1.2 пасхалка kernel'],
-                    ['graphics', 'Графика и Экран', <Monitor className="w-4 h-4 shrink-0" />, 'графика gpu оптимизация адаптация экрана масштаб монитор ноутбук размытие blur тени fps'],
+                    ['kernel_ui', t('tabKernelUI', 'Ядро UI'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.2.3 lithium ядра 1.3 пасхалка kernel'],
+                    ['graphics', 'Графика и Экран', <Monitor className="w-4 h-4 shrink-0" />, 'графика gpu цп оптимизация lumacore 1.3 турбо эко адаптация экрана масштаб монитор ноутбук размытие blur тени fps'],
                     ['security', t('tabSecurity', 'Безопасность и AV'), <ShieldCheck className="w-4 h-4 shrink-0" />, 'безопасность антивирус lumashield 1.3 guard defender карантин eicar исключения вирусы проверка security'],
                     ['ai_settings', t('tabAI', 'ИИ и Нейросети'), <Sparkles className="w-4 h-4 shrink-0" />, 'ии нейросети luma lang code объём кратко баланс подробно verbosity кодер языковая отключить автономный голос ai'],
                     ['battery', t('tabBattery', 'Батарея и экран'), <BatteryCharging className="w-4 h-4 shrink-0" />, 'батарея акб беспроводные мышь клавиатура наушники циклы зарядки график разряда здоровье экранное время battery'],
                     ['language', t('tabLanguage', 'Язык и клавиатура'), <Languages className="w-4 h-4 shrink-0" />, 'язык клавиатура раскладка keyboard layout 120 стран мира language english romanian polish turkish arabic korean регион'],
                     ['shell_mode', t('tabShellMode', 'Оболочка Windows'), <Monitor className="w-4 h-4 shrink-0" />, 'оболочка windows полный экран fullscreen автозапуск autostart поверх виндовс скрыть панель задач chrome'],
                     ['appearance', t('tabThemes', 'Темы и обои'), <Sliders className="w-4 h-4 shrink-0" />, 'темы 8 тем акцент шрифт масштаб прозрачность blur размытие скругление анимации стиль nothing pixelbook сетка обои wallpaper бэкап backup'],
-                    ['taskbar', t('tabTaskbar', 'Панель задач'), <LayoutPanelLeft className="w-4 h-4 shrink-0" />, 'панель задач папка luma система док порядок приложений windows chrome steam снизу слева сверху размер высота сжатие taskbar'],
+                    ['taskbar', t('tabTaskbar', 'Панель задач'), <LayoutPanelLeft className="w-4 h-4 shrink-0" />, 'панель задач скрыть автоскрытие наведение auto hide папка luma система док порядок приложений windows chrome steam снизу слева сверху размер высота сжатие taskbar'],
                     ['storage', t('tabStorage', 'Память и Файлы'), <HardDrive className="w-4 h-4 shrink-0" />, 'память озу ram диски накопители проводник скрытые файлы storage disk files'],
                     ['bluetooth', t('tabBluetooth', 'Bluetooth'), <Bluetooth className="w-4 h-4 shrink-0" />, 'bluetooth блютуз беспроводные мышь клавиатура наушники заряд процент адаптер устройства'],
                     ['power', t('tabPower', 'Питание'), <Leaf className="w-4 h-4 shrink-0" />, 'энергосбережение питание батарея яркость производительность сбалансированный сон power battery'],
@@ -4242,7 +4387,7 @@ export default function App() {
                     ['navigation', 'Навигация', <MousePointerClick className="w-4 h-4 shrink-0" />, 'навигация пкм назад горячие клавиши alt+r ctrl+k alt+w spotlight мультизадачность'],
                     ['plugins', 'Окна и Плагины', <LayoutGrid className="w-4 h-4 shrink-0" />, 'окна плагины api 2.0 колонки сетка расширения'],
                     ['updater', t('tabUpdater', 'Обновления и Откат'), <Stethoscope className="w-4 h-4 shrink-0" />, 'обновления откат версии rollback downgrade github ota ежедневная проверка патч прогресс бар новая версия диагностика'],
-                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.2.2 lithium история изменений changelog exe скачать'],
+                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.2.3 lithium история изменений changelog exe скачать'],
                   ] as [SettingsTabId, string, React.ReactNode, string][]
                 )
                   .filter(([, label, , keywords]) => {
@@ -4285,9 +4430,49 @@ export default function App() {
                 />
               )}
 
-              {/* GRAPHICS, GPU OPTIMIZATION & ADAPTIVE DISPLAY SCALING (1.2.2 LITHIUM) */}
+              {/* GRAPHICS, GPU OPTIMIZATION & ADAPTIVE DISPLAY SCALING (1.2.3 LITHIUM · LUMACORE 1.3) */}
               {settingsTab === 'graphics' && (
                 <div className="space-y-4 text-xs">
+                  {/* 0. LumaCore 1.3 Zero-PowerShell & GPU Engine Banner */}
+                  <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-bold flex items-center gap-2">
+                          <Zap className="w-4 h-4 text-emerald-400" />
+                          LumaCore 1.3 · Колоссальная оптимизация ЦП и GPU
+                        </div>
+                        <div className={`mt-0.5 ${mutedCls}`}>
+                          Прямые системные вызовы Win32 без фоновых PowerShell-процессов, 0% GPU при сворачивании и изолированный рендер интерфейса
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          applyGpuProfile('performance');
+                          setGlassIntensity('light');
+                          pushToast('LumaCore 1.3', 'Включён режим максимальной экономии ЦП и GPU', 'success');
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        Турбо-Эко (1 клик)
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono text-[10px]">
+                      <div className={`p-2.5 rounded-xl border ${btnCls}`}>
+                        <div className="font-bold text-emerald-400">Zero-PowerShell Win32</div>
+                        <div className={mutedCls}>Процессы, окна, сеть, буфер обмена напрямую в ядре</div>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border ${btnCls}`}>
+                        <div className="font-bold text-sky-400">0% GPU в фоне</div>
+                        <div className={mutedCls}>Полная заморозка анимаций и опроса при скрытии окна</div>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border ${btnCls}`}>
+                        <div className="font-bold text-purple-400">Memo-рендер UI</div>
+                        <div className={mutedCls}>Изолированные часы и окна, сниженный blur 8–12 px</div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* 1. Adaptive Display Scaling (Laptop <-> Monitor consistency!) */}
                   <div className={`p-4 rounded-2xl border space-y-3.5 ${surfaceCls}`}>
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -4947,7 +5132,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.2.2.exe).
+                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.2.3.exe).
                   </div>
                 </div>
               )}
@@ -5044,6 +5229,26 @@ export default function App() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     {[
+                      {
+                        label: 'Автоматически скрывать панель задач',
+                        sub: 'Скрывает панель и освобождает 100% экрана; плавно появляется при наведении курсора на край экрана',
+                        active: taskbarAutoHide,
+                        toggle: () => {
+                          setTaskbarAutoHide((v) => {
+                            const next = !v;
+                            setTaskbarHoverOpen(false);
+                            pushToast(
+                              'Панель задач',
+                              next
+                                ? 'Автоскрытие включено — наведите курсор на край экрана, чтобы показать панель'
+                                : 'Панель задач закреплена на экране',
+                              'info'
+                            );
+                            triggerIslandPulse('Панель задач', next ? 'Автоскрытие ВКЛ' : 'Закреплена', 'info');
+                            return next;
+                          });
+                        },
+                      },
                       {
                         label: 'Сжать системные приложения в папку',
                         sub: 'Объединяет Проводник, ИИ, Терминал, Настройки и др. в 1 папку «Luma Система»',
@@ -5152,7 +5357,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Reorderable Open Windows Host Applications Order Editor (1.2.2) */}
+                  {/* Reorderable Open Windows Host Applications Order Editor (1.2.3) */}
                   <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
@@ -5400,14 +5605,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.2.2 (Lithium)',
-                        message: 'Система оповещений Luma OS 1.2.2 (Lithium) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.2.3 (Lithium)',
+                        message: 'Система оповещений Luma OS 1.2.3 (Lithium) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.2.2 (Lithium)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.2.3 (Lithium)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -5419,7 +5624,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.2.2 (Lithium) · LumaCore 1.2</div>
+                      <div className="text-sm font-bold">Luma OS 1.2.3 (Lithium) · LumaCore 1.3</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -6613,7 +6818,7 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* Version Rollback Card (1.2.2) — Safe downgrade to any previous release while keeping all desktop widgets & settings */}
+                  {/* Version Rollback Card (1.2.3) — Safe downgrade to any previous release while keeping all desktop widgets & settings */}
                   <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
@@ -6693,7 +6898,7 @@ export default function App() {
                   <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="text-sm font-bold">Диагностика служб LumaCore 1.2</div>
+                        <div className="text-sm font-bold">Диагностика служб LumaCore 1.3</div>
                         <div className={`text-xs ${mutedCls}`}>{diagnosticsTime}</div>
                       </div>
                       <button
@@ -6709,7 +6914,7 @@ export default function App() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
                       {[
-                        ['Ядро LumaCore 1.2', kernelConnected ? 'ONLINE · 49215' : 'FALLBACK'],
+                        ['Ядро LumaCore 1.3', kernelConnected ? 'ONLINE · 49215' : 'FALLBACK'],
                         ['Ядро LumaShield 1.3', `AES-256-GCM #${cryptoKeyVersion} · 55+ правил + Guard`],
                         ['Телеметрия', `CPU ${cpuLoad}% · RAM ${ramLoad}%`],
                         ['Окна ОС на панели', `${hostWindows.length} активн.`],
@@ -6724,23 +6929,23 @@ export default function App() {
                 </div>
               )}
 
-              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.2.2 LITHIUM) */}
+              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.2.3 LITHIUM) */}
               {settingsTab === 'about' && (
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.2.2 (LITHIUM)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.2.3 (LITHIUM)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.2 · LumaShield 1.3 · Plugin API v2.0
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.3 · LumaShield 1.3 · Plugin API v2.0
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.2.2.exe"
-                      download="LumaOS_1.2.2.exe"
+                      href="/LumaOS_1.2.3.exe"
+                      download="LumaOS_1.2.3.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.2.2.exe
+                      LumaOS_1.2.3.exe
                     </a>
                   </div>
 
@@ -6777,14 +6982,14 @@ export default function App() {
                       <div
                         key={ver}
                         className={`p-4 rounded-xl border space-y-2 ${
-                          ver === '1.2.2 (Lithium)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
+                          ver === '1.2.3 (Lithium)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-mono font-bold">
                             Версия {ver}
                           </span>
-                          {ver === '1.2.2 (Lithium)' && <StatusPill active={true} />}
+                          {ver === '1.2.3 (Lithium)' && <StatusPill active={true} />}
                         </div>
                         <ul className="space-y-1 text-xs leading-relaxed">
                           {items.map((line, i) => (
@@ -6810,7 +7015,7 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
-          taskbarSizePx={taskbarSizePx}
+          taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.plugins || null}
           zIndex={windows.plugins.z}
           initialWidth={920}
@@ -7036,7 +7241,7 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
-          taskbarSizePx={taskbarSizePx}
+          taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.island || null}
           zIndex={windows.island.z}
           initialWidth={780}
@@ -7467,7 +7672,7 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
-          taskbarSizePx={taskbarSizePx}
+          taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.spaces || null}
           zIndex={windows.spaces.z}
           initialWidth={600}
@@ -7519,7 +7724,7 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
-          taskbarSizePx={taskbarSizePx}
+          taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.ai || null}
           zIndex={windows.ai.z}
           initialWidth={940}
@@ -7557,7 +7762,7 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
-          taskbarSizePx={taskbarSizePx}
+          taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.utilities || null}
           zIndex={windows.utilities.z}
           initialWidth={960}
@@ -7593,7 +7798,7 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
-          taskbarSizePx={taskbarSizePx}
+          taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.calculator || null}
           zIndex={windows.calculator.z}
           initialWidth={460}
@@ -7608,13 +7813,39 @@ export default function App() {
         </DexWindow>
       )}
 
-      {/* ==================== LAYER 4: ADAPTIVE RESIZABLE OS TASKBAR (100+ APP SMART COMPRESSION) ==================== */}
+      {/* ==================== LAYER 4: ADAPTIVE RESIZABLE OS TASKBAR (100+ APP SMART COMPRESSION + AUTO-HIDE) ==================== */}
+      {/* Invisible edge hover sensor + subtle handle indicator when taskbar is auto-hidden */}
+      {taskbarAutoHide && !isTaskbarShown && (
+        <div
+          onMouseEnter={openTaskbarHover}
+          onClick={openTaskbarHover}
+          title="Наведите курсор, чтобы показать панель задач"
+          className={`fixed z-[55] flex items-center justify-center cursor-pointer transition-opacity ${
+            taskbarPosition === 'left'
+              ? 'left-0 inset-y-0 w-3 justify-start pl-0.5'
+              : taskbarPosition === 'top'
+              ? 'top-0 inset-x-0 h-3 items-start pt-0.5'
+              : 'bottom-0 inset-x-0 h-3 items-end pb-0.5'
+          }`}
+        >
+          <span
+            className={`rounded-full transition-all ${
+              taskbarPosition === 'left' ? 'w-1 h-24' : 'w-24 h-1'
+            } ${isDark ? 'bg-white/30 hover:bg-[var(--luma-accent)]' : 'bg-zinc-900/25 hover:bg-[var(--luma-accent)]'}`}
+          />
+        </div>
+      )}
+
       {taskbarPosition === 'left' ? (
         <aside
           onClick={(e) => e.stopPropagation()}
           onContextMenu={handleTaskbarContextMenu}
+          onMouseEnter={openTaskbarHover}
+          onMouseLeave={scheduleTaskbarHoverClose}
           style={{ width: `${taskbarSizePx}px` }}
-          className={`fixed left-0 inset-y-0 z-50 border-r flex flex-col items-center justify-between py-2.5 gap-2 ${taskbarGlassCls}`}
+          className={`fixed left-0 inset-y-0 z-50 border-r flex flex-col items-center justify-between py-2.5 gap-2 transition-transform duration-200 ease-out ${
+            isTaskbarShown ? 'translate-x-0' : '-translate-x-full pointer-events-none'
+          } ${taskbarGlassCls}`}
         >
           {/* Live Drag-Resize Right Edge Handle */}
           <div
@@ -7951,10 +8182,16 @@ export default function App() {
                 isDark ? 'hover:bg-white/[0.08]' : 'hover:bg-zinc-900/[0.08]'
               }`}
             >
-              <span className="text-[11px] font-bold tabular-nums">{displayHrs}</span>
-              <span className="text-[11px] font-bold tabular-nums" style={{ color: clockAccentColor }}>
-                {displayMins}
-              </span>
+              <LumaTaskbarClock
+                orientation="vertical"
+                timeFormat={timeFormat}
+                showSeconds={showSeconds}
+                showDate={showDate}
+                clockAccentColor={clockAccentColor}
+                clockBlinkColon={clockBlinkColon}
+                locale={locale}
+                mutedCls={mutedCls}
+              />
             </button>
 
             <button
@@ -7970,8 +8207,10 @@ export default function App() {
         <footer
           onClick={(e) => e.stopPropagation()}
           onContextMenu={handleTaskbarContextMenu}
+          onMouseEnter={openTaskbarHover}
+          onMouseLeave={scheduleTaskbarHoverClose}
           style={{ height: `${taskbarSizePx}px` }}
-          className={`fixed z-50 flex items-center justify-between px-2.5 gap-2 transition-[background,border-color] ${
+          className={`fixed z-50 flex items-center justify-between px-2.5 gap-2 transition-[transform,background,border-color] duration-200 ease-out ${
             isPixel
               ? taskbarPosition === 'top'
                 ? 'top-2 inset-x-3 rounded-full border shadow-xl'
@@ -7979,6 +8218,12 @@ export default function App() {
               : taskbarPosition === 'top'
               ? 'top-0 inset-x-0 border-b'
               : 'bottom-0 inset-x-0 border-t'
+          } ${
+            isTaskbarShown
+              ? 'translate-y-0'
+              : taskbarPosition === 'top'
+              ? '-translate-y-[calc(100%+16px)] pointer-events-none'
+              : 'translate-y-[calc(100%+16px)] pointer-events-none'
           } ${taskbarGlassCls}`}
         >
           {/* Live Drag-Resize Top/Bottom Edge Handle */}
@@ -8005,7 +8250,7 @@ export default function App() {
                 setTaskbarHostWinPid(null);
                 setTaskbarCtxMenu(null);
               }}
-              title={`${t('start', 'Пуск')} (Luma OS 1.2.2)`}
+              title={`${t('start', 'Пуск')} (Luma OS 1.2.3)`}
               className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
                 startMenuOpen
                   ? 'bg-[var(--luma-accent)] text-white'
@@ -8447,7 +8692,7 @@ export default function App() {
               </span>
             </button>
 
-            {/* Taskbar Clock */}
+            {/* Taskbar Clock (Isolated memoized component — 0 App re-renders/min!) */}
             <button
               onClick={() => openWindow('settings', 'clock')}
               title={`Циферблат: ${CLOCK_STYLE_OPTIONS.find((c) => c.id === clockStyle)?.label || clockStyle}`}
@@ -8455,13 +8700,16 @@ export default function App() {
                 isDark ? 'hover:bg-white/[0.07]' : 'hover:bg-zinc-900/[0.07]'
               }`}
             >
-              <span className="text-xs font-bold tabular-nums">
-                {displayHrs}
-                <span style={{ color: clockAccentColor }}>{colon}</span>
-                {displayMins}
-                {showSeconds ? `:${displaySecs}` : ''}
-              </span>
-              {showDate && <span className={`text-[9px] uppercase ${mutedCls}`}>{dateShort}</span>}
+              <LumaTaskbarClock
+                orientation="horizontal"
+                timeFormat={timeFormat}
+                showSeconds={showSeconds}
+                showDate={showDate}
+                clockAccentColor={clockAccentColor}
+                clockBlinkColon={clockBlinkColon}
+                locale={locale}
+                mutedCls={mutedCls}
+              />
             </button>
 
             {/* Far-right Show Desktop Strip */}
@@ -8509,6 +8757,27 @@ export default function App() {
           >
             <LayoutPanelLeft className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
             <span>Настроить панель задач</span>
+          </button>
+          <button
+            onClick={() => {
+              setTaskbarAutoHide((v) => {
+                const next = !v;
+                setTaskbarHoverOpen(false);
+                pushToast(
+                  'Панель задач',
+                  next ? 'Автоскрытие панели задач включено' : 'Панель задач закреплена на экране',
+                  'info'
+                );
+                return next;
+              });
+              setTaskbarCtxMenu(null);
+            }}
+            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left font-semibold cursor-pointer ${
+              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+            }`}
+          >
+            <Eye className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+            <span>{taskbarAutoHide ? 'Закрепить панель задач' : 'Автоскрытие при простое'}</span>
           </button>
           <button
             onClick={() => {
@@ -8563,7 +8832,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== COLLAPSED "LUMA СИСТЕМА" TASKBAR FOLDER POPOVER (1.2.2) ==================== */}
+      {/* ==================== COLLAPSED "LUMA СИСТЕМА" TASKBAR FOLDER POPOVER (1.2.3) ==================== */}
       {sysFolderOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
@@ -8641,7 +8910,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== KEYBOARD LAYOUT & 120+ WORLD LANGUAGES POPOVER (1.2.2) ==================== */}
+      {/* ==================== KEYBOARD LAYOUT & 120+ WORLD LANGUAGES POPOVER (1.2.3) ==================== */}
       {kbdPopoverOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
@@ -9143,8 +9412,8 @@ export default function App() {
           {!startSearch.trim() && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                <span className={mutedCls}>Luma OS 1.2.2 (Lithium)</span>
-                <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.2</span>
+                <span className={mutedCls}>Luma OS 1.2.3 (Lithium)</span>
+                <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.3</span>
               </div>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
                 {taskbarApps.map((m) => (
@@ -9248,7 +9517,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.2.2 (Lithium)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.2.3 (Lithium)'}
                   </div>
                 </div>
               </div>
@@ -9356,7 +9625,7 @@ export default function App() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.2.2 (LITHIUM)</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.2.3 (LITHIUM)</span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>
               {liveSystem?.location?.city || 'LOCAL'}
             </span>
@@ -9407,7 +9676,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Volume + Real Audio Output & Input Device Switcher (1.2.2) */}
+          {/* Volume + Real Audio Output & Input Device Switcher (1.2.3) */}
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-mono">
               <span className={mutedCls}>ГРОМКОСТЬ</span>
@@ -9617,8 +9886,8 @@ export default function App() {
               </button>
             </div>
             <a
-              href="/LumaOS_1.2.2.exe"
-              download="LumaOS_1.2.2.exe"
+              href="/LumaOS_1.2.3.exe"
+              download="LumaOS_1.2.3.exe"
               className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-mono font-bold inline-flex items-center gap-1 ${btnCls}`}
             >
               <Download className="w-3 h-3 text-[var(--luma-accent)]" />
@@ -10003,7 +10272,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.2.2 (Lithium) · Alt+W — Обзор · 8-сторонний ресайз и Snap Layouts
+                  Luma OS 1.2.3 (Lithium) · Alt+W — Обзор · 8-сторонний ресайз и Snap Layouts
                 </div>
               </div>
             </div>
@@ -10364,7 +10633,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== VERSION ROLLBACK CONFIRMATION MODAL (1.2.2) ==================== */}
+      {/* ==================== VERSION ROLLBACK CONFIRMATION MODAL (1.2.3) ==================== */}
       {rollbackConfirm && (
         <div
           onClick={() => setRollbackConfirm(null)}
@@ -10405,7 +10674,7 @@ export default function App() {
             <div className={`p-3 rounded-xl border border-emerald-500/35 bg-emerald-500/10 text-[11px] flex items-start gap-2`}>
               <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
               <span>
-                Текущая сборка <b>1.2.2</b> будет автоматически сохранена в <code>%APPDATA%/LumaOS/versions</code>, а все ваши виджеты, папки, обои и настройки останутся на месте.
+                Текущая сборка <b>1.2.3</b> будет автоматически сохранена в <code>%APPDATA%/LumaOS/versions</code>, а все ваши виджеты, папки, обои и настройки останутся на месте.
               </span>
             </div>
 
@@ -10450,7 +10719,7 @@ export default function App() {
 
             <div className="space-y-1">
               <div className="text-lg font-extrabold tracking-tight">
-                Установка Luma OS {updateProgress.target_version || '1.2.2'}
+                Установка Luma OS {updateProgress.target_version || '1.2.3'}
               </div>
               <div className="text-xs font-mono text-zinc-300">
                 {updateProgress.message || 'Подготовка обновления...'}

@@ -407,7 +407,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.2.2 (Lithium)",
+			Title:  "Luma OS 1.2.3 (Lithium)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,
@@ -432,7 +432,8 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 
 	w.SetSize(1440, 900, webview2.HintNone)
 
-	// Inject early capture-phase Alt+R / Ctrl+K interceptor BEFORE React loads so WebView2 never swallows Alt+R into Win32 menu focus!
+	// Inject early capture-phase Alt+R interceptor BEFORE React loads so WebView2 never swallows Alt+R into Win32 menu focus,
+	// using stopImmediatePropagation to prevent double-toggle with React's document keydown listener!
 	w.Init(`
 		(function() {
 			if (window.__lumaHotkeysInit) return;
@@ -442,6 +443,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 				if (e.altKey && !e.ctrlKey && !e.metaKey && isR) {
 					e.preventDefault();
 					e.stopPropagation();
+					if (e.stopImmediatePropagation) e.stopImmediatePropagation();
 					window.dispatchEvent(new CustomEvent('luma-toggle-spotlight'));
 				}
 			}, true);
@@ -472,8 +474,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 	return true
 }
 
-// startWin32AltRListener polls physical Alt+R key press while Luma OS owns the foreground window,
-// avoiding global RegisterHotKey conflicts with NVIDIA/AMD overlays while guaranteeing Alt+R works 100% in Luma OS!
+// startWin32AltRListener (LumaCore 1.3): Adaptive ultra-low-CPU Alt+R hook (checks foreground first, sleeps 110ms when Luma OS is in background).
 func startWin32AltRListener(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan struct{}) {
 	procGetAsyncKeyState := user32WinDLL.NewProc("GetAsyncKeyState")
 	procGetFg := user32WinDLL.NewProc("GetForegroundWindow")
@@ -483,32 +484,37 @@ func startWin32AltRListener(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan
 	const vkCtrl = 0x11
 
 	wasPressed := false
-	ticker := time.NewTicker(45 * time.Millisecond)
-	defer ticker.Stop()
+	timer := time.NewTimer(60 * time.Millisecond)
+	defer timer.Stop()
 
 	for {
 		select {
 		case <-stopCh:
 			return
-		case <-ticker.C:
+		case <-timer.C:
+			fg, _, _ := procGetFg.Call()
+			isOurs := fg == lumaHwnd
+			if !isOurs && fg != 0 && lumaHwnd != 0 {
+				child, _, _ := procIsChild.Call(lumaHwnd, fg)
+				isOurs = child != 0
+			}
+			if !isOurs {
+				wasPressed = false
+				timer.Reset(120 * time.Millisecond)
+				continue
+			}
+
 			altState, _, _ := procGetAsyncKeyState.Call(vkMenu)
 			rState, _, _ := procGetAsyncKeyState.Call(vkR)
 			ctrlState, _, _ := procGetAsyncKeyState.Call(vkCtrl)
 			pressed := (altState&0x8000) != 0 && (rState&0x8000) != 0 && (ctrlState&0x8000) == 0
 			if pressed && !wasPressed {
-				fg, _, _ := procGetFg.Call()
-				isOurs := fg == lumaHwnd
-				if !isOurs && fg != 0 && lumaHwnd != 0 {
-					child, _, _ := procIsChild.Call(lumaHwnd, fg)
-					isOurs = child != 0
-				}
-				if isOurs {
-					wv.Dispatch(func() {
-						wv.Eval(`window.dispatchEvent(new CustomEvent('luma-toggle-spotlight'));`)
-					})
-				}
+				wv.Dispatch(func() {
+					wv.Eval(`window.dispatchEvent(new CustomEvent('luma-toggle-spotlight'));`)
+				})
 			}
 			wasPressed = pressed
+			timer.Reset(55 * time.Millisecond)
 		}
 	}
 }

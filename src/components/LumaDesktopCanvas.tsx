@@ -274,7 +274,7 @@ export interface LumaDesktopCanvasProps {
   onActivityPulse?: (title: string, detail?: string, icon?: string) => void;
 }
 
-export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
+export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
   isDark,
   themeBgGradient,
   designStyle,
@@ -746,16 +746,28 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
     }
   };
 
-  // Single stable 1s tick
+  // Adaptive low-CPU clock tick: 1s ONLY when showSeconds or Pomodoro is active; otherwise 15s (zero re-renders when hidden!)
   useEffect(() => {
+    const tickMs = showSeconds ? 1000 : 15000;
     const id = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       setNow(new Date());
-      if (pomoRunningRef.current) {
+      if (pomoRunningRef.current && showSeconds) {
         setPomoSec((s) => (s > 0 ? s - 1 : 0));
       }
+    }, tickMs);
+    return () => window.clearInterval(id);
+  }, [showSeconds]);
+
+  // Dedicated lightweight Pomodoro 1s tick only when showSeconds is false AND Pomodoro is running
+  useEffect(() => {
+    if (showSeconds || !pomoRunning) return;
+    const id = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setPomoSec((s) => (s > 0 ? s - 1 : 0));
     }, 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [showSeconds, pomoRunning]);
 
   // Live Open-Meteo weather
   const fetchWeatherForCoords = async (lat: number, lon: number, city: string, country: string) => {
@@ -4912,4 +4924,5 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
       )}
     </div>
   );
-};
+});
+

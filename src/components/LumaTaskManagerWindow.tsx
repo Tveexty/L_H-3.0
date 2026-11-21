@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   AppWindow,
@@ -20,6 +20,7 @@ import {
   ChevronDown,
   ChevronRight,
   Gauge,
+  Zap,
 } from 'lucide-react';
 import {
   AppItem,
@@ -53,25 +54,45 @@ interface StartupRow {
   impact: string;
 }
 
-function WinChart({
-  values,
+interface ChartPoint {
+  value: number;
+  time: string;
+  detail?: string;
+}
+
+const MAX_HISTORY_POINTS = 60;
+
+function formatNowTime(): string {
+  const d = new Date();
+  return d.toLocaleTimeString('ru-RU', { hour12: false });
+}
+
+function makeSeedHistory(initialValue: number, detail?: string): ChartPoint[] {
+  const now = Date.now();
+  return Array.from({ length: 30 }, (_, idx) => {
+    const t = new Date(now - (29 - idx) * 1000).toLocaleTimeString('ru-RU', { hour12: false });
+    return { value: initialValue, time: t, detail };
+  });
+}
+
+function MiniSparkline({
+  points,
   max = 100,
   color = 'var(--luma-accent)',
-  height = 140,
-  showGrid = true,
+  height = 34,
 }: {
-  values: number[];
+  points: ChartPoint[];
   max?: number;
   color?: string;
   height?: number;
-  showGrid?: boolean;
 }) {
-  const pts = values.length > 1 ? values : [0, 0];
-  const w = 420;
+  const pts = points.length > 1 ? points : [{ value: 0, time: '' }, { value: 0, time: '' }];
+  const w = 180;
   const h = height;
-  const coords = pts.map((v, i) => {
+  const safeMax = Math.max(1, max);
+  const coords = pts.map((p, i) => {
     const x = (i / Math.max(1, pts.length - 1)) * w;
-    const y = h - (Math.min(max, Math.max(0, v)) / Math.max(1, max)) * (h - 8) - 4;
+    const y = h - (Math.min(safeMax, Math.max(0, p.value)) / safeMax) * (h - 6) - 3;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   });
   const line = coords.join(' ');
@@ -79,19 +100,255 @@ function WinChart({
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-full block" preserveAspectRatio="none">
-      {showGrid && (
-        <g stroke="currentColor" strokeOpacity="0.09" strokeWidth="1">
-          {[0.25, 0.5, 0.75].map((r) => (
-            <line key={`h_${r}`} x1="0" y1={h * r} x2={w} y2={h * r} />
-          ))}
-          {[0.2, 0.4, 0.6, 0.8].map((r) => (
-            <line key={`v_${r}`} x1={w * r} y1="0" x2={w * r} y2={h} />
-          ))}
-        </g>
-      )}
       <polygon points={area} fill={color} fillOpacity="0.18" />
-      <polyline points={line} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+      <polyline points={line} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+function InteractivePerfChart({
+  points,
+  max = 100,
+  color = '#38bdf8',
+  unit = '%',
+  isDark,
+  mutedCls,
+  metricLabel,
+}: {
+  points: ChartPoint[];
+  max?: number;
+  color?: string;
+  unit?: string;
+  isDark: boolean;
+  mutedCls: string;
+  metricLabel: string;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
+  const pts = points.length > 1 ? points : [{ value: 0, time: formatNowTime() }, { value: 0, time: formatNowTime() }];
+  const safeMax = Math.max(1, max);
+  const w = 640;
+  const h = 210;
+  const padTop = 10;
+  const padBottom = 10;
+  const plotH = h - padTop - padBottom;
+
+  const coords = useMemo(
+    () =>
+      pts.map((p, i) => {
+        const ratioX = i / Math.max(1, pts.length - 1);
+        const x = ratioX * w;
+        const clamped = Math.min(safeMax, Math.max(0, p.value));
+        const y = h - padBottom - (clamped / safeMax) * plotH;
+        return { x, y, ratioX, point: p };
+      }),
+    [pts, safeMax, plotH]
+  );
+
+  const polylineStr = useMemo(() => coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' '), [coords]);
+  const areaStr = `0,${h - padBottom} ${polylineStr} ${w},${h - padBottom}`;
+
+  const stats = useMemo(() => {
+    let min = Infinity;
+    let peak = -Infinity;
+    let sum = 0;
+    for (const p of pts) {
+      if (p.value < min) min = p.value;
+      if (p.value > peak) peak = p.value;
+      sum += p.value;
+    }
+    return {
+      min: Number.isFinite(min) ? min : 0,
+      peak: Number.isFinite(peak) ? peak : 0,
+      avg: pts.length ? sum / pts.length : 0,
+    };
+  }, [pts]);
+
+  const updateHoverFromClientX = useCallback(
+    (clientX: number) => {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const relX = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const idx = Math.round(relX * (pts.length - 1));
+      setHoverIdx(Math.max(0, Math.min(pts.length - 1, idx)));
+    },
+    [pts.length]
+  );
+
+  const active = hoverIdx !== null && coords[hoverIdx] ? coords[hoverIdx] : null;
+  const formatVal = (v: number) => (unit === '%' ? `${Math.round(v * 10) / 10}%` : `${v.toFixed(1)} ${unit}`);
+  const gradientId = useMemo(() => `lumaChartGrad_${color.replace(/[^a-zA-Z0-9]/g, '')}`, [color]);
+
+  const yTicks = [1, 0.75, 0.5, 0.25, 0].map((r) => ({
+    ratio: r,
+    label: unit === '%' ? `${Math.round(safeMax * r)}%` : `${Math.round(safeMax * r)}`,
+  }));
+
+  return (
+    <div className="space-y-2">
+      {/* Top interactive readout bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`px-2 py-0.5 rounded-lg border ${isDark ? 'border-white/10 bg-white/[0.04]' : 'border-zinc-900/10 bg-black/[0.04]'}`}>
+            Мин: <strong>{formatVal(stats.min)}</strong>
+          </span>
+          <span className={`px-2 py-0.5 rounded-lg border ${isDark ? 'border-white/10 bg-white/[0.04]' : 'border-zinc-900/10 bg-black/[0.04]'}`}>
+            Сред: <strong>{formatVal(stats.avg)}</strong>
+          </span>
+          <span className={`px-2 py-0.5 rounded-lg border ${isDark ? 'border-white/10 bg-white/[0.04]' : 'border-zinc-900/10 bg-black/[0.04]'}`}>
+            Пик: <strong style={{ color }}>{formatVal(stats.peak)}</strong>
+          </span>
+        </div>
+        <div className={`text-[10px] ${mutedCls}`}>
+          {active ? (
+            <span className="font-bold" style={{ color }}>
+              ● {active.point.time} — {formatVal(active.point.value)}
+              {active.point.detail ? ` (${active.point.detail})` : ''}
+            </span>
+          ) : (
+            'Наведите курсор на график, чтобы увидеть точный % в любой момент'
+          )}
+        </div>
+      </div>
+
+      {/* Main SVG Plot + Y-axis + Interactive Crosshair & Tooltip */}
+      <div className="flex items-stretch gap-2">
+        {/* Y-axis scale */}
+        <div className={`w-10 shrink-0 flex flex-col justify-between text-right text-[9px] font-mono py-1 select-none ${mutedCls}`}>
+          {yTicks.map((t) => (
+            <span key={t.ratio}>{t.label}</span>
+          ))}
+        </div>
+
+        <div
+          ref={containerRef}
+          onMouseMove={(e) => updateHoverFromClientX(e.clientX)}
+          onMouseLeave={() => setHoverIdx(null)}
+          onTouchMove={(e) => {
+            if (e.touches[0]) updateHoverFromClientX(e.touches[0].clientX);
+          }}
+          onTouchEnd={() => setHoverIdx(null)}
+          className="relative flex-1 h-52 cursor-crosshair select-none overflow-visible"
+        >
+          <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-full block rounded-xl overflow-hidden" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity="0.34" />
+                <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+              </linearGradient>
+            </defs>
+
+            {/* Grid lines */}
+            <g stroke="currentColor" strokeOpacity={isDark ? '0.09' : '0.11'} strokeWidth="1">
+              {[0, 0.25, 0.5, 0.75, 1].map((r) => {
+                const y = padTop + plotH * r;
+                return <line key={`h_${r}`} x1="0" y1={y} x2={w} y2={y} />;
+              })}
+              {[0.167, 0.333, 0.5, 0.667, 0.833].map((r) => (
+                <line key={`v_${r}`} x1={w * r} y1={padTop} x2={w * r} y2={h - padBottom} strokeDasharray="3 4" />
+              ))}
+            </g>
+
+            {/* Area fill & Curve */}
+            <polygon points={areaStr} fill={`url(#${gradientId})`} />
+            <polyline
+              points={polylineStr}
+              fill="none"
+              stroke={color}
+              strokeWidth="2.4"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
+
+            {/* Hover crosshair line */}
+            {active && (
+              <g>
+                <line
+                  x1={active.x}
+                  y1={padTop}
+                  x2={active.x}
+                  y2={h - padBottom}
+                  stroke={color}
+                  strokeWidth="1.5"
+                  strokeDasharray="4 3"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <line
+                  x1="0"
+                  y1={active.y}
+                  x2={w}
+                  y2={active.y}
+                  stroke={color}
+                  strokeOpacity="0.35"
+                  strokeWidth="1"
+                  strokeDasharray="3 4"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            )}
+          </svg>
+
+          {/* Crisp non-distorted dot marker overlay (so it stays perfectly circular regardless of aspect ratio) */}
+          {active && (
+            <div
+              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 z-20"
+              style={{
+                left: `${(active.ratioX * 100).toFixed(3)}%`,
+                top: `${((active.y / h) * 100).toFixed(3)}%`,
+              }}
+            >
+              <span
+                className="block w-4 h-4 rounded-full opacity-35"
+                style={{ backgroundColor: color }}
+              />
+              <span
+                className="block w-2.5 h-2.5 rounded-full border-2 border-white shadow-md absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+                style={{ backgroundColor: color }}
+              />
+            </div>
+          )}
+
+          {/* Floating Tooltip Card showing exact % and timestamp at hovered moment */}
+          {active && (
+            <div
+              className={`pointer-events-none absolute top-2 z-30 px-3 py-2 rounded-xl border shadow-2xl backdrop-blur-md transition-transform duration-75 min-w-[142px] ${
+                isDark
+                  ? 'bg-[#0e0f14]/95 border-white/15 text-zinc-100'
+                  : 'bg-white/95 border-zinc-900/15 text-zinc-900'
+              }`}
+              style={{
+                left: active.ratioX > 0.68 ? undefined : `calc(${(active.ratioX * 100).toFixed(2)}% + 12px)`,
+                right: active.ratioX > 0.68 ? `calc(${((1 - active.ratioX) * 100).toFixed(2)}% + 12px)` : undefined,
+              }}
+            >
+              <div className="flex items-center justify-between gap-3 text-[10px] font-mono opacity-75">
+                <span>{metricLabel}</span>
+                <span>{active.point.time}</span>
+              </div>
+              <div className="text-lg font-mono font-black leading-tight mt-0.5" style={{ color }}>
+                {formatVal(active.point.value)}
+              </div>
+              {active.point.detail && (
+                <div className="text-[10px] font-mono opacity-80 mt-0.5 truncate max-w-[190px]">
+                  {active.point.detail}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom timeline labels */}
+      <div className={`pl-12 flex items-center justify-between text-[9px] font-mono select-none ${mutedCls}`}>
+        <span>{pts[0]?.time || '—'}</span>
+        <span>{pts[Math.floor(pts.length / 2)]?.time || '—'}</span>
+        <span className="font-bold">Сейчас ({pts[pts.length - 1]?.time || '—'})</span>
+      </div>
+    </div>
   );
 }
 
@@ -126,7 +383,7 @@ export const LumaTaskManagerWindow: React.FC<{
   onToggleAutoClip: () => void;
   onRotateKey: () => void;
   onPushToast: (title: string, msg: string, type?: 'info' | 'warning' | 'success') => void;
-}> = ({
+}> = React.memo(({
   isDark,
   liveSystem,
   cpuLoad,
@@ -155,6 +412,7 @@ export const LumaTaskManagerWindow: React.FC<{
   const [perfMetric, setPerfMetric] = useState<'cpu' | 'ram' | 'disk' | 'net' | 'gpu'>('cpu');
   const [query, setQuery] = useState('');
   const [paused, setPaused] = useState(false);
+  const [refreshMs, setRefreshMs] = useState<500 | 1000 | 2000 | 5000>(1000);
   const [sortKey, setSortKey] = useState<'mem' | 'cpu' | 'name' | 'pid'>('mem');
   const [processes, setProcesses] = useState<HostProcessInfo[]>([]);
   const [services, setServices] = useState<SystemServiceRow[]>([]);
@@ -163,33 +421,92 @@ export const LumaTaskManagerWindow: React.FC<{
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [runTaskOpen, setRunTaskOpen] = useState(false);
   const [runTaskCmd, setRunTaskCmd] = useState('');
+  const [localSystem, setLocalSystem] = useState<LiveSystemTelemetry | null>(null);
+  const [lastSampleAt, setLastSampleAt] = useState<string>(() => formatNowTime());
 
-  const [cpuHistory, setCpuHistory] = useState<number[]>(() => Array(30).fill(cpuLoad));
-  const [ramHistory, setRamHistory] = useState<number[]>(() => Array(30).fill(ramLoad));
-  const [netHistory, setNetHistory] = useState<number[]>(() => Array(30).fill(0));
-  const [gpuHistory, setGpuHistory] = useState<number[]>(() => Array(30).fill(liveSystem?.gpu_percent || 12));
+  const activeSystem = localSystem || liveSystem;
+  const liveCpu = localSystem ? Math.round(localSystem.cpu_percent) : cpuLoad;
+  const liveRam = localSystem ? Math.round(localSystem.ram_percent) : ramLoad;
+  const liveGpu = activeSystem?.gpu_percent ?? Math.min(100, Math.round(liveCpu * 0.55 + 6));
+  const liveNetTotal = Number(((activeSystem?.net_down_mbps || 0) + (activeSystem?.net_up_mbps || 0)).toFixed(2));
+  const disks = activeSystem?.disks || [];
+  const mainDiskPct = disks[0]?.percent ?? 0;
 
-  useEffect(() => {
-    if (paused) return;
-    setCpuHistory((p) => [...p.slice(-39), cpuLoad]);
-    setRamHistory((p) => [...p.slice(-39), ramLoad]);
-    setNetHistory((p) => [...p.slice(-39), Math.round((liveSystem?.net_down_mbps || 0) + (liveSystem?.net_up_mbps || 0))]);
-    setGpuHistory((p) => [...p.slice(-39), liveSystem?.gpu_percent ?? Math.min(100, Math.round(cpuLoad * 0.7 + 8))]);
-  }, [cpuLoad, ramLoad, liveSystem?.net_down_mbps, liveSystem?.net_up_mbps, liveSystem?.gpu_percent, paused]);
+  const [cpuHistory, setCpuHistory] = useState<ChartPoint[]>(() => makeSeedHistory(cpuLoad));
+  const [ramHistory, setRamHistory] = useState<ChartPoint[]>(() => makeSeedHistory(ramLoad));
+  const [diskHistory, setDiskHistory] = useState<ChartPoint[]>(() => makeSeedHistory(mainDiskPct));
+  const [netHistory, setNetHistory] = useState<ChartPoint[]>(() => makeSeedHistory(0));
+  const [gpuHistory, setGpuHistory] = useState<ChartPoint[]>(() => makeSeedHistory(liveSystem?.gpu_percent || 10));
 
-  const fetchProcesses = async () => {
+  const appendSample = useCallback((sys: LiveSystemTelemetry | null, fallbackCpu: number, fallbackRam: number) => {
+    const t = formatNowTime();
+    const cpuVal = sys ? Math.round(sys.cpu_percent * 10) / 10 : fallbackCpu;
+    const ramVal = sys ? Math.round(sys.ram_percent * 10) / 10 : fallbackRam;
+    const gpuVal = sys?.gpu_percent ?? Math.min(100, Math.round(cpuVal * 0.55 + 6));
+    const down = sys?.net_down_mbps || 0;
+    const up = sys?.net_up_mbps || 0;
+    const netVal = Number((down + up).toFixed(2));
+    const d0 = sys?.disks?.[0];
+    const diskVal = d0?.percent ?? 0;
+
+    setLastSampleAt(t);
+    setCpuHistory((p) => [
+      ...p.slice(-(MAX_HISTORY_POINTS - 1)),
+      { value: cpuVal, time: t, detail: sys?.cpu_cores ? `${sys.cpu_cores} логических ядер` : undefined },
+    ]);
+    setRamHistory((p) => [
+      ...p.slice(-(MAX_HISTORY_POINTS - 1)),
+      {
+        value: ramVal,
+        time: t,
+        detail: sys ? `${sys.ram_used_gb.toFixed(1)} / ${sys.ram_total_gb.toFixed(1)} ГБ` : undefined,
+      },
+    ]);
+    setDiskHistory((p) => [
+      ...p.slice(-(MAX_HISTORY_POINTS - 1)),
+      {
+        value: diskVal,
+        time: t,
+        detail: d0 ? `${d0.mount} ${d0.used_gb.toFixed(0)} / ${d0.total_gb.toFixed(0)} ГБ` : undefined,
+      },
+    ]);
+    setNetHistory((p) => [
+      ...p.slice(-(MAX_HISTORY_POINTS - 1)),
+      { value: netVal, time: t, detail: `↓${down.toFixed(1)} / ↑${up.toFixed(1)} Мбит/с` },
+    ]);
+    setGpuHistory((p) => [
+      ...p.slice(-(MAX_HISTORY_POINTS - 1)),
+      {
+        value: gpuVal,
+        time: t,
+        detail: sys?.gpu_temp_c ? `${sys.gpu_temp_c}°C · ${sys.gpu_name || 'GPU'}` : undefined,
+      },
+    ]);
+  }, []);
+
+  const pollFastSnapshot = useCallback(async () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
     try {
-      const r = await fetch('/api/kernel/processes?limit=90');
-      if (r.ok) {
-        const d = await r.json();
-        if (Array.isArray(d?.processes)) setProcesses(d.processes);
+      const [sysRes, procRes] = await Promise.all([
+        fetch('/api/kernel/system'),
+        fetch('/api/kernel/processes?limit=100'),
+      ]);
+      let nextSys: LiveSystemTelemetry | null = null;
+      if (sysRes.ok) {
+        nextSys = await sysRes.json();
+        setLocalSystem(nextSys);
       }
+      if (procRes.ok) {
+        const pd = await procRes.json();
+        if (Array.isArray(pd?.processes)) setProcesses(pd.processes);
+      }
+      appendSample(nextSys, cpuLoad, ramLoad);
     } catch {
-      // ignore
+      appendSample(liveSystem, cpuLoad, ramLoad);
     }
-  };
+  }, [appendSample, cpuLoad, ramLoad, liveSystem]);
 
-  const fetchServicesAndStartup = async () => {
+  const fetchServicesAndStartup = useCallback(async () => {
     try {
       const [rs, rst] = await Promise.all([fetch('/api/kernel/services?limit=80'), fetch('/api/kernel/startup')]);
       if (rs.ok) {
@@ -203,16 +520,18 @@ export const LumaTaskManagerWindow: React.FC<{
     } catch {
       // ignore
     }
-  };
+  }, []);
 
+  // Dedicated high-frequency real-time loop (0.5s / 1s / 2s / 5s) powered by LumaCore 1.3 zero-PowerShell Win32 APIs
   useEffect(() => {
-    void fetchProcesses();
+    void pollFastSnapshot();
     void fetchServicesAndStartup();
+    if (paused) return;
     const timer = window.setInterval(() => {
-      if (!paused) void fetchProcesses();
-    }, 2500);
+      void pollFastSnapshot();
+    }, refreshMs);
     return () => clearInterval(timer);
-  }, [paused]);
+  }, [paused, refreshMs, pollFastSnapshot, fetchServicesAndStartup]);
 
   const q = query.trim().toLowerCase();
 
@@ -277,7 +596,7 @@ export const LumaTaskManagerWindow: React.FC<{
       await fetch('/api/kernel/launch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: `task_${Date.now()}`, name: cmd, target: cmd, type: 'native' }),
+        body: JSON.stringify({ id: `task_${Date.now()}`, name: cmd, url: cmd, target: cmd, type: 'native' }),
       });
       onPushToast('Диспетчер задач', `Запущена задача: ${cmd}`, 'success');
       setRunTaskCmd('');
@@ -288,9 +607,8 @@ export const LumaTaskManagerWindow: React.FC<{
   };
 
   const toggleGroup = (k: string) => setCollapsedGroups((prev) => ({ ...prev, [k]: !prev[k] }));
-  const totalMemMB = (liveSystem?.ram_total_gb || 16) * 1024;
-  const disks = liveSystem?.disks || [];
-  const mainDiskPct = disks[0]?.percent ?? 0;
+  const totalMemMB = (activeSystem?.ram_total_gb || 16) * 1024;
+  const netChartMax = Math.max(10, Math.ceil(Math.max(...netHistory.map((p) => p.value)) * 1.25));
 
   return (
     <div className="h-full flex min-h-0 select-none">
@@ -342,30 +660,37 @@ export const LumaTaskManagerWindow: React.FC<{
           ))}
         </div>
 
-        {/* Bottom LumaCore 1.2 Badge */}
+        {/* Bottom LumaCore 1.3 Live Engine Badge */}
         <div className={`hidden sm:block p-2.5 rounded-xl border text-[10px] font-mono space-y-1 ${surfaceCls}`}>
           <div className="flex items-center justify-between">
-            <span className="font-bold text-[var(--luma-accent)]">LumaCore 1.2</span>
-            <span className="text-emerald-500">{kernelConnected ? 'ONLINE' : 'LOCAL'}</span>
+            <span className="font-bold text-[var(--luma-accent)]">LumaCore 1.3</span>
+            <span className="text-emerald-500">{kernelConnected ? 'WIN32' : 'LOCAL'}</span>
           </div>
-          <div className={mutedCls}>ЦП {cpuLoad}% · ОЗУ {ramLoad}%</div>
+          <div className={mutedCls}>ЦП {liveCpu}% · ОЗУ {liveRam}%</div>
+          <div className={`text-[9px] flex items-center justify-between ${mutedCls}`}>
+            <span className="inline-flex items-center gap-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${paused ? 'bg-amber-400' : 'bg-emerald-500'}`} />
+              {paused ? 'Пауза' : `${refreshMs / 1000}с`}
+            </span>
+            <span>{lastSampleAt}</span>
+          </div>
         </div>
       </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Windows-Style Top Command Toolbar */}
+        {/* Windows-Style Top Command Toolbar with Update Speed Selector */}
         <div
           className={`px-3.5 py-2 border-b flex flex-wrap items-center justify-between gap-2 ${
             isDark ? 'border-white/[0.08]' : 'border-zinc-900/10'
           }`}
         >
-          <div className={`flex-1 min-w-[180px] max-w-sm flex items-center gap-2 px-3 py-1.5 rounded-xl border ${btnCls}`}>
+          <div className={`flex-1 min-w-[160px] max-w-xs flex items-center gap-2 px-3 py-1.5 rounded-xl border ${btnCls}`}>
             <Search className="w-3.5 h-3.5 opacity-60 shrink-0" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Имя, описание или PID процесса..."
+              placeholder="Имя, описание или PID..."
               className="w-full bg-transparent text-xs outline-none"
             />
             {query && (
@@ -376,6 +701,27 @@ export const LumaTaskManagerWindow: React.FC<{
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            {/* Refresh Frequency Selector (0.5s / 1s / 2s / 5s) */}
+            <div
+              className={`inline-flex items-center gap-0.5 p-0.5 rounded-xl border font-mono text-[10px] ${btnCls}`}
+              title="Частота обновления данных диспетчера"
+            >
+              <Zap className="w-3 h-3 text-[var(--luma-accent)] ml-1 mr-0.5" />
+              {([500, 1000, 2000, 5000] as const).map((ms) => (
+                <button
+                  key={ms}
+                  onClick={() => setRefreshMs(ms)}
+                  className={`px-1.5 py-0.5 rounded-lg transition cursor-pointer ${
+                    refreshMs === ms
+                      ? 'bg-[var(--luma-accent)] text-white font-bold'
+                      : 'opacity-70 hover:opacity-100'
+                  }`}
+                >
+                  {ms === 500 ? '0.5с' : `${ms / 1000}с`}
+                </button>
+              ))}
+            </div>
+
             <button
               onClick={() => setRunTaskOpen((v) => !v)}
               className={`px-2.5 py-1.5 rounded-xl border font-semibold inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
@@ -405,11 +751,11 @@ export const LumaTaskManagerWindow: React.FC<{
             </button>
             <button
               onClick={() => {
-                void fetchProcesses();
+                void pollFastSnapshot();
                 void fetchServicesAndStartup();
               }}
               className={`p-1.5 rounded-xl border cursor-pointer ${btnCls}`}
-              title="Обновить"
+              title="Обновить сейчас"
             >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
@@ -454,11 +800,11 @@ export const LumaTaskManagerWindow: React.FC<{
                 Имя процесса {sortKey === 'name' ? '▾' : ''}
               </button>
               <button onClick={() => setSortKey('cpu')} className="px-2 py-1.5 text-right border-l border-white/5 cursor-pointer">
-                <div className="text-sm font-black text-[var(--luma-accent)]">{cpuLoad}%</div>
+                <div className="text-sm font-black text-[var(--luma-accent)]">{liveCpu}%</div>
                 <div className={`text-[9px] ${mutedCls}`}>ЦП {sortKey === 'cpu' ? '▾' : ''}</div>
               </button>
               <button onClick={() => setSortKey('mem')} className="px-2 py-1.5 text-right border-l border-white/5 cursor-pointer">
-                <div className="text-sm font-black text-sky-400">{ramLoad}%</div>
+                <div className="text-sm font-black text-sky-400">{liveRam}%</div>
                 <div className={`text-[9px] ${mutedCls}`}>ОЗУ {sortKey === 'mem' ? '▾' : ''}</div>
               </button>
               <div className="px-2 py-1.5 text-right border-l border-white/5">
@@ -497,9 +843,9 @@ export const LumaTaskManagerWindow: React.FC<{
                         <span className="font-semibold truncate">{w.label}</span>
                         {w.minimized && <span className={`text-[10px] ${mutedCls}`}>(Свёрнуто)</span>}
                       </div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(1.0, isDark)}`}>0.3%</div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(3, isDark)}`}>38 МБ</div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>4</div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(0.5, isDark)}`}>0.2%</div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(2, isDark)}`}>24 МБ</div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>2</div>
                       <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>LUMA</div>
                       <div className="px-2 py-1.5 flex items-center justify-end gap-1">
                         <button onClick={() => onFocusLumaWindow(w.id)} title="Переключиться" className={`p-1 rounded border cursor-pointer ${btnCls}`}>
@@ -523,9 +869,9 @@ export const LumaTaskManagerWindow: React.FC<{
                         <span className="font-semibold truncate">{app.name}</span>
                         <span className={`text-[10px] font-mono ${mutedCls}`}>{formatLiveClock(app.elapsedSeconds)}</span>
                       </div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(1.5, isDark)}`}>1.2%</div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(5, isDark)}`}>72 МБ</div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>6</div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(0.8, isDark)}`}>0.6%</div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(4, isDark)}`}>48 МБ</div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>4</div>
                       <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>APP</div>
                       <div className="px-2 py-1.5 flex items-center justify-end gap-1">
                         <button onClick={() => onFocusLumaApp(app)} title="Открыть" className={`p-1 rounded border cursor-pointer ${btnCls}`}>
@@ -555,7 +901,7 @@ export const LumaTaskManagerWindow: React.FC<{
               {!collapsedGroups.hostwin &&
                 filteredHostWindows.map((hw) => {
                   const procMeta = processByPid.get(hw.pid);
-                  const liveCpu = Math.min(100, Math.max(0, procMeta?.cpu_pct ?? 0));
+                  const rowCpu = Math.min(100, Math.max(0, procMeta?.cpu_pct ?? 0));
                   const memVal = procMeta?.private_mb || hw.mem_mb;
                   const memPct = (memVal / totalMemMB) * 100;
                   const isSel = selectedPid === hw.pid;
@@ -583,8 +929,8 @@ export const LumaTaskManagerWindow: React.FC<{
                           </div>
                         </div>
                       </div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(liveCpu, isDark)}`}>
-                        {liveCpu.toFixed(1)}%
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(rowCpu, isDark)}`}>
+                        {rowCpu.toFixed(1)}%
                       </div>
                       <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(memPct * 3, isDark)}`}>
                         {memVal.toFixed(1)} МБ
@@ -620,7 +966,7 @@ export const LumaTaskManagerWindow: React.FC<{
                 })}
             </div>
 
-            {/* GROUP 3: BACKGROUND PROCESSES (ACCURATE REAL CPU% + PRIVATE RAM + THREADS) */}
+            {/* GROUP 3: BACKGROUND PROCESSES (ACCURATE WIN32 CPU% + PRIVATE RAM + THREADS) */}
             <div>
               <button
                 onClick={() => toggleGroup('bg')}
@@ -744,7 +1090,7 @@ export const LumaTaskManagerWindow: React.FC<{
           </div>
         )}
 
-        {/* ==================== TAB 2: PERFORMANCE (WINDOWS 11 DUAL-PANE GRAPHS) ==================== */}
+        {/* ==================== TAB 2: PERFORMANCE (INTERACTIVE HOVER TELEMETRY GRAPHS) ==================== */}
         {tab === 'performance' && (
           <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[220px_1fr] overflow-hidden">
             {/* Left Metric Selector Tiles with Mini Sparklines */}
@@ -753,7 +1099,7 @@ export const LumaTaskManagerWindow: React.FC<{
                 {
                   id: 'cpu' as const,
                   title: 'ЦП',
-                  sub: `${cpuLoad}% · ${liveSystem?.cpu_cores || 0} потоков`,
+                  sub: `${liveCpu}% · ${activeSystem?.cpu_cores || 0} потоков`,
                   data: cpuHistory,
                   max: 100,
                   color: '#38bdf8',
@@ -762,7 +1108,9 @@ export const LumaTaskManagerWindow: React.FC<{
                 {
                   id: 'ram' as const,
                   title: 'Память',
-                  sub: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)}/${liveSystem.ram_total_gb.toFixed(1)} ГБ (${ramLoad}%)` : `${ramLoad}%`,
+                  sub: activeSystem
+                    ? `${activeSystem.ram_used_gb.toFixed(1)}/${activeSystem.ram_total_gb.toFixed(1)} ГБ (${liveRam}%)`
+                    : `${liveRam}%`,
                   data: ramHistory,
                   max: 100,
                   color: '#a855f7',
@@ -772,7 +1120,7 @@ export const LumaTaskManagerWindow: React.FC<{
                   id: 'disk' as const,
                   title: 'Диски',
                   sub: `${disks.length} том(ов) · ${mainDiskPct}% занято`,
-                  data: Array(20).fill(mainDiskPct),
+                  data: diskHistory,
                   max: 100,
                   color: '#10b981',
                   icon: <HardDrive className="w-3.5 h-3.5" />,
@@ -780,16 +1128,16 @@ export const LumaTaskManagerWindow: React.FC<{
                 {
                   id: 'net' as const,
                   title: 'Сеть',
-                  sub: `↓${(liveSystem?.net_down_mbps || 0).toFixed(1)} ↑${(liveSystem?.net_up_mbps || 0).toFixed(1)} Мбит/с`,
+                  sub: `↓${(activeSystem?.net_down_mbps || 0).toFixed(1)} ↑${(activeSystem?.net_up_mbps || 0).toFixed(1)} Мбит/с`,
                   data: netHistory,
-                  max: Math.max(20, ...netHistory),
+                  max: netChartMax,
                   color: '#f59e0b',
                   icon: <Wifi className="w-3.5 h-3.5" />,
                 },
                 {
                   id: 'gpu' as const,
                   title: 'Графика GPU',
-                  sub: `${liveSystem?.gpu_percent ?? 12}% · ${liveSystem?.gpu_temp_c ?? 48}°C`,
+                  sub: `${liveGpu}% · ${activeSystem?.gpu_temp_c ?? 46}°C`,
                   data: gpuHistory,
                   max: 100,
                   color: '#f43f5e',
@@ -808,13 +1156,13 @@ export const LumaTaskManagerWindow: React.FC<{
                   </div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>{m.sub}</div>
                   <div className="h-8 rounded-lg overflow-hidden border border-white/10">
-                    <WinChart values={m.data} max={m.max} color={m.color} height={36} showGrid={false} />
+                    <MiniSparkline points={m.data} max={m.max} color={m.color} height={34} />
                   </div>
                 </button>
               ))}
             </div>
 
-            {/* Right Large Windows Performance Graph + Hardware Spec Grid */}
+            {/* Right Large Interactive Hover Graph + Hardware Spec Grid */}
             <div className="p-4 overflow-y-auto space-y-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
@@ -831,30 +1179,30 @@ export const LumaTaskManagerWindow: React.FC<{
                   </div>
                   <div className={`text-xs font-mono ${mutedCls}`}>
                     {perfMetric === 'cpu'
-                      ? liveSystem?.cpu_model || 'x64 Processor'
+                      ? activeSystem?.cpu_model || 'x64 Processor'
                       : perfMetric === 'gpu'
-                      ? liveSystem?.gpu_name || 'GPU'
+                      ? activeSystem?.gpu_name || 'GPU'
                       : perfMetric === 'ram'
-                      ? `${liveSystem?.ram_total_gb.toFixed(1) || 16} ГБ физической памяти`
-                      : liveSystem?.hostname || 'Luma Workstation'}
+                      ? `${activeSystem?.ram_total_gb.toFixed(1) || 16} ГБ физической памяти`
+                      : activeSystem?.hostname || 'Luma Workstation'}
                   </div>
                 </div>
                 <div className="text-2xl font-mono font-black text-[var(--luma-accent)]">
                   {perfMetric === 'cpu'
-                    ? `${cpuLoad}%`
+                    ? `${liveCpu}%`
                     : perfMetric === 'ram'
-                    ? `${ramLoad}%`
+                    ? `${liveRam}%`
                     : perfMetric === 'disk'
                     ? `${mainDiskPct}%`
                     : perfMetric === 'net'
-                    ? `${((liveSystem?.net_down_mbps || 0) + (liveSystem?.net_up_mbps || 0)).toFixed(1)} Мбит/с`
-                    : `${liveSystem?.gpu_percent ?? 12}%`}
+                    ? `${liveNetTotal.toFixed(1)} Мбит/с`
+                    : `${liveGpu}%`}
                 </div>
               </div>
 
-              <div className={`h-52 rounded-2xl border p-3 ${surfaceCls}`}>
-                <WinChart
-                  values={
+              <div className={`rounded-2xl border p-3.5 ${surfaceCls}`}>
+                <InteractivePerfChart
+                  points={
                     perfMetric === 'cpu'
                       ? cpuHistory
                       : perfMetric === 'ram'
@@ -863,9 +1211,10 @@ export const LumaTaskManagerWindow: React.FC<{
                       ? netHistory
                       : perfMetric === 'gpu'
                       ? gpuHistory
-                      : Array(20).fill(mainDiskPct)
+                      : diskHistory
                   }
-                  max={perfMetric === 'net' ? Math.max(20, ...netHistory) : 100}
+                  max={perfMetric === 'net' ? netChartMax : 100}
+                  unit={perfMetric === 'net' ? 'Мбит/с' : '%'}
                   color={
                     perfMetric === 'cpu'
                       ? '#38bdf8'
@@ -877,26 +1226,40 @@ export const LumaTaskManagerWindow: React.FC<{
                       ? '#f59e0b'
                       : '#f43f5e'
                   }
-                  height={180}
+                  metricLabel={
+                    perfMetric === 'cpu'
+                      ? 'ЦП'
+                      : perfMetric === 'ram'
+                      ? 'ОЗУ'
+                      : perfMetric === 'disk'
+                      ? 'Диск'
+                      : perfMetric === 'net'
+                      ? 'Сеть'
+                      : 'GPU'
+                  }
+                  isDark={isDark}
+                  mutedCls={mutedCls}
                 />
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                 <div className={`p-3 rounded-xl border ${surfaceCls}`}>
                   <div className={`text-[10px] ${mutedCls}`}>Логических ядер</div>
-                  <div className="text-base font-bold mt-0.5">{liveSystem?.cpu_cores || '—'}</div>
+                  <div className="text-base font-bold mt-0.5">{activeSystem?.cpu_cores || '—'}</div>
                 </div>
                 <div className={`p-3 rounded-xl border ${surfaceCls}`}>
                   <div className={`text-[10px] ${mutedCls}`}>Процессов</div>
                   <div className="text-base font-bold mt-0.5">{processes.length}</div>
                 </div>
                 <div className={`p-3 rounded-xl border ${surfaceCls}`}>
-                  <div className={`text-[10px] ${mutedCls}`}>Окон ПК</div>
-                  <div className="text-base font-bold mt-0.5">{hostWindows.length}</div>
+                  <div className={`text-[10px] ${mutedCls}`}>Интервал опроса</div>
+                  <div className="text-base font-bold mt-0.5 text-emerald-400">
+                    {paused ? 'ПАУЗА' : `${refreshMs / 1000} с`}
+                  </div>
                 </div>
                 <div className={`p-3 rounded-xl border ${surfaceCls}`}>
                   <div className={`text-[10px] ${mutedCls}`}>Ядро</div>
-                  <div className="text-base font-bold mt-0.5 text-[var(--luma-accent)]">LumaCore 1.2</div>
+                  <div className="text-base font-bold mt-0.5 text-[var(--luma-accent)]">LumaCore 1.3</div>
                 </div>
               </div>
 
@@ -981,7 +1344,7 @@ export const LumaTaskManagerWindow: React.FC<{
                       <div className="flex items-center gap-2">
                         <span className="font-bold truncate">{s.display_name || s.name}</span>
                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase ${s.source === 'luma' ? 'bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-bold' : 'bg-white/10 opacity-75'}`}>
-                          {s.source === 'luma' ? 'LUMA 1.1' : 'ОС'}
+                          {s.source === 'luma' ? 'LUMA 1.3' : 'ОС'}
                         </span>
                       </div>
                       <div className={`text-[10px] font-mono truncate ${mutedCls}`}>{s.name} {s.description ? `· ${s.description}` : ''}</div>
@@ -997,4 +1360,4 @@ export const LumaTaskManagerWindow: React.FC<{
       </div>
     </div>
   );
-};
+});

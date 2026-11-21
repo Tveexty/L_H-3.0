@@ -37,9 +37,9 @@
   --luma-card-rgb: 22, 22, 27;
   --luma-bar-rgb: 12, 12, 15;
   /* Live Opacity, Blur, Radius & Typography Engine */
-  --luma-glass-alpha: 0.90;
-  --luma-card-alpha: 0.86;
-  --luma-blur: 22px;
+  --luma-glass-alpha: 0.92;
+  --luma-card-alpha: 0.88;
+  --luma-blur: 12px;
   --luma-radius: 18px;
   --luma-font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
@@ -118,85 +118,56 @@
     linear-gradient(160deg, #dde3ec 0%, #d4dce8 55%, #ccd5e3 100%);
 }
 
-/* ==================== THEME-DRIVEN TRANSPARENCY & BLUR SURFACES ==================== */
+/* ==================== LUMACORE 1.3 GPU-OPTIMIZED GLASS SURFACES (SINGLE-PASS BLUR + CONTAINMENT) ==================== */
 .dex-window-dark {
   background: rgba(var(--luma-surface-rgb), var(--luma-glass-alpha));
   border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.78), 0 0 0 1px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(var(--luma-blur)) saturate(135%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(135%);
+  box-shadow: 0 18px 44px -14px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(var(--luma-blur));
+  -webkit-backdrop-filter: blur(var(--luma-blur));
 }
 
 .dex-window-light {
   background: rgba(var(--luma-surface-rgb), var(--luma-glass-alpha));
   border: 1px solid rgba(24, 24, 27, 0.14);
-  box-shadow: 0 20px 54px -16px rgba(17, 17, 19, 0.2), 0 2px 8px rgba(17, 17, 19, 0.06);
-  backdrop-filter: blur(var(--luma-blur)) saturate(125%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(125%);
+  box-shadow: 0 16px 40px -14px rgba(17, 17, 19, 0.18), 0 2px 6px rgba(17, 17, 19, 0.06);
+  backdrop-filter: blur(var(--luma-blur));
+  -webkit-backdrop-filter: blur(var(--luma-blur));
 }
 
 .dex-window-pixel-dark {
   background: rgba(var(--luma-surface-rgb), var(--luma-glass-alpha));
   border: 1px solid var(--luma-accent-border);
-  box-shadow: 0 24px 64px -14px rgba(3, 8, 18, 0.74), 0 2px 12px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(var(--luma-blur)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(150%);
+  box-shadow: 0 18px 44px -12px rgba(3, 8, 18, 0.68), 0 2px 10px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(var(--luma-blur));
+  -webkit-backdrop-filter: blur(var(--luma-blur));
 }
 
 .dex-window-pixel-light {
   background: rgba(var(--luma-surface-rgb), var(--luma-glass-alpha));
   border: 1px solid var(--luma-accent-border);
-  box-shadow: 0 20px 54px -14px rgba(20, 42, 82, 0.18), 0 2px 10px rgba(20, 42, 82, 0.06);
-  backdrop-filter: blur(var(--luma-blur)) saturate(145%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(145%);
+  box-shadow: 0 16px 40px -12px rgba(20, 42, 82, 0.16), 0 2px 8px rgba(20, 42, 82, 0.06);
+  backdrop-filter: blur(var(--luma-blur));
+  -webkit-backdrop-filter: blur(var(--luma-blur));
 }
 
-.luma-widget-dark {
-  background: rgba(var(--luma-card-rgb), var(--luma-card-alpha));
-  backdrop-filter: blur(var(--luma-blur)) saturate(135%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(135%);
-}
-
-.luma-widget-light {
-  background: rgba(var(--luma-card-rgb), var(--luma-card-alpha));
-  backdrop-filter: blur(var(--luma-blur)) saturate(125%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(125%);
-}
-
-.luma-widget-pixel-dark {
-  background: rgba(var(--luma-card-rgb), var(--luma-card-alpha));
-  backdrop-filter: blur(var(--luma-blur)) saturate(145%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(145%);
-}
-
+.luma-widget-dark,
+.luma-widget-light,
+.luma-widget-pixel-dark,
 .luma-widget-pixel-light {
   background: rgba(var(--luma-card-rgb), var(--luma-card-alpha));
-  backdrop-filter: blur(var(--luma-blur)) saturate(140%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(140%);
+  backdrop-filter: blur(min(var(--luma-blur), 10px));
+  -webkit-backdrop-filter: blur(min(var(--luma-blur), 10px));
+  contain: layout style paint;
 }
 
-.luma-taskbar-dark {
-  background: rgba(var(--luma-bar-rgb), var(--luma-glass-alpha));
-  backdrop-filter: blur(var(--luma-blur)) saturate(140%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(140%);
-}
-
-.luma-taskbar-light {
-  background: rgba(var(--luma-bar-rgb), var(--luma-glass-alpha));
-  backdrop-filter: blur(var(--luma-blur)) saturate(125%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(125%);
-}
-
-.luma-taskbar-pixel-dark {
-  background: rgba(var(--luma-bar-rgb), var(--luma-glass-alpha));
-  backdrop-filter: blur(var(--luma-blur)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(150%);
-}
-
+.luma-taskbar-dark,
+.luma-taskbar-light,
+.luma-taskbar-pixel-dark,
 .luma-taskbar-pixel-light {
   background: rgba(var(--luma-bar-rgb), var(--luma-glass-alpha));
-  backdrop-filter: blur(var(--luma-blur)) saturate(145%);
-  -webkit-backdrop-filter: blur(var(--luma-blur)) saturate(145%);
+  backdrop-filter: blur(var(--luma-blur));
+  -webkit-backdrop-filter: blur(var(--luma-blur));
 }
 
 /* ==================== HARMONYOS / HUAWEI WIDGET & FOLDER SHAPES ==================== */
@@ -607,10 +578,10 @@ html[data-wp-paused="true"] .luma-live-wp-solar {
 
 @keyframes lumaIslandAudioGlow {
   0%, 100% {
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 8px 26px rgba(0, 0, 0, 0.48), 0 0 18px -2px var(--luma-accent-border);
+    border-color: rgba(255, 255, 255, 0.16);
   }
   50% {
-    box-shadow: 0 0 0 1px var(--luma-accent), 0 12px 32px rgba(0, 0, 0, 0.56), 0 0 30px 1px var(--luma-accent-border);
+    border-color: var(--luma-accent);
   }
 }
 
@@ -618,8 +589,8 @@ html[data-wp-paused="true"] .luma-live-wp-solar {
   transition: width 0.34s cubic-bezier(0.34, 1.56, 0.64, 1),
     padding 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
     transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 0.32s ease,
     border-color 0.25s ease;
+  will-change: transform;
 }
 
 .luma-island-pill:hover {
@@ -631,6 +602,7 @@ html[data-wp-paused="true"] .luma-live-wp-solar {
 }
 
 .luma-island-playing {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 8px 24px rgba(0, 0, 0, 0.44), 0 0 20px -2px var(--luma-accent-border);
   animation: lumaIslandAudioGlow 2.4s ease-in-out infinite;
 }
 
@@ -690,5 +662,14 @@ html[data-wp-paused="true"] .luma-live-wp-solar {
   pointer-events: none !important;
   animation: lumaDeleteAppAnim 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
 }
+
+/* ==================== 1.2.3 LUMACORE 1.3 ZERO-GPU IDLE FREEZE ==================== */
+/* Automatically freezes all CSS keyframe animations when the Luma window is hidden or minimized */
+html[data-luma-idle="true"] *,
+html[data-luma-idle="true"] *::before,
+html[data-luma-idle="true"] *::after {
+  animation-play-state: paused !important;
+}
+
 
 

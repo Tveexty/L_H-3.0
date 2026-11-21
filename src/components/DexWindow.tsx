@@ -51,7 +51,7 @@ interface WinRect {
   h: number;
 }
 
-export const DexWindow: React.FC<DexWindowProps> = ({
+export const DexWindow: React.FC<DexWindowProps> = React.memo(({
   id,
   title,
   subtitle,
@@ -77,10 +77,10 @@ export const DexWindow: React.FC<DexWindowProps> = ({
   const storageKey = `luma_win_rect_${id}`;
 
   const getInsets = () => {
-    const bar = Math.max(44, Math.min(84, taskbarSizePx));
-    const padTop = taskbarPosition === 'top' ? bar + 6 : 8;
-    const padBottom = taskbarPosition === 'bottom' ? bar + 8 : 8;
-    const padLeft = taskbarPosition === 'left' ? bar + 12 : 8;
+    const bar = taskbarSizePx <= 0 ? 0 : Math.max(44, Math.min(84, taskbarSizePx));
+    const padTop = taskbarPosition === 'top' && bar > 0 ? bar + 6 : 8;
+    const padBottom = taskbarPosition === 'bottom' && bar > 0 ? bar + 8 : 8;
+    const padLeft = taskbarPosition === 'left' && bar > 0 ? bar + 12 : 8;
     const padRight = 8;
     return { padTop, padBottom, padLeft, padRight };
   };
@@ -587,4 +587,5 @@ export const DexWindow: React.FC<DexWindowProps> = ({
       </div>
     </>
   );
-};
+});
+
