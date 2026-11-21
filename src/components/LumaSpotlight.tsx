@@ -103,7 +103,9 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
     if (open) {
       setQuery('');
       setSelectedIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 16);
+      requestAnimationFrame(() => inputRef.current?.focus());
+      const t = window.setTimeout(() => inputRef.current?.focus(), 45);
+      return () => window.clearTimeout(t);
     }
   }, [open]);
 
@@ -163,7 +165,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'win_terminal',
         group: 'Окна системы',
         title: 'Терминал Luma',
-        subtitle: 'Командная строка ядра LumaCore 1.2 (ПО 1.2.1 Lithium)',
+        subtitle: 'Командная строка ядра LumaCore 1.2 (ПО 1.2.2 Lithium)',
         shortcut: 'CLI',
         keywords: 'терминал консоль cmd shell cli',
         icon: <Terminal className="w-4 h-4" />,
@@ -553,7 +555,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
             isDark ? 'border-white/[0.08]' : 'border-zinc-200'
           }`}
         >
-          <span>LUMA RUN & SPOTLIGHT 1.2.1 (LITHIUM) · ↑↓ · ENTER</span>
+          <span>LUMA RUN & SPOTLIGHT 1.2.2 (LITHIUM) · ↑↓ · ENTER</span>
           <span>ALT + R</span>
         </div>
       </div>

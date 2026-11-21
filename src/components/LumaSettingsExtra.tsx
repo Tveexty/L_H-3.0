@@ -51,6 +51,9 @@ export interface BluetoothDeviceInfo {
   status: string;
   connected: boolean;
   class: string;
+  battery_percent?: number;
+  device_type?: string;
+  transport?: string;
 }
 
 export interface BluetoothStatusInfo {
@@ -177,21 +180,21 @@ export const KernelUIPanel: React.FC<{
                 ЯДРО UI · LUMA LITHIUM
               </div>
               <div className="text-lg font-extrabold tracking-tight truncate">
-                Luma OS 1.2.1 (Lithium)
+                Luma OS 1.2.2 (Lithium)
               </div>
               <div className={`text-xs font-mono truncate ${mutedCls}`}>
-                LumaCore {liveSystem?.kernel_engine_version || '1.2'} · LumaShield 1.2 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
+                LumaCore {liveSystem?.kernel_engine_version || '1.2'} · LumaShield 1.3 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
               </div>
             </div>
           </div>
 
           <a
-            href="/LumaOS_1.2.1.exe"
-            download="LumaOS_1.2.1.exe"
+            href="/LumaOS_1.2.2.exe"
+            download="LumaOS_1.2.2.exe"
             className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
-            LumaOS_1.2.1.exe
+            LumaOS_1.2.2.exe
           </a>
         </div>
 
@@ -245,7 +248,7 @@ export const KernelUIPanel: React.FC<{
           {/* 3. Версия ПО */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия ПО</div>
-            <div className="text-sm font-mono font-bold">1.2.1 (Lithium)</div>
+            <div className="text-sm font-mono font-bold">1.2.2 (Lithium)</div>
           </div>
 
           {/* 4. Версия Ядра (1.2) */}
@@ -255,7 +258,7 @@ export const KernelUIPanel: React.FC<{
               <span className="text-sm font-mono font-bold text-[var(--luma-accent)]">
                 {liveSystem?.kernel_engine_version || '1.2'}
               </span>
-              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore + Shield 1.2</span>
+              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore + Shield 1.3</span>
             </div>
           </div>
         </div>
@@ -268,7 +271,7 @@ export const KernelUIPanel: React.FC<{
           ['Графика (GPU)', liveSystem?.gpu_name || '—'],
           ['Оперативная память', liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ (${liveSystem.ram_percent}%)` : '—'],
           ['Платформа / Архитектура', `${liveSystem?.os_name || 'Luma OS'} · ${liveSystem?.arch || 'amd64'}`],
-          ['Ядро безопасности', 'LumaShield 1.2 · AES-256-GCM · Zero-Conflict AV'],
+          ['Ядро безопасности', 'LumaShield 1.3 · Entropy + PE Guard + Real-Time'],
           ['Шина ядра / StateVault', 'TCP JSON-RPC 2.0 :49215 · Eternal Disk Sync'],
         ].map(([k, v]) => (
           <div key={k} className={`p-3.5 rounded-xl border space-y-1 ${surfaceCls}`}>
@@ -281,7 +284,7 @@ export const KernelUIPanel: React.FC<{
   );
 };
 
-/* ==================== 2. BLUETOOTH SETTINGS PANEL ==================== */
+/* ==================== 2. BLUETOOTH & WIRELESS BATTERY SETTINGS PANEL ==================== */
 export const BluetoothSettingsPanel: React.FC<{
   surfaceCls: string;
   btnCls: string;
@@ -289,18 +292,28 @@ export const BluetoothSettingsPanel: React.FC<{
   onPushToast: (title: string, msg: string, type?: 'info' | 'warning' | 'success') => void;
 }> = ({ surfaceCls, btnCls, mutedCls, onPushToast }) => {
   const [bt, setBt] = useState<BluetoothStatusInfo | null>(null);
+  const [wirelessBats, setWirelessBats] = useState<
+    { name: string; device_type: string; battery_percent: number; connected: boolean; transport: string }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
 
   const loadBt = async () => {
     setLoading(true);
     try {
-      const r = await fetch('/api/kernel/bluetooth');
-      if (r.ok) {
-        const d: BluetoothStatusInfo = await r.json();
+      const [r1, r2] = await Promise.all([
+        fetch('/api/kernel/bluetooth'),
+        fetch('/api/kernel/wireless/batteries?refresh=1'),
+      ]);
+      if (r1.ok) {
+        const d: BluetoothStatusInfo = await r1.json();
         setBt(d);
       } else {
         setBt({ available: false, enabled: false, adapter_name: '', devices: [] });
+      }
+      if (r2.ok) {
+        const w = await r2.json();
+        setWirelessBats(Array.isArray(w?.devices) ? w.devices : []);
       }
     } catch {
       setBt({ available: false, enabled: false, adapter_name: '', devices: [] });
@@ -310,7 +323,7 @@ export const BluetoothSettingsPanel: React.FC<{
   };
 
   useEffect(() => {
-    loadBt();
+    void loadBt();
   }, []);
 
   const toggleBt = async () => {
@@ -335,6 +348,25 @@ export const BluetoothSettingsPanel: React.FC<{
     }
   };
 
+  const kindTag = (t?: string) => {
+    switch (t) {
+      case 'mouse':
+        return 'Мышь';
+      case 'keyboard':
+        return 'Клавиатура';
+      case 'headphones':
+        return 'Наушники';
+      case 'gamepad':
+        return 'Геймпад';
+      case 'watch':
+        return 'Часы';
+      case 'phone':
+        return 'Телефон';
+      default:
+        return 'Bluetooth';
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
@@ -345,10 +377,10 @@ export const BluetoothSettingsPanel: React.FC<{
             <BluetoothOff className={`w-5 h-5 shrink-0 ${mutedCls}`} />
           )}
           <div className="min-w-0">
-            <div className="text-sm font-bold">Bluetooth</div>
+            <div className="text-sm font-bold">Bluetooth и Беспроводные устройства</div>
             <div className={`text-xs truncate ${mutedCls}`}>
               {loading
-                ? 'Проверка адаптера устройства...'
+                ? 'Проверка адаптера и датчиков заряда...'
                 : bt?.available
                 ? bt.adapter_name || 'Адаптер Bluetooth обнаружен'
                 : 'Адаптер Bluetooth на этом устройстве не обнаружен'}
@@ -358,7 +390,7 @@ export const BluetoothSettingsPanel: React.FC<{
 
         <div className="flex items-center gap-2">
           <button
-            onClick={loadBt}
+            onClick={() => void loadBt()}
             disabled={loading}
             className={`px-3 py-1.5 rounded-lg border text-xs font-mono inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}
           >
@@ -373,11 +405,49 @@ export const BluetoothSettingsPanel: React.FC<{
         </div>
       </div>
 
+      {/* Wireless Peripherals Live Battery Strip (Bluetooth + 2.4GHz HID Mice/Keyboards/Headphones) */}
+      {wirelessBats.length > 0 && (
+        <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
+          <div className="text-xs font-bold flex items-center gap-2">
+            <BatteryCharging className="w-4 h-4 text-emerald-400" />
+            Уровень заряда беспроводных устройств ({wirelessBats.length})
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {wirelessBats.map((wb, idx) => {
+              const pct = Math.max(0, Math.min(100, wb.battery_percent));
+              const barColor = pct <= 20 ? 'bg-rose-500' : pct <= 45 ? 'bg-amber-400' : 'bg-emerald-500';
+              return (
+                <div key={`${wb.name}_${idx}`} className={`p-3 rounded-xl border space-y-1.5 text-xs ${btnCls}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-bold truncate">{wb.name}</div>
+                      <div className={`text-[10px] font-mono ${mutedCls}`}>
+                        {kindTag(wb.device_type)} · {wb.transport}
+                      </div>
+                    </div>
+                    <span
+                      className={`font-mono text-sm font-black shrink-0 ${
+                        pct <= 20 ? 'text-rose-400' : pct <= 45 ? 'text-amber-400' : 'text-emerald-400'
+                      }`}
+                    >
+                      {pct}%
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-black/25 overflow-hidden">
+                    <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {!loading && !bt?.available && (
         <div className={`p-5 rounded-xl border space-y-2 text-xs ${surfaceCls}`}>
           <div className="font-bold">Модуль Bluetooth отсутствует</div>
           <div className={mutedCls}>
-            Ядро Luma Core 1.0 проверило шину устройств хоста — встроенный или USB-адаптер Bluetooth не найден. Если вы подключите USB-донгл Bluetooth, нажмите «Обновить» выше, и управление появится автоматически.
+            Ядро LumaCore 1.2 проверило шину устройств хоста — встроенный или USB-адаптер Bluetooth не найден. Если вы подключите USB-донгл Bluetooth или беспроводную мышь/наушники, нажмите «Обновить» выше.
           </div>
           <button
             onClick={() => {
@@ -418,15 +488,52 @@ export const BluetoothSettingsPanel: React.FC<{
             </div>
           ) : (
             <div className="space-y-2">
-              {bt.devices.map((dev, idx) => (
-                <div key={`${dev.name}_${idx}`} className={`p-3 rounded-xl border flex items-center justify-between gap-2 text-xs ${btnCls}`}>
-                  <div className="min-w-0">
-                    <div className="font-semibold truncate">{dev.name}</div>
-                    <div className={`text-[10px] font-mono ${mutedCls}`}>{dev.class || 'Bluetooth'} · {dev.status}</div>
+              {bt.devices.map((dev, idx) => {
+                const hasBat = typeof dev.battery_percent === 'number' && dev.battery_percent >= 0;
+                const pct = hasBat ? Math.max(0, Math.min(100, dev.battery_percent!)) : 0;
+                return (
+                  <div key={`${dev.name}_${idx}`} className={`p-3 rounded-xl border space-y-2 text-xs ${btnCls}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate flex items-center gap-2">
+                          <span>{dev.name}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono border ${surfaceCls} ${mutedCls}`}>
+                            {kindTag(dev.device_type)}
+                          </span>
+                        </div>
+                        <div className={`text-[10px] font-mono ${mutedCls}`}>
+                          {dev.transport || dev.class || 'Bluetooth'} · {dev.status}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {hasBat && (
+                          <span
+                            className={`px-2 py-0.5 rounded-lg font-mono text-[11px] font-bold inline-flex items-center gap-1 ${
+                              pct <= 20
+                                ? 'bg-rose-500/15 text-rose-400'
+                                : pct <= 45
+                                ? 'bg-amber-500/15 text-amber-400'
+                                : 'bg-emerald-500/15 text-emerald-400'
+                            }`}
+                          >
+                            <BatteryCharging className="w-3 h-3" />
+                            {pct}%
+                          </span>
+                        )}
+                        <StatusBadge active={dev.connected} onLabel="ПОДКЛ" offLabel="ГОТОВО" />
+                      </div>
+                    </div>
+                    {hasBat && (
+                      <div className="h-1.5 rounded-full bg-black/25 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${pct <= 20 ? 'bg-rose-500' : pct <= 45 ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    )}
                   </div>
-                  <StatusBadge active={dev.connected} onLabel="ПОДКЛ" offLabel="ГОТОВО" />
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -942,10 +1049,23 @@ export const SettingsAppsListPanel: React.FC<{
 }) => {
   const [q, setQ] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingIds, setDeletingIds] = useState<Record<string, boolean>>({});
   const [draftName, setDraftName] = useState('');
   const [draftCategory, setDraftCategory] = useState('');
   const [draftUrl, setDraftUrl] = useState('');
   const [draftIcon, setDraftIcon] = useState('Globe');
+
+  const triggerAnimatedDelete = (app: AppItem) => {
+    setDeletingIds((prev) => ({ ...prev, [app.id]: true }));
+    window.setTimeout(() => {
+      onDeleteApp(app);
+      setDeletingIds((prev) => {
+        const next = { ...prev };
+        delete next[app.id];
+        return next;
+      });
+    }, 260);
+  };
 
   const startEdit = (app: AppItem) => {
     setEditingId(app.id);
@@ -1056,8 +1176,9 @@ export const SettingsAppsListPanel: React.FC<{
         {filtered.map((app) => {
           const meta = getAppMeta(app);
           const isEditing = editingId === app.id;
+          const isDeleting = Boolean(deletingIds[app.id]);
           return (
-            <div key={app.id} className="px-3.5 py-2.5 space-y-2 text-xs">
+            <div key={app.id} className={`px-3.5 py-2.5 space-y-2 text-xs transition-all ${isDeleting ? 'luma-delete-app' : ''}`}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div
@@ -1107,9 +1228,9 @@ export const SettingsAppsListPanel: React.FC<{
                     <Info className="w-3.5 h-3.5" />
                   </button>
                   <button
-                    onClick={() => onDeleteApp(app)}
+                    onClick={() => triggerAnimatedDelete(app)}
                     title="Удалить приложение"
-                    className="p-1.5 rounded-lg hover:bg-[var(--luma-accent-soft)] text-zinc-500 hover:text-[var(--luma-accent)] cursor-pointer"
+                    className="p-1.5 rounded-lg hover:bg-rose-500/15 text-zinc-500 hover:text-rose-400 cursor-pointer transition"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

@@ -44,6 +44,7 @@ import {
   Power,
   RefreshCw,
   RotateCcw,
+  Search,
   Settings,
   ShieldCheck,
   SkipBack,
@@ -62,7 +63,7 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
-import { AppItem, ClockStyleKey, IslandMediaPlayer, LiveSystemTelemetry } from '../data/launcherData';
+import { AppItem, ClockStyleKey, InstalledAppInfo, IslandMediaPlayer, LiveSystemTelemetry } from '../data/launcherData';
 import { DesignStyle, TaskbarPosition } from './DexWindow';
 import { LumaClockRenderer } from './LumaClockRenderer';
 import {
@@ -270,6 +271,7 @@ export interface LumaDesktopCanvasProps {
   liveWallpaper?: LiveWallpaperId;
   aiEnabled?: boolean;
   iconSizePx?: number;
+  onActivityPulse?: (title: string, detail?: string, icon?: string) => void;
 }
 
 export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
@@ -333,10 +335,23 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   liveWallpaper = '',
   aiEnabled = true,
   iconSizePx = 44,
+  onActivityPulse,
 }) => {
   const totalRows = 10;
   const totalCells = gridCols * totalRows;
   const gridRef = useRef<HTMLDivElement>(null);
+
+  // Smooth exit animation tracking for deleting widgets & desktop shortcuts
+  const [deletingWidgetIds, setDeletingWidgetIds] = useState<Record<string, boolean>>({});
+  const [deletingShortcutIds, setDeletingShortcutIds] = useState<Record<string, boolean>>({});
+
+  // Installed Device Apps Picker Modal state
+  const [installedModalOpen, setInstalledModalOpen] = useState<boolean>(false);
+  const [installedApps, setInstalledApps] = useState<InstalledAppInfo[]>([]);
+  const [installedLoading, setInstalledLoading] = useState<boolean>(false);
+  const [installedQuery, setInstalledQuery] = useState<string>('');
+  const [installedCat, setInstalledCat] = useState<string>('Все');
+  const [selectedInstalled, setSelectedInstalled] = useState<string[]>([]);
 
   const readStoredDesktop = () => {
     try {
@@ -941,12 +956,156 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
     if (f) updateFolderProps(f.id, { w: (f.w || 1) + dw, h: (f.h || 1) + dh });
   };
 
+  const animatedRemoveWidget = (id: string, label?: string) => {
+    setDeletingWidgetIds((prev) => ({ ...prev, [id]: true }));
+    if (resizingTarget?.id === id) setResizingTarget(null);
+    onActivityPulse?.('Удалён виджет', label || 'Виджет убран с рабочего стола', 'trash');
+    window.setTimeout(() => {
+      setWidgets((prev) => prev.filter((w) => w.id !== id));
+      setDeletingWidgetIds((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }, 300);
+  };
+
+  const animatedRemoveShortcut = (id: string, label?: string) => {
+    setDeletingShortcutIds((prev) => ({ ...prev, [id]: true }));
+    if (resizingTarget?.id === id) setResizingTarget(null);
+    onActivityPulse?.('Удалён ярлык', label || 'Элемент убран со стола', 'trash');
+    window.setTimeout(() => {
+      setShortcuts((prev) => prev.filter((s) => s.id !== id));
+      setDeletingShortcutIds((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }, 260);
+  };
+
   const removeSelected = () => {
     if (!selectedId) return;
-    setWidgets((prev) => prev.filter((w) => w.id !== selectedId));
-    setShortcuts((prev) => prev.filter((s) => s.id !== selectedId));
-    if (resizingTarget?.id === selectedId) setResizingTarget(null);
+    const hitW = widgets.find((w) => w.id === selectedId);
+    const hitS = shortcuts.find((s) => s.id === selectedId);
+    if (hitW) animatedRemoveWidget(hitW.id, hitW.title);
+    if (hitS) animatedRemoveShortcut(hitS.id, hitS.label);
     setSelectedId(null);
+  };
+
+  const loadInstalledDeviceApps = async (refresh = false) => {
+    setInstalledLoading(true);
+    try {
+      const r = await fetch(`/api/kernel/installed-apps${refresh ? '?refresh=1' : ''}`);
+      if (r.ok) {
+        const d = await r.json();
+        setInstalledApps(Array.isArray(d?.apps) ? d.apps : []);
+      }
+    } catch {
+      onPushToast('Программы ПК', 'Не удалось получить список установленных программ', 'warning');
+    } finally {
+      setInstalledLoading(false);
+    }
+  };
+
+  const openInstalledAppsModal = () => {
+    setInstalledModalOpen(true);
+    setInstalledQuery('');
+    setInstalledCat('Все');
+    setSelectedInstalled([]);
+    setCtxMenu(null);
+    if (installedApps.length === 0) {
+      void loadInstalledDeviceApps(false);
+    }
+  };
+
+  const placeInstalledAppsOnDesktop = (asFolder: boolean) => {
+    const chosen = installedApps.filter((a) => selectedInstalled.includes(a.id));
+    if (chosen.length === 0) {
+      onPushToast('Программы ПК', 'Выберите хотя бы одно приложение', 'info');
+      return;
+    }
+
+    // Build occupancy map for free cells on the 22x10 desktop grid
+    const occupied = new Set<string>();
+    widgets.forEach((w) => {
+      for (let c = w.col; c < w.col + w.w; c++) {
+        for (let r = w.row; r < w.row + w.h; r++) occupied.add(`${c}:${r}`);
+      }
+    });
+    shortcuts.forEach((s) => {
+      const sw = s.w || 1;
+      const sh = s.h || 1;
+      for (let c = s.col; c < s.col + sw; c++) {
+        for (let r = s.row; r < s.row + sh; r++) occupied.add(`${c}:${r}`);
+      }
+    });
+
+    const nextFreeCell = (): { col: number; row: number } => {
+      for (let c = 1; c <= gridCols; c++) {
+        for (let r = 1; r <= totalRows; r++) {
+          if (!occupied.has(`${c}:${r}`)) {
+            occupied.add(`${c}:${r}`);
+            return { col: c, row: r };
+          }
+        }
+      }
+      return { col: 2, row: 1 };
+    };
+
+    if (asFolder) {
+      const cell = nextFreeCell();
+      const folderEntries: FolderEntry[] = chosen.map((app, i) => ({
+        id: `fe_pc_${Date.now()}_${i}`,
+        kind: 'file',
+        label: app.name,
+        icon: app.icon_hint || 'AppWindow',
+        target: app.exec_path,
+      }));
+      setShortcuts((prev) => [
+        ...prev,
+        {
+          id: `sc_pcfolder_${Date.now()}`,
+          kind: 'folder',
+          label: `Программы ПК (${chosen.length})`,
+          icon: 'Folder',
+          target: '',
+          folderItems: folderEntries,
+          col: cell.col,
+          row: cell.row,
+          w: chosen.length >= 4 ? 2 : 1,
+          h: chosen.length >= 4 ? 2 : 1,
+          shape: 'squircle',
+        },
+      ]);
+      onPushToast('Рабочий стол', `Папка с ${chosen.length} программами ПК добавлена`, 'success');
+      onActivityPulse?.('Программы ПК добавлены', `Папка (${chosen.length} прил.)`, 'app');
+    } else {
+      const existingTargets = new Set(shortcuts.map((s) => s.target.toLowerCase()));
+      const created: DesktopShortcut[] = [];
+      chosen.forEach((app, idx) => {
+        if (existingTargets.has(app.exec_path.toLowerCase())) return;
+        const cell = nextFreeCell();
+        created.push({
+          id: `sc_pc_${Date.now()}_${idx}`,
+          kind: 'file',
+          label: app.name,
+          icon: app.icon_hint || 'AppWindow',
+          target: app.exec_path,
+          col: cell.col,
+          row: cell.row,
+        });
+      });
+      if (created.length > 0) {
+        setShortcuts((prev) => [...prev, ...created]);
+        onPushToast('Рабочий стол', `Добавлено программ ПК: ${created.length}`, 'success');
+        onActivityPulse?.('Программы ПК на столе', `+${created.length} ярлыков`, 'app');
+      } else {
+        onPushToast('Рабочий стол', 'Выбранные программы уже размещены на рабочем столе', 'info');
+      }
+    }
+    setInstalledModalOpen(false);
+    setSelectedInstalled([]);
   };
 
   const addWidgetVariantAt = (def: WidgetCatalogDef, variant: WidgetVariantDef, col: number, row: number) => {
@@ -2882,6 +3041,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 zIndex: isResizing ? 28 : isSelected ? 15 : 5,
               }}
               className={`relative border ${w.shape === 'circle' ? 'p-2.5' : 'p-3.5'} ${shapeCls} luma-card-lift ${cardCls} ${
+                deletingWidgetIds[w.id] ? 'luma-delete-widget' : ''
+              } ${
                 editMode ? 'cursor-grab active:cursor-grabbing' : ''
               } ${
                 isResizing
@@ -3009,6 +3170,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                   zIndex: isResizing ? 28 : 8,
                 }}
                 className={`relative border p-2.5 flex flex-col justify-between gap-1.5 ${folderShapeCls} ${cardCls} cursor-pointer transition ${
+                  deletingShortcutIds[sc.id] ? 'luma-delete-app' : ''
+                } ${
                   isDropTarget || isResizing
                     ? 'ring-2 ring-[var(--luma-accent)] shadow-[0_0_0_5px_var(--luma-accent-soft)]'
                     : isSelected && editMode
@@ -3162,6 +3325,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                   : sc.label
               }
               className={`group relative flex flex-col items-center justify-center gap-1 rounded-2xl p-1 transition cursor-pointer ${
+                deletingShortcutIds[sc.id] ? 'luma-delete-app' : ''
+              } ${
                 isDark ? 'hover:bg-white/[0.07] text-zinc-200' : 'hover:bg-zinc-900/[0.07] text-zinc-900'
               } ${
                 isDropTarget || isResizing
@@ -3271,9 +3436,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           <div className={`my-1 border-t ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`} />
           <button
             onClick={() => {
-              const id = widgetCtxMenu.w.id;
-              setWidgets((prev) => prev.filter((x) => x.id !== id));
-              if (resizingTarget?.id === id) setResizingTarget(null);
+              animatedRemoveWidget(widgetCtxMenu.w.id, widgetCtxMenu.w.title);
               setWidgetCtxMenu(null);
             }}
             className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-[var(--luma-accent)] hover:bg-[var(--luma-accent-soft)] font-semibold cursor-pointer"
@@ -3348,7 +3511,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 path: matchedApp?.url || sc.target,
                 kind: sc.kind,
                 app: matchedApp,
-                onDelete: () => setShortcuts((prev) => prev.filter((x) => x.id !== sc.id)),
+                onDelete: () => animatedRemoveShortcut(sc.id, sc.label),
               });
               setShortcutCtxMenu(null);
             }}
@@ -3374,9 +3537,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           </button>
           <button
             onClick={() => {
-              const id = shortcutCtxMenu.sc.id;
-              setShortcuts((prev) => prev.filter((x) => x.id !== id));
-              if (resizingTarget?.id === id) setResizingTarget(null);
+              animatedRemoveShortcut(shortcutCtxMenu.sc.id, shortcutCtxMenu.sc.label);
               setShortcutCtxMenu(null);
             }}
             className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-[var(--luma-accent)] hover:bg-[var(--luma-accent-soft)] font-semibold cursor-pointer"
@@ -3616,6 +3777,13 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           </button>
 
           <button
+            onClick={openInstalledAppsModal}
+            className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer inline-flex items-center gap-1 ${subBtnCls}`}
+          >
+            <AppWindow className="w-3 h-3 text-[var(--luma-accent)]" /> Программы ПК
+          </button>
+
+          <button
             onClick={() => setPickerModal({ mode: 'widget', col: 9, row: 3 })}
             className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer inline-flex items-center gap-1 ${subBtnCls}`}
           >
@@ -3665,6 +3833,11 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 setPickerModal({ mode: 'widget', col: ctxMenu.col, row: ctxMenu.row });
                 setCtxMenu(null);
               },
+            },
+            {
+              label: 'Установленные программы ПК...',
+              icon: <Sparkles className="w-3.5 h-3.5 text-[var(--luma-accent)]" />,
+              run: () => openInstalledAppsModal(),
             },
             {
               label: 'Создать универсальную папку',
@@ -4561,6 +4734,179 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 </span>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== INSTALLED DEVICE APPS PICKER MODAL ==================== */}
+      {installedModalOpen && (
+        <div
+          onClick={() => setInstalledModalOpen(false)}
+          className="fixed inset-0 z-[75] bg-black/65 backdrop-blur-md flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`luma-animate-in w-full max-w-3xl max-h-[84vh] flex flex-col border p-5 shadow-2xl space-y-3.5 ${modalShellCls}`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
+              <div>
+                <div className="text-sm font-extrabold flex items-center gap-2">
+                  <AppWindow className="w-4 h-4 text-[var(--luma-accent)]" />
+                  Установленные приложения на устройстве ({installedApps.length})
+                </div>
+                <div className={`text-[11px] ${mutedCls}`}>
+                  Сканирование меню «Пуск» и реестра программ ПК — выберите нужные или добавьте все на рабочий стол
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => void loadInstalledDeviceApps(true)}
+                  disabled={installedLoading}
+                  className={`px-2.5 py-1.5 rounded-xl border text-xs font-mono inline-flex items-center gap-1 cursor-pointer ${subBtnCls}`}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${installedLoading ? 'animate-spin' : ''}`} />
+                  Обновить
+                </button>
+                <button
+                  onClick={() => setInstalledModalOpen(false)}
+                  className={`p-1.5 rounded-xl border cursor-pointer ${subBtnCls}`}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {(() => {
+              const cats = ['Все', ...Array.from(new Set(installedApps.map((a) => a.category)))];
+              const q = installedQuery.trim().toLowerCase();
+              const visible = installedApps.filter(
+                (a) =>
+                  (installedCat === 'Все' || a.category === installedCat) &&
+                  (!q || a.name.toLowerCase().includes(q) || a.exec_path.toLowerCase().includes(q) || (a.publisher || '').toLowerCase().includes(q))
+              );
+              const allVisibleSelected = visible.length > 0 && visible.every((a) => selectedInstalled.includes(a.id));
+
+              return (
+                <>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <div className={`flex-1 min-w-[200px] flex items-center gap-2 px-3 py-2 rounded-xl border ${subBtnCls}`}>
+                      <Search className={`w-3.5 h-3.5 shrink-0 ${mutedCls}`} />
+                      <input
+                        value={installedQuery}
+                        onChange={(e) => setInstalledQuery(e.target.value)}
+                        placeholder="Поиск установленных программ (Chrome, Steam, Telegram, VS Code...)"
+                        className="w-full bg-transparent text-xs outline-none"
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (allVisibleSelected) {
+                          const visSet = new Set(visible.map((v) => v.id));
+                          setSelectedInstalled((prev) => prev.filter((id) => !visSet.has(id)));
+                        } else {
+                          const next = new Set(selectedInstalled);
+                          visible.forEach((v) => next.add(v.id));
+                          setSelectedInstalled(Array.from(next));
+                        }
+                      }}
+                      className={`px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${subBtnCls}`}
+                    >
+                      {allVisibleSelected ? 'Снять выбор' : `Выбрать все (${visible.length})`}
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 shrink-0">
+                    {cats.map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => setInstalledCat(c)}
+                        className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold cursor-pointer transition ${
+                          installedCat === c
+                            ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                            : subBtnCls
+                        }`}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex-1 min-h-[220px] overflow-y-auto pr-1">
+                    {installedLoading ? (
+                      <div className={`py-14 text-center text-xs font-mono ${mutedCls}`}>
+                        Сканирование установленных программ устройства...
+                      </div>
+                    ) : visible.length === 0 ? (
+                      <div className={`py-14 text-center text-xs font-mono ${mutedCls}`}>
+                        Программы не найдены. Нажмите «Обновить» или измените поисковый фильтр.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                        {visible.map((app) => {
+                          const sel = selectedInstalled.includes(app.id);
+                          return (
+                            <button
+                              key={app.id}
+                              type="button"
+                              onClick={() =>
+                                setSelectedInstalled((prev) =>
+                                  prev.includes(app.id) ? prev.filter((x) => x !== app.id) : [...prev, app.id]
+                                )
+                              }
+                              className={`p-2.5 rounded-xl border text-left flex items-center gap-2.5 transition cursor-pointer ${
+                                sel
+                                  ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                                  : subBtnCls
+                              }`}
+                            >
+                              <div
+                                className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
+                                  sel
+                                    ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                                    : 'border-zinc-500/50'
+                                }`}
+                              >
+                                {sel && <Check className="w-3 h-3" />}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-bold truncate">{app.name}</div>
+                                <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
+                                  {app.category} · {app.exec_path.split(/[\\/]/).pop()}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                    <span className={`text-xs font-mono ${mutedCls}`}>
+                      Выбрано: <strong className="text-[var(--luma-accent)]">{selectedInstalled.length}</strong> из {installedApps.length}
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        disabled={selectedInstalled.length === 0}
+                        onClick={() => placeInstalledAppsOnDesktop(true)}
+                        className={`px-3.5 py-2 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 ${subBtnCls}`}
+                      >
+                        <FolderPlus className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+                        Собрать в папку на столе
+                      </button>
+                      <button
+                        disabled={selectedInstalled.length === 0}
+                        onClick={() => placeInstalledAppsOnDesktop(false)}
+                        className="px-4 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Добавить на рабочий стол ({selectedInstalled.length})
+                      </button>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

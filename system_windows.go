@@ -27,17 +27,27 @@ var (
 	procGetSystemTimes       = modKernel32.NewProc("GetSystemTimes")
 	procGetDiskFreeSpaceExW  = modKernel32.NewProc("GetDiskFreeSpaceExW")
 	procGetSystemPowerStatus = modKernel32.NewProc("GetSystemPowerStatus")
-	procKeybdEvent           = modUser32.NewProc("keybd_event")
+	procKeybdEvent               = modUser32.NewProc("keybd_event")
+	procGetForegroundWindow      = modUser32.NewProc("GetForegroundWindow")
+	procGetWindowThreadProcessId = modUser32.NewProc("GetWindowThreadProcessId")
+	procGetKeyboardLayout        = modUser32.NewProc("GetKeyboardLayout")
+	procLoadKeyboardLayoutW      = modUser32.NewProc("LoadKeyboardLayoutW")
+	procActivateKeyboardLayout   = modUser32.NewProc("ActivateKeyboardLayout")
+	procPostMessageW             = modUser32.NewProc("PostMessageW")
 )
 
 const (
-	vkVolumeMute     = 0xAD
-	vkVolumeDown     = 0xAE
-	vkVolumeUp       = 0xAF
-	vkMediaNextTrack = 0xB0
-	vkMediaPrevTrack = 0xB1
-	vkMediaPlayPause = 0xB3
-	keyeventfKeyUp   = 0x0002
+	vkVolumeMute          = 0xAD
+	vkVolumeDown          = 0xAE
+	vkVolumeUp            = 0xAF
+	vkMediaNextTrack      = 0xB0
+	vkMediaPrevTrack      = 0xB1
+	vkMediaPlayPause      = 0xB3
+	keyeventfKeyUp        = 0x0002
+	wmInputLangChangeReq  = 0x0050
+	hwndBroadcast         = 0xFFFF
+	klfActivate           = 0x00000001
+	klfSubstituteOK       = 0x00000002
 )
 
 type memoryStatusEx struct {
@@ -96,6 +106,11 @@ type platformProbe struct {
 	prevProcCPU       map[int]procCPUSample
 	cachedBattStatic  BatteryHardwareDetails
 	cachedBattStaticT time.Time
+	cachedApps        []InstalledAppItem
+	cachedAppsT       time.Time
+	cachedWireless    []WirelessDeviceBattery
+	cachedWirelessT   time.Time
+	activeKbdTag      string
 }
 
 func newPlatformProbe() *platformProbe {
@@ -419,6 +434,28 @@ func (p *platformProbe) GetBluetoothStatus() BluetoothStatus {
 $res = @{ available = $false; enabled = $false; adapter_name = ""; devices = @() }
 try {
   $btAll = Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue
+  $battMap = @{}
+  try {
+    $cand = Get-PnpDevice -Class Bluetooth,HIDClass,System,Mouse,Keyboard,AudioEndpoint -PresentOnly -ErrorAction SilentlyContinue
+    foreach ($c in $cand) {
+      try {
+        $prop = Get-PnpDeviceProperty -InstanceId $c.InstanceId -KeyName '{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2' -ErrorAction SilentlyContinue
+        if ($prop -and $prop.Data -ne $null) {
+          $val = [int]$prop.Data
+          if ($val -ge 0 -and $val -le 100) {
+            $k = ([string]$c.FriendlyName).Trim()
+            if ($k -ne "") {
+              $kClean = $k -replace '\s*(Hands-Free|Stereo|Avrcp|AG Audio|Battery Service|HID-compliant.*|BLE|LE)$',''
+              $kClean = $kClean.Trim()
+              if ($kClean -ne "") { $battMap[$kClean.ToLower()] = $val }
+              $battMap[$k.ToLower()] = $val
+            }
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+
   if ($btAll) {
     $res.available = $true
     $adapter = $btAll | Where-Object { $_.FriendlyName -match 'Radio|Adapter|Intel|Realtek|Qualcomm|MediaTek|Bluetooth' } | Select-Object -First 1
@@ -430,12 +467,31 @@ try {
       $res.enabled = $true
     }
     $devs = @()
-    foreach ($d in ($btAll | Where-Object { $_.FriendlyName -and $_.FriendlyName -notmatch 'Enumerator|Service|Transport|Protocol|RFCOMM|Adapter|Radio|AVCTP|Hands-Free' } | Select-Object -First 12)) {
+    $seen = @{}
+    foreach ($d in ($btAll | Where-Object { $_.FriendlyName -and $_.FriendlyName -notmatch 'Enumerator|Service|Transport|Protocol|RFCOMM|Adapter|Radio|AVCTP|Hands-Free|Generic Attribute|Device Information' } | Select-Object -First 24)) {
+      $fname = ([string]$d.FriendlyName).Trim()
+      if ($seen.ContainsKey($fname.ToLower())) { continue }
+      $seen[$fname.ToLower()] = $true
+      $bp = -1
+      $lowN = $fname.ToLower()
+      if ($battMap.ContainsKey($lowN)) {
+        $bp = $battMap[$lowN]
+      } else {
+        foreach ($bk in $battMap.Keys) {
+          if ($bk.Length -ge 4 -and ($lowN.Contains($bk) -or $bk.Contains($lowN))) {
+            $bp = $battMap[$bk]
+            break
+          }
+        }
+      }
       $devs += [PSCustomObject]@{
-        name = [string]$d.FriendlyName
+        name = $fname
         status = [string]$d.Status
         connected = ($d.Status -eq 'OK')
         class = [string]$d.Class
+        battery_percent = $bp
+        transport = "Bluetooth"
+        instance_id = [string]$d.InstanceId
       }
     }
     $res.devices = $devs
@@ -453,6 +509,12 @@ $res | ConvertTo-Json -Depth 4 -Compress
 	}
 	if st.Devices == nil {
 		st.Devices = []BluetoothDevice{}
+	}
+	for i := range st.Devices {
+		st.Devices[i].DeviceType = classifyPeripheralType(st.Devices[i].Name)
+		if st.Devices[i].Transport == "" {
+			st.Devices[i].Transport = "Bluetooth"
+		}
 	}
 	return st
 }
@@ -1525,6 +1587,562 @@ func (p *platformProbe) ControlService(name, action string) error {
 	}
 	_, err := runHiddenPowerShell(cmd)
 	return err
+}
+
+// GetWirelessDeviceBatteries probes Windows PnP DEVPKEY_Bluetooth_BatteryLevel and HID Battery sensors
+// for wireless mice, keyboards, headphones, earbuds, and controllers.
+func (p *platformProbe) GetWirelessDeviceBatteries(forceRefresh bool) []WirelessDeviceBattery {
+	p.mu.RLock()
+	if !forceRefresh && time.Since(p.cachedWirelessT) < 15*time.Second && p.cachedWireless != nil {
+		out := make([]WirelessDeviceBattery, len(p.cachedWireless))
+		copy(out, p.cachedWireless)
+		p.mu.RUnlock()
+		return out
+	}
+	p.mu.RUnlock()
+
+	script := `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$items = @()
+$seen = @{}
+try {
+  $cand = Get-PnpDevice -Class Bluetooth,HIDClass,AudioEndpoint,Mouse,Keyboard,System -PresentOnly -ErrorAction SilentlyContinue
+  foreach ($c in $cand) {
+    try {
+      $prop = Get-PnpDeviceProperty -InstanceId $c.InstanceId -KeyName '{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2' -ErrorAction SilentlyContinue
+      if ($prop -and $prop.Data -ne $null) {
+        $val = [int]$prop.Data
+        if ($val -ge 0 -and $val -le 100) {
+          $rawName = ([string]$c.FriendlyName).Trim()
+          if ($rawName -eq "") { continue }
+          $clean = $rawName -replace '\s*(Hands-Free|Stereo|Avrcp|AG Audio|Battery Service|HID-compliant.*|BLE|LE)$',''
+          $clean = $clean.Trim()
+          if ($clean -eq "") { $clean = $rawName }
+          $key = $clean.ToLower()
+          if ($seen.ContainsKey($key)) { continue }
+          $seen[$key] = $true
+          $tr = "Bluetooth"
+          if ($c.Class -eq 'HIDClass' -or $c.InstanceId -match '^HID\\VID_') { $tr = "Wireless HID / 2.4GHz" }
+          $items += [PSCustomObject]@{
+            name = $clean
+            battery_percent = $val
+            connected = ($c.Status -eq 'OK')
+            transport = $tr
+            source = "Windows PnP Battery"
+          }
+        }
+      }
+    } catch {}
+  }
+} catch {}
+@($items) | ConvertTo-Json -Compress
+`
+	var list []WirelessDeviceBattery
+	if out, err := runHiddenPowerShell(script); err == nil && out != "" {
+		if strings.HasPrefix(out, "[") {
+			_ = json.Unmarshal([]byte(out), &list)
+		} else if strings.HasPrefix(out, "{") {
+			var single WirelessDeviceBattery
+			if json.Unmarshal([]byte(out), &single) == nil && single.Name != "" {
+				list = append(list, single)
+			}
+		}
+	}
+	if list == nil {
+		list = []WirelessDeviceBattery{}
+	}
+	for i := range list {
+		list[i].DeviceType = classifyPeripheralType(list[i].Name)
+	}
+	p.mu.Lock()
+	p.cachedWireless = list
+	p.cachedWirelessT = time.Now()
+	p.mu.Unlock()
+	return list
+}
+
+// ListAudioDevices enumerates ALL active Windows CoreAudio output (playback) & input (capture) devices.
+func (p *platformProbe) ListAudioDevices() AudioDevicesSnapshot {
+	script := `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -TypeDefinition @"
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+public struct LumaPropKey {
+  public Guid fmtid;
+  public int pid;
+}
+[StructLayout(LayoutKind.Explicit)]
+public struct LumaPropVariant {
+  [FieldOffset(0)] public ushort vt;
+  [FieldOffset(8)] public IntPtr ptr;
+}
+[Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IPropertyStoreLuma {
+  int GetCount(out int cProps);
+  int GetAt(int iProp, out LumaPropKey pkey);
+  int GetValue(ref LumaPropKey key, out LumaPropVariant pv);
+}
+[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDeviceLuma {
+  int Activate(ref Guid id, int clsCtx, IntPtr actParams, out IntPtr ppInterface);
+  int OpenPropertyStore(int stgmAccess, out IPropertyStoreLuma ppProperties);
+  int GetId([MarshalAs(UnmanagedType.LPWStr)] out string ppstrId);
+  int GetState(out int pdwState);
+}
+[Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDeviceCollectionLuma {
+  int GetCount(out int pcDevices);
+  int Item(int nDevice, out IMMDeviceLuma ppDevice);
+}
+[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDeviceEnumeratorLuma {
+  int EnumAudioEndpoints(int dataFlow, int dwStateMask, out IMMDeviceCollectionLuma ppDevices);
+  int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDeviceLuma ppEndpoint);
+}
+[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDevEnumLuma {}
+
+public class LumaAudioListItem {
+  public string id;
+  public string name;
+  public string kind;
+  public bool is_default;
+}
+
+public class LumaAudioEnum {
+  [DllImport("ole32.dll")] static extern int PropVariantClear(ref LumaPropVariant pvar);
+
+  static string GetFriendlyName(IMMDeviceLuma dev) {
+    try {
+      IPropertyStoreLuma store;
+      if (dev.OpenPropertyStore(0, out store) != 0 || store == null) return "";
+      var key = new LumaPropKey { fmtid = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), pid = 14 };
+      LumaPropVariant pv;
+      if (store.GetValue(ref key, out pv) == 0 && pv.vt == 31 && pv.ptr != IntPtr.Zero) {
+        string s = Marshal.PtrToStringUni(pv.ptr) ?? "";
+        PropVariantClear(ref pv);
+        return s;
+      }
+    } catch {}
+    return "";
+  }
+
+  public static List<LumaAudioListItem> EnumAll() {
+    var result = new List<LumaAudioListItem>();
+    var en = (IMMDeviceEnumeratorLuma)(new MMDevEnumLuma());
+    for (int flow = 0; flow <= 1; flow++) {
+      string defId = "";
+      try {
+        IMMDeviceLuma defDev;
+        if (en.GetDefaultAudioEndpoint(flow, 1, out defDev) == 0 && defDev != null) {
+          defDev.GetId(out defId);
+        }
+      } catch {}
+      IMMDeviceCollectionLuma col;
+      if (en.EnumAudioEndpoints(flow, 1, out col) == 0 && col != null) {
+        int count = 0;
+        col.GetCount(out count);
+        for (int i = 0; i < count; i++) {
+          IMMDeviceLuma d;
+          if (col.Item(i, out d) == 0 && d != null) {
+            string id = "";
+            d.GetId(out id);
+            string name = GetFriendlyName(d);
+            if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(name)) {
+              result.Add(new LumaAudioListItem {
+                id = id,
+                name = name,
+                kind = (flow == 0 ? "output" : "input"),
+                is_default = (id == defId)
+              });
+            }
+          }
+        }
+      }
+    }
+    return result;
+  }
+}
+"@
+@([LumaAudioEnum]::EnumAll()) | ConvertTo-Json -Compress
+`
+	snap := AudioDevicesSnapshot{
+		OK:      true,
+		Outputs: []AudioEndpointDevice{},
+		Inputs:  []AudioEndpointDevice{},
+	}
+	out, err := runHiddenPowerShell(script)
+	if err != nil || out == "" {
+		return snap
+	}
+	var raw []AudioEndpointDevice
+	if strings.HasPrefix(out, "[") {
+		_ = json.Unmarshal([]byte(out), &raw)
+	} else if strings.HasPrefix(out, "{") {
+		var single AudioEndpointDevice
+		if json.Unmarshal([]byte(out), &single) == nil && single.ID != "" {
+			raw = append(raw, single)
+		}
+	}
+	for _, dev := range raw {
+		dev.Status = "Активно"
+		dev.FormFactor = classifyAudioFormFactor(dev.Name, dev.Kind)
+		if dev.Kind == "input" {
+			snap.Inputs = append(snap.Inputs, dev)
+			if dev.IsDefault {
+				snap.ActiveInputID = dev.ID
+			}
+		} else {
+			dev.Kind = "output"
+			snap.Outputs = append(snap.Outputs, dev)
+			if dev.IsDefault {
+				snap.ActiveOutputID = dev.ID
+			}
+		}
+	}
+	return snap
+}
+
+// SetDefaultAudioDevice switches the real Windows default output (playback) or input (microphone) endpoint
+// via the native Windows IPolicyConfig COM interface (no third-party tools needed).
+func (p *platformProbe) SetDefaultAudioDevice(deviceID, kind string) error {
+	cleanID := strings.TrimSpace(deviceID)
+	if cleanID == "" || strings.ContainsAny(cleanID, "'\";`$&|<>") {
+		return fmt.Errorf("некорректный ID аудиоустройства")
+	}
+	script := fmt.Sprintf(`
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+[Guid("f8679f50-850a-41cf-9c72-430f290290c8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IPolicyConfigLuma {
+  int GetMixFormat(string id, IntPtr fmt);
+  int GetDeviceFormat(string id, int def, IntPtr fmt);
+  int ResetDeviceFormat(string id);
+  int SetDeviceFormat(string id, IntPtr epFmt, IntPtr mixFmt);
+  int GetProcessingPeriod(string id, int def, IntPtr defPer, IntPtr minPer);
+  int SetProcessingPeriod(string id, IntPtr per);
+  int GetShareMode(string id, IntPtr mode);
+  int SetShareMode(string id, IntPtr mode);
+  int GetPropertyValue(string id, ref IntPtr key, out IntPtr val);
+  int SetPropertyValue(string id, ref IntPtr key, ref IntPtr val);
+  int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId, int eRole);
+  int SetEndpointVisibility(string id, int bVisible);
+}
+[ComImport, Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")] class PolicyConfigClientLuma {}
+
+public class LumaAudioSwitch {
+  public static void SetDefault(string id) {
+    var cfg = (IPolicyConfigLuma)(new PolicyConfigClientLuma());
+    cfg.SetDefaultEndpoint(id, 0);
+    cfg.SetDefaultEndpoint(id, 1);
+    cfg.SetDefaultEndpoint(id, 2);
+  }
+}
+"@
+[LumaAudioSwitch]::SetDefault('%s')
+`, cleanID)
+	_, err := runHiddenPowerShell(script)
+	return err
+}
+
+func winTagFromHKL(hkl uintptr) string {
+	langID := uint16(hkl & 0xFFFF)
+	known := map[uint16]string{
+		0x0409: "en-US", 0x0809: "en-GB", 0x0419: "ru-RU", 0x0418: "ro-RO",
+		0x0422: "uk-UA", 0x0407: "de-DE", 0x040C: "fr-FR", 0x0C0A: "es-ES",
+		0x040A: "es-ES", 0x0410: "it-IT", 0x0415: "pl-PL", 0x041F: "tr-TR",
+		0x0804: "zh-CN", 0x0404: "zh-TW", 0x0411: "ja-JP", 0x0412: "ko-KR",
+		0x0401: "ar-SA", 0x040D: "he-IL", 0x0439: "hi-IN", 0x043F: "kk-KZ",
+		0x0416: "pt-BR", 0x0816: "pt-PT", 0x0413: "nl-NL", 0x041D: "sv-SE",
+		0x0414: "nb-NO", 0x040B: "fi-FI", 0x0406: "da-DK", 0x0405: "cs-CZ",
+		0x041B: "sk-SK", 0x040E: "hu-HU", 0x0408: "el-GR", 0x0402: "bg-BG",
+		0x0423: "be-BY", 0x0437: "ka-GE", 0x042B: "hy-AM", 0x042C: "az-Latn-AZ",
+		0x0443: "uz-Latn-UZ", 0x0427: "lt-LT", 0x0426: "lv-LV", 0x0425: "et-EE",
+		0x042A: "vi-VN", 0x041E: "th-TH", 0x0421: "id-ID", 0x0429: "fa-IR",
+	}
+	if tag, ok := known[langID]; ok {
+		return tag
+	}
+	return ""
+}
+
+func winKLIDFromTag(tag string) string {
+	low := strings.ToLower(strings.TrimSpace(tag))
+	klids := map[string]string{
+		"en-us": "00000409", "en-gb": "00000809", "ru-ru": "00000419", "ro-ro": "00000418",
+		"uk-ua": "00000422", "de-de": "00000407", "fr-fr": "0000040C", "es-es": "0000040A",
+		"it-it": "00000410", "pl-pl": "00000415", "tr-tr": "0000041F", "zh-cn": "00000804",
+		"zh-tw": "00000404", "ja-jp": "00000411", "ko-kr": "00000412", "ar-sa": "00000401",
+		"he-il": "0000040D", "hi-in": "00000439", "kk-kz": "0000043F", "pt-br": "00000416",
+		"pt-pt": "00000816", "nl-nl": "00000413", "sv-se": "0000041D", "nb-no": "00000414",
+		"fi-fi": "0000040B", "da-dk": "00000406", "cs-cz": "00000405", "sk-sk": "0000041B",
+		"hu-hu": "0000040E", "el-gr": "00000408", "bg-bg": "00000402", "be-by": "00000423",
+		"ka-ge": "00000437", "hy-am": "0000042B", "az-latn-az": "0000042C", "uz-latn-uz": "00000443",
+		"lt-lt": "00000427", "lv-lv": "00000426", "et-ee": "00000425", "vi-vn": "0000042A",
+		"th-th": "0000041E", "id-id": "00000421", "fa-ir": "00000429", "sr-cyrl-rs": "00000C1A",
+		"hr-hr": "0000041A", "sl-si": "00000424", "is-is": "0000040F", "sq-al": "0000041C",
+		"mk-mk": "0000042F", "mn-mn": "00000450", "bn-bd": "00000845", "ur-pk": "00000420",
+		"ta-in": "00000449", "ne-np": "00000461", "km-kh": "00000453", "lo-la": "00000454",
+	}
+	if k, ok := klids[low]; ok {
+		return k
+	}
+	return ""
+}
+
+func (p *platformProbe) GetKeyboardLayouts() KeyboardLayoutsSnapshot {
+	// Read current foreground HKL via Win32
+	hwnd, _, _ := procGetForegroundWindow.Call()
+	var tid uintptr
+	if hwnd != 0 {
+		tid, _, _ = procGetWindowThreadProcessId.Call(hwnd, 0)
+	}
+	hkl, _, _ := procGetKeyboardLayout.Call(tid)
+	activeTag := winTagFromHKL(hkl)
+
+	script := `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $list = Get-WinUserLanguageList -ErrorAction Stop
+  $out = foreach ($l in $list) {
+    [PSCustomObject]@{
+      tag = [string]$l.LanguageTag
+      name = [string]$l.EnglishName
+      native_name = [string]$l.Autonym
+    }
+  }
+  @($out) | ConvertTo-Json -Compress
+} catch { '[]' }
+`
+	var installed []KeyboardLayoutInfo
+	if out, err := runHiddenPowerShell(script); err == nil && out != "" {
+		if strings.HasPrefix(out, "[") {
+			_ = json.Unmarshal([]byte(out), &installed)
+		} else if strings.HasPrefix(out, "{") {
+			var single KeyboardLayoutInfo
+			if json.Unmarshal([]byte(out), &single) == nil && single.Tag != "" {
+				installed = append(installed, single)
+			}
+		}
+	}
+	if len(installed) == 0 {
+		installed = []KeyboardLayoutInfo{
+			{Tag: "en-US", Short: "ENG", Name: "English (US)", NativeName: "English (US)"},
+			{Tag: "ru-RU", Short: "RUS", Name: "Russian", NativeName: "Русский"},
+		}
+	}
+
+	p.mu.RLock()
+	cachedActive := p.activeKbdTag
+	p.mu.RUnlock()
+	if activeTag == "" {
+		if cachedActive != "" {
+			activeTag = cachedActive
+		} else {
+			activeTag = installed[0].Tag
+		}
+	}
+
+	var activeInfo KeyboardLayoutInfo
+	matched := false
+	for i := range installed {
+		installed[i].Short = keyboardShortCode(installed[i].Tag)
+		if strings.EqualFold(installed[i].Tag, activeTag) ||
+			strings.EqualFold(strings.Split(installed[i].Tag, "-")[0], strings.Split(activeTag, "-")[0]) {
+			installed[i].Active = true
+			activeInfo = installed[i]
+			activeTag = installed[i].Tag
+			matched = true
+		}
+	}
+	if !matched && len(installed) > 0 {
+		installed[0].Active = true
+		activeInfo = installed[0]
+		activeTag = installed[0].Tag
+	}
+	return KeyboardLayoutsSnapshot{
+		OK:        true,
+		ActiveTag: activeTag,
+		Active:    activeInfo,
+		Installed: installed,
+	}
+}
+
+func (p *platformProbe) SwitchKeyboardLayout(tag, klid string) KeyboardLayoutsSnapshot {
+	snap := p.GetKeyboardLayouts()
+	targetTag := strings.TrimSpace(tag)
+	if strings.EqualFold(targetTag, "next") && len(snap.Installed) > 1 {
+		for i, l := range snap.Installed {
+			if l.Active {
+				targetTag = snap.Installed[(i+1)%len(snap.Installed)].Tag
+				break
+			}
+		}
+	}
+	if targetTag == "" && len(snap.Installed) > 0 {
+		targetTag = snap.Installed[0].Tag
+	}
+	useKLID := strings.TrimSpace(klid)
+	if useKLID == "" {
+		useKLID = winKLIDFromTag(targetTag)
+	}
+	if useKLID != "" {
+		if ptr, err := syscall.UTF16PtrFromString(useKLID); err == nil {
+			hkl, _, _ := procLoadKeyboardLayoutW.Call(uintptr(unsafe.Pointer(ptr)), uintptr(klfActivate|klfSubstituteOK))
+			if hkl != 0 {
+				_, _, _ = procActivateKeyboardLayout.Call(hkl, 0)
+				hwnd, _, _ := procGetForegroundWindow.Call()
+				if hwnd != 0 {
+					_, _, _ = procPostMessageW.Call(hwnd, wmInputLangChangeReq, 0, hkl)
+				}
+				_, _, _ = procPostMessageW.Call(hwndBroadcast, wmInputLangChangeReq, 0, hkl)
+			}
+		}
+	}
+	p.mu.Lock()
+	p.activeKbdTag = targetTag
+	p.mu.Unlock()
+
+	for i := range snap.Installed {
+		isAct := strings.EqualFold(snap.Installed[i].Tag, targetTag)
+		snap.Installed[i].Active = isAct
+		if isAct {
+			snap.Active = snap.Installed[i]
+			snap.ActiveTag = snap.Installed[i].Tag
+		}
+	}
+	return snap
+}
+
+func (p *platformProbe) ManageKeyboardLayout(action, tag string) KeyboardLayoutsSnapshot {
+	clean := strings.TrimSpace(tag)
+	if clean == "" || strings.ContainsAny(clean, "'\";`$&|<> ") {
+		return p.GetKeyboardLayouts()
+	}
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "add":
+		script := fmt.Sprintf(`
+try {
+  $list = Get-WinUserLanguageList
+  if (-not ($list | Where-Object { $_.LanguageTag -ieq '%s' })) {
+    $list.Add('%s')
+    Set-WinUserLanguageList $list -Force
+  }
+} catch {}
+`, clean, clean)
+		_, _ = runHiddenPowerShell(script)
+	case "remove":
+		script := fmt.Sprintf(`
+try {
+  $list = Get-WinUserLanguageList
+  if ($list.Count -gt 1) {
+    $filtered = $list | Where-Object { $_.LanguageTag -ine '%s' }
+    if ($filtered.Count -gt 0) { Set-WinUserLanguageList $filtered -Force }
+  }
+} catch {}
+`, clean)
+		_, _ = runHiddenPowerShell(script)
+	}
+	return p.GetKeyboardLayouts()
+}
+
+// ListInstalledApps discovers real installed Windows applications from Start Menu shortcuts (.lnk) and Registry Uninstall keys.
+func (p *platformProbe) ListInstalledApps(forceRefresh bool) []InstalledAppItem {
+	p.mu.RLock()
+	if !forceRefresh && time.Since(p.cachedAppsT) < 60*time.Second && len(p.cachedApps) > 0 {
+		out := make([]InstalledAppItem, len(p.cachedApps))
+		copy(out, p.cachedApps)
+		p.mu.RUnlock()
+		return out
+	}
+	p.mu.RUnlock()
+
+	script := `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$apps = @()
+$seen = @{}
+$shell = New-Object -ComObject WScript.Shell
+$roots = @(
+  "$env:ProgramData\Microsoft\Windows\Start Menu\Programs",
+  "$env:AppData\Microsoft\Windows\Start Menu\Programs"
+)
+foreach ($r in $roots) {
+  if (-not (Test-Path $r)) { continue }
+  Get-ChildItem -Path $r -Filter *.lnk -Recurse -ErrorAction SilentlyContinue | Select-Object -First 220 | ForEach-Object {
+    $name = $_.BaseName.Trim()
+    if ($name -eq "" -or $name -match '(?i)uninstall|readme|help|manual|license|website|documentation|удалить|справка|деинстал') { return }
+    $key = $name.ToLower()
+    if ($seen.ContainsKey($key)) { return }
+    $target = $_.FullName
+    try {
+      $sc = $shell.CreateShortcut($_.FullName)
+      if ($sc.TargetPath -and (Test-Path $sc.TargetPath)) {
+        if ($sc.TargetPath -match '(?i)unins|uninst|msiexec') { return }
+        $target = $sc.TargetPath
+      }
+    } catch {}
+    $seen[$key] = $true
+    $apps += [PSCustomObject]@{
+      name = $name
+      exec_path = [string]$target
+      publisher = ""
+      source = "start_menu"
+    }
+  }
+}
+foreach ($regPath in @(
+  'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+  'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+  'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+)) {
+  Get-ItemProperty $regPath -ErrorAction SilentlyContinue | Select-Object -First 150 | ForEach-Object {
+    $dn = ([string]$_.DisplayName).Trim()
+    if ($dn -eq "" -or $dn -match '(?i)update for|hotfix|redistributable|runtime|sdk|driver|pack|kb\d+') { return }
+    $key = $dn.ToLower()
+    if ($seen.ContainsKey($key)) { return }
+    $ico = ([string]$_.DisplayIcon).Trim() -replace ',\d+$','' -replace '"',''
+    if ($ico -and $ico -match '\.exe$' -and (Test-Path $ico)) {
+      $seen[$key] = $true
+      $apps += [PSCustomObject]@{
+        name = $dn
+        exec_path = $ico
+        publisher = ([string]$_.Publisher).Trim()
+        source = "registry"
+      }
+    }
+  }
+}
+@($apps | Sort-Object name | Select-Object -First 150) | ConvertTo-Json -Compress
+`
+	var list []InstalledAppItem
+	if out, err := runHiddenPowerShell(script); err == nil && out != "" {
+		if strings.HasPrefix(out, "[") {
+			_ = json.Unmarshal([]byte(out), &list)
+		} else if strings.HasPrefix(out, "{") {
+			var single InstalledAppItem
+			if json.Unmarshal([]byte(out), &single) == nil && single.Name != "" {
+				list = append(list, single)
+			}
+		}
+	}
+	if list == nil {
+		list = []InstalledAppItem{}
+	}
+	for i := range list {
+		cat, icon := classifyInstalledAppCategory(list[i].Name, list[i].Publisher)
+		list[i].ID = fmt.Sprintf("pcapp_%d", i+1)
+		list[i].Category = cat
+		list[i].IconHint = icon
+	}
+	p.mu.Lock()
+	p.cachedApps = list
+	p.cachedAppsT = time.Now()
+	p.mu.Unlock()
+	return list
 }
 
 

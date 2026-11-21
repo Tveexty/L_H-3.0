@@ -85,10 +85,14 @@ type PickedFileInfo struct {
 }
 
 type BluetoothDevice struct {
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	Connected bool   `json:"connected"`
-	Class     string `json:"class"`
+	Name           string `json:"name"`
+	Status         string `json:"status"`
+	Connected      bool   `json:"connected"`
+	Class          string `json:"class"`
+	BatteryPercent int    `json:"battery_percent"` // -1 if unknown, 0-100 if reported
+	DeviceType     string `json:"device_type"`     // mouse | keyboard | headphones | gamepad | watch | phone | other
+	Transport      string `json:"transport,omitempty"`
+	InstanceID     string `json:"instance_id,omitempty"`
 }
 
 type BluetoothStatus struct {
@@ -96,6 +100,58 @@ type BluetoothStatus struct {
 	Enabled     bool              `json:"enabled"`
 	AdapterName string            `json:"adapter_name"`
 	Devices     []BluetoothDevice `json:"devices"`
+}
+
+type WirelessDeviceBattery struct {
+	Name           string `json:"name"`
+	DeviceType     string `json:"device_type"` // mouse | keyboard | headphones | gamepad | watch | phone | other
+	BatteryPercent int    `json:"battery_percent"`
+	Connected      bool   `json:"connected"`
+	Transport      string `json:"transport"`
+	Source         string `json:"source"`
+}
+
+type AudioEndpointDevice struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Kind       string `json:"kind"` // output | input
+	IsDefault  bool   `json:"is_default"`
+	Status     string `json:"status"`
+	FormFactor string `json:"form_factor"` // speakers | headphones | headset | hdmi | mic | usb | bluetooth
+}
+
+type AudioDevicesSnapshot struct {
+	OK             bool                  `json:"ok"`
+	Outputs        []AudioEndpointDevice `json:"outputs"`
+	Inputs         []AudioEndpointDevice `json:"inputs"`
+	ActiveOutputID string                `json:"active_output_id"`
+	ActiveInputID  string                `json:"active_input_id"`
+}
+
+type KeyboardLayoutInfo struct {
+	Tag        string `json:"tag"`         // e.g. ru-RU, en-US, ro-RO
+	Short      string `json:"short"`       // e.g. RUS, ENG, ROM
+	Name       string `json:"name"`        // e.g. Русский
+	NativeName string `json:"native_name"` // e.g. Русский
+	HKL        string `json:"hkl,omitempty"`
+	Active     bool   `json:"active"`
+}
+
+type KeyboardLayoutsSnapshot struct {
+	OK        bool                 `json:"ok"`
+	ActiveTag string               `json:"active_tag"`
+	Active    KeyboardLayoutInfo   `json:"active"`
+	Installed []KeyboardLayoutInfo `json:"installed"`
+}
+
+type InstalledAppItem struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	ExecPath  string `json:"exec_path"`
+	Publisher string `json:"publisher,omitempty"`
+	Category  string `json:"category"`
+	Source    string `json:"source"` // start_menu | registry | desktop | system
+	IconHint  string `json:"icon_hint"`
 }
 
 type FileStatInfo struct {
@@ -361,4 +417,120 @@ func friendlyAppName(procName, title string) string {
 	}
 	// Capitalize first letter nicely
 	return strings.ToUpper(raw[:1]) + raw[1:]
+}
+
+func classifyPeripheralType(name string) string {
+	low := strings.ToLower(name)
+	switch {
+	case strings.Contains(low, "mouse") || strings.Contains(low, "мыш") || strings.Contains(low, "g pro") ||
+		strings.Contains(low, "deathadder") || strings.Contains(low, "viper") || strings.Contains(low, "mx master") ||
+		strings.Contains(low, "mx anywhere") || strings.Contains(low, "superlight") || strings.Contains(low, "aerox") ||
+		strings.Contains(low, "basilisk") || strings.Contains(low, "trackball") || strings.Contains(low, "trackpad"):
+		return "mouse"
+	case strings.Contains(low, "keyboard") || strings.Contains(low, "клавиатур") || strings.Contains(low, "keychron") ||
+		strings.Contains(low, "mx keys") || strings.Contains(low, "blackwidow") || strings.Contains(low, "huntsman") ||
+		strings.Contains(low, "apex pro") || strings.Contains(low, "k380") || strings.Contains(low, "kbd"):
+		return "keyboard"
+	case strings.Contains(low, "airpods") || strings.Contains(low, "buds") || strings.Contains(low, "headphone") ||
+		strings.Contains(low, "headset") || strings.Contains(low, "наушн") || strings.Contains(low, "гарнит") ||
+		strings.Contains(low, "wh-1000") || strings.Contains(low, "wf-1000") || strings.Contains(low, "bose") ||
+		strings.Contains(low, "jbl") || strings.Contains(low, "marshall") || strings.Contains(low, "arctis") ||
+		strings.Contains(low, "cloud") || strings.Contains(low, "beats") || strings.Contains(low, "sennheiser") ||
+		strings.Contains(low, "audio") || strings.Contains(low, "speaker") || strings.Contains(low, "колонк"):
+		return "headphones"
+	case strings.Contains(low, "xbox") || strings.Contains(low, "dualsense") || strings.Contains(low, "dualshock") ||
+		strings.Contains(low, "gamepad") || strings.Contains(low, "controller") || strings.Contains(low, "joy-con") ||
+		strings.Contains(low, "геймпад") || strings.Contains(low, "pro controller"):
+		return "gamepad"
+	case strings.Contains(low, "watch") || strings.Contains(low, "band") || strings.Contains(low, "часы"):
+		return "watch"
+	case strings.Contains(low, "iphone") || strings.Contains(low, "galaxy") || strings.Contains(low, "pixel") ||
+		strings.Contains(low, "xiaomi") || strings.Contains(low, "phone") || strings.Contains(low, "redmi"):
+		return "phone"
+	default:
+		return "other"
+	}
+}
+
+func classifyAudioFormFactor(name, kind string) string {
+	low := strings.ToLower(name)
+	if kind == "input" {
+		if strings.Contains(low, "headset") || strings.Contains(low, "hands-free") || strings.Contains(low, "airpods") || strings.Contains(low, "buds") {
+			return "headset"
+		}
+		if strings.Contains(low, "usb") || strings.Contains(low, "hyperx") || strings.Contains(low, "blue yeti") || strings.Contains(low, "fifine") || strings.Contains(low, "shure") {
+			return "usb"
+		}
+		return "mic"
+	}
+	switch {
+	case strings.Contains(low, "airpods") || strings.Contains(low, "buds") || strings.Contains(low, "bluetooth") || strings.Contains(low, "hands-free"):
+		return "bluetooth"
+	case strings.Contains(low, "headphone") || strings.Contains(low, "headset") || strings.Contains(low, "наушн") || strings.Contains(low, "ear"):
+		return "headphones"
+	case strings.Contains(low, "hdmi") || strings.Contains(low, "display") || strings.Contains(low, "nvidia") || strings.Contains(low, "amd") || strings.Contains(low, "monitor"):
+		return "hdmi"
+	case strings.Contains(low, "usb") || strings.Contains(low, "dac"):
+		return "usb"
+	default:
+		return "speakers"
+	}
+}
+
+func classifyInstalledAppCategory(name, publisher string) (string, string) {
+	low := strings.ToLower(name + " " + publisher)
+	switch {
+	case strings.Contains(low, "chrome") || strings.Contains(low, "firefox") || strings.Contains(low, "edge") ||
+		strings.Contains(low, "opera") || strings.Contains(low, "brave") || strings.Contains(low, "yandex") || strings.Contains(low, "vivaldi"):
+		return "Браузеры", "Globe"
+	case strings.Contains(low, "steam") || strings.Contains(low, "epic") || strings.Contains(low, "ubisoft") ||
+		strings.Contains(low, "ea app") || strings.Contains(low, "battle.net") || strings.Contains(low, "minecraft") ||
+		strings.Contains(low, "riot") || strings.Contains(low, "roblox") || strings.Contains(low, "xbox") || strings.Contains(low, "game"):
+		return "Игры", "Gamepad2"
+	case strings.Contains(low, "visual studio") || strings.Contains(low, "vs code") || strings.Contains(low, "jetbrains") ||
+		strings.Contains(low, "pycharm") || strings.Contains(low, "intellij") || strings.Contains(low, "git") ||
+		strings.Contains(low, "python") || strings.Contains(low, "node") || strings.Contains(low, "docker") ||
+		strings.Contains(low, "postman") || strings.Contains(low, "terminal") || strings.Contains(low, "cursor"):
+		return "Разработка", "Code2"
+	case strings.Contains(low, "telegram") || strings.Contains(low, "discord") || strings.Contains(low, "whatsapp") ||
+		strings.Contains(low, "viber") || strings.Contains(low, "skype") || strings.Contains(low, "zoom") ||
+		strings.Contains(low, "slack") || strings.Contains(low, "teams"):
+		return "Общение", "MessageSquare"
+	case strings.Contains(low, "spotify") || strings.Contains(low, "vlc") || strings.Contains(low, "obs") ||
+		strings.Contains(low, "photoshop") || strings.Contains(low, "premiere") || strings.Contains(low, "blender") ||
+		strings.Contains(low, "figma") || strings.Contains(low, "audacity") || strings.Contains(low, "music") || strings.Contains(low, "video"):
+		return "Медиа", "Music"
+	case strings.Contains(low, "word") || strings.Contains(low, "excel") || strings.Contains(low, "powerpoint") ||
+		strings.Contains(low, "office") || strings.Contains(low, "libreoffice") || strings.Contains(low, "notion") ||
+		strings.Contains(low, "obsidian") || strings.Contains(low, "acrobat") || strings.Contains(low, "pdf"):
+		return "Офис", "FileText"
+	default:
+		return "Утилиты", "AppWindow"
+	}
+}
+
+func keyboardShortCode(tag string) string {
+	clean := strings.TrimSpace(tag)
+	if clean == "" {
+		return "ENG"
+	}
+	base := strings.ToLower(strings.Split(clean, "-")[0])
+	shortMap := map[string]string{
+		"en": "ENG", "ru": "RUS", "ro": "ROM", "uk": "UKR", "de": "DEU", "fr": "FRA",
+		"es": "ESP", "it": "ITA", "pt": "POR", "pl": "POL", "tr": "TUR", "zh": "中文",
+		"ja": "JPN", "ko": "KOR", "ar": "ARA", "he": "HEB", "hi": "HIN", "kk": "KAZ",
+		"uz": "UZB", "be": "BEL", "bg": "BUL", "cs": "CES", "sk": "SLK", "nl": "NLD",
+		"sv": "SWE", "no": "NOR", "nb": "NOR", "fi": "FIN", "da": "DAN", "el": "ELL",
+		"hu": "HUN", "sr": "SRP", "hr": "HRV", "vi": "VIE", "th": "THA", "id": "IND",
+		"ms": "MSA", "fa": "FAS", "ka": "KAT", "hy": "HYE", "az": "AZE", "lt": "LIT",
+		"lv": "LAV", "et": "EST", "mn": "MON", "bn": "BEN", "ur": "URD", "ta": "TAM",
+	}
+	if s, ok := shortMap[base]; ok {
+		return s
+	}
+	up := strings.ToUpper(base)
+	if len(up) > 3 {
+		return up[:3]
+	}
+	return up
 }

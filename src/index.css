@@ -580,3 +580,115 @@ html[data-wp-paused="true"] .luma-live-wp-solar {
   animation: lumaShimmerBar 1.4s ease-in-out infinite;
 }
 
+/* ==================== 1.2.2 DYNAMIC ISLAND 2.0 REACTIVE & AUDIO SPECTRUM ANIMATIONS ==================== */
+@keyframes lumaIslandPop {
+  0% {
+    transform: scale(0.92);
+  }
+  55% {
+    transform: scale(1.045);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes lumaAudioWave {
+  0%, 100% {
+    transform: scaleY(0.24);
+  }
+  35% {
+    transform: scaleY(1);
+  }
+  65% {
+    transform: scaleY(0.45);
+  }
+}
+
+@keyframes lumaIslandAudioGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 8px 26px rgba(0, 0, 0, 0.48), 0 0 18px -2px var(--luma-accent-border);
+  }
+  50% {
+    box-shadow: 0 0 0 1px var(--luma-accent), 0 12px 32px rgba(0, 0, 0, 0.56), 0 0 30px 1px var(--luma-accent-border);
+  }
+}
+
+.luma-island-pill {
+  transition: width 0.34s cubic-bezier(0.34, 1.56, 0.64, 1),
+    padding 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+    transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.32s ease,
+    border-color 0.25s ease;
+}
+
+.luma-island-pill:hover {
+  transform: scale(1.025);
+}
+
+.luma-island-pulse {
+  animation: lumaIslandPop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.luma-island-playing {
+  animation: lumaIslandAudioGlow 2.4s ease-in-out infinite;
+}
+
+.luma-wave-bar {
+  transform-origin: bottom center;
+  border-radius: 9999px;
+  animation: lumaAudioWave 0.95s ease-in-out infinite;
+}
+
+.luma-vinyl-spin {
+  animation: lumaOrbitSpin 4.5s linear infinite;
+}
+
+/* ==================== 1.2.2 WIDGET & APPLICATION DELETION ANIMATIONS ==================== */
+@keyframes lumaDeleteWidgetAnim {
+  0% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+    filter: blur(0px);
+  }
+  30% {
+    opacity: 0.95;
+    transform: scale(1.04) rotate(-1.5deg);
+    box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.7), 0 0 24px rgba(244, 63, 94, 0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.38) translateY(14px) rotate(6deg);
+    filter: blur(8px);
+  }
+}
+
+@keyframes lumaDeleteAppAnim {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+  28% {
+    opacity: 0.92;
+    transform: scale(1.08);
+    box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.75);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.25) translateY(-10px);
+    filter: blur(6px);
+  }
+}
+
+.luma-delete-widget {
+  pointer-events: none !important;
+  animation: lumaDeleteWidgetAnim 0.32s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+}
+
+.luma-delete-app {
+  pointer-events: none !important;
+  animation: lumaDeleteAppAnim 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+}
+
+

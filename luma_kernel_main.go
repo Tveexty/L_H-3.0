@@ -47,10 +47,10 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.2.1"
+	KernelVersion       = "1.2.2"
 	KernelCodename      = "Lithium"
 	KernelEngineVersion = "1.2"
-	SecurityCoreVersion = "1.2"
+	SecurityCoreVersion = "1.3"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
 )
@@ -2036,12 +2036,148 @@ func main() {
 		})
 	})
 
-	// Serve standalone executable download for LumaOS_1.2.1.exe (with backward-compatible aliases)
+	// ==================== LUMA OS 1.2.2 NATIVE ENDPOINTS ====================
+
+	// Real Audio Output & Input Devices Enumeration
+	mux.HandleFunc("/api/kernel/audio/devices", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(kernel.probe.ListAudioDevices())
+	})
+
+	// Real Audio Default Output/Input Switcher
+	mux.HandleFunc("/api/kernel/audio/default", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			ID   string `json:"id"`
+			Kind string `json:"kind"` // output | input
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		if err := kernel.probe.SetDefaultAudioDevice(payload.ID, payload.Kind); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		snap := kernel.probe.ListAudioDevices()
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":      true,
+			"devices": snap,
+		})
+	})
+
+	// Wireless Peripherals Battery Percentages (Mice, Keyboards, Headphones, Controllers)
+	mux.HandleFunc("/api/kernel/wireless/batteries", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		force := r.URL.Query().Get("refresh") == "1"
+		items := kernel.probe.GetWirelessDeviceBatteries(force)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":      true,
+			"devices": items,
+			"count":   len(items),
+		})
+	})
+
+	// Keyboard Layouts (Read, Switch, Add/Remove Any World Language)
+	mux.HandleFunc("/api/kernel/keyboard/layouts", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(kernel.probe.GetKeyboardLayouts())
+	})
+	mux.HandleFunc("/api/kernel/keyboard/switch", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Tag  string `json:"tag"`
+			KLID string `json:"klid"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		snap := kernel.probe.SwitchKeyboardLayout(payload.Tag, payload.KLID)
+		_ = json.NewEncoder(w).Encode(snap)
+	})
+	mux.HandleFunc("/api/kernel/keyboard/manage", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Action string `json:"action"` // add | remove
+			Tag    string `json:"tag"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		snap := kernel.probe.ManageKeyboardLayout(payload.Action, payload.Tag)
+		_ = json.NewEncoder(w).Encode(snap)
+	})
+
+	// Real Installed Applications on the Device (Start Menu + Registry on Windows / .desktop on Linux)
+	mux.HandleFunc("/api/kernel/installed-apps", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		force := r.URL.Query().Get("refresh") == "1"
+		apps := kernel.probe.ListInstalledApps(force)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":    true,
+			"count": len(apps),
+			"apps":  apps,
+		})
+	})
+
+	// LumaShield 1.3 Real-Time Guard Toggle, Whitelist Exclusions & Quarantine-All
+	mux.HandleFunc("/api/kernel/security/guard", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Enabled bool `json:"enabled"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		st := kernel.security.SetRealtimeGuard(payload.Enabled)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "realtime_guard_enabled": st})
+	})
+	mux.HandleFunc("/api/kernel/security/whitelist", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Action string `json:"action"` // add | remove
+			Path   string `json:"path"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		list := kernel.security.ManageExclusion(payload.Action, payload.Path)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "exclusions": list})
+	})
+	mux.HandleFunc("/api/kernel/security/quarantine-all", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		moved := kernel.security.QuarantineAllThreats()
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "quarantined": moved})
+	})
+
+	// Version Rollback API (List all releases + local backups & Roll back safely to any previous version)
+	mux.HandleFunc("/api/kernel/update/releases", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		repo := r.URL.Query().Get("repo")
+		if repo == "" {
+			repo = "https://github.com/Tveexty/L_H-3.0"
+		}
+		list := ListRollbackReleases(repo)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":              true,
+			"current_version": KernelVersion,
+			"releases":        list,
+		})
+	})
+	mux.HandleFunc("/api/kernel/update/rollback", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Version     string `json:"version"`
+			DownloadURL string `json:"download_url"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		if err := StartVersionRollback(payload.Version, payload.DownloadURL, kernel); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":       true,
+			"progress": GetUpdateProgress(),
+		})
+	})
+
+	// Serve standalone executable download for LumaOS_1.2.2.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.1.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.2.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -2049,12 +2185,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.1.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.2.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.2.2.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.0.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.1.0.exe", serveExe)
@@ -2097,7 +2234,7 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.2.1 (LITHIUM) — LUMACORE 1.2 & LUMASHIELD 1.2")
+	log.Printf("  LUMA OS 1.2.2 (LITHIUM) — LUMACORE 1.2 & LUMASHIELD 1.3")
 	log.Printf("  - Desktop Environment:         http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:  tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:   http://%s/api/kernel/status", addr)

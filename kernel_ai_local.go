@@ -27,7 +27,7 @@ import (
 //      - 25+ idiomatic templates (servers, bots, APIs, algorithms, UI, SQL, system automation, git)
 //   3. Luma Hybrid (mode="auto") — Smart intent router between Luma Lang 1.2 and Luma Code 1.2
 
-func RunLumaLocalAI(messages []AIChatMessage, mode string, kernel *LumaKernel) map[string]interface{} {
+func RunLumaLocalAI(messages []AIChatMessage, mode, verbosity string, kernel *LumaKernel) map[string]interface{} {
 	if len(messages) == 0 {
 		return map[string]interface{}{"ok": false, "error": "Пустой запрос"}
 	}
@@ -37,6 +37,7 @@ func RunLumaLocalAI(messages []AIChatMessage, mode string, kernel *LumaKernel) m
 	}
 	low := strings.ToLower(prompt)
 	normMode := normalizeLocalAIMode(mode)
+	normVerb := normalizeAIVerbosity(verbosity)
 
 	// Detect language preference (English vs Russian)
 	isEnglish := false
@@ -73,13 +74,163 @@ func RunLumaLocalAI(messages []AIChatMessage, mode string, kernel *LumaKernel) m
 		}
 	}
 
+	reply = applyLocalVerbosity(reply, prompt, normVerb, normMode, isEnglish)
+
 	return map[string]interface{}{
-		"ok":       true,
-		"reply":    reply,
-		"provider": "luma_local",
-		"model":    modelName,
-		"mode":     normMode,
+		"ok":        true,
+		"reply":     reply,
+		"provider":  "luma_local",
+		"model":     modelName,
+		"mode":      normMode,
+		"verbosity": normVerb,
 	}
+}
+
+func normalizeAIVerbosity(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "brief", "short", "concise", "кратко":
+		return "brief"
+	case "detailed", "long", "deep", "full", "подробно":
+		return "detailed"
+	default:
+		return "balanced"
+	}
+}
+
+func applyLocalVerbosity(reply, prompt, verbosity, normMode string, isEnglish bool) string {
+	trimmed := strings.TrimSpace(reply)
+	if trimmed == "" || verbosity == "balanced" {
+		return trimmed
+	}
+
+	// BRIEF MODE: condense prose cleanly to heading + core 1-2 sentences (or crisp code block only)
+	if verbosity == "brief" {
+		if strings.Contains(trimmed, "```") {
+			// Keep heading + first fenced code block only
+			startFence := strings.Index(trimmed, "```")
+			endFence := strings.Index(trimmed[startFence+3:], "```")
+			if endFence > 0 {
+				blockEnd := startFence + 3 + endFence + 3
+				firstLine := strings.Split(trimmed, "\n")[0]
+				codePart := trimmed[startFence:blockEnd]
+				if strings.HasPrefix(firstLine, "#") {
+					return strings.TrimSpace(firstLine) + "\n\n" + codePart
+				}
+				return codePart
+			}
+			return trimmed
+		}
+		lines := strings.Split(trimmed, "\n")
+		var kept []string
+		hasSummary := false
+		for _, ln := range lines {
+			t := strings.TrimSpace(ln)
+			if t == "" {
+				continue
+			}
+			if strings.HasPrefix(t, "#") {
+				if len(kept) == 0 {
+					kept = append(kept, t)
+				}
+				continue
+			}
+			if !hasSummary {
+				runes := []rune(t)
+				cut := len(runes)
+				for i := 45; i < len(runes) && i < 200; i++ {
+					if runes[i] == '.' || runes[i] == '!' || runes[i] == '?' {
+						cut = i + 1
+						break
+					}
+				}
+				if cut == len(runes) && len(runes) > 195 {
+					cut = 192
+					t = strings.TrimSpace(string(runes[:cut])) + "…"
+				} else {
+					t = strings.TrimSpace(string(runes[:cut]))
+				}
+				kept = append(kept, t)
+				hasSummary = true
+				break
+			}
+		}
+		if len(kept) == 0 {
+			return trimmed
+		}
+		return strings.Join(kept, "\n")
+	}
+
+	// DETAILED MODE: enrich with extra context, Wikipedia long extract, or engineering breakdown
+	if verbosity == "detailed" {
+		if strings.Contains(trimmed, "```") || normMode == "code" {
+			if isEnglish {
+				return trimmed + "\n\n#### Deep Technical Notes\n- **Error handling & edge cases**: Validate inputs, wrap network/IO calls with timeouts, and log structured errors.\n- **Performance**: Reuse connections/buffers and avoid blocking the main UI thread.\n- **Next step**: Ask me to add unit tests, Docker config, or refactor this snippet for production."
+			}
+			return trimmed + "\n\n#### Подробные технические рекомендации\n- **Надёжность и граничные случаи**: проверяйте входные данные, добавляйте таймауты на сетевые/файловые операции и корректно закрывайте ресурсы.\n- **Оптимизация**: избегайте блокировки главного потока, кэшируйте повторяющиеся вычисления и используйте профилирование.\n- **Что можно доработать**: напишите *«добавь тесты»*, *«добавь обработку ошибок»* или *«перепиши асинхронно»* — и Luma Code расширит решение."
+		}
+		// For language/knowledge responses: try pulling a deeper multi-paragraph Wikipedia extract when online, plus structured takeaways
+		extra := ""
+		if !strings.Contains(trimmed, "Wikipedia") && len([]rune(prompt)) >= 3 {
+			if deepWiki := lookupWikipediaDeep(prompt, isEnglish); deepWiki != "" {
+				extra = "\n\n#### Дополнительные факты (Wikipedia)\n" + deepWiki
+			}
+		}
+		if extra != "" {
+			return trimmed + extra
+		}
+		if isEnglish {
+			return trimmed + "\n\n#### Extended Context & Key Takeaways\n- **Core essence**: The summary above highlights the primary facts, origin, and significance of the topic.\n- **Practical perspective**: Understanding the background helps connect related concepts in science, culture, or technology.\n- **Explore deeper**: Ask follow-up questions like *\"give historical timeline\"*, *\"compare alternatives\"*, or *\"real-world examples\"*."
+		}
+		return trimmed + "\n\n#### Развёрнутый контекст и ключевые выводы\n- **Главная суть**: выше собраны базовые факты, контекст и значение темы без лишнего шума.\n- **Практическая польза**: знание первопричин и взаимосвязей позволяет применять тему на практике и сравнивать подходы.\n- **Углубить разбор**: можете уточнить *«дай хронологию»*, *«приведи практические примеры»* или *«сравни с аналогами»* — Luma Lang продолжит анализ."
+	}
+
+	return trimmed
+}
+
+func lookupWikipediaDeep(prompt string, isEnglish bool) string {
+	clean := extractKnowledgeTopic(prompt, strings.ToLower(prompt))
+	if clean == "" {
+		clean = strings.Trim(prompt, "?!.,\"'«» ")
+	}
+	if clean == "" {
+		return ""
+	}
+	lang := "ru"
+	if isEnglish {
+		lang = "en"
+	}
+	client := &http.Client{Timeout: 3500 * time.Millisecond}
+	apiURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=false&exchars=950&explaintext=true&redirects=1&format=json&titles=%s", lang, url.QueryEscape(clean))
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", "LumaOS-AI/1.2.2")
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		return ""
+	}
+	defer resp.Body.Close()
+	var parsed struct {
+		Query struct {
+			Pages map[string]struct {
+				Extract string `json:"extract"`
+			} `json:"pages"`
+		} `json:"query"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&parsed) != nil {
+		return ""
+	}
+	for id, pg := range parsed.Query.Pages {
+		if id == "-1" || strings.TrimSpace(pg.Extract) == "" {
+			continue
+		}
+		return strings.TrimSpace(pg.Extract)
+	}
+	return ""
 }
 
 func normalizeLocalAIMode(mode string) string {

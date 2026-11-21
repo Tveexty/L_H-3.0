@@ -150,6 +150,7 @@ export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
 export interface LumaAIConfig {
   provider: AIProviderId;
   aiMode?: LocalAIMode;
+  verbosity?: 'brief' | 'balanced' | 'detailed';
   apiKeys: Partial<Record<AIProviderId, string>>;
   models: Partial<Record<AIProviderId, string>>;
   baseUrls: Partial<Record<AIProviderId, string>>;
@@ -158,14 +159,17 @@ export interface LumaAIConfig {
   includeSystemContext: boolean;
 }
 
+export type AIVerbosity = 'brief' | 'balanced' | 'detailed';
+
 export const DEFAULT_LUMA_AI_CONFIG: LumaAIConfig = {
   provider: 'luma_local',
   aiMode: 'auto',
+  verbosity: 'balanced',
   apiKeys: {},
   models: {},
   baseUrls: {},
   systemPrompt:
-    'Ты — встроенный системный ИИ-ассистент Luma OS 1.2.1 (Lithium). Отвечай чётко, структурированно и на языке пользователя.',
+    'Ты — встроенный системный ИИ-ассистент Luma OS 1.2.2 (Lithium). Отвечай чётко, структурированно и на языке пользователя.',
   temperature: 0.7,
   includeSystemContext: true,
 };
@@ -458,6 +462,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
         body: JSON.stringify({
           provider: config.provider,
           mode: config.aiMode || 'auto',
+          verbosity: config.verbosity || 'balanced',
           api_key: currentKey,
           base_url: currentBaseUrl,
           model: currentModel,
@@ -714,6 +719,39 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
             <Code2 className="w-3 h-3 shrink-0" />
             <span>Кодер</span>
           </button>
+        </div>
+
+        {/* Response Information Volume Selector: Кратко / Баланс / Подробно */}
+        <div className="space-y-1">
+          <div className={`text-[9px] font-mono uppercase tracking-wider px-0.5 ${mutedCls}`}>
+            Объём информации
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {(
+              [
+                { id: 'brief' as const, label: 'Кратко', tip: '2–4 предложения, только суть' },
+                { id: 'balanced' as const, label: 'Баланс', tip: 'Оптимальная структура и факты' },
+                { id: 'detailed' as const, label: 'Подробно', tip: 'Глубокий разбор, детали и советы' },
+              ]
+            ).map((v) => {
+              const active = (config.verbosity || 'balanced') === v.id;
+              return (
+                <button
+                  key={v.id}
+                  onClick={() => {
+                    onChangeConfig({ ...config, verbosity: v.id });
+                    onPushToast('Luma AI · Объём ответа', `Выбран режим: ${v.label}`, 'info');
+                  }}
+                  title={v.tip}
+                  className={`py-1 px-1 rounded-lg border text-[10px] font-semibold cursor-pointer transition text-center truncate ${
+                    active ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white font-bold' : btnCls
+                  }`}
+                >
+                  {v.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-1 pr-0.5">

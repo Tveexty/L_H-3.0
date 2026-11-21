@@ -488,6 +488,126 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Wireless Peripherals Battery Monitor (Bluetooth / BLE / HID Mice, Keyboards, Headphones, Gamepads) */}
+      <WirelessBatteriesCard isDark={isDark} cardCls={cardCls} />
+    </div>
+  );
+};
+
+interface WirelessBatRow {
+  name: string;
+  device_type: string;
+  battery_percent: number;
+  connected: boolean;
+  transport: string;
+}
+
+const WirelessBatteriesCard: React.FC<{ isDark: boolean; cardCls: string }> = ({ isDark, cardCls }) => {
+  const [devices, setDevices] = useState<WirelessBatRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadWireless = async (refresh = false) => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/api/kernel/wireless/batteries${refresh ? '?refresh=1' : ''}`);
+      if (r.ok) {
+        const d = await r.json();
+        setDevices(Array.isArray(d?.devices) ? d.devices : []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadWireless(false);
+  }, []);
+
+  const typeLabel = (t: string) => {
+    switch (t) {
+      case 'mouse':
+        return 'Мышь';
+      case 'keyboard':
+        return 'Клавиатура';
+      case 'headphones':
+        return 'Наушники / Аудио';
+      case 'gamepad':
+        return 'Геймпад';
+      case 'watch':
+        return 'Часы';
+      case 'phone':
+        return 'Смартфон';
+      default:
+        return 'Беспроводное устройство';
+    }
+  };
+
+  return (
+    <div className={`rounded-2xl border p-4 space-y-3 ${cardCls}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-xs font-bold flex items-center gap-2">
+            <BatteryCharging className="w-4 h-4 text-emerald-400" />
+            Заряд беспроводных устройств (Мыши, Клавиатуры, Наушники, Геймпады)
+          </div>
+          <div className="text-[11px] text-zinc-500 mt-0.5">
+            Реальный опрос Bluetooth / BLE / HID датчиков заряда ОС ({devices.length} обнаружено)
+          </div>
+        </div>
+        <button
+          onClick={() => void loadWireless(true)}
+          disabled={loading}
+          className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-mono inline-flex items-center gap-1.5 cursor-pointer ${
+            isDark ? 'border-white/10 hover:bg-white/10' : 'border-zinc-300 hover:bg-zinc-100'
+          }`}
+        >
+          <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+          Опросить
+        </button>
+      </div>
+
+      {devices.length === 0 ? (
+        <div className="text-xs text-zinc-500 py-3 text-center">
+          Беспроводные периферийные устройства с датчиком заряда сейчас не подключены. Как только подключите Bluetooth-наушники, мышь, клавиатуру или геймпад, их процент заряда появится здесь автоматически.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          {devices.map((dev, idx) => {
+            const pct = Math.max(0, Math.min(100, dev.battery_percent));
+            const barColor = pct <= 20 ? 'bg-rose-500' : pct <= 45 ? 'bg-amber-400' : 'bg-emerald-500';
+            return (
+              <div
+                key={`${dev.name}_${idx}`}
+                className={`p-3 rounded-xl border space-y-2 ${
+                  isDark ? 'bg-black/25 border-white/10' : 'bg-zinc-50 border-zinc-200'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold truncate">{dev.name}</div>
+                    <div className="text-[10px] text-zinc-500 font-mono truncate">
+                      {typeLabel(dev.device_type)} · {dev.transport}
+                    </div>
+                  </div>
+                  <span
+                    className={`text-sm font-mono font-black shrink-0 ${
+                      pct <= 20 ? 'text-rose-400' : pct <= 45 ? 'text-amber-400' : 'text-emerald-400'
+                    }`}
+                  >
+                    {pct}%
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-black/25 overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

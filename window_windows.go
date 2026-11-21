@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/jchv/go-webview2"
@@ -406,7 +407,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.2.1 (Lithium)",
+			Title:  "Luma OS 1.2.2 (Lithium)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,
@@ -431,6 +432,26 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 
 	w.SetSize(1440, 900, webview2.HintNone)
 
+	// Inject early capture-phase Alt+R / Ctrl+K interceptor BEFORE React loads so WebView2 never swallows Alt+R into Win32 menu focus!
+	w.Init(`
+		(function() {
+			if (window.__lumaHotkeysInit) return;
+			window.__lumaHotkeysInit = true;
+			document.addEventListener('keydown', function(e) {
+				var isR = (e.code === 'KeyR' || e.keyCode === 82 || (e.key && (e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 'к')));
+				if (e.altKey && !e.ctrlKey && !e.metaKey && isR) {
+					e.preventDefault();
+					e.stopPropagation();
+					window.dispatchEvent(new CustomEvent('luma-toggle-spotlight'));
+				}
+			}, true);
+		})();
+	`)
+
+	// Native Win32 hotkey fallback for Alt+R when Luma OS window is foreground (handles non-Latin layouts & WebView2 focus edge cases)
+	stopHotkeys := make(chan struct{})
+	go startWin32AltRListener(w, hwnd, stopHotkeys)
+
 	// Apply persisted shell mode (fullscreen, hide Windows taskbar, reserve work area)
 	if cfg.HideWindowsTaskbar {
 		setWindowsTaskbarVisible(false)
@@ -444,8 +465,50 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 	w.Navigate(url)
 	w.Run()
 
+	close(stopHotkeys)
 	nativeWinMu.Lock()
 	nativeWebView = nil
 	nativeWinMu.Unlock()
 	return true
+}
+
+// startWin32AltRListener polls physical Alt+R key press while Luma OS owns the foreground window,
+// avoiding global RegisterHotKey conflicts with NVIDIA/AMD overlays while guaranteeing Alt+R works 100% in Luma OS!
+func startWin32AltRListener(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan struct{}) {
+	procGetAsyncKeyState := user32WinDLL.NewProc("GetAsyncKeyState")
+	procGetFg := user32WinDLL.NewProc("GetForegroundWindow")
+	procIsChild := user32WinDLL.NewProc("IsChild")
+	const vkMenu = 0x12 // Alt
+	const vkR = 0x52    // R (physical scan code independent of keyboard layout!)
+	const vkCtrl = 0x11
+
+	wasPressed := false
+	ticker := time.NewTicker(45 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stopCh:
+			return
+		case <-ticker.C:
+			altState, _, _ := procGetAsyncKeyState.Call(vkMenu)
+			rState, _, _ := procGetAsyncKeyState.Call(vkR)
+			ctrlState, _, _ := procGetAsyncKeyState.Call(vkCtrl)
+			pressed := (altState&0x8000) != 0 && (rState&0x8000) != 0 && (ctrlState&0x8000) == 0
+			if pressed && !wasPressed {
+				fg, _, _ := procGetFg.Call()
+				isOurs := fg == lumaHwnd
+				if !isOurs && fg != 0 && lumaHwnd != 0 {
+					child, _, _ := procIsChild.Call(lumaHwnd, fg)
+					isOurs = child != 0
+				}
+				if isOurs {
+					wv.Dispatch(func() {
+						wv.Eval(`window.dispatchEvent(new CustomEvent('luma-toggle-spotlight'));`)
+					})
+				}
+			}
+			wasPressed = pressed
+		}
+	}
 }

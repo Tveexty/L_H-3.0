@@ -285,6 +285,7 @@ func StartGitHubSelfUpdate(downloadURL, targetVersion string, kernel *LumaKernel
 	}
 
 	go func() {
+		backupCurrentBinaryForRollback()
 		client := &http.Client{Timeout: 5 * time.Minute}
 		req, err := http.NewRequest("GET", downloadURL, nil)
 		if err != nil {
@@ -471,6 +472,233 @@ func StartGitHubSelfUpdate(downloadURL, targetVersion string, kernel *LumaKernel
 	return nil
 }
 
+type RollbackReleaseEntry struct {
+	Version     string `json:"version"`
+	Tag         string `json:"tag"`
+	Title       string `json:"title"`
+	PublishedAt string `json:"published_at,omitempty"`
+	DownloadURL string `json:"download_url"`
+	LocalBackup bool   `json:"local_backup"`
+	IsCurrent   bool   `json:"is_current"`
+	Summary     string `json:"summary"`
+}
+
+func rollbackVersionsDir() string {
+	cfgDir, err := os.UserConfigDir()
+	if err != nil || cfgDir == "" {
+		cfgDir = os.TempDir()
+	}
+	dir := filepath.Join(cfgDir, "LumaOS", "versions")
+	_ = os.MkdirAll(dir, 0o700)
+	return dir
+}
+
+func backupCurrentBinaryForRollback() {
+	exePath, err := os.Executable()
+	if err != nil || !strings.HasSuffix(strings.ToLower(exePath), ".exe") {
+		return
+	}
+	dest := filepath.Join(rollbackVersionsDir(), fmt.Sprintf("LumaOS_%s.exe", KernelVersion))
+	if _, err := os.Stat(dest); err == nil {
+		return
+	}
+	_ = copyPathRecursive(exePath, dest)
+}
+
+func findLocalVersionBinary(version string) string {
+	safe := strings.ReplaceAll(strings.TrimSpace(strings.TrimPrefix(version, "v")), " ", "_")
+	if safe == "" {
+		return ""
+	}
+	name := fmt.Sprintf("LumaOS_%s.exe", safe)
+	candidates := []string{
+		filepath.Join(rollbackVersionsDir(), name),
+		name,
+	}
+	if exePath, err := os.Executable(); err == nil && exePath != "" {
+		candidates = append(candidates, filepath.Join(filepath.Dir(exePath), name))
+	}
+	for _, c := range candidates {
+		if st, err := os.Stat(c); err == nil && !st.IsDir() && st.Size() > 500*1024 {
+			return c
+		}
+	}
+	return ""
+}
+
+func ListRollbackReleases(repoURL string) []RollbackReleaseEntry {
+	owner, repo := extractRepoOwnerName(repoURL)
+	baseRaw := fmt.Sprintf("https://github.com/%s/%s/raw/main", owner, repo)
+
+	curated := []RollbackReleaseEntry{
+		{Version: "1.2.2", Tag: "v1.2.2", Title: "Luma OS 1.2.2 (Lithium)", DownloadURL: baseRaw + "/LumaOS_1.2.2.exe", Summary: "Раскладки мира, Audio I/O, батареи BT, LumaShield 1.3, ИИ объём, Dynamic Island 2.0, откат версий"},
+		{Version: "1.2.1", Tag: "v1.2.1", Title: "Luma OS 1.2.1 (Lithium)", DownloadURL: baseRaw + "/LumaOS_1.2.1.exe", Summary: "Адаптация экрана, GPU оптимизация, Luma Lang/Code, порядок панели, Plugin API v2.0"},
+		{Version: "1.2.0", Tag: "v1.2.0", Title: "Luma OS 1.2.0 (Lithium)", DownloadURL: baseRaw + "/LumaOS_1.2.0.exe", Summary: "Мультизадачность Alt+W, Luma Calculator, автономный ИИ, аналитика батареи, живые обои"},
+		{Version: "1.1.0", Tag: "v1.1.0", Title: "Luma OS 1.1.0 (Helium)", DownloadURL: baseRaw + "/LumaOS_1.1.0.exe", Summary: "Ядро LumaShield, 9 языков, Shell Mode, GitHub OTA, живые курсы валют"},
+		{Version: "1.0.4", Tag: "v1.0.4", Title: "Luma OS 1.0.4", DownloadURL: baseRaw + "/LumaOS_1.0.4.exe", Summary: "Luma Explorer, Диспетчер задач, папки на рабочем столе, 8 переработанных тем"},
+		{Version: "1.0.3", Tag: "v1.0.3", Title: "Luma OS 1.0.3", DownloadURL: baseRaw + "/LumaOS_1.0.3.exe", Summary: "Ядро UI, Bluetooth, Энергосбережение, Память и Файлы, мультивыбор"},
+		{Version: "1.0.2b", Tag: "v1.0.2b", Title: "Luma OS 1.0.2b", DownloadURL: baseRaw + "/LumaOS_1.0.2b.exe", Summary: "Автономный WebView2 GUI без Edge, гибкая панель задач, Luma Island"},
+	}
+
+	byVer := map[string]RollbackReleaseEntry{}
+	order := make([]string, 0, len(curated)+8)
+	for _, c := range curated {
+		byVer[c.Version] = c
+		order = append(order, c.Version)
+	}
+
+	// Merge live GitHub releases for exact dates / notes / any future releases
+	client := &http.Client{Timeout: 6 * time.Second}
+	if req, err := http.NewRequest("GET", fmt.Sprintf("https://api.github.com/repos/%s/%s/releases?per_page=20", owner, repo), nil); err == nil {
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("User-Agent", "LumaOS-Updater/"+KernelVersion)
+		if resp, err := client.Do(req); err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == 200 {
+				var ghList []ghReleasePayload
+				if json.NewDecoder(resp.Body).Decode(&ghList) == nil {
+					for _, rel := range ghList {
+						if rel.Draft {
+							continue
+						}
+						ver := strings.TrimPrefix(strings.TrimSpace(rel.TagName), "v")
+						if ver == "" {
+							continue
+						}
+						dl := fmt.Sprintf("%s/LumaOS_%s.exe", baseRaw, ver)
+						for _, a := range rel.Assets {
+							if strings.HasSuffix(strings.ToLower(a.Name), ".exe") && a.BrowserDownloadURL != "" {
+								dl = a.BrowserDownloadURL
+								break
+							}
+						}
+						existing, ok := byVer[ver]
+						if !ok {
+							order = append([]string{ver}, order...)
+							existing = RollbackReleaseEntry{
+								Version: ver,
+								Tag:     rel.TagName,
+								Title:   rel.Name,
+							}
+						}
+						if rel.Name != "" {
+							existing.Title = rel.Name
+						}
+						if rel.PublishedAt != "" {
+							existing.PublishedAt = rel.PublishedAt
+						}
+						if dl != "" {
+							existing.DownloadURL = dl
+						}
+						if existing.Summary == "" {
+							hls := extractChangelogHighlights(rel.Body, 2)
+							if len(hls) > 0 {
+								existing.Summary = strings.Join(hls, " · ")
+							}
+						}
+						byVer[ver] = existing
+					}
+				}
+			}
+		}
+	}
+
+	out := make([]RollbackReleaseEntry, 0, len(order))
+	seen := map[string]bool{}
+	for _, ver := range order {
+		if seen[ver] {
+			continue
+		}
+		seen[ver] = true
+		entry := byVer[ver]
+		entry.IsCurrent = strings.EqualFold(entry.Version, KernelVersion)
+		entry.LocalBackup = findLocalVersionBinary(entry.Version) != ""
+		out = append(out, entry)
+	}
+	return out
+}
+
+func StartVersionRollback(targetVersion, downloadURL string, kernel *LumaKernel) error {
+	cleanVer := strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	if cleanVer == "" {
+		return fmt.Errorf("укажите целевую версию для отката")
+	}
+	backupCurrentBinaryForRollback()
+
+	if kernel != nil && kernel.security != nil {
+		kernel.security.LogAudit("warn", "rollback", "Инициирован откат версии Luma OS", fmt.Sprintf("v%s -> v%s", KernelVersion, cleanVer))
+	}
+
+	// Fast-path: restore directly from local verified backup copy if present!
+	if localPath := findLocalVersionBinary(cleanVer); localPath != "" {
+		updaterMu.Lock()
+		if updaterState.Running {
+			updaterMu.Unlock()
+			return fmt.Errorf("обновление или откат уже выполняется")
+		}
+		updaterState = UpdateProgressState{
+			Running:       true,
+			Stage:         "verifying",
+			Percent:       45,
+			TargetVersion: cleanVer,
+			FilePath:      localPath,
+			Message:       "Найдена локальная копия Luma OS " + cleanVer + " — проверка SHA-256 и заголовка PE32+...",
+		}
+		updaterMu.Unlock()
+
+		go func() {
+			time.Sleep(400 * time.Millisecond)
+			sum := computeFileSHA256(localPath)
+			f, err := os.Open(localPath)
+			if err != nil {
+				setUpdaterState(UpdateProgressState{Stage: "error", Error: err.Error(), Message: "Ошибка чтения локальной копии"})
+				return
+			}
+			hdr := make([]byte, 2)
+			_, _ = f.Read(hdr)
+			_ = f.Close()
+			if len(hdr) < 2 || hdr[0] != 'M' || hdr[1] != 'Z' {
+				setUpdaterState(UpdateProgressState{Stage: "error", Error: "invalid PE", Message: "Локальный файл повреждён (не PE32+)"})
+				return
+			}
+			if runtime.GOOS == "windows" {
+				setUpdaterState(UpdateProgressState{
+					Running:       true,
+					Stage:         "restarting",
+					Percent:       100,
+					TargetVersion: cleanVer,
+					FilePath:      localPath,
+					SHA256:        sum,
+					Message:       "Откат на Luma OS " + cleanVer + " (виджеты и настройки сохранены)...",
+				})
+				time.Sleep(900 * time.Millisecond)
+				restoreWindowsShell()
+				helper := fmt.Sprintf(`Start-Sleep -Milliseconds 1100; Start-Process -FilePath '%s'`, strings.ReplaceAll(localPath, "'", "''"))
+				_ = exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", helper).Start()
+				os.Exit(0)
+			} else {
+				setUpdaterState(UpdateProgressState{
+					Running:       false,
+					Stage:         "done",
+					Percent:       100,
+					TargetVersion: cleanVer,
+					FilePath:      localPath,
+					SHA256:        sum,
+					Message:       fmt.Sprintf("Локальная копия Luma OS %s проверена и готова к запуску (%s)", cleanVer, localPath),
+				})
+			}
+		}()
+		return nil
+	}
+
+	// Otherwise download the chosen earlier version cleanly from GitHub!
+	dl := strings.TrimSpace(downloadURL)
+	if dl == "" {
+		dl = fmt.Sprintf("https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_%s.exe", cleanVer)
+	}
+	return StartGitHubSelfUpdate(dl, cleanVer, kernel)
+}
+
 // ==================== 2. UNIVERSAL AI PROXY (GEMINI, OPENAI, CLAUDE, DEEPSEEK, OLLAMA, CUSTOM) ====================
 
 type AIChatMessage struct {
@@ -479,8 +707,9 @@ type AIChatMessage struct {
 }
 
 type AIChatRequest struct {
-	Provider       string          `json:"provider"` // luma_local | gemini | openai | claude | deepseek | openrouter | groq | ollama | custom
-	Mode           string          `json:"mode"`     // language | code | auto
+	Provider       string          `json:"provider"`  // luma_local | gemini | openai | claude | deepseek | openrouter | groq | ollama | custom
+	Mode           string          `json:"mode"`      // language | code | auto
+	Verbosity      string          `json:"verbosity"` // brief | balanced | detailed
 	APIKey         string          `json:"api_key"`
 	BaseURL        string          `json:"base_url"`
 	Model          string          `json:"model"`
@@ -500,7 +729,7 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 	}
 	provider := strings.ToLower(strings.TrimSpace(req.Provider))
 	if provider == "" || provider == "luma_local" || provider == "offline" || provider == "local" {
-		return RunLumaLocalAI(req.Messages, req.Mode, kernel)
+		return RunLumaLocalAI(req.Messages, req.Mode, req.Verbosity, kernel)
 	}
 	apiKey := strings.TrimSpace(req.APIKey)
 	model := strings.TrimSpace(req.Model)
@@ -513,12 +742,20 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 	if sysPrompt == "" {
 		switch normalizeLocalAIMode(req.Mode) {
 		case "code":
-			sysPrompt = "Ты — Luma Code 1.2, системный ИИ-программист Luma OS 1.2.1 (Lithium). Пиши чистый, современный, готовый к запуску код с краткими пояснениями."
+			sysPrompt = "Ты — Luma Code 1.2, системный ИИ-программист Luma OS 1.2.2 (Lithium). Пиши чистый, современный, готовый к запуску код с пояснениями."
 		case "language":
-			sysPrompt = "Ты — Luma Lang 1.2, языковой и справочный ИИ-ассистент Luma OS 1.2.1 (Lithium). Отвечай грамотно, информативно, естественно и по сути вопроса."
+			sysPrompt = "Ты — Luma Lang 1.2, языковой и справочный ИИ-ассистент Luma OS 1.2.2 (Lithium). Отвечай грамотно, информативно, естественно и по сути вопроса."
 		default:
-			sysPrompt = "Ты — встроенный системный ИИ-ассистент Luma OS 1.2.1 (Lithium). Отвечай чётко, по делу и помогай пользователю со знаниями, ПК, командами и кодом."
+			sysPrompt = "Ты — встроенный системный ИИ-ассистент Luma OS 1.2.2 (Lithium). Отвечай чётко, по делу и помогай пользователю со знаниями, ПК, командами и кодом."
 		}
+	}
+	switch normalizeAIVerbosity(req.Verbosity) {
+	case "brief":
+		sysPrompt += "\n\n[Объём ответа: КРАТКО. Отвечай максимально лаконично: 2–4 предложения или до 3 коротких пунктов, только самая суть без лишней воды.]"
+	case "detailed":
+		sysPrompt += "\n\n[Объём ответа: ПОДРОБНО. Дай максимально развёрнутый, глубокий и хорошо структурированный ответ с объяснениями, деталями, примерами, нюансами и практическими рекомендациями.]"
+	default:
+		sysPrompt += "\n\n[Объём ответа: БАЛАНС. Дай сбалансированный, понятный и структурированный ответ с ключевыми фактами и наглядным примером.]"
 	}
 	if req.IncludeContext && kernel != nil {
 		snap := kernel.SystemSnapshot()

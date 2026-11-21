@@ -1268,8 +1268,85 @@ export const PYTHON_PROJECT_FILES: { path: string; title: string; badge: string;
   },
 ];
 
+export interface WirelessBatteryInfo {
+  name: string;
+  device_type: 'mouse' | 'keyboard' | 'headphones' | 'gamepad' | 'watch' | 'phone' | 'other' | string;
+  battery_percent: number;
+  connected: boolean;
+  transport: string;
+  source: string;
+}
+
+export interface AudioEndpointInfo {
+  id: string;
+  name: string;
+  kind: 'output' | 'input';
+  is_default: boolean;
+  status: string;
+  form_factor: string;
+}
+
+export interface AudioDevicesInfo {
+  ok: boolean;
+  outputs: AudioEndpointInfo[];
+  inputs: AudioEndpointInfo[];
+  active_output_id: string;
+  active_input_id: string;
+}
+
+export interface KeyboardLayoutEntry {
+  tag: string;
+  short: string;
+  name: string;
+  native_name: string;
+  hkl?: string;
+  active: boolean;
+}
+
+export interface KeyboardLayoutsInfo {
+  ok: boolean;
+  active_tag: string;
+  active: KeyboardLayoutEntry;
+  installed: KeyboardLayoutEntry[];
+}
+
+export interface InstalledAppInfo {
+  id: string;
+  name: string;
+  exec_path: string;
+  publisher?: string;
+  category: string;
+  source: string;
+  icon_hint: string;
+}
+
+export interface RollbackReleaseItem {
+  version: string;
+  tag: string;
+  title: string;
+  published_at?: string;
+  download_url: string;
+  local_backup: boolean;
+  is_current: boolean;
+  summary: string;
+}
+
 // Полная история версий Luma OS и всех предыдущих веток
 export const VERSION_HISTORY: Record<string, string[]> = {
+  '1.2.2 (Lithium)': [
+    'ПАТЧ LUMA OS 1.2.2 (LITHIUM) — СМЕНА РАСКЛАДКИ И 120+ ЯЗЫКОВ МИРА, ПОЧИНЕН ALT+R, ВЫБОР УСТРОЙСТВ ВВОДА/ВЫВОДА В ЦЕНТРЕ УПРАВЛЕНИЯ, ПРОЦЕНТ ЗАРЯДА БЕСПРОВОДНЫХ УСТРОЙСТВ, LUMASHIELD 1.3, ОБЪЁМ ОТВЕТОВ ИИ, 18 ЯЗЫКОВ СИСТЕМЫ, ПОРЯДОК ОКОН WINDOWS И ПАПКА СИСТЕМНЫХ ПРИЛОЖЕНИЙ НА ПАНЕЛИ ЗАДАЧ, DYNAMIC ISLAND 2.0, ДОБАВЛЕНИЕ УСТАНОВЛЕННЫХ ПРОГРАММ ПК, АНИМАЦИИ УДАЛЕНИЯ И ОТКАТ ВЕРСИЙ',
+    'Смена раскладки клавиатуры и 120+ языков мира — живой индикатор раскладки на панели задач (RUS / ENG / ROM...), мгновенное переключение через Win32 API и каталог из 120+ языков всех регионов мира с поиском и добавлением в систему',
+    'Починен Alt+R (Spotlight / Выполнить) — добавлен нативный Win32 перехватчик в WebView2 (независимый от русской/других раскладок) + захват событий в capture-фазе + резервная комбинация Ctrl+K',
+    'Выбор устройств ввода и вывода звука в Центре управления — переключение динамиков, наушников, HDMI-аудио и микрофонов напрямую в выпадающем меню панели задач через Windows CoreAudio IPolicyConfig',
+    'Процент заряда беспроводных устройств — считывание реального заряда Bluetooth/BLE/HID мышей, клавиатур, наушников и геймпадов (DEVPKEY_Bluetooth_BatteryLevel) в Центре управления, Настройках Bluetooth и разделе Батарея',
+    'Обновлённое ядро безопасности и антивирус LumaShield 1.3 — 20+ эвристических правил (Ransomware, Stealer, LOLBins, Reverse Shell), детектор маскировки PE-заголовков под документы, анализ энтропии Шеннона, Real-Time Guard для Загрузок/Рабочего стола, сканирование процессов, Глубокая проверка и Белый список исключений',
+    'Режим объёма ответов в Luma AI (Кратко / Баланс / Подробно) — мгновенное переключение детализации в шапке чата и настройках для Luma Lang 1.2, Luma Code 1.2 и всех облачных нейросетей',
+    'Расширение языков системы до 18 — добавлены Польский, Турецкий, Итальянский, Португальский, Корейский, Арабский, Казахский, Хинди и Нидерландский',
+    'Умная Панель задач — перетаскивание порядка открытых приложений Windows прямо на панели и кнопками ▲/▼ в настройках + сжатие всех системных модулей Luma в одну аккуратную папку «Luma Система»',
+    'Dynamic Island 2.0 — живые spring-анимации реакции на действия пользователя (громкость, смена звука/раскладки, буфер обмена, запуск/удаление, сканирование) + 7-полосный музыкальный эквалайзер и пульсирующее свечение при воспроизведении аудио',
+    'Добавление всех установленных приложений ПК на рабочий стол + Анимации удаления — сканер программ из меню Пуск и реестра с мультивыбором и упаковкой в папку + плавные анимации удаления виджетов и приложений',
+    'Откат версии (Version Rollback) — безопасный возврат на любую предыдущую сборку Luma OS (1.2.1, 1.2.0, 1.1.0, 1.0.4, 1.0.3, 1.0.2b) с автосохранением локальных копий и полной сохранностью виджетов, папок и настроек',
+  ],
   '1.2.1 (Lithium)': [
     'ПАТЧ LUMA OS 1.2.1 (LITHIUM) — АВТОАДАПТАЦИЯ МАСШТАБА ПОД ЛЮБОЙ ЭКРАН, УВЕЛИЧЕНИЕ ИКОНОК И РЕДАКТОР ПРИЛОЖЕНИЙ, ОПТИМИЗАЦИЯ GPU, УЛУЧШЕННЫЙ ПРОВОДНИК PRO, ИМЕНА ОТКРЫТЫХ ПРИЛОЖЕНИЙ И ПОРЯДОК В ПАНЕЛИ ЗАДАЧ, ТОЧНЫЕ ФОНОВЫЕ ПРОЦЕССЫ И БАТАРЕЯ, УМНЫЙ LUMA AI (2 МОДЕЛИ + ОТКЛЮЧЕНИЕ), ЕЖЕДНЕВНОЕ АВТООБНОВЛЕНИЕ И PLUGIN API 2.0',
     'Автоматическая адаптация масштаба экрана (Ноутбук ↔ Большой монитор) — система автоматически вычисляет оптимальный масштаб интерфейса относительно экрана ноутбука (1440×900), чтобы на больших мониторах элементы не выглядели мелкими + ручная точная настройка 85%–135%',

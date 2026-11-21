@@ -820,13 +820,355 @@ func (p *platformProbe) ListHardwareDevices() []HardwareDeviceInfo {
 
 func (p *platformProbe) GetFirewallProfiles() []FirewallProfileInfo {
 	return []FirewallProfileInfo{
-		{Name: "Loopback Isolation (LumaShield 1.2)", Enabled: true},
+		{Name: "Loopback Isolation (LumaShield 1.3)", Enabled: true},
 		{Name: "Host System Firewall", Enabled: true},
 	}
 }
 
 func (p *platformProbe) ControlService(name, action string) error {
 	return fmt.Errorf("управление системными службами ОС доступно с правами администратора")
+}
+
+func (p *platformProbe) GetWirelessDeviceBatteries(forceRefresh bool) []WirelessDeviceBattery {
+	var list []WirelessDeviceBattery
+	if entries, err := os.ReadDir("/sys/class/power_supply"); err == nil {
+		for _, e := range entries {
+			name := e.Name()
+			if strings.HasPrefix(name, "BAT") || strings.HasPrefix(name, "AC") || strings.HasPrefix(name, "ADP") {
+				continue
+			}
+			base := filepath.Join("/sys/class/power_supply", name)
+			capBytes, err := os.ReadFile(filepath.Join(base, "capacity"))
+			if err != nil {
+				continue
+			}
+			pct, err := strconv.Atoi(strings.TrimSpace(string(capBytes)))
+			if err != nil || pct < 0 || pct > 100 {
+				continue
+			}
+			model := name
+			if mb, err := os.ReadFile(filepath.Join(base, "model_name")); err == nil && strings.TrimSpace(string(mb)) != "" {
+				model = strings.TrimSpace(string(mb))
+			}
+			list = append(list, WirelessDeviceBattery{
+				Name:           model,
+				DeviceType:     classifyPeripheralType(model),
+				BatteryPercent: pct,
+				Connected:      true,
+				Transport:      "Wireless HID / Bluetooth",
+				Source:         "Linux power_supply",
+			})
+		}
+	}
+	if list == nil {
+		list = []WirelessDeviceBattery{}
+	}
+	return list
+}
+
+var (
+	unixAudioMu    sync.Mutex
+	unixActiveOut  = "out_speakers"
+	unixActiveIn   = "in_mic"
+	unixKbdMu      sync.Mutex
+	unixActiveKbd  = "ru-RU"
+	unixKbdLayouts = []KeyboardLayoutInfo{
+		{Tag: "ru-RU", Short: "RUS", Name: "Russian", NativeName: "Русский", Active: true},
+		{Tag: "en-US", Short: "ENG", Name: "English (US)", NativeName: "English (US)", Active: false},
+		{Tag: "ro-RO", Short: "ROM", Name: "Romanian", NativeName: "Română", Active: false},
+	}
+)
+
+func (p *platformProbe) ListAudioDevices() AudioDevicesSnapshot {
+	unixAudioMu.Lock()
+	actOut := unixActiveOut
+	actIn := unixActiveIn
+	unixAudioMu.Unlock()
+
+	snap := AudioDevicesSnapshot{
+		OK:      true,
+		Outputs: []AudioEndpointDevice{},
+		Inputs:  []AudioEndpointDevice{},
+	}
+
+	// Probe real PulseAudio / PipeWire via pactl if available
+	if _, err := exec.LookPath("pactl"); err == nil {
+		defSink := ""
+		if b, e := exec.Command("pactl", "get-default-sink").Output(); e == nil {
+			defSink = strings.TrimSpace(string(b))
+		}
+		if b, e := exec.Command("pactl", "list", "short", "sinks").Output(); e == nil {
+			for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+				f := strings.Fields(line)
+				if len(f) >= 2 {
+					isDef := f[1] == defSink
+					snap.Outputs = append(snap.Outputs, AudioEndpointDevice{
+						ID:         f[1],
+						Name:       f[1],
+						Kind:       "output",
+						IsDefault:  isDef,
+						Status:     "Активно",
+						FormFactor: classifyAudioFormFactor(f[1], "output"),
+					})
+					if isDef {
+						snap.ActiveOutputID = f[1]
+					}
+				}
+			}
+		}
+		defSrc := ""
+		if b, e := exec.Command("pactl", "get-default-source").Output(); e == nil {
+			defSrc = strings.TrimSpace(string(b))
+		}
+		if b, e := exec.Command("pactl", "list", "short", "sources").Output(); e == nil {
+			for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+				f := strings.Fields(line)
+				if len(f) >= 2 && !strings.Contains(f[1], ".monitor") {
+					isDef := f[1] == defSrc
+					snap.Inputs = append(snap.Inputs, AudioEndpointDevice{
+						ID:         f[1],
+						Name:       f[1],
+						Kind:       "input",
+						IsDefault:  isDef,
+						Status:     "Активно",
+						FormFactor: classifyAudioFormFactor(f[1], "input"),
+					})
+					if isDef {
+						snap.ActiveInputID = f[1]
+					}
+				}
+			}
+		}
+	}
+
+	if len(snap.Outputs) == 0 {
+		snap.Outputs = []AudioEndpointDevice{
+			{ID: "out_speakers", Name: "Встроенные динамики (High Definition Audio)", Kind: "output", IsDefault: actOut == "out_speakers", Status: "Активно", FormFactor: "speakers"},
+			{ID: "out_headphones", Name: "Наушники (3.5 мм / USB DAC)", Kind: "output", IsDefault: actOut == "out_headphones", Status: "Готово", FormFactor: "headphones"},
+			{ID: "out_hdmi", Name: "Монитор HDMI / DisplayPort Audio", Kind: "output", IsDefault: actOut == "out_hdmi", Status: "Готово", FormFactor: "hdmi"},
+		}
+		snap.ActiveOutputID = actOut
+	}
+	if len(snap.Inputs) == 0 {
+		snap.Inputs = []AudioEndpointDevice{
+			{ID: "in_mic", Name: "Встроенный микрофон (Array Mic)", Kind: "input", IsDefault: actIn == "in_mic", Status: "Активно", FormFactor: "mic"},
+			{ID: "in_headset", Name: "Микрофон гарнитуры / USB", Kind: "input", IsDefault: actIn == "in_headset", Status: "Готово", FormFactor: "headset"},
+		}
+		snap.ActiveInputID = actIn
+	}
+	return snap
+}
+
+func (p *platformProbe) SetDefaultAudioDevice(deviceID, kind string) error {
+	clean := strings.TrimSpace(deviceID)
+	if clean == "" {
+		return fmt.Errorf("empty audio device id")
+	}
+	if _, err := exec.LookPath("pactl"); err == nil {
+		if kind == "input" {
+			_ = exec.Command("pactl", "set-default-source", clean).Run()
+		} else {
+			_ = exec.Command("pactl", "set-default-sink", clean).Run()
+		}
+	}
+	unixAudioMu.Lock()
+	if kind == "input" {
+		unixActiveIn = clean
+	} else {
+		unixActiveOut = clean
+	}
+	unixAudioMu.Unlock()
+	return nil
+}
+
+func (p *platformProbe) GetKeyboardLayouts() KeyboardLayoutsSnapshot {
+	unixKbdMu.Lock()
+	defer unixKbdMu.Unlock()
+	installed := make([]KeyboardLayoutInfo, len(unixKbdLayouts))
+	copy(installed, unixKbdLayouts)
+	var active KeyboardLayoutInfo
+	for i := range installed {
+		installed[i].Active = strings.EqualFold(installed[i].Tag, unixActiveKbd)
+		if installed[i].Active {
+			active = installed[i]
+		}
+	}
+	if active.Tag == "" && len(installed) > 0 {
+		installed[0].Active = true
+		active = installed[0]
+		unixActiveKbd = active.Tag
+	}
+	return KeyboardLayoutsSnapshot{
+		OK:        true,
+		ActiveTag: active.Tag,
+		Active:    active,
+		Installed: installed,
+	}
+}
+
+func (p *platformProbe) SwitchKeyboardLayout(tag, klid string) KeyboardLayoutsSnapshot {
+	unixKbdMu.Lock()
+	target := strings.TrimSpace(tag)
+	if strings.EqualFold(target, "next") && len(unixKbdLayouts) > 1 {
+		for i, l := range unixKbdLayouts {
+			if strings.EqualFold(l.Tag, unixActiveKbd) {
+				target = unixKbdLayouts[(i+1)%len(unixKbdLayouts)].Tag
+				break
+			}
+		}
+	}
+	if target != "" {
+		found := false
+		for _, l := range unixKbdLayouts {
+			if strings.EqualFold(l.Tag, target) {
+				found = true
+				target = l.Tag
+				break
+			}
+		}
+		if !found {
+			unixKbdLayouts = append(unixKbdLayouts, KeyboardLayoutInfo{
+				Tag:        target,
+				Short:      keyboardShortCode(target),
+				Name:       target,
+				NativeName: target,
+			})
+		}
+		unixActiveKbd = target
+		if _, err := exec.LookPath("setxkbmap"); err == nil {
+			base := strings.ToLower(strings.Split(target, "-")[0])
+			_ = exec.Command("setxkbmap", base).Run()
+		}
+	}
+	unixKbdMu.Unlock()
+	return p.GetKeyboardLayouts()
+}
+
+func (p *platformProbe) ManageKeyboardLayout(action, tag string) KeyboardLayoutsSnapshot {
+	clean := strings.TrimSpace(tag)
+	if clean == "" {
+		return p.GetKeyboardLayouts()
+	}
+	unixKbdMu.Lock()
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "add":
+		exists := false
+		for _, l := range unixKbdLayouts {
+			if strings.EqualFold(l.Tag, clean) {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			unixKbdLayouts = append(unixKbdLayouts, KeyboardLayoutInfo{
+				Tag:        clean,
+				Short:      keyboardShortCode(clean),
+				Name:       clean,
+				NativeName: clean,
+			})
+		}
+	case "remove":
+		if len(unixKbdLayouts) > 1 {
+			next := make([]KeyboardLayoutInfo, 0, len(unixKbdLayouts))
+			for _, l := range unixKbdLayouts {
+				if !strings.EqualFold(l.Tag, clean) {
+					next = append(next, l)
+				}
+			}
+			if len(next) > 0 {
+				unixKbdLayouts = next
+				if strings.EqualFold(unixActiveKbd, clean) {
+					unixActiveKbd = next[0].Tag
+				}
+			}
+		}
+	}
+	unixKbdMu.Unlock()
+	return p.GetKeyboardLayouts()
+}
+
+func (p *platformProbe) ListInstalledApps(forceRefresh bool) []InstalledAppItem {
+	var list []InstalledAppItem
+	seen := map[string]bool{}
+	dirs := []string{"/usr/share/applications"}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		dirs = append(dirs, filepath.Join(home, ".local", "share", "applications"))
+	}
+	for _, d := range dirs {
+		entries, err := os.ReadDir(d)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), ".desktop") {
+				continue
+			}
+			raw, err := os.ReadFile(filepath.Join(d, e.Name()))
+			if err != nil {
+				continue
+			}
+			var name, execCmd string
+			noDisplay := false
+			for _, line := range strings.Split(string(raw), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "Name=") && name == "" {
+					name = strings.TrimSpace(strings.TrimPrefix(line, "Name="))
+				} else if strings.HasPrefix(line, "Exec=") && execCmd == "" {
+					execCmd = strings.TrimSpace(strings.TrimPrefix(line, "Exec="))
+					if parts := strings.Fields(execCmd); len(parts) > 0 {
+						execCmd = parts[0]
+					}
+				} else if line == "NoDisplay=true" {
+					noDisplay = true
+				}
+			}
+			if noDisplay || name == "" || execCmd == "" {
+				continue
+			}
+			key := strings.ToLower(name)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			cat, icon := classifyInstalledAppCategory(name, "")
+			list = append(list, InstalledAppItem{
+				ID:       fmt.Sprintf("pcapp_%d", len(list)+1),
+				Name:     name,
+				ExecPath: execCmd,
+				Category: cat,
+				Source:   "desktop",
+				IconHint: icon,
+			})
+			if len(list) >= 120 {
+				break
+			}
+		}
+	}
+	// Include installed CLI/dev tools in VM preview when no GUI .desktop apps exist
+	if len(list) == 0 {
+		for _, tool := range []struct {
+			name, bin, cat, icon string
+		}{
+			{"Python 3", "python3", "Разработка", "Code2"},
+			{"Node.js", "node", "Разработка", "Code2"},
+			{"Git", "git", "Разработка", "Code2"},
+			{"GitHub CLI", "gh", "Разработка", "Terminal"},
+			{"Bash Shell", "bash", "Утилиты", "Terminal"},
+			{"cURL", "curl", "Утилиты", "Globe"},
+		} {
+			if full, err := exec.LookPath(tool.bin); err == nil {
+				list = append(list, InstalledAppItem{
+					ID:       fmt.Sprintf("pcapp_%d", len(list)+1),
+					Name:     tool.name,
+					ExecPath: full,
+					Category: tool.cat,
+					Source:   "system",
+					IconHint: tool.icon,
+				})
+			}
+		}
+	}
+	return list
 }
 
 
