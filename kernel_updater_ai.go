@@ -200,7 +200,57 @@ func CheckGitHubUpdate(repoURL string) UpdateCheckResult {
 	res.PublishedAt = rel.PublishedAt
 	res.AssetSize = assetSize
 	res.HasUpdate = compareSemver(latestClean, KernelVersion) > 0
+	res.UpdateLevel, res.UpdateLevelLabel = classifyUpdateLevel(KernelVersion, latestClean)
+	res.ChangelogHighlights = extractChangelogHighlights(rel.Body, 6)
 	return res
+}
+
+// classifyUpdateLevel strictly implements Luma OS SemVer hierarchy X.Y.Z:
+//   X (1st digit) -> Global Update (Глобальное обновление)
+//   Y (2nd digit) -> Major Version Update (Большое обновление версии)
+//   Z (3rd digit) -> Patch (Патч исправлений и небольших добавлений)
+func classifyUpdateLevel(currentVer, targetVer string) (string, string) {
+	c1, c2, c3, _ := parseSemverParts(currentVer)
+	t1, t2, t3, _ := parseSemverParts(targetVer)
+	if t1 > c1 {
+		return "major", "Глобальное обновление"
+	}
+	if t1 == c1 && t2 > c2 {
+		return "minor", "Большое обновление версии"
+	}
+	if t1 == c1 && t2 == c2 && t3 > c3 {
+		return "patch", "Патч исправлений и улучшений"
+	}
+	// When current == latest, classify the latest version itself by its Z/Y/X digits
+	if t3 > 0 {
+		return "patch", "Патч исправлений и улучшений"
+	}
+	if t2 > 0 {
+		return "minor", "Большое обновление версии"
+	}
+	return "major", "Глобальное обновление"
+}
+
+func extractChangelogHighlights(body string, maxItems int) []string {
+	if maxItems <= 0 {
+		maxItems = 6
+	}
+	var out []string
+	for _, rawLine := range strings.Split(body, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") || strings.HasPrefix(line, "• ") {
+			item := strings.TrimSpace(line[2:])
+			item = strings.ReplaceAll(item, "**", "")
+			item = strings.ReplaceAll(item, "`", "")
+			if len(item) > 4 {
+				out = append(out, item)
+				if len(out) >= maxItems {
+					break
+				}
+			}
+		}
+	}
+	return out
 }
 
 func GetUpdateProgress() UpdateProgressState {
@@ -429,7 +479,8 @@ type AIChatMessage struct {
 }
 
 type AIChatRequest struct {
-	Provider       string          `json:"provider"` // gemini | openai | claude | deepseek | openrouter | groq | ollama | custom
+	Provider       string          `json:"provider"` // luma_local | gemini | openai | claude | deepseek | openrouter | groq | ollama | custom
+	Mode           string          `json:"mode"`     // language | code | auto
 	APIKey         string          `json:"api_key"`
 	BaseURL        string          `json:"base_url"`
 	Model          string          `json:"model"`
@@ -440,9 +491,16 @@ type AIChatRequest struct {
 }
 
 func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]interface{} {
+	if kernel != nil && !kernel.IsAIEnabled() {
+		return map[string]interface{}{
+			"ok":       false,
+			"disabled": true,
+			"error":    "Luma AI отключён пользователем в настройках системы (Настройки → ИИ и Нейросети)",
+		}
+	}
 	provider := strings.ToLower(strings.TrimSpace(req.Provider))
 	if provider == "" || provider == "luma_local" || provider == "offline" || provider == "local" {
-		return RunLumaLocalAI(req.Messages, kernel)
+		return RunLumaLocalAI(req.Messages, req.Mode, kernel)
 	}
 	apiKey := strings.TrimSpace(req.APIKey)
 	model := strings.TrimSpace(req.Model)
@@ -453,7 +511,14 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 
 	sysPrompt := strings.TrimSpace(req.SystemPrompt)
 	if sysPrompt == "" {
-		sysPrompt = "Ты — встроенный системный ИИ-ассистент Luma OS 1.2.0 (Lithium). Отвечай чётко, по делу и помогай пользователю с ПК, командами и кодом."
+		switch normalizeLocalAIMode(req.Mode) {
+		case "code":
+			sysPrompt = "Ты — Luma Code 1.2, системный ИИ-программист Luma OS 1.2.1 (Lithium). Пиши чистый, современный, готовый к запуску код с краткими пояснениями."
+		case "language":
+			sysPrompt = "Ты — Luma Lang 1.2, языковой и справочный ИИ-ассистент Luma OS 1.2.1 (Lithium). Отвечай грамотно, информативно, естественно и по сути вопроса."
+		default:
+			sysPrompt = "Ты — встроенный системный ИИ-ассистент Luma OS 1.2.1 (Lithium). Отвечай чётко, по делу и помогай пользователю со знаниями, ПК, командами и кодом."
+		}
 	}
 	if req.IncludeContext && kernel != nil {
 		snap := kernel.SystemSnapshot()

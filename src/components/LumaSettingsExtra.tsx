@@ -177,7 +177,7 @@ export const KernelUIPanel: React.FC<{
                 ЯДРО UI · LUMA LITHIUM
               </div>
               <div className="text-lg font-extrabold tracking-tight truncate">
-                Luma OS 1.2.0 (Lithium)
+                Luma OS 1.2.1 (Lithium)
               </div>
               <div className={`text-xs font-mono truncate ${mutedCls}`}>
                 LumaCore {liveSystem?.kernel_engine_version || '1.2'} · LumaShield 1.2 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
@@ -186,12 +186,12 @@ export const KernelUIPanel: React.FC<{
           </div>
 
           <a
-            href="/LumaOS_1.2.0.exe"
-            download="LumaOS_1.2.0.exe"
+            href="/LumaOS_1.2.1.exe"
+            download="LumaOS_1.2.1.exe"
             className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
-            LumaOS_1.2.0.exe
+            LumaOS_1.2.1.exe
           </a>
         </div>
 
@@ -245,7 +245,7 @@ export const KernelUIPanel: React.FC<{
           {/* 3. Версия ПО */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия ПО</div>
-            <div className="text-sm font-mono font-bold">1.2.0 (Lithium)</div>
+            <div className="text-sm font-mono font-bold">1.2.1 (Lithium)</div>
           </div>
 
           {/* 4. Версия Ядра (1.2) */}
@@ -905,9 +905,17 @@ export const StorageMemoryPanel: React.FC<{
   );
 };
 
-/* ==================== 5. SETTINGS APPS LIST PANEL ==================== */
+/* ==================== 5. SETTINGS APPS LIST PANEL (ICON SIZE + APP EDITOR) ==================== */
+const APP_ICON_CHOICES = [
+  'Globe', 'Terminal', 'Code2', 'Gamepad2', 'Music', 'MessageSquare', 'FileText',
+  'Folder', 'Cpu', 'Shield', 'Sparkles', 'Activity', 'Camera', 'Video', 'Settings',
+];
+
 export const SettingsAppsListPanel: React.FC<{
   apps: AppItem[];
+  iconSizePx?: number;
+  onChangeIconSizePx?: (px: number) => void;
+  onUpdateApp?: (updated: AppItem) => void;
   renderAppIcon: (icon: string, cls?: string) => React.ReactNode;
   onLaunchApp: (app: AppItem) => void;
   onDeleteApp: (app: AppItem) => void;
@@ -919,6 +927,9 @@ export const SettingsAppsListPanel: React.FC<{
   isDark: boolean;
 }> = ({
   apps,
+  iconSizePx = 46,
+  onChangeIconSizePx,
+  onUpdateApp,
   renderAppIcon,
   onLaunchApp,
   onDeleteApp,
@@ -930,12 +941,102 @@ export const SettingsAppsListPanel: React.FC<{
   isDark,
 }) => {
   const [q, setQ] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState('');
+  const [draftCategory, setDraftCategory] = useState('');
+  const [draftUrl, setDraftUrl] = useState('');
+  const [draftIcon, setDraftIcon] = useState('Globe');
+
+  const startEdit = (app: AppItem) => {
+    setEditingId(app.id);
+    setDraftName(app.name);
+    setDraftCategory(app.category);
+    setDraftUrl(app.url || '');
+    setDraftIcon(app.icon || 'Globe');
+  };
+
+  const saveEdit = (app: AppItem) => {
+    if (!onUpdateApp) return;
+    onUpdateApp({
+      ...app,
+      name: draftName.trim() || app.name,
+      category: draftCategory.trim() || app.category,
+      url: draftUrl.trim() || app.url,
+      icon: draftIcon || app.icon,
+    });
+    setEditingId(null);
+  };
+
   const filtered = apps.filter(
     (a) => !q.trim() || a.name.toLowerCase().includes(q.trim().toLowerCase()) || a.category.toLowerCase().includes(q.trim().toLowerCase())
   );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {/* App & Desktop Icon Size Enlarger */}
+      {onChangeIconSizePx && (
+        <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-xs font-bold">Размер иконок приложений и рабочего стола</div>
+              <div className={`text-[11px] ${mutedCls}`}>
+                Увеличивает значки на рабочем столе и в библиотеке приложений в реальном времени
+              </div>
+            </div>
+            <span className="px-2.5 py-1 rounded-lg bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-mono text-xs font-bold">
+              {iconSizePx} px
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex-1 min-w-[180px] space-y-2">
+              <input
+                type="range"
+                min={36}
+                max={72}
+                step={2}
+                value={iconSizePx}
+                onChange={(e) => onChangeIconSizePx(Number(e.target.value))}
+                className="w-full"
+              />
+              <div className="grid grid-cols-4 gap-1.5 text-[11px]">
+                {(
+                  [
+                    [38, 'Компакт'],
+                    [46, 'Стандарт'],
+                    [56, 'Крупные'],
+                    [68, 'XL'],
+                  ] as const
+                ).map(([px, label]) => (
+                  <button
+                    key={px}
+                    onClick={() => onChangeIconSizePx(px)}
+                    className={`py-1.5 rounded-lg border font-semibold cursor-pointer transition ${
+                      Math.abs(iconSizePx - px) <= 3
+                        ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                        : btnCls
+                    }`}
+                  >
+                    {label} ({px})
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Live Preview Tile */}
+            <div className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 min-w-[96px] ${btnCls}`}>
+              <div
+                style={{ width: `${iconSizePx}px`, height: `${iconSizePx}px` }}
+                className="rounded-2xl bg-[var(--luma-accent)]/15 border border-[var(--luma-accent-border)] flex items-center justify-center text-[var(--luma-accent)] transition-all"
+              >
+                {renderAppIcon('Globe', iconSizePx >= 58 ? 'w-7 h-7' : iconSizePx >= 48 ? 'w-5 h-5' : 'w-4 h-4')}
+              </div>
+              <span className="text-[10px] font-mono opacity-80">Превью</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         <div className={`flex-1 min-w-[180px] flex items-center gap-2 px-3 py-1.5 rounded-xl border ${btnCls}`}>
           <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
@@ -954,46 +1055,133 @@ export const SettingsAppsListPanel: React.FC<{
       <div className={`rounded-xl border divide-y overflow-hidden ${surfaceCls} ${isDark ? 'divide-white/[0.06]' : 'divide-zinc-900/[0.08]'}`}>
         {filtered.map((app) => {
           const meta = getAppMeta(app);
+          const isEditing = editingId === app.id;
           return (
-            <div key={app.id} className="px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${btnCls}`}>
-                  {renderAppIcon(app.icon, 'w-4 h-4')}
+            <div key={app.id} className="px-3.5 py-2.5 space-y-2 text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div
+                    style={{
+                      width: `${Math.min(52, Math.max(32, Math.round(iconSizePx * 0.78)))}px`,
+                      height: `${Math.min(52, Math.max(32, Math.round(iconSizePx * 0.78)))}px`,
+                    }}
+                    className={`rounded-xl border flex items-center justify-center shrink-0 transition-all ${btnCls}`}
+                  >
+                    {renderAppIcon(app.icon, iconSizePx >= 56 ? 'w-5 h-5' : 'w-4 h-4')}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-semibold truncate flex items-center gap-1.5">
+                      <span>{app.name}</span>
+                      {app.isRunning && <span className="w-1.5 h-1.5 rounded-full bg-[var(--luma-accent)]" />}
+                    </div>
+                    <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
+                      {app.category} · {meta.sizeLabel} · скачано {meta.installedAt}
+                    </div>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <div className="font-semibold truncate flex items-center gap-1.5">
-                    <span>{app.name}</span>
-                    {app.isRunning && <span className="w-1.5 h-1.5 rounded-full bg-[var(--luma-accent)]" />}
-                  </div>
-                  <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {app.category} · {meta.sizeLabel} · скачано {meta.installedAt}
-                  </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => onLaunchApp(app)}
+                    className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold cursor-pointer ${
+                      app.isRunning ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                    }`}
+                  >
+                    {app.isRunning ? 'Стоп' : 'Запуск'}
+                  </button>
+                  {onUpdateApp && (
+                    <button
+                      onClick={() => (isEditing ? setEditingId(null) : startEdit(app))}
+                      title="Редактировать приложение (имя, иконку, путь)"
+                      className={`p-1.5 rounded-lg border cursor-pointer ${
+                        isEditing ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                      }`}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => onOpenProperties(app)}
+                    title="Свойства"
+                    className={`p-1.5 rounded-lg border cursor-pointer ${btnCls}`}
+                  >
+                    <Info className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => onDeleteApp(app)}
+                    title="Удалить приложение"
+                    className="p-1.5 rounded-lg hover:bg-[var(--luma-accent-soft)] text-zinc-500 hover:text-[var(--luma-accent)] cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => onLaunchApp(app)}
-                  className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold cursor-pointer ${
-                    app.isRunning ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
-                  }`}
-                >
-                  {app.isRunning ? 'Стоп' : 'Запуск'}
-                </button>
-                <button
-                  onClick={() => onOpenProperties(app)}
-                  title="Свойства"
-                  className={`p-1.5 rounded-lg border cursor-pointer ${btnCls}`}
-                >
-                  <Info className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => onDeleteApp(app)}
-                  title="Удалить приложение"
-                  className="p-1.5 rounded-lg hover:bg-[var(--luma-accent-soft)] text-zinc-500 hover:text-[var(--luma-accent)] cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
+
+              {isEditing && (
+                <div className={`p-3 rounded-xl border space-y-2.5 ${isDark ? 'bg-black/30 border-white/10' : 'bg-black/[0.03] border-zinc-900/10'}`}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <label className="space-y-1">
+                      <span className={`text-[10px] font-mono ${mutedCls}`}>Название</span>
+                      <input
+                        value={draftName}
+                        onChange={(e) => setDraftName(e.target.value)}
+                        className={`w-full px-2.5 py-1.5 rounded-lg border text-xs outline-none ${btnCls}`}
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className={`text-[10px] font-mono ${mutedCls}`}>Категория</span>
+                      <input
+                        value={draftCategory}
+                        onChange={(e) => setDraftCategory(e.target.value)}
+                        className={`w-full px-2.5 py-1.5 rounded-lg border text-xs outline-none ${btnCls}`}
+                      />
+                    </label>
+                  </div>
+                  <label className="block space-y-1">
+                    <span className={`text-[10px] font-mono ${mutedCls}`}>Путь к EXE / Команда / URL</span>
+                    <input
+                      value={draftUrl}
+                      onChange={(e) => setDraftUrl(e.target.value)}
+                      className={`w-full px-2.5 py-1.5 rounded-lg border text-xs font-mono outline-none ${btnCls}`}
+                    />
+                  </label>
+                  <div className="space-y-1">
+                    <span className={`text-[10px] font-mono ${mutedCls}`}>Иконка приложения</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {APP_ICON_CHOICES.map((ic) => (
+                        <button
+                          key={ic}
+                          type="button"
+                          onClick={() => setDraftIcon(ic)}
+                          title={ic}
+                          className={`p-1.5 rounded-lg border cursor-pointer ${
+                            draftIcon === ic
+                              ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                              : btnCls
+                          }`}
+                        >
+                          {renderAppIcon(ic, 'w-3.5 h-3.5')}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(null)}
+                      className={`px-3 py-1 rounded-lg border text-[11px] cursor-pointer ${btnCls}`}
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => saveEdit(app)}
+                      className="px-3.5 py-1 rounded-lg bg-[var(--luma-accent)] text-white text-[11px] font-bold cursor-pointer"
+                    >
+                      Сохранить изменения
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

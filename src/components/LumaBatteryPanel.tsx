@@ -17,16 +17,19 @@ interface BatteryDetails {
   present: boolean;
   percent: number;
   charging: boolean;
+  ac_online?: boolean;
   health_percent: number;
   design_capacity_mwh: number;
   full_charge_capacity_mwh: number;
   cycle_count: number;
+  cycle_supported?: boolean;
   power_watts: number;
   voltage_mv: number;
   estimated_minutes: number;
   status_text: string;
   chemistry: string;
   manufacturer?: string;
+  data_source?: string;
 }
 
 interface BatteryHistoryPoint {
@@ -98,16 +101,19 @@ function buildLaptopDemoReport(): BatteryReportResponse {
       present: true,
       percent: 54,
       charging: false,
+      ac_online: false,
       health_percent: 92,
       design_capacity_mwh: 75000,
       full_charge_capacity_mwh: 69120,
       cycle_count: 148,
+      cycle_supported: true,
       power_watts: 11.4,
       voltage_mv: 15420,
       estimated_minutes: 340,
-      status_text: 'Разряжается от батареи',
+      status_text: 'Работа от батареи',
       chemistry: 'Li-Ion Polymer',
       manufacturer: 'Luma PowerCell',
+      data_source: 'Демо-профиль ноутбука',
     },
     history,
     screen_time_today_min: 345,
@@ -218,7 +224,8 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
             {tr(lang, 'batteryTitle')}
           </h3>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Реальная телеметрия АКБ (WMI / sysfs), циклы зарядки, износ и учёт экранного времени
+            Трёхуровневая телеметрия АКБ (Win32 / WMI / BatteryReport XML), циклы, износ и экранное время
+            {details?.data_source ? ` · ${details.data_source}` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -266,13 +273,13 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
         <div className={`rounded-2xl border p-3.5 ${cardCls}`}>
           <div className="flex items-center justify-between text-[11px] text-zinc-500 mb-1">
             <span>Заряд</span>
-            <Zap className={`w-4 h-4 ${details?.charging ? 'text-emerald-400' : 'text-amber-400'}`} />
+            <Zap className={`w-4 h-4 ${details?.charging ? 'text-emerald-400' : details?.ac_online ? 'text-sky-400' : 'text-amber-400'}`} />
           </div>
           <div className="text-2xl font-mono font-bold">
-            {hasBattery ? `${details?.percent ?? 100}%` : 'AC 100%'}
+            {hasBattery ? `${details?.percent ?? 100}%` : 'AC'}
           </div>
           <div className="text-[11px] text-zinc-500 mt-1 truncate">
-            {details?.charging ? tr(lang, 'batteryCharging') : details?.status_text || tr(lang, 'batteryDischarging')}
+            {details?.status_text || (details?.charging ? tr(lang, 'batteryCharging') : tr(lang, 'batteryDischarging'))}
           </div>
         </div>
 
@@ -285,9 +292,9 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
             {hasBattery ? `${details?.health_percent ?? 100}%` : '—'}
           </div>
           <div className="text-[11px] text-zinc-500 mt-1 font-mono truncate">
-            {details?.full_charge_capacity_mwh
+            {details?.full_charge_capacity_mwh && details?.design_capacity_mwh
               ? `${(details.full_charge_capacity_mwh / 1000).toFixed(1)} / ${(details.design_capacity_mwh / 1000).toFixed(1)} Вт·ч`
-              : details?.chemistry || 'Li-Ion'}
+              : `${details?.chemistry || 'Li-Ion'}${details?.manufacturer ? ` · ${details.manufacturer}` : ''}`}
           </div>
         </div>
 
@@ -297,11 +304,13 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
             <Repeat className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="text-2xl font-mono font-bold">
-            {hasBattery ? details?.cycle_count ?? 0 : '0'}
+            {hasBattery ? (details?.cycle_supported || (details?.cycle_count ?? 0) > 0 ? details?.cycle_count : '—') : '—'}
           </div>
-          <div className="text-[11px] text-zinc-500 mt-1">
+          <div className="text-[11px] text-zinc-500 mt-1 truncate">
             {hasBattery && (details?.power_watts ?? 0) > 0
               ? `${details?.power_watts?.toFixed(1)} Вт · ${((details?.voltage_mv ?? 0) / 1000).toFixed(2)} В`
+              : hasBattery && !details?.cycle_supported && (details?.cycle_count ?? 0) === 0
+              ? 'Не передаётся ACPI контроллером'
               : 'Ресурс ~1000 циклов'}
           </div>
         </div>

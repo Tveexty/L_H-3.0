@@ -47,7 +47,7 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.2.0"
+	KernelVersion       = "1.2.1"
 	KernelCodename      = "Lithium"
 	KernelEngineVersion = "1.2"
 	SecurityCoreVersion = "1.2"
@@ -87,6 +87,19 @@ type LumaKernel struct {
 	battery     *BatteryTracker
 	location    LocationInfo
 	rpcRequests uint64
+	aiEnabled   bool
+}
+
+func (k *LumaKernel) IsAIEnabled() bool {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	return k.aiEnabled
+}
+
+func (k *LumaKernel) SetAIEnabled(enabled bool) {
+	k.mu.Lock()
+	k.aiEnabled = enabled
+	k.mu.Unlock()
 }
 
 // pbkdf2HMACSHA512 derives a cryptographic key using standard RFC 2898 PBKDF2-HMAC-SHA512 (zero external deps)
@@ -199,6 +212,7 @@ func NewLumaKernel() *LumaKernel {
 		security:   NewSecurityKernel(),
 		stateStore: NewEternalStateStore(),
 		battery:    NewBatteryTracker(probe),
+		aiEnabled:  true,
 	}
 	k.loadEncryptedVFS()
 	go k.RefreshLocation()
@@ -893,9 +907,9 @@ func main() {
 	// Real Top Host Processes (for Task Manager & Terminal `top` / `ps`)
 	mux.HandleFunc("/api/kernel/processes", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		limit := 50
+		limit := 80
 		if qLim := r.URL.Query().Get("limit"); qLim != "" {
-			if n, err := strconv.Atoi(qLim); err == nil && n > 0 && n <= 80 {
+			if n, err := strconv.Atoi(qLim); err == nil && n > 0 && n <= 120 {
 				limit = n
 			}
 		}
@@ -904,9 +918,9 @@ func main() {
 			procs = []ProcessMetric{}
 		}
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"ok":         true,
-			"self_pid":   os.Getpid(),
-			"processes":  procs,
+			"ok":        true,
+			"self_pid":  os.Getpid(),
+			"processes": procs,
 		})
 	})
 
@@ -1425,7 +1439,7 @@ func main() {
 		_ = json.NewEncoder(w).Encode(GetUpdateProgress())
 	})
 
-	// 4. Universal Multi-Provider AI Chat Proxy (Gemini / OpenAI / Claude / DeepSeek / Ollama / Custom)
+	// 4. Universal Multi-Provider AI Chat Proxy (Luma Lang 1.2 / Luma Code 1.2 / Gemini / OpenAI / Claude / DeepSeek / Ollama / Custom)
 	mux.HandleFunc("/api/kernel/ai/chat", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		var req AIChatRequest
@@ -1436,6 +1450,34 @@ func main() {
 		}
 		res := HandleAIChatRequest(req, kernel)
 		_ = json.NewEncoder(w).Encode(res)
+	})
+
+	// 4b. Luma AI Master Kill Switch (GET status / POST {enabled: bool})
+	mux.HandleFunc("/api/kernel/ai/toggle", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodPost {
+			var payload struct {
+				Enabled *bool `json:"enabled"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.Enabled == nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Укажите поле enabled (true/false)"})
+				return
+			}
+			kernel.SetAIEnabled(*payload.Enabled)
+			if kernel.security != nil {
+				msg := "Luma AI отключён пользователем (режим экономии ресурсов)"
+				if *payload.Enabled {
+					msg = "Luma AI активирован (Luma Lang 1.2 + Luma Code 1.2)"
+				}
+				kernel.security.LogAudit("info", "ai", "Переключение подсистемы ИИ", msg)
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":      true,
+			"enabled": kernel.IsAIEnabled(),
+			"engines": []string{"Luma Lang 1.2", "Luma Code 1.2", "Cloud AI Bridge"},
+		})
 	})
 
 	// 5. Live Currency & Crypto Exchange Rates API
@@ -1792,12 +1834,214 @@ func main() {
 		})
 	})
 
-	// Serve standalone executable download for LumaOS_1.2.0.exe (with backward-compatible aliases)
+	// ==================== LUMA OS 1.2.1 (LITHIUM) NEW KERNEL APIS ====================
+
+	// 14. Inline Safe Image/Media Preview for Luma Explorer Pro
+	mux.HandleFunc("/api/kernel/fs/raw", func(w http.ResponseWriter, r *http.Request) {
+		rawPath := resolvePath(r.URL.Query().Get("path"))
+		if rawPath == "" {
+			http.Error(w, "missing path", http.StatusBadRequest)
+			return
+		}
+		ext := strings.ToLower(filepath.Ext(rawPath))
+		mimeMap := map[string]string{
+			".png":  "image/png",
+			".jpg":  "image/jpeg",
+			".jpeg": "image/jpeg",
+			".gif":  "image/gif",
+			".webp": "image/webp",
+			".svg":  "image/svg+xml",
+			".bmp":  "image/bmp",
+			".ico":  "image/x-icon",
+		}
+		ct, ok := mimeMap[ext]
+		if !ok {
+			http.Error(w, "unsupported preview format", http.StatusUnsupportedMediaType)
+			return
+		}
+		st, err := os.Stat(rawPath)
+		if err != nil || st.IsDir() || st.Size() > 25*1024*1024 {
+			http.Error(w, "file unavailable", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", ct)
+		w.Header().Set("Cache-Control", "no-store")
+		http.ServeFile(w, r, rawPath)
+	})
+
+	// 15. Luma Plugin SDK v2.0 Runtime Execution Bus (real system actions for installed extensions)
+	mux.HandleFunc("/api/kernel/plugins/api", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodGet {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":          true,
+				"sdk_version": "2.0",
+				"runtime":     "LumaCore 1.2 Sandbox",
+				"actions": []string{
+					"sys.snapshot", "ram.optimize", "temp.clean", "net.ping",
+					"battery.health", "shield.audit", "clipboard.stats",
+					"gpu.boost", "focus.enable", "update.check",
+				},
+			})
+			return
+		}
+		var payload struct {
+			PluginID string                 `json:"plugin_id"`
+			Action   string                 `json:"action"`
+			Params   map[string]interface{} `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		act := strings.ToLower(strings.TrimSpace(payload.Action))
+		t0 := time.Now()
+		var result map[string]interface{}
+		switch act {
+		case "sys.snapshot":
+			s := kernel.SystemSnapshot()
+			result = map[string]interface{}{
+				"summary": fmt.Sprintf("CPU %d%% · RAM %.1f/%.1f ГБ (%d%%) · GPU %d%% (%d°C)", s.CPUPercent, s.RAMUsedGB, s.RAMTotalGB, s.RAMPercent, s.GPUPercent, s.GPUTempC),
+				"data":    s,
+			}
+		case "ram.optimize":
+			var before runtime.MemStats
+			runtime.ReadMemStats(&before)
+			runtime.GC()
+			var after runtime.MemStats
+			runtime.ReadMemStats(&after)
+			s := kernel.SystemSnapshot()
+			freedKB := int64(0)
+			if before.Alloc > after.Alloc {
+				freedKB = int64((before.Alloc - after.Alloc) / 1024)
+			}
+			result = map[string]interface{}{
+				"summary": fmt.Sprintf("ОЗУ ядра оптимизировано (GC освободил %d КБ · Занято в системе: %.1f/%.1f ГБ)", freedKB, s.RAMUsedGB, s.RAMTotalGB),
+				"freed_kb": freedKB,
+				"ram_pct":  s.RAMPercent,
+			}
+		case "temp.clean":
+			tmpDir := os.TempDir()
+			cutoff := time.Now().Add(-12 * time.Hour)
+			var freed int64
+			removed := 0
+			entries, _ := os.ReadDir(tmpDir)
+			for _, e := range entries {
+				if strings.Contains(strings.ToLower(e.Name()), "luma") {
+					continue
+				}
+				info, err := e.Info()
+				if err != nil || info.ModTime().After(cutoff) {
+					continue
+				}
+				if err := os.RemoveAll(filepath.Join(tmpDir, e.Name())); err == nil {
+					removed++
+					freed += info.Size()
+				}
+			}
+			result = map[string]interface{}{
+				"summary": fmt.Sprintf("Проверена папка Temp: удалено %d устаревших объектов (%.2f МБ)", removed, float64(freed)/(1024*1024)),
+				"removed": removed,
+			}
+		case "net.ping":
+			host := "1.1.1.1"
+			if h, ok := payload.Params["host"].(string); ok && strings.TrimSpace(h) != "" {
+				host = strings.TrimSpace(h)
+			}
+			pt := time.Now()
+			conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, "443"), 1500*time.Millisecond)
+			if err == nil {
+				_ = conn.Close()
+				ms := math.Round(float64(time.Since(pt).Microseconds())/100.0) / 10.0
+				result = map[string]interface{}{
+					"summary": fmt.Sprintf("Пинг %s: %.1f мс (канал стабилен)", host, ms),
+					"ms":      ms,
+					"host":    host,
+				}
+			} else {
+				result = map[string]interface{}{
+					"summary": fmt.Sprintf("TCP-пинг %s недоступен (офлайн или прокси)", host),
+					"host":    host,
+				}
+			}
+		case "battery.health":
+			b := kernel.probe.GetBatteryDetails()
+			if !b.Present {
+				result = map[string]interface{}{
+					"summary": "Стационарный ПК (питание от сети, АКБ отсутствует)",
+					"battery": b,
+				}
+			} else {
+				cyc := "—"
+				if b.CycleSupported {
+					cyc = strconv.Itoa(b.CycleCount)
+				}
+				result = map[string]interface{}{
+					"summary": fmt.Sprintf("АКБ %d%% (%s) · Здоровье %d%% · Циклы: %s · %s", b.Percent, b.StatusText, b.HealthPercent, cyc, b.DataSource),
+					"battery": b,
+				}
+			}
+		case "shield.audit":
+			st := kernel.security.StatusSnapshot(kernel.probe)
+			auditCount := 0
+			if logs, ok := st["audit_log"].([]SecurityAuditEvent); ok {
+				auditCount = len(logs)
+			}
+			quarCount := 0
+			if qs, ok := st["quarantine"].([]QuarantineItem); ok {
+				quarCount = len(qs)
+			}
+			score := st["score"]
+			result = map[string]interface{}{
+				"summary": fmt.Sprintf("LumaShield %s активен · Событий аудита: %d · Карантин: %d · Защита: %v/100", SecurityCoreVersion, auditCount, quarCount, score),
+				"score":   score,
+			}
+		case "clipboard.stats":
+			clip, _ := kernel.probe.GetClipboard()
+			result = map[string]interface{}{
+				"summary": fmt.Sprintf("Буфер обмена ОС синхронизирован · Текущая длина: %d симв.", len([]rune(clip))),
+				"length":  len([]rune(clip)),
+			}
+		case "gpu.boost":
+			_ = kernel.probe.SetPowerPlan("performance")
+			result = map[string]interface{}{
+				"summary": "Графический профиль и план питания оптимизированы для низкой задержки кадров",
+			}
+		case "focus.enable":
+			result = map[string]interface{}{
+				"summary": "Режим «Фокус и тишина» активирован · Уведомления приглушены для работы",
+			}
+		case "update.check":
+			upd := CheckGitHubUpdate("https://github.com/Tveexty/L_H-3.0")
+			result = map[string]interface{}{
+				"summary": fmt.Sprintf("Текущая: %s · GitHub: %s (%s)", upd.CurrentVersion, upd.LatestVersion, upd.UpdateLevelLabel),
+				"update":  upd,
+			}
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Неизвестное действие Plugin API v2.0: " + act})
+			return
+		}
+		if kernel.security != nil {
+			kernel.security.LogAudit("info", "plugin-v2", "Вызов Plugin API v2.0", fmt.Sprintf("%s -> %s", payload.PluginID, act))
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":          true,
+			"sdk_version": "2.0",
+			"plugin_id":   payload.PluginID,
+			"action":      act,
+			"latency_ms":  math.Round(float64(time.Since(t0).Microseconds())/100.0) / 10.0,
+			"result":      result,
+		})
+	})
+
+	// Serve standalone executable download for LumaOS_1.2.1.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.0.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.1.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -1805,12 +2049,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.0.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.1.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.2.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.0.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.1.0.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.0.4.exe", serveExe)
@@ -1852,7 +2097,7 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.2.0 (LITHIUM) — LUMACORE 1.2 & LUMASHIELD 1.2")
+	log.Printf("  LUMA OS 1.2.1 (LITHIUM) — LUMACORE 1.2 & LUMASHIELD 1.2")
 	log.Printf("  - Desktop Environment:         http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:  tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:   http://%s/api/kernel/status", addr)

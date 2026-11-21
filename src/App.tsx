@@ -233,6 +233,7 @@ type SettingsTabId =
   | 'luma'
   | 'bluetooth'
   | 'power'
+  | 'graphics'
   | 'storage'
   | 'apps_list'
   | 'notifications'
@@ -244,6 +245,9 @@ type SettingsTabId =
   | 'plugins'
   | 'updater'
   | 'about';
+
+type GpuProfile = 'ultra' | 'balanced' | 'performance' | 'eco';
+type HostWinLabelMode = 'app_name' | 'window_title' | 'compact';
 
 interface DexWinState {
   open: boolean;
@@ -298,6 +302,9 @@ interface GitHubUpdateCheck {
   published_at: string;
   asset_size: number;
   checked_at: string;
+  update_level?: 'major' | 'minor' | 'patch';
+  update_level_label?: string;
+  changelog_highlights?: string[];
   error?: string;
 }
 
@@ -382,8 +389,28 @@ export default function App() {
   const [fontPreset, setFontPreset] = useState<FontPreset>(
     savedState?.fontPreset === 'mono' || savedState?.fontPreset === 'rounded' ? savedState.fontPreset : 'sans'
   );
-  const [uiScale, setUiScale] = useState<90 | 100 | 110>(
-    savedState?.uiScale === 90 || savedState?.uiScale === 110 ? savedState.uiScale : 100
+  const [autoDisplayScale, setAutoDisplayScale] = useState<boolean>(savedState?.autoDisplayScale ?? true);
+  const [uiScale, setUiScale] = useState<number>(() => {
+    if (typeof savedState?.uiScale === 'number') return Math.max(85, Math.min(135, savedState.uiScale));
+    return 100;
+  });
+  const [viewportAutoPct, setViewportAutoPct] = useState<number>(100);
+  const [iconSizePx, setIconSizePx] = useState<number>(() => {
+    if (typeof savedState?.iconSizePx === 'number') return Math.max(36, Math.min(72, savedState.iconSizePx));
+    return 46;
+  });
+  const [gpuProfile, setGpuProfile] = useState<GpuProfile>(
+    savedState?.gpuProfile === 'ultra' ||
+      savedState?.gpuProfile === 'performance' ||
+      savedState?.gpuProfile === 'eco'
+      ? savedState.gpuProfile
+      : 'balanced'
+  );
+  const [gpuBlurEnabled, setGpuBlurEnabled] = useState<boolean>(savedState?.gpuBlurEnabled ?? true);
+  const [gpuShadowsEnabled, setGpuShadowsEnabled] = useState<boolean>(savedState?.gpuShadowsEnabled ?? true);
+  const [gpuPauseLiveWp, setGpuPauseLiveWp] = useState<boolean>(savedState?.gpuPauseLiveWp ?? true);
+  const [telemetryIntervalMs, setTelemetryIntervalMs] = useState<1500 | 3000 | 6000>(
+    savedState?.telemetryIntervalMs === 1500 || savedState?.telemetryIntervalMs === 6000 ? savedState.telemetryIntervalMs : 3000
   );
   const [glassEnabled, setGlassEnabled] = useState<boolean>(savedState?.glassEnabled ?? true);
   const [glassIntensity, setGlassIntensity] = useState<GlassIntensity>(savedState?.glassIntensity || 'medium');
@@ -419,6 +446,17 @@ export default function App() {
   const [taskbarShowHostWindows, setTaskbarShowHostWindows] = useState<boolean>(
     savedState?.taskbarShowHostWindows ?? true
   );
+  const [hostWinLabelMode, setHostWinLabelMode] = useState<HostWinLabelMode>(
+    savedState?.hostWinLabelMode === 'window_title' || savedState?.hostWinLabelMode === 'compact'
+      ? savedState.hostWinLabelMode
+      : 'app_name'
+  );
+  const [taskbarOrder, setTaskbarOrder] = useState<DexWinId[]>(() =>
+    Array.isArray(savedState?.taskbarOrder) && savedState.taskbarOrder.length > 0
+      ? savedState.taskbarOrder
+      : ['explorer', 'apps', 'ai', 'calculator', 'terminal', 'utilities', 'tracker', 'kernel', 'settings', 'taskmgr', 'plugins', 'island', 'spaces']
+  );
+  const [draggedTaskbarId, setDraggedTaskbarId] = useState<DexWinId | null>(null);
   const [taskbarShowTelemetry, setTaskbarShowTelemetry] = useState<boolean>(savedState?.taskbarShowTelemetry ?? true);
   const [taskbarCenterIcons, setTaskbarCenterIcons] = useState<boolean>(savedState?.taskbarCenterIcons ?? false);
   const [taskbarSizePx, setTaskbarSizePx] = useState<number>(() => {
@@ -456,7 +494,8 @@ export default function App() {
   const snapSeqRef = useRef<number>(0);
   const shellDiskHydratedRef = useRef<boolean>(false);
 
-  // --- Luma AI Multi-Provider Config (defaults to autonomous offline LumaNano 1.2) ---
+  // --- Luma AI Multi-Provider Config + Master AI Kill Switch ---
+  const [aiEnabled, setAiEnabled] = useState<boolean>(savedState?.aiEnabled ?? true);
   const [aiConfig, setAiConfig] = useState<LumaAIConfig>(() => ({
     ...DEFAULT_LUMA_AI_CONFIG,
     ...(savedState?.aiConfig || {}),
@@ -482,8 +521,12 @@ export default function App() {
   });
   const [shellModeSaving, setShellModeSaving] = useState<boolean>(false);
 
-  // --- Real GitHub OTA Update Checker & Seamless Progress Bar ---
+  // --- Real GitHub OTA Update Checker, Daily Auto-Notify Popup & Cinematic Progress ---
   const [updateInfo, setUpdateInfo] = useState<GitHubUpdateCheck | null>(null);
+  const [updatePopupOpen, setUpdatePopupOpen] = useState<boolean>(false);
+  const [pluginRunResults, setPluginRunResults] = useState<
+    Record<string, { loading?: boolean; summary?: string; latency?: number; ok?: boolean }>
+  >({});
   const [updateProgress, setUpdateProgress] = useState<GitHubUpdateProgress>({
     running: false,
     stage: 'idle',
@@ -621,7 +664,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.2.0 (Lithium) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.2.1 (Lithium) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -654,7 +697,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.2.0 (Lithium)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.2.1 (Lithium)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -670,7 +713,7 @@ export default function App() {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
       source: 'LumaCore 1.2',
-      message: 'Инициализация оболочки Luma OS 1.2.0 (Lithium) и шины IPC 127.0.0.1:49215',
+      message: 'Инициализация оболочки Luma OS 1.2.1 (Lithium) и шины IPC 127.0.0.1:49215',
       level: 'success',
     },
   ]);
@@ -836,7 +879,7 @@ export default function App() {
       const bundle = {
         schema: 'luma_os_backup_v1',
         exported_at: new Date().toISOString(),
-        version: '1.2.0 (Lithium)',
+        version: '1.2.1 (Lithium)',
         desktop_layout: desktopRaw ? JSON.parse(desktopRaw) : null,
         shell_state: shellRaw ? JSON.parse(shellRaw) : null,
       };
@@ -1121,12 +1164,32 @@ export default function App() {
     root.setProperty('--luma-blur', blurPx);
     root.setProperty('--luma-radius', `${cardBorderRadius}px`);
     root.setProperty('--luma-font-family', fontStack);
-    root.fontSize = uiScale === 90 ? '14.5px' : uiScale === 110 ? '17.5px' : '16px';
+    root.setProperty('--luma-icon-size', `${iconSizePx}px`);
+
+    // Adaptive Display Scaling (keeps Laptop 1440x900 & Big Desktop Monitors visually consistent!)
+    const effectiveScalePct = autoDisplayScale
+      ? Math.round((viewportAutoPct * uiScale) / 100)
+      : uiScale;
+    const clampedPx = Math.max(13.5, Math.min(22, (16 * effectiveScalePct) / 100));
+    root.fontSize = `${clampedPx.toFixed(2)}px`;
+
+    // GPU Optimization pipeline switches
+    const blurActive = gpuBlurEnabled && glassEnabled && gpuProfile !== 'performance' && gpuProfile !== 'eco';
+    const shadowsActive = gpuShadowsEnabled && gpuProfile !== 'performance';
+    document.documentElement.setAttribute('data-perf', gpuProfile);
+    document.documentElement.setAttribute('data-gpu-blur', blurActive ? 'on' : 'off');
+    document.documentElement.setAttribute('data-gpu-shadows', shadowsActive ? 'on' : 'off');
   }, [
     currentTheme,
     customAccentOverride,
     fontPreset,
+    autoDisplayScale,
+    viewportAutoPct,
     uiScale,
+    iconSizePx,
+    gpuProfile,
+    gpuBlurEnabled,
+    gpuShadowsEnabled,
     glassEnabled,
     glassOpacity,
     glassIntensity,
@@ -1134,6 +1197,101 @@ export default function App() {
     powerProfile,
     reduceEffectsOnSaver,
   ]);
+
+  // Compute Auto Display Scale on load & window resize (1440x900 laptop baseline -> smooth upscaling on 1080p/1440p/4K)
+  useEffect(() => {
+    const computeScale = () => {
+      const w = window.innerWidth || 1440;
+      const h = window.innerHeight || 900;
+      const ratio = Math.min(w / 1440, h / 900);
+      // Gentle ergonomic scaling curve: 1440x900 => 100%, 1920x1080 => ~112%, 2560x1440 => ~124%, 3840x2160 => 132%
+      let pct = 100;
+      if (ratio > 1.02) {
+        pct = Math.min(132, Math.round(100 + (ratio - 1) * 46));
+      } else if (ratio < 0.88) {
+        pct = Math.max(88, Math.round(100 - (0.88 - ratio) * 40));
+      }
+      setViewportAutoPct(pct);
+    };
+    computeScale();
+    window.addEventListener('resize', computeScale);
+    return () => window.removeEventListener('resize', computeScale);
+  }, []);
+
+  // Auto-pause live mesh wallpapers when any window is open & GPU pause option is active
+  const anyWindowOpenNow = useMemo(
+    () => (Object.keys(windows) as DexWinId[]).some((k) => windows[k].open && !windows[k].minimized),
+    [windows]
+  );
+  useEffect(() => {
+    const shouldPause =
+      gpuProfile === 'performance' || gpuProfile === 'eco' || (gpuPauseLiveWp && anyWindowOpenNow);
+    document.documentElement.setAttribute('data-wp-paused', shouldPause ? 'true' : 'false');
+  }, [gpuProfile, gpuPauseLiveWp, anyWindowOpenNow]);
+
+  // Sync AI Master Kill Switch with Go Kernel (/api/kernel/ai/toggle)
+  const handleToggleAiEnabled = async (next: boolean) => {
+    setAiEnabled(next);
+    if (!next && windows.ai.open) {
+      closeWindow('ai');
+    }
+    try {
+      await fetch('/api/kernel/ai/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+    } catch {
+      // ignore offline
+    }
+    pushToast(
+      'Luma AI',
+      next ? 'Luma AI включён (Luma Lang 1.2 + Luma Code 1.2)' : 'Luma AI полностью отключён для экономии ресурсов',
+      next ? 'success' : 'info'
+    );
+  };
+
+  useEffect(() => {
+    fetch('/api/kernel/ai/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: aiEnabled }),
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Apply GPU Performance Preset in 1 click
+  const applyGpuProfile = (profile: GpuProfile) => {
+    setGpuProfile(profile);
+    if (profile === 'ultra') {
+      setGpuBlurEnabled(true);
+      setGpuShadowsEnabled(true);
+      setGpuPauseLiveWp(false);
+      setGlassEnabled(true);
+      setTelemetryIntervalMs(1500);
+      if (animationPreset === 'none') setAnimationPreset('spring');
+    } else if (profile === 'balanced') {
+      setGpuBlurEnabled(true);
+      setGpuShadowsEnabled(true);
+      setGpuPauseLiveWp(true);
+      setGlassEnabled(true);
+      setTelemetryIntervalMs(3000);
+    } else if (profile === 'performance') {
+      setGpuBlurEnabled(false);
+      setGpuShadowsEnabled(false);
+      setGpuPauseLiveWp(true);
+      setGlassEnabled(false);
+      setAnimationPreset('none');
+      setTelemetryIntervalMs(6000);
+    } else {
+      // eco
+      setGpuBlurEnabled(false);
+      setGpuShadowsEnabled(false);
+      setGpuPauseLiveWp(true);
+      setTelemetryIntervalMs(6000);
+    }
+    pushToast('Графика и GPU', `Применён профиль: ${profile.toUpperCase()}`, 'success');
+  };
 
   // --- Persist state cleanly ---
   useEffect(() => {
@@ -1143,7 +1301,14 @@ export default function App() {
       customThemes,
       customAccentOverride,
       fontPreset,
+      autoDisplayScale,
       uiScale,
+      iconSizePx,
+      gpuProfile,
+      gpuBlurEnabled,
+      gpuShadowsEnabled,
+      gpuPauseLiveWp,
+      telemetryIntervalMs,
       glassEnabled,
       glassIntensity,
       glassOpacity,
@@ -1168,6 +1333,8 @@ export default function App() {
       taskbarSizePx,
       taskbarShowLabels,
       taskbarShowHostWindows,
+      hostWinLabelMode,
+      taskbarOrder,
       taskbarShowTelemetry,
       taskbarCenterIcons,
       lang,
@@ -1176,6 +1343,7 @@ export default function App() {
       wallpaperDim,
       wallpaperTransition,
       liveWallpaper,
+      aiEnabled,
       aiConfig,
       designStyle,
       clockStyle,
@@ -1234,7 +1402,14 @@ export default function App() {
     customThemes,
     customAccentOverride,
     fontPreset,
+    autoDisplayScale,
     uiScale,
+    iconSizePx,
+    gpuProfile,
+    gpuBlurEnabled,
+    gpuShadowsEnabled,
+    gpuPauseLiveWp,
+    telemetryIntervalMs,
     glassEnabled,
     glassIntensity,
     glassOpacity,
@@ -1249,11 +1424,14 @@ export default function App() {
     toastBannersEnabled,
     lang,
     taskbarSizePx,
+    hostWinLabelMode,
+    taskbarOrder,
     wallpaperImageUrl,
     wallpaperBlur,
     wallpaperDim,
     wallpaperTransition,
     liveWallpaper,
+    aiEnabled,
     aiConfig,
     notificationSoundEnabled,
     uiDensity,
@@ -1322,8 +1500,21 @@ export default function App() {
           if (st.wallpaperTransition) setWallpaperTransition(st.wallpaperTransition);
           if (Array.isArray(st.apps) && st.apps.length > 0) setApps(st.apps);
           if (st.aiConfig) setAiConfig({ ...DEFAULT_LUMA_AI_CONFIG, ...st.aiConfig });
+          if (typeof st.aiEnabled === 'boolean') setAiEnabled(st.aiEnabled);
           if (typeof st.customDeviceName === 'string') setCustomDeviceName(st.customDeviceName);
           if (st.clockStyle) setClockStyle(st.clockStyle);
+          if (typeof st.autoDisplayScale === 'boolean') setAutoDisplayScale(st.autoDisplayScale);
+          if (typeof st.uiScale === 'number') setUiScale(Math.max(85, Math.min(135, st.uiScale)));
+          if (typeof st.iconSizePx === 'number') setIconSizePx(Math.max(36, Math.min(72, st.iconSizePx)));
+          if (st.gpuProfile) setGpuProfile(st.gpuProfile);
+          if (typeof st.gpuBlurEnabled === 'boolean') setGpuBlurEnabled(st.gpuBlurEnabled);
+          if (typeof st.gpuShadowsEnabled === 'boolean') setGpuShadowsEnabled(st.gpuShadowsEnabled);
+          if (typeof st.gpuPauseLiveWp === 'boolean') setGpuPauseLiveWp(st.gpuPauseLiveWp);
+          if (typeof st.telemetryIntervalMs === 'number') setTelemetryIntervalMs(st.telemetryIntervalMs);
+          if (st.hostWinLabelMode === 'app_name' || st.hostWinLabelMode === 'window_title' || st.hostWinLabelMode === 'compact') {
+            setHostWinLabelMode(st.hostWinLabelMode);
+          }
+          if (Array.isArray(st.taskbarOrder) && st.taskbarOrder.length > 0) setTaskbarOrder(st.taskbarOrder);
         }
         shellDiskHydratedRef.current = true;
       })
@@ -1522,7 +1713,7 @@ export default function App() {
         pushToast('Окно ОС', d?.detail || `Переключено на ${win?.title || win?.name || `PID ${pid}`}`, 'info');
       }
     } catch {
-      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.2.0.exe', 'info');
+      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.2.1.exe', 'info');
     }
   };
 
@@ -1546,16 +1737,17 @@ export default function App() {
 
   useEffect(() => {
     pollSystemTelemetry();
-    const intervalMs = powerProfile === 'saver' ? 6000 : powerProfile === 'performance' ? 1500 : 2000;
+    const intervalMs = powerProfile === 'saver' ? Math.max(4500, telemetryIntervalMs) : telemetryIntervalMs;
     const id = window.setInterval(pollSystemTelemetry, intervalMs);
     return () => window.clearInterval(id);
-  }, [powerProfile]);
+  }, [powerProfile, telemetryIntervalMs]);
 
   useEffect(() => {
     pollHostWindows();
-    const id = window.setInterval(pollHostWindows, 2500);
+    const winPollMs = gpuProfile === 'performance' || gpuProfile === 'eco' ? 4000 : 2500;
+    const id = window.setInterval(pollHostWindows, winPollMs);
     return () => window.clearInterval(id);
-  }, []);
+  }, [gpuProfile]);
 
   // Auto-enable power saver when battery drops below threshold on battery power
   useEffect(() => {
@@ -1682,7 +1874,7 @@ export default function App() {
         pushToast('Питание', d?.detail || `Выполнено: ${action}`, 'info');
       }
     } catch {
-      pushToast('Питание', 'Доступно при запуске LumaOS_1.2.0.exe', 'info');
+      pushToast('Питание', 'Доступно при запуске LumaOS_1.2.1.exe', 'info');
     }
   };
 
@@ -1715,7 +1907,7 @@ export default function App() {
         pushToast('Режим оболочки Windows', 'Параметры применены к системе', 'success');
       }
     } catch {
-      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.2.0.exe)', 'info');
+      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.2.1.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -1770,31 +1962,129 @@ export default function App() {
     };
   }, [resizingTaskbar, taskbarPosition, taskbarSizePx]);
 
-  // --- Real GitHub OTA Update Checker & Live Progress Poller ---
-  const handleCheckGitHubUpdates = async () => {
+  // --- Real GitHub OTA Update Checker, Daily 24h Auto-Check & Live Progress Poller ---
+  const handleCheckGitHubUpdates = async (silent = false) => {
     setCheckingGithub(true);
     try {
       const r = await fetch(`/api/kernel/update/check?repo=${encodeURIComponent(githubRepoUrl)}`);
       const d: GitHubUpdateCheck = await r.json();
       setUpdateInfo(d);
+      try {
+        localStorage.setItem('luma_last_daily_update_check_ts', String(Date.now()));
+      } catch {
+        // ignore
+      }
       if (d?.ok) {
         if (d.has_update) {
-          setGithubUpdateStatus(`Доступна новая версия: Luma OS ${d.latest_version} (${d.checked_at})`);
-          pushToast('Обновление GitHub', `Найдена новая версия Luma OS ${d.latest_version}!`, 'success');
+          const lvl = d.update_level_label ? ` · ${d.update_level_label}` : '';
+          setGithubUpdateStatus(`Доступна новая версия: Luma OS ${d.latest_version}${lvl} (${d.checked_at})`);
+          setUpdatePopupOpen(true);
+          pushToast('Доступно обновление Luma OS', `v${d.latest_version}${lvl}`, 'success');
         } else {
-          setGithubUpdateStatus(`Актуальная версия: Luma OS ${d.current_name} · последний релиз на GitHub: ${d.latest_tag} (${d.checked_at})`);
-          pushToast('Обновления GitHub', `У вас актуальная сборка (${d.current_name})`, 'info');
+          setGithubUpdateStatus(
+            `Актуальная версия: Luma OS ${d.current_name} · последний релиз GitHub: ${d.latest_tag} (${d.checked_at})`
+          );
+          if (!silent) {
+            pushToast('Обновления GitHub', `У вас актуальная сборка (${d.current_name})`, 'info');
+          }
         }
       } else {
         setGithubUpdateStatus(d?.error || 'Не удалось проверить релизы GitHub');
-        pushToast('Обновления GitHub', d?.error || 'Ошибка связи с GitHub', 'warning');
+        if (!silent) {
+          pushToast('Обновления GitHub', d?.error || 'Ошибка связи с GitHub', 'warning');
+        }
       }
     } catch {
       setGithubUpdateStatus('Нет ответа от службы обновлений LumaCore 1.2');
-      pushToast('Обновления GitHub', 'Нет ответа от службы обновлений', 'warning');
+      if (!silent) {
+        pushToast('Обновления GitHub', 'Нет ответа от службы обновлений', 'warning');
+      }
     } finally {
       setCheckingGithub(false);
     }
+  };
+
+  // Automatic Daily GitHub Release Check (runs once every 24h when auto-update is enabled)
+  useEffect(() => {
+    if (!githubAutoUpdate) return;
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const maybeCheckDaily = () => {
+      try {
+        const last = Number(localStorage.getItem('luma_last_daily_update_check_ts') || '0');
+        if (!last || Date.now() - last >= DAY_MS) {
+          void handleCheckGitHubUpdates(true);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    const startTimer = window.setTimeout(maybeCheckDaily, 3500);
+    const interval = window.setInterval(maybeCheckDaily, 60 * 60 * 1000);
+    return () => {
+      window.clearTimeout(startTimer);
+      window.clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [githubAutoUpdate, githubRepoUrl]);
+
+  // --- Luma Plugin API v2.0 Live Runner ---
+  const handleRunPluginV2 = async (plugin: PluginItem) => {
+    const action = plugin.actionId || 'sys.snapshot';
+    setPluginRunResults((prev) => ({ ...prev, [plugin.id]: { loading: true } }));
+    try {
+      const r = await fetch('/api/kernel/plugins/api', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plugin_id: plugin.id, action }),
+      });
+      const d = await r.json();
+      if (d?.ok) {
+        const summary = d?.result?.summary || 'Команда API v2.0 выполнена';
+        setPluginRunResults((prev) => ({
+          ...prev,
+          [plugin.id]: { loading: false, ok: true, summary, latency: d.latency_ms },
+        }));
+        pushToast(plugin.name, summary, 'success');
+      } else {
+        setPluginRunResults((prev) => ({
+          ...prev,
+          [plugin.id]: { loading: false, ok: false, summary: d?.error || 'Ошибка API v2.0' },
+        }));
+      }
+    } catch {
+      setPluginRunResults((prev) => ({
+        ...prev,
+        [plugin.id]: { loading: false, ok: false, summary: 'Нет связи с шиной Plugin API v2.0' },
+      }));
+    }
+  };
+
+  // --- Taskbar Reorder Helpers (Drag-and-Drop & Settings ▲/▼) ---
+  const moveTaskbarOrder = (id: DexWinId, delta: -1 | 1) => {
+    setTaskbarOrder((prev) => {
+      const idx = prev.indexOf(id);
+      if (idx < 0) return prev;
+      const target = idx + delta;
+      if (target < 0 || target >= prev.length) return prev;
+      const copy = [...prev];
+      const [moved] = copy.splice(idx, 1);
+      copy.splice(target, 0, moved);
+      return copy;
+    });
+  };
+
+  const reorderTaskbarByDrag = (srcId: DexWinId, dstId: DexWinId) => {
+    if (srcId === dstId) return;
+    setTaskbarOrder((prev) => {
+      const list = [...prev];
+      if (!list.includes(srcId)) list.push(srcId);
+      if (!list.includes(dstId)) list.push(dstId);
+      const fromIdx = list.indexOf(srcId);
+      const toIdx = list.indexOf(dstId);
+      const [moved] = list.splice(fromIdx, 1);
+      list.splice(toIdx, 0, moved);
+      return list;
+    });
   };
 
   const handleStartGitHubUpdate = async (urlOverride?: string, verOverride?: string) => {
@@ -1994,7 +2284,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.2.0.exe', 'info');
+      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.2.1.exe', 'info');
     }
   };
 
@@ -2047,6 +2337,7 @@ export default function App() {
         id: item.id,
         name: item.name,
         version: item.version,
+        apiVersion: item.apiVersion || '2.0',
         author: item.author,
         category: item.category,
         icon: item.icon,
@@ -2054,12 +2345,14 @@ export default function App() {
         enabled: true,
         file: item.file,
         hooks: item.hooks,
+        permissions: item.permissions || ['system.read'],
+        actionId: item.actionId || 'sys.snapshot',
         showInLauncher: true,
         customIntervalSec: 60,
         notificationsEnabled: true,
       },
     ]);
-    pushToast('Расширение', `Модуль «${item.name}» установлен`, 'info');
+    pushToast('Расширение API v2.0', `Модуль «${item.name}» установлен`, 'info');
   };
 
   // --- Computed Values ---
@@ -2263,11 +2556,11 @@ export default function App() {
     return <Comp className={className} />;
   };
 
-  // Taskbar pinned + dynamic open windows (localized, includes Luma AI, Calculator & System Utilities!)
-  const taskbarApps: { id: DexWinId; label: string; icon: React.ReactNode; pinned: boolean }[] = [
+  // Taskbar pinned + dynamic open windows (sortable via taskbarOrder & drag-and-drop!)
+  const rawTaskbarApps: { id: DexWinId; label: string; icon: React.ReactNode; pinned: boolean }[] = [
     { id: 'explorer', label: t('explorer', 'Проводник'), icon: <FolderOpen className="w-4 h-4" />, pinned: true },
     { id: 'apps', label: t('apps', 'Приложения'), icon: <AppWindow className="w-4 h-4" />, pinned: true },
-    { id: 'ai', label: t('ai', 'Luma AI'), icon: <Sparkles className="w-4 h-4" />, pinned: true },
+    { id: 'ai', label: t('ai', 'Luma AI'), icon: <Sparkles className="w-4 h-4" />, pinned: aiEnabled },
     { id: 'calculator', label: t('calculator', 'Калькулятор'), icon: <Calculator className="w-4 h-4" />, pinned: true },
     { id: 'terminal', label: t('terminal', 'Терминал'), icon: <Terminal className="w-4 h-4" />, pinned: true },
     { id: 'utilities', label: t('utilities', 'Службы'), icon: <Wrench className="w-4 h-4" />, pinned: true },
@@ -2279,6 +2572,11 @@ export default function App() {
     { id: 'island', label: 'Luma Island', icon: <Disc3 className="w-4 h-4" />, pinned: false },
     { id: 'spaces', label: 'Пространства', icon: <Rocket className="w-4 h-4" />, pinned: false },
   ];
+  const taskbarApps = [...rawTaskbarApps].sort((a, b) => {
+    const ia = taskbarOrder.indexOf(a.id);
+    const ib = taskbarOrder.indexOf(b.id);
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+  });
 
   const visiblePinnedOrOpenWins = taskbarApps.filter((item) => item.pinned || windows[item.id].open);
   const openSystemWindowsList = taskbarApps.filter((w) => windows[w.id].open);
@@ -2286,9 +2584,9 @@ export default function App() {
     openSystemWindowsList.length + runningAppsCount + (taskbarShowHostWindows ? hostWindows.length : 0);
   const totalBarTabsCount =
     visiblePinnedOrOpenWins.length + runningApps.length + (taskbarShowHostWindows ? hostWindows.length : 0);
-  // Automatic smart tab compression so 100+ open apps NEVER clip awkwardly!
+  // Automatic smart tab compression so 100+ open apps NEVER clip awkwardly while preserving readable brand names!
   const barCompression: 'normal' | 'compact' | 'icons' =
-    totalBarTabsCount > 14 ? 'icons' : totalBarTabsCount > 8 ? 'compact' : 'normal';
+    totalBarTabsCount > 24 ? 'icons' : totalBarTabsCount > 13 ? 'compact' : 'normal';
   const topVisibleZ = Math.max(
     0,
     ...Object.values(windows).map((w) => (w.open && !w.minimized && (w.desktop ?? 1) === activeDesktop ? w.z : 0))
@@ -2410,6 +2708,8 @@ export default function App() {
         wallpaperDim={wallpaperDim}
         wallpaperTransition={wallpaperTransition}
         liveWallpaper={liveWallpaper}
+        aiEnabled={aiEnabled}
+        iconSizePx={iconSizePx}
       />
 
       {/* ==================== LAYER 2: SUPERCHARGED FLOATING LUMA ISLAND PILL (MEDIA + CLIPBOARD + TIMER) ==================== */}
@@ -2697,7 +2997,18 @@ export default function App() {
                             }`}
                           >
                             <div className="flex items-center justify-between">
-                              {renderAppIcon(app.icon, 'w-4 h-4')}
+                              <div
+                                className={`rounded-xl border flex items-center justify-center shrink-0 ${btnCls}`}
+                                style={{
+                                  width: Math.max(30, Math.round(iconSizePx * 0.78)),
+                                  height: Math.max(30, Math.round(iconSizePx * 0.78)),
+                                }}
+                              >
+                                {renderAppIcon(
+                                  app.icon,
+                                  iconSizePx >= 60 ? 'w-6 h-6' : iconSizePx >= 50 ? 'w-5 h-5' : 'w-4 h-4'
+                                )}
+                              </div>
                               <div className="flex items-center gap-1.5">
                                 {app.isRunning && <span className="w-2 h-2 rounded-full bg-[var(--luma-accent)]" />}
                                 {(multiSelectMode || isSel) && (
@@ -3183,7 +3494,7 @@ export default function App() {
       {isWinVisible('kernel') && (
         <DexWindow
           id="kernel"
-          title="Ядро LumaCore 1.2 (ПО 1.2.0 Lithium)"
+          title="Ядро LumaCore 1.2 (ПО 1.2.1 Lithium)"
           subtitle={kernelConnected ? 'CONNECTED · 127.0.0.1:49215' : 'STANDALONE'}
           icon={<Code2 className="w-4 h-4" />}
           isDark={isDark}
@@ -3230,12 +3541,12 @@ export default function App() {
                   Диспетчер задач
                 </button>
                 <a
-                  href="/LumaOS_1.2.0.exe"
-                  download="LumaOS_1.2.0.exe"
+                  href="/LumaOS_1.2.1.exe"
+                  download="LumaOS_1.2.1.exe"
                   className="px-3.5 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  LumaOS_1.2.0.exe
+                  LumaOS_1.2.1.exe
                 </a>
               </div>
             </div>
@@ -3275,7 +3586,7 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.2.0 (Lithium)'],
+                      ['Версия ПО', '1.2.1 (Lithium)'],
                       ['Версия Ядра', '1.0 (LumaCore)'],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
                       ['LumaGuard', `AES-256 #${cryptoKeyVersion}`],
@@ -3336,7 +3647,7 @@ export default function App() {
                         lumaRpcLiveData || {
                           kernel: 'LumaCore',
                           kernel_engine_version: '1.0',
-                          software_version: '1.2.0 (Lithium)',
+                          software_version: '1.2.1 (Lithium)',
                           ipc: 'tcp://127.0.0.1:49215',
                           real_telemetry: Boolean(liveSystem?.real_telemetry),
                         },
@@ -3470,7 +3781,7 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.2.0 (Lithium)"
+          subtitle="Luma OS 1.2.1 (Lithium)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -3512,26 +3823,27 @@ export default function App() {
               <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-0.5">
                 {(
                   [
-                    ['kernel_ui', t('tabKernelUI', 'Ядро UI'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.2.0 lithium ядра 1.2 пасхалка kernel'],
+                    ['kernel_ui', t('tabKernelUI', 'Ядро UI'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.2.1 lithium ядра 1.2 пасхалка kernel'],
+                    ['graphics', 'Графика и Экран', <Monitor className="w-4 h-4 shrink-0" />, 'графика gpu оптимизация адаптация экрана масштаб монитор ноутбук размытие blur тени fps'],
                     ['security', t('tabSecurity', 'Безопасность и AV'), <ShieldCheck className="w-4 h-4 shrink-0" />, 'безопасность антивирус lumashield defender карантин eicar вирусы проверка security'],
-                    ['ai_settings', t('tabAI', 'ИИ и Нейросети'), <Sparkles className="w-4 h-4 shrink-0" />, 'ии нейросети luma_local автономный голос gemini openai chatgpt claude deepseek ollama ai api'],
+                    ['ai_settings', t('tabAI', 'ИИ и Нейросети'), <Sparkles className="w-4 h-4 shrink-0" />, 'ии нейросети luma lang code кодер языковая отключить выключить автономный голос gemini openai claude ollama ai'],
                     ['battery', t('tabBattery', 'Батарея и экран'), <BatteryCharging className="w-4 h-4 shrink-0" />, 'батарея акб циклы зарядки график разряда здоровье экранное время ноутбук battery screen time'],
                     ['language', t('tabLanguage', 'Язык и регион'), <Languages className="w-4 h-4 shrink-0" />, 'язык language english romanian deutsch chinese french spanish ukrainian japanese регион'],
                     ['shell_mode', t('tabShellMode', 'Оболочка Windows'), <Monitor className="w-4 h-4 shrink-0" />, 'оболочка windows полный экран fullscreen автозапуск autostart поверх виндовс скрыть панель задач chrome'],
                     ['appearance', t('tabThemes', 'Темы и обои'), <Sliders className="w-4 h-4 shrink-0" />, 'темы 8 тем акцент шрифт масштаб прозрачность blur размытие скругление анимации стиль nothing pixelbook сетка обои wallpaper бэкап backup'],
-                    ['taskbar', t('tabTaskbar', 'Панель задач'), <LayoutPanelLeft className="w-4 h-4 shrink-0" />, 'панель задач док снизу слева сверху размер высота сжатие вкладок окна ос диспетчер задач taskbar'],
+                    ['taskbar', t('tabTaskbar', 'Панель задач'), <LayoutPanelLeft className="w-4 h-4 shrink-0" />, 'панель задач док порядок приложений названия окон chrome steam снизу слева сверху размер высота сжатие taskbar'],
                     ['storage', t('tabStorage', 'Память и Файлы'), <HardDrive className="w-4 h-4 shrink-0" />, 'память озу ram диски накопители проводник скрытые файлы storage disk files'],
                     ['bluetooth', t('tabBluetooth', 'Bluetooth'), <Bluetooth className="w-4 h-4 shrink-0" />, 'bluetooth блютуз беспроводные наушники адаптер устройства'],
                     ['power', t('tabPower', 'Питание'), <Leaf className="w-4 h-4 shrink-0" />, 'энергосбережение питание батарея яркость производительность сбалансированный сон power battery'],
-                    ['apps_list', t('apps', 'Приложения'), <AppWindow className="w-4 h-4 shrink-0" />, 'приложения программы список удалить свойства вес размер дата скачивания apps'],
+                    ['apps_list', t('apps', 'Приложения и иконки'), <AppWindow className="w-4 h-4 shrink-0" />, 'приложения иконки размер увеличить редактировать программы список удалить свойства apps'],
                     ['notifications', t('notifications', 'Уведомления'), <Bell className="w-4 h-4 shrink-0" />, 'уведомления оповещения звук баннеры dnd не беспокоить журнал notifications'],
                     ['island', t('tabIsland', 'Luma Island'), <Disc3 className="w-4 h-4 shrink-0" />, 'luma island динамический остров буфер обмена заметка эквалайзер таймер'],
                     ['clock', t('tabClock', 'Часы'), <Clock className="w-4 h-4 shrink-0" />, 'часы циферблат время секунды дата свечение формат clock'],
                     ['luma', 'Система и Железо', <Activity className="w-4 h-4 shrink-0" />, 'система железо процессор видеокарта cpu gpu регион погода музыка'],
                     ['navigation', 'Навигация', <MousePointerClick className="w-4 h-4 shrink-0" />, 'навигация пкм назад горячие клавиши alt+r alt+w spotlight мультизадачность'],
-                    ['plugins', 'Окна и Плагины', <LayoutGrid className="w-4 h-4 shrink-0" />, 'окна плагины колонки сетка расширения'],
-                    ['updater', t('tabUpdater', 'Обновления GitHub'), <Stethoscope className="w-4 h-4 shrink-0" />, 'обновления github ota прогресс бар новая версия диагностика тест ядро'],
-                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.2.0 lithium история изменений changelog exe скачать'],
+                    ['plugins', 'Окна и Плагины', <LayoutGrid className="w-4 h-4 shrink-0" />, 'окна плагины api 2.0 колонки сетка расширения'],
+                    ['updater', t('tabUpdater', 'Обновления GitHub'), <Stethoscope className="w-4 h-4 shrink-0" />, 'обновления github ota ежедневная проверка патч прогресс бар новая версия диагностика'],
+                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.2.1 lithium история изменений changelog exe скачать'],
                   ] as [SettingsTabId, string, React.ReactNode, string][]
                 )
                   .filter(([, label, , keywords]) => {
@@ -3574,6 +3886,172 @@ export default function App() {
                 />
               )}
 
+              {/* GRAPHICS, GPU OPTIMIZATION & ADAPTIVE DISPLAY SCALING (1.2.1 LITHIUM) */}
+              {settingsTab === 'graphics' && (
+                <div className="space-y-4 text-xs">
+                  {/* 1. Adaptive Display Scaling (Laptop <-> Monitor consistency!) */}
+                  <div className={`p-4 rounded-2xl border space-y-3.5 ${surfaceCls}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-bold flex items-center gap-2">
+                          <Monitor className="w-4 h-4 text-[var(--luma-accent)]" />
+                          Автоадаптация экрана (Ноутбук ↔ Монитор)
+                        </div>
+                        <div className={`mt-0.5 ${mutedCls}`}>
+                          Автоматически масштабирует интерфейс под разрешение и диагональ экрана, чтобы после ноутбука на большом мониторе всё оставалось крупным и пропорциональным
+                        </div>
+                      </div>
+                      <button onClick={() => setAutoDisplayScale((v) => !v)} className="cursor-pointer">
+                        <StatusPill active={autoDisplayScale} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
+                      <div className={`p-2.5 rounded-xl border ${btnCls}`}>
+                        <div className={mutedCls}>Экран</div>
+                        <div className="font-bold">
+                          {typeof window !== 'undefined' ? `${window.innerWidth}×${window.innerHeight}` : '1440×900'}
+                        </div>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border ${btnCls}`}>
+                        <div className={mutedCls}>Авто-фактор</div>
+                        <div className="font-bold text-emerald-400">{viewportAutoPct}%</div>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border ${btnCls}`}>
+                        <div className={mutedCls}>Ручной масштаб</div>
+                        <div className="font-bold">{uiScale}%</div>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border ${btnCls}`}>
+                        <div className={mutedCls}>Итоговый размер</div>
+                        <div className="font-bold text-[var(--luma-accent)]">
+                          {autoDisplayScale ? Math.round((viewportAutoPct * uiScale) / 100) : uiScale}%
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className={mutedCls}>Точный ручной масштаб интерфейса:</span>
+                        <span className="font-mono font-bold text-[var(--luma-accent)]">{uiScale}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={85}
+                        max={135}
+                        step={5}
+                        value={uiScale}
+                        onChange={(e) => setUiScale(Number(e.target.value))}
+                        className="w-full"
+                      />
+                      <div className="grid grid-cols-5 gap-1.5 font-mono">
+                        {[90, 100, 110, 120, 130].map((sc) => (
+                          <button
+                            key={sc}
+                            onClick={() => setUiScale(sc)}
+                            className={`py-1.5 rounded-xl border font-bold cursor-pointer ${
+                              uiScale === sc ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                            }`}
+                          >
+                            {sc}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. GPU Optimization Profiles */}
+                  <div className={`p-4 rounded-2xl border space-y-3.5 ${surfaceCls}`}>
+                    <div>
+                      <div className="text-sm font-bold flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-[var(--luma-accent)]" />
+                        Оптимизация графических процессов (GPU)
+                      </div>
+                      <div className={`mt-0.5 ${mutedCls}`}>
+                        Снижайте нагрузку на видеокарту (WebView2 / DWM композитор) отключением тяжёлого размытия, теней и фоновых анимаций
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {(
+                        [
+                          ['ultra', 'Ультра', 'Максимум стекла и 60 FPS'],
+                          ['balanced', 'Баланс', 'Оптимально для ПК и ноутбуков'],
+                          ['performance', 'Минимум GPU', 'Без blur, теней и анимаций'],
+                          ['eco', 'Эко-ноутбук', 'Экономия заряда и GPU'],
+                        ] as const
+                      ).map(([id, title, desc]) => (
+                        <button
+                          key={id}
+                          onClick={() => applyGpuProfile(id)}
+                          className={`p-3 rounded-xl border text-left cursor-pointer transition ${
+                            gpuProfile === id
+                              ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                              : btnCls
+                          }`}
+                        >
+                          <div className="font-bold">{title}</div>
+                          <div className={`text-[10px] mt-0.5 leading-snug ${mutedCls}`}>{desc}</div>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {[
+                        {
+                          label: 'Стеклянное размытие (backdrop-filter)',
+                          sub: 'Отключение снижает нагрузку на GPU на 30–60%',
+                          active: gpuBlurEnabled,
+                          toggle: () => setGpuBlurEnabled((v) => !v),
+                        },
+                        {
+                          label: 'Тени и неоновое свечение окон',
+                          sub: 'Ускоряет перетаскивание и ресайз окон на слабых GPU',
+                          active: gpuShadowsEnabled,
+                          toggle: () => setGpuShadowsEnabled((v) => !v),
+                        },
+                        {
+                          label: 'Автопауза живых обоев при окнах',
+                          sub: 'Останавливает GPU-анимацию обоев, пока открыто любое окно',
+                          active: gpuPauseLiveWp,
+                          toggle: () => setGpuPauseLiveWp((v) => !v),
+                        },
+                      ].map((row) => (
+                        <div
+                          key={row.label}
+                          onClick={row.toggle}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-2 cursor-pointer ${btnCls}`}
+                        >
+                          <div className="min-w-0">
+                            <div className="font-bold truncate">{row.label}</div>
+                            <div className={`text-[10px] truncate ${mutedCls}`}>{row.sub}</div>
+                          </div>
+                          <StatusPill active={row.active} />
+                        </div>
+                      ))}
+
+                      <div className={`p-3 rounded-xl border space-y-1.5 ${btnCls}`}>
+                        <div className="font-bold">Частота опроса телеметрии ядра</div>
+                        <div className="grid grid-cols-3 gap-1 font-mono text-[11px]">
+                          {([1500, 3000, 6000] as const).map((ms) => (
+                            <button
+                              key={ms}
+                              onClick={() => setTelemetryIntervalMs(ms)}
+                              className={`py-1 rounded-lg border font-bold cursor-pointer ${
+                                telemetryIntervalMs === ms
+                                  ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                                  : surfaceCls
+                              }`}
+                            >
+                              {(ms / 1000).toFixed(1)}s
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* SECURITY CORE & ZERO-CONFLICT LOCAL ANTIVIRUS */}
               {settingsTab === 'security' && (
                 <LumaSecurityPanel
@@ -3596,29 +4074,80 @@ export default function App() {
                 />
               )}
 
-              {/* AI & NEURAL NETWORKS SETTINGS */}
+              {/* AI & NEURAL NETWORKS SETTINGS (WITH MASTER KILL SWITCH + 2 LOCAL MODELS) */}
               {settingsTab === 'ai_settings' && (
                 <div className="space-y-4 text-xs">
-                  <div className={`p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
+                  {/* Master AI Kill Switch */}
+                  <div
+                    className={`p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 ${
+                      aiEnabled ? surfaceCls : 'border-amber-500/40 bg-amber-500/10'
+                    }`}
+                  >
                     <div>
                       <div className="text-sm font-bold flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-[var(--luma-accent)]" />
-                        Интеграция нейросетей (Luma AI)
+                        <Power className={`w-4 h-4 ${aiEnabled ? 'text-emerald-400' : 'text-amber-400'}`} />
+                        Подсистема Luma AI ({aiEnabled ? 'Включена' : 'Отключена'})
                       </div>
                       <div className={`mt-0.5 ${mutedCls}`}>
-                        Google Gemini, OpenAI, Claude, DeepSeek, OpenRouter, Groq, локальная Ollama и любой свой API
+                        {aiEnabled
+                          ? 'Активны две встроенные модели (Языковая Luma Lang 1.2 и Кодер Luma Code 1.2) + облачные API'
+                          : 'ИИ полностью отключён в ядре и скрыт с панели задач для экономии ресурсов ПК'}
                       </div>
                     </div>
-                    <button
-                      onClick={() => openWindow('ai')}
-                      className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Открыть чат Luma AI
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => void handleToggleAiEnabled(!aiEnabled)}
+                        className={`px-3.5 py-2 rounded-xl font-bold inline-flex items-center gap-1.5 cursor-pointer ${
+                          aiEnabled
+                            ? 'bg-rose-500/15 border border-rose-500/40 text-rose-400 hover:bg-rose-500 hover:text-white'
+                            : 'bg-emerald-600 text-white'
+                        }`}
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                        {aiEnabled ? 'Отключить Luma AI' : 'Включить Luma AI'}
+                      </button>
+                      {aiEnabled && (
+                        <button
+                          onClick={() => openWindow('ai')}
+                          className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Открыть чат
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
+                  {/* 2 Dedicated Local Variations Selector */}
+                  {aiEnabled && (
+                    <div className={`p-4 rounded-2xl border space-y-2.5 ${surfaceCls}`}>
+                      <div className="font-bold">Вариация встроенного Luma AI 1.2</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {(
+                          [
+                            ['auto', 'Авто (Гибрид)', 'Сам выбирает между Языковой и Кодером'],
+                            ['language', 'Luma Lang 1.2 (Языковая)', 'Энциклопедия (45+ тем + Wikipedia), знания, расчёты'],
+                            ['code', 'Luma Code 1.2 (Кодер)', 'Программирование на 12 языках, скрипты, боты'],
+                          ] as const
+                        ).map(([modeId, title, desc]) => (
+                          <button
+                            key={modeId}
+                            onClick={() => setAiConfig({ ...aiConfig, provider: 'luma_local', aiMode: modeId })}
+                            className={`p-3 rounded-xl border text-left cursor-pointer transition ${
+                              (aiConfig.aiMode || 'auto') === modeId
+                                ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                                : btnCls
+                            }`}
+                          >
+                            <div className="font-bold">{title}</div>
+                            <div className={`text-[10px] mt-0.5 ${mutedCls}`}>{desc}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls} ${!aiEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
                     <div className="font-bold">Активный провайдер</div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {AI_PROVIDER_PRESETS.map((p) => (
@@ -3809,7 +4338,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.2.0.exe).
+                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.2.1.exe).
                   </div>
                 </div>
               )}
@@ -3944,6 +4473,136 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Open PC Applications Naming Mode Selector */}
+                  <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
+                    <div>
+                      <div className="text-sm font-bold flex items-center gap-2">
+                        <Monitor className="w-4 h-4 text-emerald-500" />
+                        Как отображать открытые приложения ПК на панели задач
+                      </div>
+                      <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
+                        Выберите понятные имена программ (Chrome, Steam, Telegram, VS Code), полный заголовок активной вкладки или компактные значки
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {(
+                        [
+                          {
+                            id: 'app_name' as HostWinLabelMode,
+                            title: 'Имя приложения',
+                            desc: 'Chrome, Steam, Telegram, Discord…',
+                          },
+                          {
+                            id: 'window_title' as HostWinLabelMode,
+                            title: 'Заголовок окна',
+                            desc: 'Полное название вкладки / документа',
+                          },
+                          {
+                            id: 'compact' as HostWinLabelMode,
+                            title: 'Компактный бейдж',
+                            desc: 'Только короткий значок и подсказка',
+                          },
+                        ]
+                      ).map((opt) => (
+                        <button
+                          key={opt.id}
+                          onClick={() => {
+                            setHostWinLabelMode(opt.id);
+                            pushToast('Панель задач', `Режим открытых приложений: ${opt.title}`, 'info');
+                          }}
+                          className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                            hostWinLabelMode === opt.id
+                              ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                              : btnCls
+                          }`}
+                        >
+                          <div className="font-bold flex items-center justify-between gap-1">
+                            <span>{opt.title}</span>
+                            {hostWinLabelMode === opt.id && (
+                              <span className="w-2 h-2 rounded-full bg-[var(--luma-accent)] shrink-0" />
+                            )}
+                          </div>
+                          <div className={`text-[10px] mt-0.5 ${mutedCls}`}>{opt.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Reorderable Taskbar App Order Editor */}
+                  <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-bold flex items-center gap-2">
+                          <ArrowUpDown className="w-4 h-4 text-[var(--luma-accent)]" />
+                          Порядок приложений на панели задач
+                        </div>
+                        <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
+                          Переставляйте кнопками ▲/▼ здесь или просто перетаскивайте значки мышкой прямо на панели задач
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setTaskbarOrder([
+                            'explorer',
+                            'apps',
+                            'ai',
+                            'calculator',
+                            'terminal',
+                            'utilities',
+                            'tracker',
+                            'kernel',
+                            'settings',
+                            'taskmgr',
+                            'plugins',
+                            'island',
+                            'spaces',
+                          ]);
+                          pushToast('Панель задач', 'Порядок приложений сброшен по умолчанию', 'info');
+                        }}
+                        className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer ${btnCls}`}
+                      >
+                        Сбросить порядок
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {taskbarApps.map((item, idx) => (
+                        <div
+                          key={item.id}
+                          className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-2 ${btnCls}`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`text-[10px] font-mono w-4 text-center ${mutedCls}`}>{idx + 1}</span>
+                            <span className="text-[var(--luma-accent)] shrink-0">{item.icon}</span>
+                            <span className="font-semibold truncate">{item.label}</span>
+                            {item.pinned && (
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[var(--luma-accent-soft)] text-[var(--luma-accent)]">
+                                Закреплено
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              disabled={idx === 0}
+                              onClick={() => moveTaskbarOrder(item.id, -1)}
+                              title="Переместить левее / выше"
+                              className={`w-6 h-6 rounded-lg border text-[10px] font-bold flex items-center justify-center cursor-pointer disabled:opacity-35 ${surfaceCls}`}
+                            >
+                              ▲
+                            </button>
+                            <button
+                              disabled={idx === taskbarApps.length - 1}
+                              onClick={() => moveTaskbarOrder(item.id, 1)}
+                              title="Переместить правее / ниже"
+                              className={`w-6 h-6 rounded-lg border text-[10px] font-bold flex items-center justify-center cursor-pointer disabled:opacity-35 ${surfaceCls}`}
+                            >
+                              ▼
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -4004,6 +4663,12 @@ export default function App() {
               {settingsTab === 'apps_list' && (
                 <SettingsAppsListPanel
                   apps={apps}
+                  iconSizePx={iconSizePx}
+                  onChangeIconSizePx={setIconSizePx}
+                  onUpdateApp={(updated) => {
+                    setApps((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+                    pushToast('Приложение обновлено', updated.name, 'success');
+                  }}
                   renderAppIcon={renderAppIcon}
                   onLaunchApp={handleLaunchApp}
                   onDeleteApp={handleDeleteApp}
@@ -4039,14 +4704,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.2.0 (Lithium)',
-                        message: 'Система оповещений Luma OS 1.2.0 (Lithium) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.2.1 (Lithium)',
+                        message: 'Система оповещений Luma OS 1.2.1 (Lithium) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.2.0 (Lithium)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.2.1 (Lithium)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -4058,7 +4723,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.2.0 (Lithium) · LumaCore 1.2</div>
+                      <div className="text-sm font-bold">Luma OS 1.2.1 (Lithium) · LumaCore 1.2</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -4808,14 +5473,28 @@ export default function App() {
                     </div>
 
                     <div className="space-y-2">
-                      <div className={mutedCls}>Масштаб интерфейса:</div>
-                      <div className="grid grid-cols-3 gap-1 font-mono">
-                        {([90, 100, 110] as const).map((sc) => (
+                      <div className="flex items-center justify-between gap-1">
+                        <span className={mutedCls}>Масштаб экрана:</span>
+                        <button
+                          type="button"
+                          onClick={() => setSettingsTab('graphics')}
+                          className="text-[10px] font-mono text-[var(--luma-accent)] cursor-pointer hover:underline"
+                        >
+                          {autoDisplayScale ? `Авто (${viewportAutoPct}%)` : `${uiScale}%`} · Экран
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1 font-mono">
+                        {([90, 100, 115, 130] as const).map((sc) => (
                           <button
                             key={sc}
-                            onClick={() => setUiScale(sc)}
+                            onClick={() => {
+                              setAutoDisplayScale(false);
+                              setUiScale(sc);
+                            }}
                             className={`py-1.5 rounded-lg border text-[11px] font-bold cursor-pointer ${
-                              uiScale === sc ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                              !autoDisplayScale && uiScale === sc
+                                ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                                : btnCls
                             }`}
                           >
                             {sc}%
@@ -5065,13 +5744,35 @@ export default function App() {
                       <div>
                         <div className="text-sm font-bold flex items-center gap-2">
                           <Github className="w-4 h-4 text-[var(--luma-accent)]" />
-                          Обновление Luma OS через GitHub
+                          Обновление Luma OS через GitHub (OTA)
                         </div>
-                        <div className={`text-xs mt-0.5 ${mutedCls}`}>{githubUpdateStatus}</div>
+                        <div className={`text-xs mt-0.5 ${mutedCls}`}>
+                          {githubUpdateStatus} · Ежедневная автопроверка (раз в 24 ч): {githubAutoUpdate ? 'Вкл' : 'Выкл'}
+                        </div>
                       </div>
-                      <button onClick={() => setGithubAutoUpdate((v) => !v)} className="cursor-pointer" title="Автопроверка обновлений">
+                      <button
+                        onClick={() => setGithubAutoUpdate((v) => !v)}
+                        className="cursor-pointer"
+                        title="Ежедневная автоматическая проверка обновлений раз в 24 часа"
+                      >
                         <StatusPill active={githubAutoUpdate} />
                       </button>
+                    </div>
+
+                    {/* SemVer X.Y.Z Update Level Legend */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                      <div className={`p-2.5 rounded-xl border ${btnCls}`}>
+                        <div className="font-mono font-bold text-rose-400">X.0.0 · 1-я цифра</div>
+                        <div className={mutedCls}>Глобальное обновление архитектуры</div>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border ${btnCls}`}>
+                        <div className="font-mono font-bold text-violet-400">1.Y.0 · 2-я цифра</div>
+                        <div className={mutedCls}>Большое обновление версии</div>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border ${btnCls}`}>
+                        <div className="font-mono font-bold text-emerald-400">1.2.Z · 3-я цифра</div>
+                        <div className={mutedCls}>Патч исправлений и улучшений</div>
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -5082,7 +5783,7 @@ export default function App() {
                       />
                       <button
                         disabled={checkingGithub || updateProgress.running}
-                        onClick={() => void handleCheckGitHubUpdates()}
+                        onClick={() => void handleCheckGitHubUpdates(false)}
                         className="px-4 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${checkingGithub ? 'animate-spin' : ''}`} />
@@ -5109,8 +5810,8 @@ export default function App() {
                         }`}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <div className="font-extrabold flex items-center gap-2">
+                          <div className="space-y-1">
+                            <div className="font-extrabold flex flex-wrap items-center gap-2">
                               {updateInfo.has_update ? (
                                 <span className="text-[var(--luma-accent)]">
                                   Доступна новая версия: {updateInfo.release_title || `v${updateInfo.latest_version}`}
@@ -5122,27 +5823,63 @@ export default function App() {
                               ) : (
                                 <span className="text-amber-500">{updateInfo.error || 'Не удалось связаться с GitHub'}</span>
                               )}
+                              {updateInfo.update_level_label && updateInfo.has_update && (
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
+                                    updateInfo.update_level === 'major'
+                                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                                      : updateInfo.update_level === 'minor'
+                                      ? 'bg-violet-500/20 text-violet-400 border border-violet-500/40'
+                                      : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                  }`}
+                                >
+                                  {updateInfo.update_level_label}
+                                </span>
+                              )}
                             </div>
                             {updateInfo.ok && (
-                              <div className={`text-[11px] font-mono mt-0.5 ${mutedCls}`}>
+                              <div className={`text-[11px] font-mono ${mutedCls}`}>
                                 Текущая: v{updateInfo.current_version} · На GitHub: {updateInfo.latest_tag} · Проверено: {updateInfo.checked_at}
                               </div>
                             )}
                           </div>
 
-                          {updateInfo.ok && updateInfo.download_url && (
-                            <button
-                              disabled={updateProgress.running}
-                              onClick={() => void handleStartGitHubUpdate(updateInfo.download_url, updateInfo.latest_version)}
-                              className="px-4 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              {updateInfo.has_update
-                                ? `Обновить до ${updateInfo.latest_version} и перейти`
-                                : `Переустановить ${updateInfo.latest_version} с GitHub`}
-                            </button>
-                          )}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {updateInfo.has_update && (
+                              <button
+                                onClick={() => setUpdatePopupOpen(true)}
+                                className={`px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${btnCls}`}
+                              >
+                                Подробнее
+                              </button>
+                            )}
+                            {updateInfo.ok && updateInfo.download_url && (
+                              <button
+                                disabled={updateProgress.running}
+                                onClick={() => void handleStartGitHubUpdate(updateInfo.download_url, updateInfo.latest_version)}
+                                className="px-4 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                {updateInfo.has_update
+                                  ? `Обновить до ${updateInfo.latest_version} и перейти`
+                                  : `Переустановить ${updateInfo.latest_version} с GitHub`}
+                              </button>
+                            )}
+                          </div>
                         </div>
+
+                        {Array.isArray(updateInfo.changelog_highlights) && updateInfo.changelog_highlights.length > 0 && (
+                          <div className={`p-2.5 rounded-lg border space-y-1 text-[11px] ${surfaceCls}`}>
+                            <div className="font-bold text-[10px] font-mono uppercase tracking-wider text-[var(--luma-accent)]">
+                              Что нового в релизе:
+                            </div>
+                            <ul className="space-y-0.5 list-disc pl-4">
+                              {updateInfo.changelog_highlights.slice(0, 6).map((hl, i) => (
+                                <li key={i}>{hl}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
 
                         {updateInfo.release_notes && (
                           <div className={`max-h-36 overflow-y-auto p-2.5 rounded-lg border font-mono text-[11px] whitespace-pre-wrap ${surfaceCls}`}>
@@ -5161,7 +5898,7 @@ export default function App() {
                         </div>
                         <div className="h-2.5 rounded-full bg-black/25 overflow-hidden border border-white/10">
                           <div
-                            className="h-full rounded-full bg-gradient-to-r from-[var(--luma-accent)] via-fuchsia-500 to-cyan-400 transition-all duration-300"
+                            className="h-full rounded-full luma-shimmer-bar transition-all duration-300"
                             style={{ width: `${Math.max(4, updateProgress.percent)}%` }}
                           />
                         </div>
@@ -5215,23 +5952,23 @@ export default function App() {
                 </div>
               )}
 
-              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.1.0 HELIUM) */}
+              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.2.1 LITHIUM) */}
               {settingsTab === 'about' && (
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.2.0 (LITHIUM)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.2.1 (LITHIUM)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.2 · LumaShield 1.2
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.2 · LumaShield 1.2 · Plugin API v2.0
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.2.0.exe"
-                      download="LumaOS_1.2.0.exe"
+                      href="/LumaOS_1.2.1.exe"
+                      download="LumaOS_1.2.1.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.2.0.exe
+                      LumaOS_1.2.1.exe
                     </a>
                   </div>
 
@@ -5268,14 +6005,14 @@ export default function App() {
                       <div
                         key={ver}
                         className={`p-4 rounded-xl border space-y-2 ${
-                          ver === '1.2.0 (Lithium)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
+                          ver === '1.2.1 (Lithium)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-mono font-bold">
                             Версия {ver}
                           </span>
-                          {ver === '1.2.0 (Lithium)' && <StatusPill active={true} />}
+                          {ver === '1.2.1 (Lithium)' && <StatusPill active={true} />}
                         </div>
                         <ul className="space-y-1 text-xs leading-relaxed">
                           {items.map((line, i) => (
@@ -5291,12 +6028,12 @@ export default function App() {
         </DexWindow>
       )}
 
-      {/* WINDOW 6: PLUGINS MANAGER & STORE */}
+      {/* WINDOW 6: PLUGINS MANAGER & STORE (LUMA PLUGIN API v2.0) */}
       {isWinVisible('plugins') && (
         <DexWindow
           id="plugins"
-          title="Расширения"
-          subtitle={`${plugins.filter((p) => p.enabled).length} активных`}
+          title="Расширения · Plugin API v2.0"
+          subtitle={`${plugins.filter((p) => p.enabled).length} активных · ${PLUGIN_CATALOG.length} в каталоге`}
           icon={<Puzzle className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -5304,62 +6041,158 @@ export default function App() {
           taskbarSizePx={taskbarSizePx}
           snapCommand={snapCommands.plugins || null}
           zIndex={windows.plugins.z}
-          initialWidth={860}
-          initialHeight={580}
+          initialWidth={920}
+          initialHeight={620}
           onFocus={() => focusWindow('plugins')}
           onMinimize={() => minimizeWindow('plugins')}
           onClose={() => closeWindow('plugins')}
         >
           <div className="p-5 space-y-5">
-            <div className="space-y-2">
-              <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Установленные модули</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                {plugins.map((p) => (
-                  <div key={p.id} className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${surfaceCls}`}>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold truncate">{p.name}</div>
-                      <div className={`text-[11px] truncate ${mutedCls}`}>{p.description}</div>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() =>
-                          setPlugins((prev) => prev.map((x) => (x.id === p.id ? { ...x, enabled: !x.enabled } : x)))
-                        }
-                        className="cursor-pointer"
-                      >
-                        <StatusPill active={p.enabled} />
-                      </button>
-                      <button
-                        onClick={() => setPlugins((prev) => prev.filter((x) => x.id !== p.id))}
-                        className="p-1.5 rounded-lg hover:bg-[var(--luma-accent-soft)] text-zinc-500 hover:text-[var(--luma-accent)] cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+            {/* Plugin API v2.0 Runtime Banner */}
+            <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-2 ${surfaceCls}`}>
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+                  Шина расширений Luma Plugin API v2.0
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-mono text-[10px]">
+                    ACTIVE
+                  </span>
+                </div>
+                <div className={`text-[11px] ${mutedCls}`}>
+                  Песочница разрешений, прямой доступ к системным действиям LumaCore и мгновенный запуск модулей
+                </div>
+              </div>
+              <div className="text-[10px] font-mono text-[var(--luma-accent)]">
+                POST /api/kernel/plugins/api · SDK 2.0
               </div>
             </div>
 
             <div className="space-y-2">
-              <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Каталог расширений</div>
+              <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>
+                Установленные модули ({plugins.length})
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {plugins.map((p) => {
+                  const res = pluginRunResults[p.id];
+                  return (
+                    <div key={p.id} className={`p-3.5 rounded-xl border flex flex-col justify-between gap-2.5 ${surfaceCls}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs font-bold truncate">{p.name}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-mono text-[9px] font-bold">
+                              v{p.version}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded border font-mono text-[9px] ${btnCls}`}>
+                              API {p.apiVersion || '2.0'}
+                            </span>
+                          </div>
+                          <div className={`text-[11px] leading-snug ${mutedCls}`}>{p.description}</div>
+                          {Array.isArray(p.permissions) && p.permissions.length > 0 && (
+                            <div className="flex flex-wrap gap-1 pt-0.5">
+                              {p.permissions.map((perm) => (
+                                <span
+                                  key={perm}
+                                  className={`px-1.5 py-0.5 rounded text-[9px] font-mono border ${btnCls} ${mutedCls}`}
+                                >
+                                  {perm}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() =>
+                              setPlugins((prev) => prev.map((x) => (x.id === p.id ? { ...x, enabled: !x.enabled } : x)))
+                            }
+                            className="cursor-pointer"
+                            title={p.enabled ? 'Выключить модуль' : 'Включить модуль'}
+                          >
+                            <StatusPill active={p.enabled} />
+                          </button>
+                          <button
+                            onClick={() => setPlugins((prev) => prev.filter((x) => x.id !== p.id))}
+                            className="p-1.5 rounded-lg hover:bg-[var(--luma-accent-soft)] text-zinc-500 hover:text-[var(--luma-accent)] cursor-pointer"
+                            title="Удалить модуль"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10">
+                        <span className={`text-[10px] font-mono truncate ${mutedCls}`}>
+                          {p.actionId || 'sys.snapshot'} · {p.author}
+                        </span>
+                        <button
+                          disabled={!p.enabled || Boolean(res?.loading)}
+                          onClick={() => void handleRunPluginV2(p)}
+                          className="px-2.5 py-1 rounded-lg bg-[var(--luma-accent)] text-white text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-40 shrink-0"
+                        >
+                          <Play className="w-3 h-3" />
+                          {res?.loading ? 'Выполняется...' : 'Запустить'}
+                        </button>
+                      </div>
+
+                      {res && !res.loading && res.summary && (
+                        <div
+                          className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-mono flex items-center justify-between gap-2 ${
+                            res.ok
+                              ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300'
+                              : 'border-rose-500/35 bg-rose-500/10 text-rose-300'
+                          }`}
+                        >
+                          <span className="truncate">{res.summary}</span>
+                          {typeof res.latency === 'number' && (
+                            <span className="text-[10px] opacity-80 shrink-0">{res.latency} ms</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>
+                Каталог расширений API v2.0 ({PLUGIN_CATALOG.length})
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                 {PLUGIN_CATALOG.map((item) => {
                   const installed = plugins.some((p) => p.id === item.id);
                   return (
                     <div key={item.id} className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${surfaceCls}`}>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold truncate">{item.name}</div>
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs font-bold truncate">{item.name}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-mono text-[9px] font-bold">
+                            v{item.version}
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded border font-mono text-[9px] ${btnCls}`}>
+                            API {item.apiVersion || '2.0'}
+                          </span>
+                        </div>
                         <div className={`text-[11px] truncate ${mutedCls}`}>{item.description}</div>
+                        {Array.isArray(item.permissions) && item.permissions.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {item.permissions.map((perm) => (
+                              <span key={perm} className={`text-[9px] font-mono ${mutedCls}`}>
+                                [{perm}]
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <button
                         disabled={installed}
                         onClick={() => handleInstallCatalogPlugin(item)}
-                        className={`px-3 py-1 rounded-lg text-xs font-mono shrink-0 cursor-pointer ${
+                        className={`px-3 py-1.5 rounded-lg text-xs font-mono shrink-0 cursor-pointer ${
                           installed ? `${btnCls} opacity-50` : 'bg-[var(--luma-accent)] text-white font-bold'
                         }`}
                       >
-                        {installed ? 'OK' : 'Установить'}
+                        {installed ? 'Установлен' : 'Установить'}
                       </button>
                     </div>
                   );
@@ -5368,7 +6201,7 @@ export default function App() {
             </div>
 
             <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
-              <div className="text-xs font-bold">Создать собственный модуль (Luma SDK)</div>
+              <div className="text-xs font-bold">Создать собственный модуль (Luma SDK 2.0)</div>
               <div className="flex flex-wrap gap-2">
                 <input
                   value={newPluginSlug}
@@ -5391,14 +6224,17 @@ export default function App() {
                       {
                         id: slug.toLowerCase(),
                         name: newPluginTitle.trim() || slug,
-                        version: '1.2.0',
-                        author: 'Luma SDK',
+                        version: '2.0.0',
+                        apiVersion: '2.0',
+                        author: 'Luma SDK 2.0',
                         category: 'Пользовательские',
                         icon: 'Puzzle',
-                        description: 'Пользовательский модуль Luma Core',
+                        description: 'Пользовательский модуль на базе шины Luma Plugin API v2.0',
                         enabled: true,
                         file: `plugins/${slug}.luma`,
-                        hooks: ['OnInitialize', 'OnTick'],
+                        hooks: ['OnInitialize', 'OnTick', 'OnAction'],
+                        permissions: ['system.read'],
+                        actionId: 'sys.snapshot',
                         showInLauncher: true,
                         customIntervalSec: 60,
                         notificationsEnabled: true,
@@ -5406,6 +6242,7 @@ export default function App() {
                     ]);
                     setNewPluginSlug('');
                     setNewPluginTitle('');
+                    pushToast('Luma SDK 2.0', `Модуль «${newPluginTitle.trim() || slug}» создан`, 'success');
                   }}
                   className="px-3.5 py-1.5 rounded-lg bg-[var(--luma-accent)] text-white text-xs font-semibold cursor-pointer"
                 >
@@ -5926,6 +6763,8 @@ export default function App() {
             mutedCls={mutedCls}
             locale={locale}
             config={aiConfig}
+            aiEnabled={aiEnabled}
+            onToggleAiEnabled={(next) => void handleToggleAiEnabled(next)}
             onChangeConfig={setAiConfig}
             onRunInTerminal={(cmd) => {
               handleRunTerminalCommand(cmd);
@@ -6074,9 +6913,21 @@ export default function App() {
               .map((item) => {
                 const st = windows[item.id];
                 const isFocused = st.open && !st.minimized && st.z === topVisibleZ;
+                const isDragged = draggedTaskbarId === item.id;
                 return (
                   <button
                     key={item.id}
+                    draggable
+                    onDragStart={() => setDraggedTaskbarId(item.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggedTaskbarId && draggedTaskbarId !== item.id) {
+                        reorderTaskbarByDrag(draggedTaskbarId, item.id);
+                      }
+                      setDraggedTaskbarId(null);
+                    }}
+                    onDragEnd={() => setDraggedTaskbarId(null)}
                     onClick={() => toggleTaskbarWindow(item.id)}
                     onContextMenu={(e) => {
                       e.preventDefault();
@@ -6084,8 +6935,10 @@ export default function App() {
                       if (st.open) closeWindow(item.id);
                       else handleTaskbarContextMenu(e);
                     }}
-                    title={item.label}
+                    title={`${item.label} (перетащите для изменения порядка)`}
                     className={`relative w-10 h-10 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
+                      isDragged ? 'opacity-50 ring-2 ring-[var(--luma-accent)]' : ''
+                    } ${
                       isFocused
                         ? isDark
                           ? 'bg-white/[0.14] text-white'
@@ -6150,6 +7003,8 @@ export default function App() {
                 <div className={`w-6 h-px my-1 ${isDark ? 'bg-white/15' : 'bg-zinc-900/15'}`} />
                 {hostWindows.map((hw) => {
                   const activePop = taskbarHostWinPid === hw.pid;
+                  const friendly = hw.friendly_name || hw.name;
+                  const hoverLabel = hostWinLabelMode === 'window_title' ? hw.title || friendly : friendly;
                   return (
                     <button
                       key={`host_v_${hw.pid}`}
@@ -6165,7 +7020,7 @@ export default function App() {
                         e.stopPropagation();
                         handleKillHostProcess(hw.pid, false);
                       }}
-                      title={`${hw.title || hw.name} (ОС · PID ${hw.pid} · ПКМ — закрыть)`}
+                      title={`${hoverLabel}${hw.title && hw.title !== hoverLabel ? ` — ${hw.title}` : ''} (PID ${hw.pid} · ПКМ — закрыть)`}
                       className={`relative w-10 h-10 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
                         activePop
                           ? 'bg-[var(--luma-accent-soft)] text-[var(--luma-accent)]'
@@ -6174,7 +7029,7 @@ export default function App() {
                           : 'bg-zinc-900/[0.06] text-zinc-900 hover:bg-zinc-900/[0.12]'
                       }`}
                     >
-                      <Monitor className="w-4 h-4" />
+                      <Monitor className="w-4 h-4 text-emerald-500" />
                       <span className="absolute left-1 top-1/2 -translate-y-1/2 w-[2.5px] h-3.5 rounded-full bg-emerald-500" />
                     </button>
                   );
@@ -6305,7 +7160,7 @@ export default function App() {
                 setTaskbarHostWinPid(null);
                 setTaskbarCtxMenu(null);
               }}
-              title={`${t('start', 'Пуск')} (Luma OS 1.2.0)`}
+              title={`${t('start', 'Пуск')} (Luma OS 1.2.1)`}
               className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
                 startMenuOpen
                   ? 'bg-[var(--luma-accent)] text-white'
@@ -6362,7 +7217,7 @@ export default function App() {
             </button>
           </div>
 
-          {/* Center: Smart-Compressing OS Tabs Strip (Handles 100+ open apps cleanly!) */}
+          {/* Center: Smart-Compressing OS Tabs Strip (Handles 100+ open apps cleanly + Drag-and-Drop Reorder!) */}
           <div className="flex-1 min-w-0 flex items-center gap-1">
             {totalBarTabsCount > 9 && (
               <button
@@ -6388,10 +7243,22 @@ export default function App() {
               {visiblePinnedOrOpenWins.map((item) => {
                 const st = windows[item.id];
                 const isFocused = st.open && !st.minimized && st.z === topVisibleZ;
+                const isDragged = draggedTaskbarId === item.id;
                 const showLbl = taskbarShowLabels && barCompression !== 'icons';
                 return (
                   <button
                     key={item.id}
+                    draggable
+                    onDragStart={() => setDraggedTaskbarId(item.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggedTaskbarId && draggedTaskbarId !== item.id) {
+                        reorderTaskbarByDrag(draggedTaskbarId, item.id);
+                      }
+                      setDraggedTaskbarId(null);
+                    }}
+                    onDragEnd={() => setDraggedTaskbarId(null)}
                     onClick={() => toggleTaskbarWindow(item.id)}
                     onContextMenu={(e) => {
                       e.preventDefault();
@@ -6399,7 +7266,11 @@ export default function App() {
                       if (st.open) closeWindow(item.id);
                       else handleTaskbarContextMenu(e);
                     }}
-                    title={st.open ? `${item.label} (ПКМ — закрыть)` : item.label}
+                    title={
+                      st.open
+                        ? `${item.label} (ПКМ — закрыть · перетащите для порядка)`
+                        : `${item.label} (перетащите для изменения порядка)`
+                    }
                     className={`relative h-8 sm:h-9 ${
                       showLbl
                         ? barCompression === 'compact'
@@ -6409,6 +7280,8 @@ export default function App() {
                     } ${
                       isPixel ? 'rounded-full' : 'rounded-xl'
                     } flex items-center gap-1.5 text-xs transition cursor-pointer whitespace-nowrap overflow-hidden ${
+                      isDragged ? 'opacity-50 ring-2 ring-[var(--luma-accent)]' : ''
+                    } ${
                       isFocused
                         ? isPixel
                           ? 'bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold'
@@ -6479,15 +7352,18 @@ export default function App() {
                 </>
               )}
 
-              {/* REAL Host OS Running Windows (Smartly Compresses from Full -> Compact -> Icon Badges for 100+ Apps!) */}
+              {/* REAL Host OS Running Windows (Readable App Names: Chrome, Steam, Telegram | Window Title | Compact Badge) */}
               {taskbarShowHostWindows && hostWindows.length > 0 && (
                 <>
                   <span className={`w-px h-5 mx-0.5 shrink-0 ${isDark ? 'bg-white/15' : 'bg-zinc-900/15'}`} />
                   {hostWindows.map((hw) => {
                     const activePop = taskbarHostWinPid === hw.pid;
-                    const shortName = hw.title || hw.name;
-                    const showLbl = taskbarShowLabels && barCompression !== 'icons';
-                    const monoInitial = (hw.name || shortName || 'W').slice(0, 2).toUpperCase();
+                    const friendlyName = hw.friendly_name || hw.name;
+                    const displayLabel =
+                      hostWinLabelMode === 'window_title' ? hw.title || friendlyName : friendlyName;
+                    const compactMode = hostWinLabelMode === 'compact' || barCompression === 'icons';
+                    const showLbl = taskbarShowLabels && !compactMode;
+                    const monoInitial = (friendlyName || hw.name || 'W').slice(0, 2).toUpperCase();
                     return (
                       <button
                         key={`host_${hw.pid}`}
@@ -6503,12 +7379,14 @@ export default function App() {
                           e.stopPropagation();
                           handleKillHostProcess(hw.pid, false);
                         }}
-                        title={`${shortName} (${hw.name} · PID ${hw.pid} · ${hw.mem_mb.toFixed(0)} МБ)\nЛКМ — переключиться/управлять, ПКМ — закрыть`}
+                        title={`${friendlyName}${hw.title && hw.title !== friendlyName ? ` — ${hw.title}` : ''} (${hw.name} · PID ${hw.pid} · ${hw.mem_mb.toFixed(0)} МБ)\nЛКМ — переключиться/управлять, ПКМ — закрыть`}
                         className={`relative h-8 sm:h-9 ${
                           showLbl
-                            ? barCompression === 'compact'
-                              ? 'px-2 max-w-[78px] min-w-[34px] shrink'
-                              : 'px-2.5 max-w-[116px] min-w-[38px] shrink'
+                            ? hostWinLabelMode === 'window_title'
+                              ? 'px-2.5 max-w-[168px] min-w-[44px] shrink'
+                              : barCompression === 'compact'
+                              ? 'px-2 max-w-[96px] min-w-[40px] shrink'
+                              : 'px-2.5 max-w-[132px] min-w-[44px] shrink'
                             : 'w-8 sm:w-9 justify-center shrink-0'
                         } ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center gap-1.5 text-xs transition cursor-pointer whitespace-nowrap overflow-hidden border ${
                           activePop
@@ -6518,12 +7396,12 @@ export default function App() {
                             : 'border-zinc-900/[0.1] bg-zinc-900/[0.06] text-zinc-900 hover:bg-zinc-900/[0.12]'
                         }`}
                       >
-                        {barCompression === 'icons' ? (
+                        {compactMode ? (
                           <span className="text-[10px] font-mono font-black text-emerald-400">{monoInitial}</span>
                         ) : (
                           <Monitor className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                         )}
-                        {showLbl && <span className="truncate">{shortName}</span>}
+                        {showLbl && <span className="truncate font-medium">{displayLabel}</span>}
                         <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-3 h-[2px] rounded-full bg-emerald-500" />
                       </button>
                     );
@@ -7111,7 +7989,7 @@ export default function App() {
           {!startSearch.trim() && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                <span className={mutedCls}>Luma OS 1.2.0 (Lithium)</span>
+                <span className={mutedCls}>Luma OS 1.2.1 (Lithium)</span>
                 <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.2</span>
               </div>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
@@ -7216,7 +8094,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.2.0 (Lithium)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.2.1 (Lithium)'}
                   </div>
                 </div>
               </div>
@@ -7324,7 +8202,7 @@ export default function App() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.2.0 (LITHIUM)</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.2.1 (LITHIUM)</span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>
               {liveSystem?.location?.city || 'LOCAL'}
             </span>
@@ -7426,8 +8304,8 @@ export default function App() {
               </button>
             </div>
             <a
-              href="/LumaOS_1.2.0.exe"
-              download="LumaOS_1.2.0.exe"
+              href="/LumaOS_1.2.1.exe"
+              download="LumaOS_1.2.1.exe"
               className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-mono font-bold inline-flex items-center gap-1 ${btnCls}`}
             >
               <Download className="w-3 h-3 text-[var(--luma-accent)]" />
@@ -7812,7 +8690,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.2.0 (Lithium) · Alt+W — Обзор · 8-сторонний ресайз и Snap Layouts
+                  Luma OS 1.2.1 (Lithium) · Alt+W — Обзор · 8-сторонний ресайз и Snap Layouts
                 </div>
               </div>
             </div>
@@ -8078,6 +8956,174 @@ export default function App() {
                 {t('confirm', 'Подтвердить')}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== DAILY AUTOMATIC UPDATE NOTIFICATION POPUP (SemVer X.Y.Z) ==================== */}
+      {updatePopupOpen && updateInfo?.has_update && (
+        <div
+          onClick={() => setUpdatePopupOpen(false)}
+          className="fixed inset-0 z-[115] bg-black/65 backdrop-blur-md flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`luma-animate-in w-full max-w-lg border p-6 shadow-2xl space-y-4 ${popoverShellCls}`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-[var(--luma-accent-soft)] border border-[var(--luma-accent)]/40 text-[var(--luma-accent)] flex items-center justify-center shrink-0">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-base font-extrabold">Доступно обновление Luma OS</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
+                        updateInfo.update_level === 'major'
+                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                          : updateInfo.update_level === 'minor'
+                          ? 'bg-violet-500/20 text-violet-400 border border-violet-500/40'
+                          : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                      }`}
+                    >
+                      {updateInfo.update_level_label || 'Обновление'}
+                    </span>
+                  </div>
+                  <div className={`text-xs font-mono mt-0.5 ${mutedCls}`}>
+                    v{updateInfo.current_version} → v{updateInfo.latest_version} ({updateInfo.release_title || updateInfo.latest_tag})
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setUpdatePopupOpen(false)}
+                className={`p-1.5 rounded-lg border cursor-pointer ${btnCls}`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {Array.isArray(updateInfo.changelog_highlights) && updateInfo.changelog_highlights.length > 0 ? (
+              <div className={`p-3.5 rounded-xl border space-y-1.5 text-xs ${surfaceCls}`}>
+                <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--luma-accent)] font-bold">
+                  Основные изменения версии:
+                </div>
+                <ul className="space-y-1 list-disc pl-4 leading-relaxed">
+                  {updateInfo.changelog_highlights.slice(0, 6).map((hl, idx) => (
+                    <li key={idx}>{hl}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              updateInfo.release_notes && (
+                <div className={`p-3.5 rounded-xl border text-xs font-mono max-h-40 overflow-y-auto whitespace-pre-wrap ${surfaceCls}`}>
+                  {updateInfo.release_notes.slice(0, 600)}
+                </div>
+              )
+            )}
+
+            <div className={`text-[11px] flex items-center gap-2 ${mutedCls}`}>
+              <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span>Все ваши виджеты, ярлыки, папки и настройки автоматически сохранятся на диске.</span>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+              <button
+                onClick={() => setUpdatePopupOpen(false)}
+                className={`px-3.5 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${btnCls}`}
+              >
+                Напомнить позже
+              </button>
+              {updateInfo.download_url && (
+                <button
+                  onClick={() => {
+                    setUpdatePopupOpen(false);
+                    void handleStartGitHubUpdate(updateInfo.download_url, updateInfo.latest_version);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-lg"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Обновить до v{updateInfo.latest_version}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== CINEMATIC ANIMATED OTA UPDATE OVERLAY ==================== */}
+      {(updateProgress.running || updateProgress.stage === 'restarting') && (
+        <div className="fixed inset-0 z-[130] bg-black/85 backdrop-blur-xl flex items-center justify-center p-6 text-white">
+          <div className="w-full max-w-md flex flex-col items-center text-center space-y-6">
+            {/* Dual Orbital Spinning Rings */}
+            <div className="relative w-32 h-32 flex items-center justify-center">
+              <div
+                className="absolute inset-0 rounded-full border-2 border-transparent border-t-[var(--luma-accent)] border-r-[var(--luma-accent)]/50 luma-orbit-spin"
+                style={{ animationDuration: '2.2s' }}
+              />
+              <div
+                className="absolute inset-3 rounded-full border-2 border-transparent border-b-cyan-400 border-l-violet-400/60 luma-orbit-spin"
+                style={{ animationDuration: '3.4s', animationDirection: 'reverse' }}
+              />
+              <div className="w-20 h-20 rounded-full bg-white/[0.06] border border-white/15 flex flex-col items-center justify-center shadow-2xl">
+                <span className="text-xl font-mono font-black tabular-nums">{updateProgress.percent}%</span>
+                <span className="text-[9px] font-mono uppercase tracking-widest text-zinc-400">LITHIUM</span>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-lg font-extrabold tracking-tight">
+                Установка Luma OS {updateProgress.target_version || '1.2.1'}
+              </div>
+              <div className="text-xs font-mono text-zinc-300">
+                {updateProgress.message || 'Подготовка обновления...'}
+              </div>
+              {updateProgress.speed_mbps > 0 && (
+                <div className="text-[11px] font-mono text-cyan-300">
+                  Скорость загрузки: {updateProgress.speed_mbps.toFixed(1)} МБ/с
+                </div>
+              )}
+            </div>
+
+            {/* Shimmer Progress Bar */}
+            <div className="w-full space-y-2">
+              <div className="h-2.5 w-full rounded-full bg-white/10 overflow-hidden border border-white/15">
+                <div
+                  className="h-full rounded-full luma-shimmer-bar transition-all duration-300"
+                  style={{ width: `${Math.max(6, updateProgress.percent)}%` }}
+                />
+              </div>
+
+              {/* 4-Stage Pipeline Indicator */}
+              <div className="grid grid-cols-4 gap-1.5 text-[10px] font-mono pt-1">
+                {(
+                  [
+                    { key: 'connect', label: 'Связь', done: updateProgress.percent >= 10 },
+                    { key: 'download', label: 'Загрузка', done: updateProgress.percent >= 75 || updateProgress.stage === 'verifying' || updateProgress.stage === 'restarting' },
+                    { key: 'verify', label: 'SHA-256', done: updateProgress.stage === 'restarting' || updateProgress.stage === 'done' },
+                    { key: 'restart', label: 'Запуск', done: updateProgress.stage === 'restarting' || updateProgress.stage === 'done' },
+                  ]
+                ).map((st) => (
+                  <div
+                    key={st.key}
+                    className={`py-1 px-1.5 rounded-lg border text-center transition ${
+                      st.done
+                        ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-300 font-bold'
+                        : 'border-white/10 bg-white/[0.04] text-zinc-400'
+                    }`}
+                  >
+                    {st.done ? '✓ ' : ''}
+                    {st.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {updateProgress.sha256 && (
+              <div className="text-[10px] font-mono text-zinc-500 break-all max-w-full">
+                SHA-256: {updateProgress.sha256}
+              </div>
+            )}
           </div>
         </div>
       )}

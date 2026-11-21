@@ -406,7 +406,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.2.0 (Lithium)",
+			Title:  "Luma OS 1.2.1 (Lithium)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,

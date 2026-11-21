@@ -1,5 +1,7 @@
 package main
 
+import "strings"
+
 type DiskMetric struct {
 	Mount   string  `json:"mount"`
 	Label   string  `json:"label"`
@@ -31,24 +33,30 @@ type LocationInfo struct {
 }
 
 type ProcessMetric struct {
-	PID       int     `json:"pid"`
-	Name      string  `json:"name"`
-	Title     string  `json:"title,omitempty"`
-	HasWindow bool    `json:"has_window"`
-	Status    string  `json:"status"`
-	CPUPct    float64 `json:"cpu_pct"`
-	MemMB     float64 `json:"mem_mb"`
-	ExePath   string  `json:"exe_path,omitempty"`
-	IsSelf    bool    `json:"is_self,omitempty"`
+	PID          int     `json:"pid"`
+	Name         string  `json:"name"`
+	FriendlyName string  `json:"friendly_name,omitempty"`
+	Title        string  `json:"title,omitempty"`
+	Description  string  `json:"description,omitempty"`
+	Category     string  `json:"category,omitempty"` // app | background | system
+	HasWindow    bool    `json:"has_window"`
+	Status       string  `json:"status"`
+	CPUPct       float64 `json:"cpu_pct"`
+	MemMB        float64 `json:"mem_mb"`
+	PrivateMB    float64 `json:"private_mb,omitempty"`
+	Threads      int     `json:"threads,omitempty"`
+	ExePath      string  `json:"exe_path,omitempty"`
+	IsSelf       bool    `json:"is_self,omitempty"`
 }
 
 type HostWindowItem struct {
-	PID     int     `json:"pid"`
-	Name    string  `json:"name"`
-	Title   string  `json:"title"`
-	MemMB   float64 `json:"mem_mb"`
-	ExePath string  `json:"exe_path,omitempty"`
-	IsSelf  bool    `json:"is_self,omitempty"`
+	PID          int     `json:"pid"`
+	Name         string  `json:"name"`
+	FriendlyName string  `json:"friendly_name,omitempty"`
+	Title        string  `json:"title"`
+	MemMB        float64 `json:"mem_mb"`
+	ExePath      string  `json:"exe_path,omitempty"`
+	IsSelf       bool    `json:"is_self,omitempty"`
 }
 
 type QuickFolderItem struct {
@@ -171,20 +179,23 @@ type SecurityAuditEvent struct {
 }
 
 type UpdateCheckResult struct {
-	OK             bool   `json:"ok"`
-	HasUpdate      bool   `json:"has_update"`
-	CurrentVersion string `json:"current_version"`
-	CurrentName    string `json:"current_name"`
-	LatestVersion  string `json:"latest_version"`
-	LatestTag      string `json:"latest_tag"`
-	ReleaseTitle   string `json:"release_title"`
-	ReleaseNotes   string `json:"release_notes"`
-	ReleaseURL     string `json:"release_url"`
-	DownloadURL    string `json:"download_url"`
-	PublishedAt    string `json:"published_at"`
-	AssetSize      int64  `json:"asset_size"`
-	CheckedAt      string `json:"checked_at"`
-	Error          string `json:"error,omitempty"`
+	OK                  bool     `json:"ok"`
+	HasUpdate           bool     `json:"has_update"`
+	CurrentVersion      string   `json:"current_version"`
+	CurrentName         string   `json:"current_name"`
+	LatestVersion       string   `json:"latest_version"`
+	LatestTag           string   `json:"latest_tag"`
+	UpdateLevel         string   `json:"update_level"`       // major | minor | patch | none
+	UpdateLevelLabel    string   `json:"update_level_label"` // Глобальное обновление | Большое обновление | Патч исправлений
+	ReleaseTitle        string   `json:"release_title"`
+	ReleaseNotes        string   `json:"release_notes"`
+	ChangelogHighlights []string `json:"changelog_highlights,omitempty"`
+	ReleaseURL          string   `json:"release_url"`
+	DownloadURL         string   `json:"download_url"`
+	PublishedAt         string   `json:"published_at"`
+	AssetSize           int64    `json:"asset_size"`
+	CheckedAt           string   `json:"checked_at"`
+	Error               string   `json:"error,omitempty"`
 }
 
 type UpdateProgressState struct {
@@ -234,16 +245,19 @@ type BatteryHardwareDetails struct {
 	Present               bool    `json:"present"`
 	Percent               int     `json:"percent"`
 	Charging              bool    `json:"charging"`
+	ACOnline              bool    `json:"ac_online"`
 	HealthPercent         int     `json:"health_percent"`
 	DesignCapacityMWh     int     `json:"design_capacity_mwh"`
 	FullChargeCapacityMWh int     `json:"full_charge_capacity_mwh"`
 	CycleCount            int     `json:"cycle_count"`
+	CycleSupported        bool    `json:"cycle_supported"`
 	PowerWatts            float64 `json:"power_watts"`
 	VoltageMV             int     `json:"voltage_mv"`
 	EstimatedMinutes      int     `json:"estimated_minutes"`
 	StatusText            string  `json:"status_text"`
 	Chemistry             string  `json:"chemistry"`
 	Manufacturer          string  `json:"manufacturer,omitempty"`
+	DataSource            string  `json:"data_source,omitempty"`
 }
 
 type HardwareDeviceInfo struct {
@@ -266,4 +280,85 @@ type NetworkAdapterInfo struct {
 type FirewallProfileInfo struct {
 	Name    string `json:"name"`
 	Enabled bool   `json:"enabled"`
+}
+
+// friendlyAppName maps raw OS process executables (chrome, steamwebhelper, telegram...) to crisp user-facing app labels.
+func friendlyAppName(procName, title string) string {
+	raw := strings.TrimSpace(procName)
+	lower := strings.ToLower(strings.TrimSuffix(raw, ".exe"))
+	known := map[string]string{
+		"chrome":             "Chrome",
+		"msedge":             "Edge",
+		"firefox":            "Firefox",
+		"opera":              "Opera",
+		"brave":              "Brave",
+		"browser":            "Яндекс Браузер",
+		"vivaldi":            "Vivaldi",
+		"steam":              "Steam",
+		"steamwebhelper":     "Steam",
+		"epicgameslauncher":  "Epic Games",
+		"telegram":           "Telegram",
+		"discord":            "Discord",
+		"spotify":            "Spotify",
+		"code":               "VS Code",
+		"devenv":             "Visual Studio",
+		"idea64":             "IntelliJ IDEA",
+		"pycharm64":          "PyCharm",
+		"webstorm64":         "WebStorm",
+		"explorer":           "Проводник",
+		"notepad":            "Блокнот",
+		"notepad++":          "Notepad++",
+		"winword":            "Word",
+		"excel":              "Excel",
+		"powerpnt":           "PowerPoint",
+		"onenote":            "OneNote",
+		"outlook":            "Outlook",
+		"obs64":              "OBS Studio",
+		"vlc":                "VLC",
+		"photoshop":          "Photoshop",
+		"figma":              "Figma",
+		"blender":            "Blender",
+		"notion":             "Notion",
+		"slack":              "Slack",
+		"whatsapp":           "WhatsApp",
+		"viber":              "Viber",
+		"skype":              "Skype",
+		"zoom":               "Zoom",
+		"windowsterminal":    "Терминал",
+		"wt":                 "Терминал",
+		"powershell":         "PowerShell",
+		"pwsh":               "PowerShell",
+		"cmd":                "Командная строка",
+		"taskmgr":            "Диспетчер задач",
+		"calc":               "Калькулятор",
+		"calculatorapp":      "Калькулятор",
+		"mspaint":            "Paint",
+		"snippingtool":       "Ножницы",
+		"anydesk":            "AnyDesk",
+		"teamviewer":         "TeamViewer",
+		"qbittorrent":        "qBittorrent",
+		"utorrent":           "uTorrent",
+		"winrar":             "WinRAR",
+		"7zfm":               "7-Zip",
+		"minecraftlauncher":  "Minecraft",
+		"javaw":              "Java App",
+		"cs2":                "CS2",
+		"dota2":              "Dota 2",
+	}
+	if hit, ok := known[lower]; ok {
+		return hit
+	}
+	// If it's ApplicationFrameHost (UWP wrapper), extract clean app name from title
+	if lower == "applicationframehost" && strings.TrimSpace(title) != "" {
+		t := strings.TrimSpace(title)
+		if idx := strings.LastIndex(t, " - "); idx >= 0 && idx+3 < len(t) {
+			return strings.TrimSpace(t[idx+3:])
+		}
+		return t
+	}
+	if raw == "" {
+		return "App"
+	}
+	// Capitalize first letter nicely
+	return strings.ToUpper(raw[:1]) + raw[1:]
 }

@@ -28,8 +28,10 @@ import {
   Pin,
   Plus,
   RefreshCw,
+  Save,
   Scissors,
   Search,
+  Star,
   Table2,
   Trash2,
   X,
@@ -68,10 +70,15 @@ function formatBytesRu(bytes: number): string {
   return `${bytes} Б`;
 }
 
+const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp'];
+const CODE_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.go', '.py', '.json', '.css', '.html', '.rs', '.cpp', '.c', '.cs', '.sh', '.ps1', '.yaml', '.yml', '.sql'];
+const DOC_EXTS = ['.txt', '.md', '.log', '.ini', '.cfg', '.csv', '.xml', '.pdf', '.doc', '.docx', '.xls', '.xlsx'];
+const MEDIA_EXTS = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.mp4', '.mkv', '.avi', '.mov', '.webm'];
+
 function getFileIcon(entry: ExplorerEntry, cls = 'w-4 h-4') {
   if (entry.is_dir) return <Folder className={`${cls} text-[var(--luma-accent)]`} />;
   const ext = (entry.ext || '').toLowerCase();
-  if (['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp'].includes(ext)) {
+  if (IMAGE_EXTS.includes(ext)) {
     return <FileImage className={`${cls} text-sky-400`} />;
   }
   if (['.mp3', '.wav', '.flac', '.ogg', '.m4a'].includes(ext)) {
@@ -80,10 +87,10 @@ function getFileIcon(entry: ExplorerEntry, cls = 'w-4 h-4') {
   if (['.mp4', '.mkv', '.avi', '.mov', '.webm'].includes(ext)) {
     return <Film className={`${cls} text-purple-400`} />;
   }
-  if (['.ts', '.tsx', '.js', '.jsx', '.go', '.py', '.json', '.css', '.html', '.rs', '.cpp', '.c', '.cs', '.sh', '.ps1', '.yaml', '.yml'].includes(ext)) {
+  if (CODE_EXTS.includes(ext)) {
     return <FileCode className={`${cls} text-amber-400`} />;
   }
-  if (['.txt', '.md', '.log', '.ini', '.cfg', '.csv', '.xml'].includes(ext)) {
+  if (DOC_EXTS.includes(ext)) {
     return <FileText className={`${cls} text-zinc-400`} />;
   }
   return <File className={`${cls} text-zinc-400`} />;
@@ -142,6 +149,18 @@ export const LumaExplorerWindow: React.FC<{
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
   const [quickFolders, setQuickFolders] = useState<QuickFolder[]>([]);
+  const [pinnedFolders, setPinnedFolders] = useState<{ name: string; path: string }[]>(() => {
+    try {
+      const raw = localStorage.getItem('luma_explorer_pinned_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      /* ignore */
+    }
+    return [];
+  });
   const [drives, setDrives] = useState<LiveDiskMetric[]>(liveSystem?.disks || []);
   const [entries, setEntries] = useState<ExplorerEntry[]>([]);
   const [parentPath, setParentPath] = useState<string>('');
@@ -149,6 +168,7 @@ export const LumaExplorerWindow: React.FC<{
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [showHidden, setShowHidden] = useState<boolean>(true);
+  const [typeFilter, setTypeFilter] = useState<'all' | 'dirs' | 'images' | 'code' | 'docs' | 'media'>('all');
   const [viewMode, setViewMode] = useState<'table' | 'tiles' | 'icons'>('table');
   const [sortBy, setSortBy] = useState<'name' | 'date' | 'size' | 'type'>('name');
   const [sortAsc, setSortAsc] = useState<boolean>(true);
@@ -158,13 +178,28 @@ export const LumaExplorerWindow: React.FC<{
   const [isSearchResults, setIsSearchResults] = useState<boolean>(false);
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [clipboard, setClipboard] = useState<{ mode: 'copy' | 'cut'; paths: string[] } | null>(null);
-  const [preview, setPreview] = useState<{ entry: ExplorerEntry; content?: string; loading?: boolean } | null>(null);
+  const [preview, setPreview] = useState<{
+    entry: ExplorerEntry;
+    kind: 'text' | 'image';
+    content?: string;
+    loading?: boolean;
+    editing?: boolean;
+    saving?: boolean;
+  } | null>(null);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; entry: ExplorerEntry } | null>(null);
   const [promptModal, setPromptModal] = useState<
     | { kind: 'mkdir' | 'newfile'; value: string }
     | { kind: 'rename'; entry: ExplorerEntry; value: string }
     | null
   >(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('luma_explorer_pinned_v1', JSON.stringify(pinnedFolders));
+    } catch {
+      /* ignore */
+    }
+  }, [pinnedFolders]);
 
   const loadDrives = async () => {
     try {
@@ -284,9 +319,14 @@ export const LumaExplorerWindow: React.FC<{
       fetchDirectory(entry.path, true);
       return;
     }
-    const textExts = ['.txt', '.md', '.json', '.go', '.ts', '.tsx', '.js', '.jsx', '.css', '.html', '.py', '.ini', '.cfg', '.log', '.yaml', '.yml', '.xml', '.csv', '.sh', '.ps1', '.env', '.gitignore'];
-    if (textExts.includes(entry.ext) || entry.size < 65536) {
-      setPreview({ entry, loading: true });
+    const ext = (entry.ext || '').toLowerCase();
+    if (IMAGE_EXTS.includes(ext)) {
+      setPreview({ entry, kind: 'image', loading: false });
+      return;
+    }
+    const textExts = [...CODE_EXTS, '.txt', '.md', '.log', '.ini', '.cfg', '.csv', '.xml', '.env', '.gitignore'];
+    if (textExts.includes(ext) || entry.size < 65536) {
+      setPreview({ entry, kind: 'text', loading: true, editing: false });
       try {
         const r = await fetch('/api/kernel/fs', {
           method: 'POST',
@@ -295,7 +335,7 @@ export const LumaExplorerWindow: React.FC<{
         });
         const d = await r.json();
         if (d?.ok) {
-          setPreview({ entry, content: d.content || '', loading: false });
+          setPreview({ entry, kind: 'text', content: d.content || '', loading: false, editing: false });
           return;
         }
       } catch {
@@ -303,6 +343,48 @@ export const LumaExplorerWindow: React.FC<{
       }
     }
     handleOpenInOS(entry.path);
+  };
+
+  const handleSavePreviewFile = async () => {
+    if (!preview || preview.kind !== 'text') return;
+    setPreview((p) => (p ? { ...p, saving: true } : null));
+    try {
+      const r = await fetch('/api/kernel/fs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'newfile',
+          path: preview.entry.path,
+          content: preview.content || '',
+        }),
+      });
+      const d = await r.json();
+      if (d?.ok) {
+        onPushToast('Проводник Pro', `Файл «${preview.entry.name}» сохранён`, 'success');
+        setPreview((p) => (p ? { ...p, editing: false, saving: false } : null));
+        void fetchDirectory(activeTab.path, false);
+      } else {
+        onPushToast('Ошибка сохранения', d?.error || 'Не удалось сохранить файл', 'warning');
+        setPreview((p) => (p ? { ...p, saving: false } : null));
+      }
+    } catch {
+      onPushToast('Ошибка сохранения', 'Файловая служба недоступна', 'warning');
+      setPreview((p) => (p ? { ...p, saving: false } : null));
+    }
+  };
+
+  const togglePinCurrentFolder = () => {
+    const cur = activeTab.path;
+    if (!cur) return;
+    setPinnedFolders((prev) => {
+      if (prev.some((f) => f.path === cur)) {
+        onPushToast('Проводник', `Папка откреплена из избранного`, 'info');
+        return prev.filter((f) => f.path !== cur);
+      }
+      const name = cur.split(/[\\/]/).filter(Boolean).pop() || cur;
+      onPushToast('Проводник', `Папка «${name}» закреплена в избранном`, 'success');
+      return [...prev, { name, path: cur }];
+    });
   };
 
   const handleOpenInOS = async (path: string) => {
@@ -404,7 +486,16 @@ export const LumaExplorerWindow: React.FC<{
 
   const visibleEntries = useMemo(() => {
     const q = !isSearchResults ? searchQuery.trim().toLowerCase() : '';
-    const list = entries.filter((e) => !q || e.name.toLowerCase().includes(q));
+    const list = entries.filter((e) => {
+      if (q && !e.name.toLowerCase().includes(q)) return false;
+      const ext = (e.ext || '').toLowerCase();
+      if (typeFilter === 'dirs') return e.is_dir;
+      if (typeFilter === 'images') return !e.is_dir && IMAGE_EXTS.includes(ext);
+      if (typeFilter === 'code') return !e.is_dir && CODE_EXTS.includes(ext);
+      if (typeFilter === 'docs') return !e.is_dir && DOC_EXTS.includes(ext);
+      if (typeFilter === 'media') return !e.is_dir && MEDIA_EXTS.includes(ext);
+      return true;
+    });
     return [...list].sort((a, b) => {
       if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
       let cmp = 0;
@@ -414,7 +505,7 @@ export const LumaExplorerWindow: React.FC<{
       else cmp = (a.mod_time || '').localeCompare(b.mod_time || '');
       return sortAsc ? cmp : -cmp;
     });
-  }, [entries, searchQuery, isSearchResults, sortBy, sortAsc]);
+  }, [entries, searchQuery, isSearchResults, typeFilter, sortBy, sortAsc]);
 
   const breadcrumbs = useMemo(() => {
     const raw = activeTab.path || '';
@@ -670,6 +761,20 @@ export const LumaExplorerWindow: React.FC<{
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Pin Current Folder to Sidebar Favorites */}
+          <button
+            onClick={togglePinCurrentFolder}
+            title="Закрепить текущую папку в избранном"
+            className={`px-2 py-1 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer ${
+              pinnedFolders.some((f) => f.path === activeTab.path)
+                ? 'border-amber-500/60 bg-amber-500/15 text-amber-400'
+                : btnCls
+            }`}
+          >
+            <Star className="w-3.5 h-3.5" />
+            <span className="hidden xl:inline">Избранное</span>
+          </button>
+
           {/* Show ALL Hidden System Files Toggle */}
           <button
             onClick={() => setShowHidden((v) => !v)}
@@ -704,10 +809,71 @@ export const LumaExplorerWindow: React.FC<{
         </div>
       </div>
 
+      {/* 3b. QUICK FILE-TYPE FILTER CHIPS BAR */}
+      <div className={`px-3 py-1 border-b flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0 ${isDark ? 'border-white/[0.06] bg-black/15' : 'border-zinc-900/[0.07] bg-black/[0.015]'}`}>
+        <span className={`text-[10px] font-mono uppercase mr-1 shrink-0 ${mutedCls}`}>Фильтр:</span>
+        {(
+          [
+            ['all', 'Все файлы'],
+            ['dirs', 'Папки'],
+            ['images', 'Изображения'],
+            ['code', 'Код'],
+            ['docs', 'Документы'],
+            ['media', 'Медиа'],
+          ] as const
+        ).map(([fid, label]) => (
+          <button
+            key={fid}
+            onClick={() => setTypeFilter(fid)}
+            className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 cursor-pointer transition ${
+              typeFilter === fid
+                ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                : btnCls
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* 4. MAIN BODY: LEFT SIDEBAR + CENTER FILE VIEW + OPTIONAL PREVIEW */}
       <div className="flex-1 min-h-0 flex">
-        {/* Left Navigation Tree (Quick Access + This PC Drives) */}
+        {/* Left Navigation Tree (Pinned Favorites + Quick Access + This PC Drives) */}
         <aside className={`w-52 shrink-0 border-r p-2.5 overflow-y-auto space-y-3 ${isDark ? 'border-white/[0.08] bg-white/[0.015]' : 'border-zinc-900/[0.1] bg-black/[0.025]'}`}>
+          {pinnedFolders.length > 0 && (
+            <div className="space-y-0.5">
+              <div className={`px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-amber-400`}>Избранное</div>
+              {pinnedFolders.map((pf) => (
+                <div
+                  key={pf.path}
+                  className={`group w-full px-2 py-1.5 rounded-lg flex items-center justify-between gap-1.5 transition cursor-pointer ${
+                    activeTab.path === pf.path
+                      ? 'bg-[var(--luma-accent)] text-white font-semibold'
+                      : isDark
+                      ? 'text-zinc-200 hover:bg-white/[0.06]'
+                      : 'text-zinc-800 hover:bg-zinc-900/[0.07]'
+                  }`}
+                  onClick={() => fetchDirectory(pf.path, true)}
+                >
+                  <span className="flex items-center gap-2 min-w-0">
+                    <Star className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span className="truncate">{pf.name}</span>
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPinnedFolders((prev) => prev.filter((x) => x.path !== pf.path));
+                    }}
+                    title="Убрать из избранного"
+                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-black/20 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="space-y-0.5">
             <div className={`px-2 py-1 text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Быстрый доступ</div>
             {quickFolders
@@ -909,28 +1075,73 @@ export const LumaExplorerWindow: React.FC<{
           )}
         </div>
 
-        {/* Right File Preview Pane */}
+        {/* Right File Preview Pane (Image Preview + Editable Text/Code Quick Save) */}
         {preview && (
-          <aside className={`w-72 shrink-0 border-l p-3 flex flex-col gap-2 min-h-0 ${isDark ? 'border-white/[0.08] bg-black/20' : 'border-zinc-900/[0.1] bg-black/[0.025]'}`}>
+          <aside className={`w-80 shrink-0 border-l p-3 flex flex-col gap-2 min-h-0 ${isDark ? 'border-white/[0.08] bg-black/20' : 'border-zinc-900/[0.1] bg-black/[0.025]'}`}>
             <div className="flex items-center justify-between gap-2">
               <span className="font-bold truncate">{preview.entry.name}</span>
-              <button onClick={() => setPreview(null)} className={`p-1 rounded-lg border cursor-pointer ${btnCls}`}>
-                <X className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1">
+                {preview.kind === 'text' && !preview.loading && (
+                  <button
+                    onClick={() => setPreview((p) => (p ? { ...p, editing: !p.editing } : null))}
+                    title={preview.editing ? 'Режим просмотра' : 'Редактировать файл'}
+                    className={`px-2 py-1 rounded-lg border text-[10px] font-semibold inline-flex items-center gap-1 cursor-pointer ${
+                      preview.editing ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                    }`}
+                  >
+                    <Pencil className="w-3 h-3" />
+                    {preview.editing ? 'Просмотр' : 'Править'}
+                  </button>
+                )}
+                <button onClick={() => setPreview(null)} className={`p-1 rounded-lg border cursor-pointer ${btnCls}`}>
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
             <div className={`text-[10px] font-mono space-y-0.5 ${mutedCls}`}>
               <div>Размер: {formatBytesRu(preview.entry.size)}</div>
               <div>Изменён: {preview.entry.mod_time || '—'}</div>
             </div>
-            <pre className={`flex-1 min-h-0 overflow-auto p-2.5 rounded-xl border text-[10px] font-mono leading-relaxed whitespace-pre-wrap break-all ${surfaceCls}`}>
-              {preview.loading ? 'Чтение...' : preview.content || '(пустой файл)'}
-            </pre>
-            <button
-              onClick={() => handleOpenInOS(preview.entry.path)}
-              className="py-1.5 px-3 rounded-lg bg-[var(--luma-accent)] text-white font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <ExternalLink className="w-3.5 h-3.5" /> Открыть в ОС
-            </button>
+
+            {preview.kind === 'image' ? (
+              <div className={`flex-1 min-h-0 rounded-xl border p-2 flex items-center justify-center overflow-hidden ${surfaceCls}`}>
+                <img
+                  src={`/api/kernel/fs/raw?path=${encodeURIComponent(preview.entry.path)}`}
+                  alt={preview.entry.name}
+                  className="max-w-full max-h-full object-contain rounded-lg"
+                />
+              </div>
+            ) : preview.editing ? (
+              <textarea
+                value={preview.content || ''}
+                onChange={(e) => setPreview((p) => (p ? { ...p, content: e.target.value } : null))}
+                spellCheck={false}
+                className={`flex-1 min-h-0 p-2.5 rounded-xl border text-[10px] font-mono leading-relaxed outline-none resize-none ${surfaceCls}`}
+              />
+            ) : (
+              <pre className={`flex-1 min-h-0 overflow-auto p-2.5 rounded-xl border text-[10px] font-mono leading-relaxed whitespace-pre-wrap break-all ${surfaceCls}`}>
+                {preview.loading ? 'Чтение...' : preview.content || '(пустой файл)'}
+              </pre>
+            )}
+
+            <div className="flex items-center gap-1.5">
+              {preview.kind === 'text' && preview.editing && (
+                <button
+                  disabled={preview.saving}
+                  onClick={() => void handleSavePreviewFile()}
+                  className="flex-1 py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {preview.saving ? 'Сохранение...' : 'Сохранить'}
+                </button>
+              )}
+              <button
+                onClick={() => handleOpenInOS(preview.entry.path)}
+                className="flex-1 py-1.5 px-3 rounded-lg bg-[var(--luma-accent)] text-white font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> Открыть в ОС
+              </button>
+            </div>
           </aside>
         )}
       </div>

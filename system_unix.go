@@ -466,38 +466,60 @@ func (p *platformProbe) PickFile(mode string) PickedFileInfo {
 }
 
 func (p *platformProbe) TopProcesses(limit int) []ProcessMetric {
-	if limit <= 0 || limit > 80 {
-		limit = 45
+	if limit <= 0 || limit > 120 {
+		limit = 80
 	}
 	selfPID := os.Getpid()
-	out, err := exec.Command("ps", "-eo", "pid,comm,%cpu,rss,stat", "--sort=-rss", "--no-headers").Output()
+	out, err := exec.Command("ps", "-eo", "pid,comm,%cpu,rss,nlwp,stat", "--sort=-rss", "--no-headers").Output()
 	if err != nil {
 		return nil
 	}
 	var list []ProcessMetric
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 5 {
+		if len(fields) < 6 {
 			continue
 		}
 		pid, _ := strconv.Atoi(fields[0])
 		cpuVal, _ := strconv.ParseFloat(fields[2], 64)
+		if cpuVal > 100 {
+			cpuVal = cpuVal / float64(runtime.NumCPU())
+		}
+		if cpuVal > 100 {
+			cpuVal = 100
+		}
 		rssKB, _ := strconv.ParseFloat(fields[3], 64)
+		threads, _ := strconv.Atoi(fields[4])
 		st := "Работает"
-		if strings.HasPrefix(fields[4], "T") {
+		if strings.HasPrefix(fields[5], "T") {
 			st = "Приостановлен"
-		} else if strings.HasPrefix(fields[4], "Z") {
+		} else if strings.HasPrefix(fields[5], "Z") {
 			st = "Зомби"
 		}
+		cat := "background"
+		desc := "Фоновый процесс ОС"
+		if pid == selfPID {
+			cat = "app"
+			desc = "Ядро и графическая оболочка Luma OS"
+		} else if pid <= 100 || strings.HasPrefix(fields[1], "k") || strings.Contains(fields[1], "systemd") {
+			cat = "system"
+			desc = "Системная служба ядра"
+		}
+		memMB := math.Round((rssKB/1024.0)*10) / 10
 		list = append(list, ProcessMetric{
-			PID:       pid,
-			Name:      fields[1],
-			Title:     fields[1],
-			HasWindow: false,
-			Status:    st,
-			CPUPct:    math.Round(cpuVal*10) / 10,
-			MemMB:     math.Round((rssKB/1024.0)*10) / 10,
-			IsSelf:    pid == selfPID,
+			PID:          pid,
+			Name:         fields[1],
+			FriendlyName: friendlyAppName(fields[1], fields[1]),
+			Title:        fields[1],
+			Description:  desc,
+			Category:     cat,
+			HasWindow:    pid == selfPID,
+			Status:       st,
+			CPUPct:       math.Round(cpuVal*10) / 10,
+			MemMB:        memMB,
+			PrivateMB:    memMB,
+			Threads:      threads,
+			IsSelf:       pid == selfPID,
 		})
 		if len(list) >= limit {
 			break
@@ -524,9 +546,10 @@ func (p *platformProbe) ListOpenWindows() []HostWindowItem {
 				}
 				title := strings.Join(fields[4:], " ")
 				items = append(items, HostWindowItem{
-					PID:   pid,
-					Name:  fields[3],
-					Title: title,
+					PID:          pid,
+					Name:         fields[3],
+					FriendlyName: friendlyAppName(fields[3], title),
+					Title:        title,
 				})
 			}
 			return items
@@ -684,16 +707,19 @@ func (p *platformProbe) GetBatteryDetails() BatteryHardwareDetails {
 	details := BatteryHardwareDetails{
 		Present:               false,
 		Percent:               100,
-		Charging:              true,
+		Charging:              false,
+		ACOnline:              true,
 		HealthPercent:         100,
 		DesignCapacityMWh:     0,
 		FullChargeCapacityMWh: 0,
 		CycleCount:            0,
+		CycleSupported:        false,
 		PowerWatts:            0,
 		VoltageMV:             0,
 		EstimatedMinutes:      0,
-		StatusText:            "Питание от сети",
+		StatusText:            "Питание от сети (ПК)",
 		Chemistry:             "Li-Ion",
+		DataSource:            "Linux sysfs power_supply",
 	}
 	entries, err := os.ReadDir("/sys/class/power_supply")
 	if err != nil {
@@ -716,13 +742,28 @@ func (p *platformProbe) GetBatteryDetails() BatteryHardwareDetails {
 		details.Percent = readInt(filepath.Join(base, "capacity"))
 		stBytes, _ := os.ReadFile(filepath.Join(base, "status"))
 		st := strings.TrimSpace(string(stBytes))
-		details.Charging = strings.EqualFold(st, "Charging") || strings.EqualFold(st, "Full")
-		if details.Charging {
+		switch {
+		case strings.EqualFold(st, "Charging"):
+			details.Charging = true
+			details.ACOnline = true
 			details.StatusText = "Заряжается от сети"
-		} else {
+		case strings.EqualFold(st, "Full"):
+			details.Charging = false
+			details.ACOnline = true
+			details.StatusText = "Заряжено (от сети)"
+		case strings.EqualFold(st, "Not charging"):
+			details.Charging = false
+			details.ACOnline = true
+			details.StatusText = "Подключено, не заряжается"
+		default:
+			details.Charging = false
+			details.ACOnline = false
 			details.StatusText = "Работа от батареи"
 		}
-		details.CycleCount = readInt(filepath.Join(base, "cycle_count"))
+		if cyc := readInt(filepath.Join(base, "cycle_count")); cyc > 0 {
+			details.CycleCount = cyc
+			details.CycleSupported = true
+		}
 		full := readInt(filepath.Join(base, "energy_full")) / 1000
 		design := readInt(filepath.Join(base, "energy_full_design")) / 1000
 		if full == 0 {

@@ -41,6 +41,7 @@ export interface CustomThemeConfig {
 export interface HostWindowInfo {
   pid: number;
   name: string;
+  friendly_name?: string;
   title: string;
   mem_mb: number;
   exe_path?: string;
@@ -50,11 +51,16 @@ export interface HostWindowInfo {
 export interface HostProcessInfo {
   pid: number;
   name: string;
+  friendly_name?: string;
   title?: string;
+  description?: string;
+  category?: 'app' | 'background' | 'system';
   has_window: boolean;
   status: string;
   cpu_pct: number;
   mem_mb: number;
+  private_mb?: number;
+  threads?: number;
   exe_path?: string;
   is_self?: boolean;
 }
@@ -94,6 +100,7 @@ export interface PluginItem {
   id: string;
   name: string;
   version: string;
+  apiVersion?: string;
   author?: string;
   category?: string;
   icon?: string;
@@ -101,6 +108,8 @@ export interface PluginItem {
   enabled: boolean;
   file: string;
   hooks: string[];
+  permissions?: string[];
+  actionId?: string;
   showInLauncher?: boolean;
   customIntervalSec?: number;
   notificationsEnabled?: boolean;
@@ -110,12 +119,15 @@ export interface CatalogPluginItem {
   id: string;
   name: string;
   version: string;
+  apiVersion?: string;
   author: string;
   category: string;
   icon: string;
   description: string;
   file: string;
   hooks: string[];
+  permissions?: string[];
+  actionId?: string;
 }
 
 export interface WorkspacePreset {
@@ -822,92 +834,110 @@ export const INITIAL_DETOX_GROUPS: DetoxGroup[] = [
 export const INITIAL_PLUGINS: PluginItem[] = [
   {
     id: 'session_tracker_plugin',
-    name: 'Luma Session Tracker',
-    version: '1.0.1',
+    name: 'Luma Session Tracker 2.0',
+    version: '2.0.1',
+    apiVersion: '2.0',
     author: 'Luma Core Team',
     category: 'Аналитика и Детокс',
     icon: 'BarChart3',
     description:
-      'Отслеживает время с 00:00 в реальном времени после запуска каждого приложения или игры, выводит живой таймер на карточках и контролирует лимиты цифрового баланса.',
+      'Учёт времени с 00:00 для приложений, живой снимок телеметрии ядра и контроль лимитов цифрового баланса.',
     enabled: true,
     file: 'luma_kernel_main.go',
-    hooks: ['OnInitialize', 'OnAppLaunched', 'OnTick', 'GetWidgetPayload'],
+    hooks: ['OnInitialize', 'OnAppLaunched', 'OnTick', 'OnKernelAPIv2'],
+    permissions: ['sys.telemetry', 'ui.badge'],
+    actionId: 'sys.snapshot',
     showInLauncher: true,
     customIntervalSec: 1,
     notificationsEnabled: true,
   },
   {
     id: 'focus_mode_plugin',
-    name: 'Luma Focus Flow (Помидор)',
-    version: '1.0.1',
+    name: 'Luma Focus Flow 2.0 (Помидор)',
+    version: '2.0.1',
+    apiVersion: '2.0',
     author: 'Luma Core Team',
     category: 'Продуктивность',
     icon: 'Clock',
     description:
-      'Режим глубокой концентрации с таймером на 25 минут и защитой от отвлекающих уведомлений.',
+      'Режим глубокой концентрации с таймером Помидор, приглушением уведомлений и мгновенным переключением в фокус.',
     enabled: true,
     file: 'luma_kernel_main.go',
-    hooks: ['OnInitialize', 'OnTick', 'GetWidgetPayload'],
+    hooks: ['OnInitialize', 'OnFocusToggle', 'OnKernelAPIv2'],
+    permissions: ['notifications.dnd', 'ui.island'],
+    actionId: 'focus.enable',
     showInLauncher: true,
     customIntervalSec: 60,
     notificationsEnabled: true,
   },
   {
     id: 'smart_music_controller',
-    name: 'Luma Media Controller',
-    version: '1.0.1',
+    name: 'Luma Media Controller 2.0',
+    version: '2.0.0',
+    apiVersion: '2.0',
     author: 'Luma Core Team',
     category: 'Медиа',
     icon: 'Music',
-    description: 'Нативный контроллер медиасессии Luma HAL: чтение текущего трека и переключение музыки в системе.',
+    description: 'Нативный контроллер медиасессии Luma HAL: чтение текущего трека, переключение музыки и буфер аудио.',
     enabled: true,
     file: 'system_windows.go',
-    hooks: ['OnInitialize', 'OnMediaControl', 'GetWidgetPayload'],
+    hooks: ['OnInitialize', 'OnMediaControl', 'OnKernelAPIv2'],
+    permissions: ['media.control', 'audio.volume'],
+    actionId: 'sys.snapshot',
     showInLauncher: true,
     customIntervalSec: 3,
     notificationsEnabled: true,
   },
   {
-    id: 'smart_weather_plugin',
-    name: 'Luma Погода (Авто-регион)',
-    version: '1.0.1',
+    id: 'battery_guard_plugin',
+    name: 'Luma Battery Health Guard',
+    version: '2.0.0',
+    apiVersion: '2.0',
     author: 'Luma Core Team',
-    category: 'Виджеты',
-    icon: 'Cloud',
-    description: 'Автоопределение вашего региона и живой почасовой прогноз погоды Open-Meteo.',
+    category: 'Питание',
+    icon: 'Activity',
+    description: 'Прямой опрос Win32_Battery, ACPI WMI и BatteryReport XML: проверка износа, циклов и состояния зарядки.',
     enabled: true,
-    file: 'luma_kernel_main.go',
-    hooks: ['OnInitialize', 'OnLocationDetect', 'GetWidgetPayload'],
+    file: 'system_windows.go',
+    hooks: ['OnInitialize', 'OnPowerChange', 'OnKernelAPIv2'],
+    permissions: ['power.read', 'battery.wmi'],
+    actionId: 'battery.health',
     showInLauncher: true,
-    customIntervalSec: 300,
+    customIntervalSec: 30,
     notificationsEnabled: true,
   },
   {
-    id: 'idea_notebook_plugin',
-    name: 'Luma Notes (VFS AES-256)',
-    version: '1.0.1',
-    author: 'Luma Core Team',
-    category: 'Утилиты',
-    icon: 'FileText',
-    description: 'Быстрые заметки и списки задач с шифрованием AES-256-GCM в виртуальной ФС ядра Luma Core.',
+    id: 'shield_audit_plugin',
+    name: 'LumaShield 1.2 Live Auditor',
+    version: '2.0.0',
+    apiVersion: '2.0',
+    author: 'Luma Security',
+    category: 'Безопасность',
+    icon: 'Shield',
+    description: 'Мгновенная проверка статуса ядра LumaShield, журнала аудита, карантина и совместимости с Windows Defender.',
     enabled: true,
-    file: 'luma_kernel_main.go',
-    hooks: ['OnInitialize', 'OnVfsSync', 'GetWidgetPayload'],
+    file: 'kernel_security.go',
+    hooks: ['OnInitialize', 'OnSecurityAudit', 'OnKernelAPIv2'],
+    permissions: ['security.read', 'audit.log'],
+    actionId: 'shield.audit',
     showInLauncher: true,
     customIntervalSec: 60,
     notificationsEnabled: true,
   },
   {
-    id: 'smart_file_finder',
-    name: 'Luma Быстрый Поиск',
-    version: '1.0.1',
+    id: 'idea_notebook_plugin',
+    name: 'Luma Notes & Clipboard Sync',
+    version: '2.0.0',
+    apiVersion: '2.0',
     author: 'Luma Core Team',
-    category: 'Система',
-    icon: 'Search',
-    description: 'Мгновенный поиск приложений, плагинов и локальных системных модулей ядра Luma.',
+    category: 'Утилиты',
+    icon: 'FileText',
+    description: 'Быстрые заметки AES-256-GCM и живая проверка системного буфера обмена Windows через API v2.0.',
     enabled: true,
     file: 'luma_kernel_main.go',
-    hooks: ['OnInitialize', 'OnSearch', 'GetWidgetPayload'],
+    hooks: ['OnInitialize', 'OnVfsSync', 'OnClipboard', 'OnKernelAPIv2'],
+    permissions: ['vfs.crypto', 'clipboard.read'],
+    actionId: 'clipboard.stats',
     showInLauncher: true,
     customIntervalSec: 60,
     notificationsEnabled: true,
@@ -917,36 +947,73 @@ export const INITIAL_PLUGINS: PluginItem[] = [
 export const PLUGIN_CATALOG: CatalogPluginItem[] = [
   {
     id: 'system_cleaner_plugin',
-    name: 'Luma Cleaner & RAM Optimizer',
-    version: '1.0.1',
+    name: 'Luma Cleaner & Temp Sweeper',
+    version: '2.0.2',
+    apiVersion: '2.0',
     author: 'Luma Store',
     category: 'Система',
     icon: 'Activity',
-    description: 'Очистка временного кэша системы и оптимизация памяти процессов в 1 клик через Luma HAL.',
-    file: 'system_windows.go',
-    hooks: ['OnInitialize', 'GetWidgetPayload'],
+    description: 'Безопасная очистка устаревших файлов из системного каталога Temp в 1 клик через Plugin API v2.0.',
+    file: 'luma_kernel_main.go',
+    hooks: ['OnInitialize', 'OnTempClean', 'OnKernelAPIv2'],
+    permissions: ['fs.temp', 'storage.clean'],
+    actionId: 'temp.clean',
+  },
+  {
+    id: 'ram_optimizer_plugin',
+    name: 'Luma RAM & GC Optimizer',
+    version: '2.0.1',
+    apiVersion: '2.0',
+    author: 'Luma Store',
+    category: 'Система',
+    icon: 'Cpu',
+    description: 'Мгновенная сборка мусора ядра LumaCore, сброс кэша и отчёт о свободной оперативной памяти.',
+    file: 'luma_kernel_main.go',
+    hooks: ['OnInitialize', 'OnMemoryTrim', 'OnKernelAPIv2'],
+    permissions: ['memory.gc', 'sys.telemetry'],
+    actionId: 'ram.optimize',
   },
   {
     id: 'game_booster_plugin',
-    name: 'Luma Game Booster Pro',
-    version: '1.0.1',
+    name: 'Luma GPU & Game Booster Pro',
+    version: '2.0.1',
+    apiVersion: '2.0',
     author: 'Luma Store',
     category: 'Игры',
     icon: 'Gamepad2',
-    description: 'Повышение приоритета игровых процессов и контроль сетевой задержки перед запуском.',
-    file: 'luma_kernel_main.go',
-    hooks: ['OnInitialize', 'OnTick', 'GetWidgetPayload'],
+    description: 'Переключение плана питания на максимальную производительность и снижение задержек графического конвейера.',
+    file: 'system_windows.go',
+    hooks: ['OnInitialize', 'OnGpuBoost', 'OnKernelAPIv2'],
+    permissions: ['power.plan', 'gpu.profile'],
+    actionId: 'gpu.boost',
   },
   {
-    id: 'quick_clipboard_plugin',
-    name: 'Luma Clipboard Vault',
-    version: '1.0.1',
+    id: 'net_latency_guard_plugin',
+    name: 'Luma NetPing Monitor',
+    version: '2.0.0',
+    apiVersion: '2.0',
     author: 'Luma Store',
-    category: 'Продуктивность',
-    icon: 'Copy',
-    description: 'Защищённый менеджер буфера обмена с шифрованием истории в LumaGuard AES-256-GCM.',
+    category: 'Сеть',
+    icon: 'Globe',
+    description: 'Живая проверка задержки (TCP ping) до Cloudflare 1.1.1.1 и диагностика стабильности канала связи.',
     file: 'luma_kernel_main.go',
-    hooks: ['OnInitialize', 'GetWidgetPayload'],
+    hooks: ['OnInitialize', 'OnNetProbe', 'OnKernelAPIv2'],
+    permissions: ['net.ping'],
+    actionId: 'net.ping',
+  },
+  {
+    id: 'github_ota_watcher_plugin',
+    name: 'Luma GitHub OTA Watcher',
+    version: '2.0.0',
+    apiVersion: '2.0',
+    author: 'Luma Store',
+    category: 'Обновления',
+    icon: 'Search',
+    description: 'Моментальная проверка новых версий Luma OS на GitHub с определением типа обновления (Глобальное / Версия / Патч).',
+    file: 'kernel_updater_ai.go',
+    hooks: ['OnInitialize', 'OnDailyUpdateCheck', 'OnKernelAPIv2'],
+    permissions: ['net.github', 'ota.check'],
+    actionId: 'update.check',
   },
 ];
 
@@ -1203,6 +1270,19 @@ export const PYTHON_PROJECT_FILES: { path: string; title: string; badge: string;
 
 // Полная история версий Luma OS и всех предыдущих веток
 export const VERSION_HISTORY: Record<string, string[]> = {
+  '1.2.1 (Lithium)': [
+    'ПАТЧ LUMA OS 1.2.1 (LITHIUM) — АВТОАДАПТАЦИЯ МАСШТАБА ПОД ЛЮБОЙ ЭКРАН, УВЕЛИЧЕНИЕ ИКОНОК И РЕДАКТОР ПРИЛОЖЕНИЙ, ОПТИМИЗАЦИЯ GPU, УЛУЧШЕННЫЙ ПРОВОДНИК PRO, ИМЕНА ОТКРЫТЫХ ПРИЛОЖЕНИЙ И ПОРЯДОК В ПАНЕЛИ ЗАДАЧ, ТОЧНЫЕ ФОНОВЫЕ ПРОЦЕССЫ И БАТАРЕЯ, УМНЫЙ LUMA AI (2 МОДЕЛИ + ОТКЛЮЧЕНИЕ), ЕЖЕДНЕВНОЕ АВТООБНОВЛЕНИЕ И PLUGIN API 2.0',
+    'Автоматическая адаптация масштаба экрана (Ноутбук ↔ Большой монитор) — система автоматически вычисляет оптимальный масштаб интерфейса относительно экрана ноутбука (1440×900), чтобы на больших мониторах элементы не выглядели мелкими + ручная точная настройка 85%–135%',
+    'Увеличение иконок и редактор приложений прямо в Настройках — живой ползунок размера иконок (36–72 px / Компакт, Стандарт, Крупные, XL) для рабочего стола и библиотеки + встроенное редактирование имени, иконки, категории и команды приложений',
+    'Оптимизация графических процессов (GPU) и отдельная панель настроек — профили «Ультра», «Баланс», «Производительность (минимум GPU)» и «Эко-ноутбук», отключение тяжёлого размытия backdrop-filter и теней, автопауза живых обоев при открытых окнах и выбор интервала опроса телеметрии (1.5 / 3 / 6 сек)',
+    'Улучшенный Проводник Luma Pro — кликабельная навигация по крошкам (Breadcrumbs), быстрые фильтры типов файлов (Папки, Изображения, Код, Документы, Медиа), закреплённые избранные папки, нативный предпросмотр картинок и встроенное редактирование и сохранение текстовых/код-файлов прямо в панели предпросмотра',
+    'Выбор отображения открытых приложений и перестановка порядка в Панели задач — переключатель в настройках «Названия приложений (Chrome, Steam, Telegram...) / Заголовки окон / Компактно», скрытие служебных UWP-окон Windows + перетаскивание порядка приложений прямо на панели задач и кнопки ▲/▼ в настройках',
+    'Исправлены фоновые процессы в Диспетчере задач — вместо накопленных CPU-секунд теперь отображается реальная мгновенная нагрузка ЦП (0–100%), приватная/рабочая ОЗУ, число потоков, системные описания процессов и точное разделение Приложений, Фоновых и Системных процессов',
+    'Точное чтение состояния батареи Windows — трёхуровневый опрос (GetSystemPowerStatus + Win32_Battery без прав администратора + ACPI WMI + кэшированный PowerCfg BatteryReport XML) с честным статусом (Заряжается / Заряжено от сети / Подключено, не заряжается / От батареи), реальным износом и циклами',
+    'Умный Luma AI с 2 отдельными вариациями + полноценный Markdown и Кнопка отключения ИИ — «Luma Lang 1.2» (языковая и энциклопедическая модель с базой 45+ тем и живым поиском Wikipedia — отвечает на «Кто такой Пушкин?» без вывода кода!) и «Luma Code 1.2» (программист на 12 языках) + рендеринг заголовков, списков, жирного текста и формул + полное отключение ИИ в настройках для экономии ресурсов',
+    'Ежедневная автопроверка обновлений GitHub + шкала версий (X.Y.Z) и новая анимация обновления — автоматическая проверка раз в 24 часа, всплывающее окно с уровнем обновления (1-я цифра = Глобальное, 2-я = Большое обновление версии, 3-я = Патч) и списком изменений, а также обновлённый анимированный экран загрузки с орбитальным кольцом и пошаговым статусом',
+    'Luma Plugin API v2.0 и 11 расширений — новая шина ядра /api/kernel/plugins/api с живым запуском и тестированием каждого расширения (RAM Optimizer, Temp Sweeper, NetPing Monitor, Battery Guard, LumaShield Auditor, GPU Booster, OTA Watcher и др.)',
+  ],
   '1.2.0 (Lithium)': [
     'LUMA OS 1.2.0 (LITHIUM) — МУЛЬТИЗАДАЧНОСТЬ (8-СТОРОННИЙ РЕСАЙЗ, SNAP LAYOUTS, ВИРТУАЛЬНЫЕ СТОЛЫ), ВЕЧНОЕ СОХРАНЕНИЕ ВИДЖЕТОВ, АВТОНОМНЫЙ LUMA AI С ГОЛОСОВЫМ ВВОДОМ, НАТИВНЫЙ КАЛЬКУЛЯТОР, АНАЛИТИКА БАТАРЕИ НОУТБУКА, НАТИВНЫЕ СЛУЖБЫ WINDOWS В UI LUMA, ПОЛНЫЙ ПЕРЕВОД 9 ЯЗЫКОВ И АНИМАЦИИ ОБОЕВ',
     'Полноценная мультизадачность — изменение размера окон за все 8 сторон и углов (с сохранением геометрии), меню макетов Snap Layouts (50/50, 65/35, 4 четверти 2×2, верх/низ, центр), Aero-привязка при перетаскивании к краям экрана + Обзор окон (Alt+W) с Виртуальными рабочими столами (Стол 1 / 2 / 3) и разделением экрана в 1 клик',

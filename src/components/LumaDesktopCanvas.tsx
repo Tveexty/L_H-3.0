@@ -268,6 +268,8 @@ export interface LumaDesktopCanvasProps {
   wallpaperDim?: number;
   wallpaperTransition?: WallpaperTransitionMode;
   liveWallpaper?: LiveWallpaperId;
+  aiEnabled?: boolean;
+  iconSizePx?: number;
 }
 
 export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
@@ -329,6 +331,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   wallpaperDim = 25,
   wallpaperTransition = 'iris',
   liveWallpaper = '',
+  aiEnabled = true,
+  iconSizePx = 44,
 }) => {
   const totalRows = 10;
   const totalCells = gridCols * totalRows;
@@ -569,16 +573,33 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   const fetchedCityRef = useRef<string>('');
   const diskHydratedRef = useRef(false);
 
-  // New 1.2.0 Widget interactive states (Mini AI + Battery/ScreenTime Analytics)
+  // New 1.2.1 Widget interactive states (Mini AI + Exact Battery/ScreenTime Analytics)
   const [miniAiInput, setMiniAiInput] = useState('');
-  const [miniAiAnswer, setMiniAiAnswer] = useState('Готов помочь без API (LumaNano 1.2)');
+  const [miniAiAnswer, setMiniAiAnswer] = useState('Готов помочь без API (Luma Lang 1.2 + Code 1.2)');
   const [miniAiBusy, setMiniAiBusy] = useState(false);
   const [batteryMini, setBatteryMini] = useState<{
+    present: boolean;
+    percent: number;
+    charging: boolean;
+    acOnline: boolean;
+    statusText: string;
     health: number;
     cycles: number;
+    cycleSupported: boolean;
     screenMin: number;
     days: { weekday: string; minutes: number }[];
-  }>({ health: 96, cycles: 0, screenMin: 1, days: [] });
+  }>({
+    present: false,
+    percent: 100,
+    charging: false,
+    acOnline: true,
+    statusText: 'Питание от сети',
+    health: 100,
+    cycles: 0,
+    cycleSupported: false,
+    screenMin: 1,
+    days: [],
+  });
 
   // Wallpaper transition state (keeps previous wallpaper underneath during animation!)
   const activeWpKey = liveWallpaper ? `live:${liveWallpaper}` : wallpaperImageUrl ? `img:${wallpaperImageUrl}` : '';
@@ -604,8 +625,14 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
         .then((d) => {
           if (d?.ok) {
             setBatteryMini({
+              present: Boolean(d.details?.present),
+              percent: d.details?.percent ?? 100,
+              charging: Boolean(d.details?.charging),
+              acOnline: Boolean(d.details?.ac_online),
+              statusText: d.details?.status_text || 'Питание от сети',
               health: d.details?.health_percent ?? 100,
               cycles: d.details?.cycle_count ?? 0,
+              cycleSupported: Boolean(d.details?.cycle_supported),
               screenMin: d.screen_time_today_min ?? 1,
               days: Array.isArray(d.screen_time_7d) ? d.screen_time_7d : [],
             });
@@ -2388,8 +2415,18 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
         );
 
       case 'luma_battery_pro': {
-        const battPct = liveSystem?.battery_percent ?? 100;
-        const charging = Boolean(liveSystem?.battery_charging);
+        const hasBatt = batteryMini.present || Boolean(liveSystem?.battery_present);
+        const battPct = hasBatt ? (liveSystem?.battery_present ? liveSystem.battery_percent : batteryMini.percent) : 100;
+        const charging = hasBatt ? (batteryMini.charging || Boolean(liveSystem?.battery_charging)) : false;
+        const statusShort = !hasBatt
+          ? 'ОТ СЕТИ (ПК)'
+          : charging
+          ? 'ЗАРЯДКА'
+          : batteryMini.acOnline && battPct >= 99
+          ? 'ЗАРЯЖЕНО'
+          : batteryMini.acOnline
+          ? 'ОТ СЕТИ'
+          : 'ОТ БАТАРЕИ';
         return (
           <div className="h-full flex flex-col justify-between gap-2">
             <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
@@ -2397,13 +2434,21 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                 <BatteryCharging className="w-3.5 h-3.5" />
                 БАТАРЕЯ PRO
               </span>
-              <span className={mutedCls}>{charging ? 'ЗАРЯДКА' : 'АКБ'}</span>
+              <span className={charging ? 'text-emerald-400 font-bold' : mutedCls}>{statusShort}</span>
             </div>
             <div className="flex items-baseline justify-between">
-              <div className="text-2xl font-mono font-black tabular-nums">{battPct}%</div>
+              <div className="text-2xl font-mono font-black tabular-nums">{hasBatt ? `${battPct}%` : 'AC'}</div>
               <div className="text-right font-mono text-[10px]">
-                <div className="text-emerald-400 font-bold">Здоровье {batteryMini.health}%</div>
-                <div className={mutedCls}>Циклов: {batteryMini.cycles}</div>
+                <div className="text-emerald-400 font-bold">
+                  {hasBatt ? `Здоровье ${batteryMini.health}%` : 'Питание 220V'}
+                </div>
+                <div className={mutedCls}>
+                  {hasBatt
+                    ? batteryMini.cycleSupported || batteryMini.cycles > 0
+                      ? `Циклов: ${batteryMini.cycles}`
+                      : batteryMini.statusText
+                    : 'Стационарный ПК'}
+                </div>
               </div>
             </div>
             <div className={`h-2 rounded-full overflow-hidden ${railTrackCls}`}>
@@ -2417,6 +2462,19 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
       }
 
       case 'luma_ai_quick': {
+        if (!aiEnabled) {
+          return (
+            <div className="h-full flex flex-col items-center justify-center text-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <span className={`text-[10px] font-mono uppercase ${mutedCls}`}>LUMA AI ОТКЛЮЧЁН</span>
+              <button
+                onClick={() => onOpenSystemWindow('settings')}
+                className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold cursor-pointer ${subBtnCls}`}
+              >
+                Настройки ИИ
+              </button>
+            </div>
+          );
+        }
         const isPill = variant === 'pill_ai';
         return (
           <div className="h-full flex flex-col justify-between gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -2424,7 +2482,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
               <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
                 <span className="inline-flex items-center gap-1 text-[var(--luma-accent)] font-bold">
                   <Sparkles className="w-3.5 h-3.5" />
-                  LUMA AI · АВТОНОМНО
+                  LUMA AI · 1.2
                 </span>
                 <button
                   onClick={() => onOpenSystemWindow('ai')}
@@ -2436,7 +2494,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
             )}
             {!isPill && (
               <div className={`flex-1 overflow-y-auto text-[11px] leading-snug pr-1 ${mutedCls}`}>
-                {miniAiBusy ? 'LumaNano 1.2 думает...' : miniAiAnswer.slice(0, 180)}
+                {miniAiBusy ? 'Luma AI думает...' : miniAiAnswer.replace(/[*#`]/g, '').slice(0, 180)}
               </div>
             )}
             <form
@@ -2449,7 +2507,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
               <input
                 value={miniAiInput}
                 onChange={(e) => setMiniAiInput(e.target.value)}
-                placeholder="Спросите LumaNano 1.2 (без API)..."
+                placeholder="Спросите Luma AI (знания или код)..."
                 className={`flex-1 min-w-0 px-2.5 py-1 rounded-lg border text-[11px] outline-none ${subBtnCls}`}
               />
               <button
@@ -3114,7 +3172,11 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
               }`}
             >
               <div
-                className={`relative w-10 h-10 ${isFolder && sc.shape ? folderShapeCls : isPixel ? 'rounded-full' : 'rounded-[14px]'} border flex items-center justify-center transition ${
+                style={{
+                  width: `${Math.max(34, Math.min(72, iconSizePx))}px`,
+                  height: `${Math.max(34, Math.min(72, iconSizePx))}px`,
+                }}
+                className={`relative shrink-0 ${isFolder && sc.shape ? folderShapeCls : isPixel ? 'rounded-full' : 'rounded-[14px]'} border flex items-center justify-center transition ${
                   isDark
                     ? 'bg-black/40 border-white/[0.12] group-hover:border-[var(--luma-accent-border)] text-zinc-100'
                     : 'bg-white/75 border-zinc-900/[0.15] group-hover:border-[var(--luma-accent-border)] text-zinc-900 shadow-xs'
@@ -3124,12 +3186,12 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                   <div className="grid grid-cols-2 gap-[2px] p-1.5">
                     {folderEntries.slice(0, 4).map((fe) => (
                       <span key={fe.id} className="flex items-center justify-center opacity-85">
-                        {renderShortcutIcon(fe.icon, 'w-2.5 h-2.5')}
+                        {renderShortcutIcon(fe.icon, iconSizePx >= 54 ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5')}
                       </span>
                     ))}
                   </div>
                 ) : (
-                  renderShortcutIcon(sc.icon, 'w-4 h-4')
+                  renderShortcutIcon(sc.icon, iconSizePx >= 58 ? 'w-6 h-6' : iconSizePx >= 48 ? 'w-5 h-5' : 'w-4 h-4')
                 )}
                 {badge && (
                   <span className="absolute -bottom-1 -right-1 px-1 py-[1px] rounded text-[7px] font-mono font-bold bg-[var(--luma-accent)] text-white leading-none">
@@ -3137,7 +3199,9 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
                   </span>
                 )}
               </div>
-              <span className="text-[10px] font-medium leading-none truncate max-w-full px-0.5">{sc.label}</span>
+              <span className={`${iconSizePx >= 54 ? 'text-[11px]' : 'text-[10px]'} font-medium leading-none truncate max-w-full px-0.5`}>
+                {sc.label}
+              </span>
 
               {isResizing && (
                 <div

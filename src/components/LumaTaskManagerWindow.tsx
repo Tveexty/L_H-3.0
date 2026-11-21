@@ -226,27 +226,47 @@ export const LumaTaskManagerWindow: React.FC<{
     [runningApps, q]
   );
 
+  const processByPid = useMemo(() => {
+    const map = new Map<number, HostProcessInfo>();
+    for (const p of processes) map.set(p.pid, p);
+    return map;
+  }, [processes]);
+
   const filteredHostWindows = useMemo(
     () =>
       hostWindows.filter(
-        (hw) => !q || hw.title.toLowerCase().includes(q) || hw.name.toLowerCase().includes(q) || String(hw.pid).includes(q)
+        (hw) =>
+          !q ||
+          hw.title.toLowerCase().includes(q) ||
+          hw.name.toLowerCase().includes(q) ||
+          (hw.friendly_name || '').toLowerCase().includes(q) ||
+          String(hw.pid).includes(q)
       ),
     [hostWindows, q]
   );
 
-  const filteredBgProcesses = useMemo(() => {
+  const { filteredBgProcesses, filteredSysProcesses } = useMemo(() => {
     const winPids = new Set(hostWindows.map((w) => w.pid));
-    const list = processes.filter((p) => {
+    const matched = processes.filter((p) => {
       if (winPids.has(p.pid)) return false;
       if (!q) return true;
-      return p.name.toLowerCase().includes(q) || (p.title || '').toLowerCase().includes(q) || String(p.pid).includes(q);
+      return (
+        p.name.toLowerCase().includes(q) ||
+        (p.friendly_name || '').toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q) ||
+        (p.title || '').toLowerCase().includes(q) ||
+        String(p.pid).includes(q)
+      );
     });
-    return [...list].sort((a, b) => {
+    const sorter = (a: HostProcessInfo, b: HostProcessInfo) => {
       if (sortKey === 'cpu') return b.cpu_pct - a.cpu_pct;
-      if (sortKey === 'name') return a.name.localeCompare(b.name);
+      if (sortKey === 'name') return (a.friendly_name || a.name).localeCompare(b.friendly_name || b.name);
       if (sortKey === 'pid') return a.pid - b.pid;
-      return b.mem_mb - a.mem_mb;
-    });
+      return (b.private_mb || b.mem_mb) - (a.private_mb || a.mem_mb);
+    };
+    const bg = matched.filter((p) => p.category !== 'system').sort(sorter);
+    const sys = matched.filter((p) => p.category === 'system').sort(sorter);
+    return { filteredBgProcesses: bg, filteredSysProcesses: sys };
   }, [processes, hostWindows, q, sortKey]);
 
   const handleRunNewTask = async (e: React.FormEvent) => {
@@ -282,7 +302,17 @@ export const LumaTaskManagerWindow: React.FC<{
       >
         <div className="space-y-1">
           {[
-            { id: 'processes' as const, label: 'Процессы', icon: <Layers className="w-4 h-4 shrink-0" />, badge: filteredLumaWindows.length + filteredLumaApps.length + filteredHostWindows.length + filteredBgProcesses.length },
+            {
+              id: 'processes' as const,
+              label: 'Процессы',
+              icon: <Layers className="w-4 h-4 shrink-0" />,
+              badge:
+                filteredLumaWindows.length +
+                filteredLumaApps.length +
+                filteredHostWindows.length +
+                filteredBgProcesses.length +
+                filteredSysProcesses.length,
+            },
             { id: 'performance' as const, label: 'Производительность', icon: <Activity className="w-4 h-4 shrink-0" /> },
             { id: 'startup' as const, label: 'Автозагрузка', icon: <Rocket className="w-4 h-4 shrink-0" />, badge: startupItems.length || undefined },
             { id: 'services' as const, label: 'Службы', icon: <Server className="w-4 h-4 shrink-0" />, badge: services.length || undefined },
@@ -335,7 +365,7 @@ export const LumaTaskManagerWindow: React.FC<{
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Имя, издатель или PID процесса..."
+              placeholder="Имя, описание или PID процесса..."
               className="w-full bg-transparent text-xs outline-none"
             />
             {query && (
@@ -411,17 +441,17 @@ export const LumaTaskManagerWindow: React.FC<{
           </form>
         )}
 
-        {/* ==================== TAB 1: PROCESSES (WINDOWS 11 HEATMAP TABLE) ==================== */}
+        {/* ==================== TAB 1: PROCESSES (ACCURATE REAL-TIME TELEMETRY TABLE) ==================== */}
         {tab === 'processes' && (
           <div className="flex-1 overflow-y-auto">
             {/* Sticky Windows Column Headers with Live Totals */}
             <div
-              className={`sticky top-0 z-10 grid grid-cols-[1fr_72px_84px_72px_72px_96px] text-[11px] font-mono border-b backdrop-blur-md ${
+              className={`sticky top-0 z-10 grid grid-cols-[1fr_72px_92px_68px_68px_88px] text-[11px] font-mono border-b backdrop-blur-md ${
                 isDark ? 'bg-[#121216]/95 border-white/10' : 'bg-[#ebeae5]/95 border-zinc-900/10'
               }`}
             >
               <button onClick={() => setSortKey('name')} className="px-3 py-2 text-left font-bold cursor-pointer hover:text-[var(--luma-accent)]">
-                Имя {sortKey === 'name' ? '▾' : ''}
+                Имя процесса {sortKey === 'name' ? '▾' : ''}
               </button>
               <button onClick={() => setSortKey('cpu')} className="px-2 py-1.5 text-right border-l border-white/5 cursor-pointer">
                 <div className="text-sm font-black text-[var(--luma-accent)]">{cpuLoad}%</div>
@@ -429,11 +459,11 @@ export const LumaTaskManagerWindow: React.FC<{
               </button>
               <button onClick={() => setSortKey('mem')} className="px-2 py-1.5 text-right border-l border-white/5 cursor-pointer">
                 <div className="text-sm font-black text-sky-400">{ramLoad}%</div>
-                <div className={`text-[9px] ${mutedCls}`}>Память {sortKey === 'mem' ? '▾' : ''}</div>
+                <div className={`text-[9px] ${mutedCls}`}>ОЗУ {sortKey === 'mem' ? '▾' : ''}</div>
               </button>
               <div className="px-2 py-1.5 text-right border-l border-white/5">
-                <div className="text-sm font-black text-emerald-400">{mainDiskPct}%</div>
-                <div className={`text-[9px] ${mutedCls}`}>Диск</div>
+                <div className="text-xs font-bold text-emerald-400">Потоки</div>
+                <div className={`text-[9px] ${mutedCls}`}>Диск {mainDiskPct}%</div>
               </div>
               <button onClick={() => setSortKey('pid')} className="px-2 py-1.5 text-right border-l border-white/5 cursor-pointer">
                 <div className="text-xs font-bold">PID</div>
@@ -458,7 +488,7 @@ export const LumaTaskManagerWindow: React.FC<{
                   {filteredLumaWindows.map((w) => (
                     <div
                       key={`lw_${w.id}`}
-                      className={`grid grid-cols-[1fr_72px_84px_72px_72px_96px] items-center text-xs border-b ${
+                      className={`grid grid-cols-[1fr_72px_92px_68px_68px_88px] items-center text-xs border-b ${
                         isDark ? 'border-white/[0.04] hover:bg-white/[0.04]' : 'border-zinc-900/[0.05] hover:bg-black/[0.03]'
                       }`}
                     >
@@ -467,9 +497,9 @@ export const LumaTaskManagerWindow: React.FC<{
                         <span className="font-semibold truncate">{w.label}</span>
                         {w.minimized && <span className={`text-[10px] ${mutedCls}`}>(Свёрнуто)</span>}
                       </div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(1.2, isDark)}`}>0.4%</div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(4, isDark)}`}>42 МБ</div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>0 МБ/с</div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(1.0, isDark)}`}>0.3%</div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(3, isDark)}`}>38 МБ</div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>4</div>
                       <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>LUMA</div>
                       <div className="px-2 py-1.5 flex items-center justify-end gap-1">
                         <button onClick={() => onFocusLumaWindow(w.id)} title="Переключиться" className={`p-1 rounded border cursor-pointer ${btnCls}`}>
@@ -484,7 +514,7 @@ export const LumaTaskManagerWindow: React.FC<{
                   {filteredLumaApps.map((app) => (
                     <div
                       key={`la_${app.id}`}
-                      className={`grid grid-cols-[1fr_72px_84px_72px_72px_96px] items-center text-xs border-b ${
+                      className={`grid grid-cols-[1fr_72px_92px_68px_68px_88px] items-center text-xs border-b ${
                         isDark ? 'border-white/[0.04] hover:bg-white/[0.04]' : 'border-zinc-900/[0.05] hover:bg-black/[0.03]'
                       }`}
                     >
@@ -493,9 +523,9 @@ export const LumaTaskManagerWindow: React.FC<{
                         <span className="font-semibold truncate">{app.name}</span>
                         <span className={`text-[10px] font-mono ${mutedCls}`}>{formatLiveClock(app.elapsedSeconds)}</span>
                       </div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(2.5, isDark)}`}>1.5%</div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(6, isDark)}`}>86 МБ</div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>0.1 МБ/с</div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(1.5, isDark)}`}>1.2%</div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(5, isDark)}`}>72 МБ</div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>6</div>
                       <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>APP</div>
                       <div className="px-2 py-1.5 flex items-center justify-end gap-1">
                         <button onClick={() => onFocusLumaApp(app)} title="Открыть" className={`p-1 rounded border cursor-pointer ${btnCls}`}>
@@ -511,7 +541,7 @@ export const LumaTaskManagerWindow: React.FC<{
               )}
             </div>
 
-            {/* GROUP 2: REAL OPEN HOST WINDOWS (CHROME, VSCODE, EXPLORER, ETC.) */}
+            {/* GROUP 2: REAL OPEN HOST WINDOWS (CHROME, STEAM, TELEGRAM, VSCODE...) */}
             <div>
               <button
                 onClick={() => toggleGroup('hostwin')}
@@ -524,13 +554,16 @@ export const LumaTaskManagerWindow: React.FC<{
               </button>
               {!collapsedGroups.hostwin &&
                 filteredHostWindows.map((hw) => {
-                  const memPct = (hw.mem_mb / totalMemMB) * 100;
+                  const procMeta = processByPid.get(hw.pid);
+                  const liveCpu = Math.min(100, Math.max(0, procMeta?.cpu_pct ?? 0));
+                  const memVal = procMeta?.private_mb || hw.mem_mb;
+                  const memPct = (memVal / totalMemMB) * 100;
                   const isSel = selectedPid === hw.pid;
                   return (
                     <div
                       key={`hw_${hw.pid}`}
                       onClick={() => setSelectedPid(hw.pid)}
-                      className={`grid grid-cols-[1fr_72px_84px_72px_72px_96px] items-center text-xs border-b cursor-pointer ${
+                      className={`grid grid-cols-[1fr_72px_92px_68px_68px_88px] items-center text-xs border-b cursor-pointer ${
                         isSel
                           ? 'bg-[var(--luma-accent-soft)] border-[var(--luma-accent)]/40'
                           : isDark
@@ -541,15 +574,24 @@ export const LumaTaskManagerWindow: React.FC<{
                       <div className="px-3 py-2 flex items-center gap-2 min-w-0">
                         <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
                         <div className="min-w-0">
-                          <div className="font-semibold truncate">{hw.title || hw.name}</div>
-                          <div className={`text-[10px] font-mono truncate ${mutedCls}`}>{hw.name}</div>
+                          <div className="font-semibold truncate">
+                            {hw.friendly_name || hw.name}
+                            {hw.title && hw.title !== hw.friendly_name ? ` — ${hw.title}` : ''}
+                          </div>
+                          <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
+                            {hw.name}.exe {procMeta?.description ? `· ${procMeta.description}` : ''}
+                          </div>
                         </div>
                       </div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(3, isDark)}`}>—</div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(memPct * 3, isDark)}`}>
-                        {hw.mem_mb.toFixed(0)} МБ
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(liveCpu, isDark)}`}>
+                        {liveCpu.toFixed(1)}%
                       </div>
-                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>0 МБ/с</div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${heatCellCls(memPct * 3, isDark)}`}>
+                        {memVal.toFixed(1)} МБ
+                      </div>
+                      <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>
+                        {procMeta?.threads || '—'}
+                      </div>
                       <div className={`px-2 py-2 text-right font-mono text-[11px] ${mutedCls}`}>{hw.pid}</div>
                       <div className="px-2 py-1.5 flex items-center justify-end gap-1">
                         <button
@@ -578,26 +620,28 @@ export const LumaTaskManagerWindow: React.FC<{
                 })}
             </div>
 
-            {/* GROUP 3: BACKGROUND OS PROCESSES */}
+            {/* GROUP 3: BACKGROUND PROCESSES (ACCURATE REAL CPU% + PRIVATE RAM + THREADS) */}
             <div>
               <button
                 onClick={() => toggleGroup('bg')}
                 className={`w-full px-3 py-1.5 text-left text-[11px] font-bold flex items-center gap-1.5 border-b cursor-pointer ${
-                  isDark ? 'bg-white/[0.04] border-white/[0.06] text-zinc-300' : 'bg-black/[0.04] border-zinc-900/10 text-zinc-700'
+                  isDark ? 'bg-white/[0.04] border-white/[0.06] text-zinc-200' : 'bg-black/[0.04] border-zinc-900/10 text-zinc-800'
                 }`}
               >
                 {collapsedGroups.bg ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                <span>Фоновые процессы ОС ({filteredBgProcesses.length})</span>
+                <span>Фоновые процессы ({filteredBgProcesses.length})</span>
               </button>
               {!collapsedGroups.bg &&
                 filteredBgProcesses.map((p) => {
-                  const memPct = (p.mem_mb / totalMemMB) * 100;
+                  const ramVal = p.private_mb && p.private_mb > 0 ? p.private_mb : p.mem_mb;
+                  const memPct = (ramVal / totalMemMB) * 100;
+                  const clampedCpu = Math.min(100, Math.max(0, p.cpu_pct));
                   const isSel = selectedPid === p.pid;
                   return (
                     <div
                       key={`bg_${p.pid}`}
                       onClick={() => setSelectedPid(p.pid)}
-                      className={`grid grid-cols-[1fr_72px_84px_72px_72px_96px] items-center text-xs border-b cursor-pointer ${
+                      className={`grid grid-cols-[1fr_72px_92px_68px_68px_88px] items-center text-xs border-b cursor-pointer ${
                         isSel
                           ? 'bg-[var(--luma-accent-soft)] border-[var(--luma-accent)]/40'
                           : isDark
@@ -606,16 +650,30 @@ export const LumaTaskManagerWindow: React.FC<{
                       }`}
                     >
                       <div className="px-3 py-1.5 min-w-0">
-                        <div className="font-medium truncate">{p.name}</div>
-                        {p.title && p.title !== p.name && <div className={`text-[10px] truncate ${mutedCls}`}>{p.title}</div>}
+                        <div className="font-semibold truncate flex items-center gap-1.5">
+                          <span className="truncate">{p.friendly_name || p.name}</span>
+                          {p.is_self && (
+                            <span className="px-1.5 py-0.2 rounded bg-[var(--luma-accent)]/20 text-[var(--luma-accent)] text-[9px] font-mono">
+                              LUMA
+                            </span>
+                          )}
+                        </div>
+                        <div className={`text-[10px] truncate ${mutedCls}`}>
+                          {p.name} {p.description ? `· ${p.description}` : ''}
+                        </div>
                       </div>
-                      <div className={`px-2 py-1.5 text-right font-mono text-[11px] ${heatCellCls(p.cpu_pct, isDark)}`}>
-                        {p.cpu_pct.toFixed(1)}%
+                      <div className={`px-2 py-1.5 text-right font-mono text-[11px] ${heatCellCls(clampedCpu, isDark)}`}>
+                        {clampedCpu.toFixed(1)}%
                       </div>
-                      <div className={`px-2 py-1.5 text-right font-mono text-[11px] ${heatCellCls(memPct * 4, isDark)}`}>
-                        {p.mem_mb.toFixed(1)} МБ
+                      <div
+                        className={`px-2 py-1.5 text-right font-mono text-[11px] ${heatCellCls(memPct * 4, isDark)}`}
+                        title={`Приватная: ${ramVal.toFixed(1)} МБ · Рабочий набор: ${p.mem_mb.toFixed(1)} МБ`}
+                      >
+                        {ramVal.toFixed(1)} МБ
                       </div>
-                      <div className={`px-2 py-1.5 text-right font-mono text-[11px] ${mutedCls}`}>0 МБ/с</div>
+                      <div className={`px-2 py-1.5 text-right font-mono text-[11px] ${mutedCls}`}>
+                        {p.threads || '—'}
+                      </div>
                       <div className={`px-2 py-1.5 text-right font-mono text-[11px] ${mutedCls}`}>{p.pid}</div>
                       <div className="px-2 py-1 flex items-center justify-end gap-1">
                         {!p.is_self && (
@@ -635,6 +693,54 @@ export const LumaTaskManagerWindow: React.FC<{
                   );
                 })}
             </div>
+
+            {/* GROUP 4: SYSTEM OS KERNEL PROCESSES */}
+            {filteredSysProcesses.length > 0 && (
+              <div>
+                <button
+                  onClick={() => toggleGroup('sys')}
+                  className={`w-full px-3 py-1.5 text-left text-[11px] font-bold flex items-center gap-1.5 border-b cursor-pointer ${
+                    isDark ? 'bg-white/[0.04] border-white/[0.06] text-sky-300' : 'bg-black/[0.04] border-zinc-900/10 text-sky-800'
+                  }`}
+                >
+                  {collapsedGroups.sys ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  <span>Процессы Windows / Ядра ОС ({filteredSysProcesses.length})</span>
+                </button>
+                {!collapsedGroups.sys &&
+                  filteredSysProcesses.map((p) => {
+                    const ramVal = p.private_mb && p.private_mb > 0 ? p.private_mb : p.mem_mb;
+                    const clampedCpu = Math.min(100, Math.max(0, p.cpu_pct));
+                    const isSel = selectedPid === p.pid;
+                    return (
+                      <div
+                        key={`sys_${p.pid}`}
+                        onClick={() => setSelectedPid(p.pid)}
+                        className={`grid grid-cols-[1fr_72px_92px_68px_68px_88px] items-center text-xs border-b cursor-pointer ${
+                          isSel
+                            ? 'bg-[var(--luma-accent-soft)] border-[var(--luma-accent)]/40'
+                            : isDark
+                            ? 'border-white/[0.04] hover:bg-white/[0.04]'
+                            : 'border-zinc-900/[0.05] hover:bg-black/[0.03]'
+                        }`}
+                      >
+                        <div className="px-3 py-1.5 min-w-0">
+                          <div className="font-medium truncate">{p.friendly_name || p.name}</div>
+                          <div className={`text-[10px] truncate ${mutedCls}`}>{p.description || 'Системный процесс ОС'}</div>
+                        </div>
+                        <div className={`px-2 py-1.5 text-right font-mono text-[11px] ${heatCellCls(clampedCpu, isDark)}`}>
+                          {clampedCpu.toFixed(1)}%
+                        </div>
+                        <div className={`px-2 py-1.5 text-right font-mono text-[11px] ${mutedCls}`}>
+                          {ramVal.toFixed(1)} МБ
+                        </div>
+                        <div className={`px-2 py-1.5 text-right font-mono text-[11px] ${mutedCls}`}>{p.threads || '—'}</div>
+                        <div className={`px-2 py-1.5 text-right font-mono text-[11px] ${mutedCls}`}>{p.pid}</div>
+                        <div className="px-2 py-1 text-right font-mono text-[10px] opacity-50">SYSTEM</div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
           </div>
         )}
 

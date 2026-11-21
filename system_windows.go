@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"math"
 	"os"
@@ -65,34 +66,43 @@ type systemPowerStatus struct {
 	BatteryFullLifeTime uint32
 }
 
+type procCPUSample struct {
+	cpuSec float64
+	ts     time.Time
+}
+
 func fileTimeToUint64(ft fileTime) uint64 {
 	return (uint64(ft.HighDateTime) << 32) | uint64(ft.LowDateTime)
 }
 
 type platformProbe struct {
-	mu           sync.RWMutex
-	prevIdle     uint64
-	prevKernel   uint64
-	prevUser     uint64
-	cpuPercent   int
-	cpuModel     string
-	gpuName      string
-	osCaption    string
-	deviceModel  string
-	manufacturer string
-	netDownMbps  float64
-	netUpMbps    float64
-	prevRxBytes  uint64
-	prevTxBytes  uint64
-	prevNetStamp time.Time
-	media         MediaSessionInfo
-	cachedWindows []HostWindowItem
+	mu                sync.RWMutex
+	prevIdle          uint64
+	prevKernel        uint64
+	prevUser          uint64
+	cpuPercent        int
+	cpuModel          string
+	gpuName           string
+	osCaption         string
+	deviceModel       string
+	manufacturer      string
+	netDownMbps       float64
+	netUpMbps         float64
+	prevRxBytes       uint64
+	prevTxBytes       uint64
+	prevNetStamp      time.Time
+	media             MediaSessionInfo
+	cachedWindows     []HostWindowItem
+	prevProcCPU       map[int]procCPUSample
+	cachedBattStatic  BatteryHardwareDetails
+	cachedBattStaticT time.Time
 }
 
 func newPlatformProbe() *platformProbe {
 	p := &platformProbe{
-		cpuModel:     fmt.Sprintf("%s (%d потоков)", runtime.GOARCH, runtime.NumCPU()),
-		gpuName:      "Графический ускоритель Luma HAL",
+		cpuModel:    fmt.Sprintf("%s (%d потоков)", runtime.GOARCH, runtime.NumCPU()),
+		gpuName:     "Графический ускоритель Luma HAL",
+		prevProcCPU: make(map[int]procCPUSample),
 		osCaption:    "Рабочая станция x64",
 		deviceModel:  "PC Workstation x64",
 		manufacturer: "Generic",
@@ -354,12 +364,12 @@ func (p *platformProbe) Collect(loc LocationInfo) HostHardwareSnapshot {
 	// Real Battery via GetSystemPowerStatus
 	var pwr systemPowerStatus
 	procGetSystemPowerStatus.Call(uintptr(unsafe.Pointer(&pwr)))
-	battPresent := pwr.BatteryFlag != 128 && pwr.BatteryFlag != 255
+	battPresent := (pwr.BatteryFlag&128) == 0 && pwr.BatteryFlag != 255
 	battPct := int(pwr.BatteryLifePercent)
 	if battPct > 100 || !battPresent {
 		battPct = 100
 	}
-	battCharging := pwr.ACLineStatus == 1
+	battCharging := battPresent && ((pwr.BatteryFlag&8) != 0 || (pwr.ACLineStatus == 1 && battPct < 100))
 
 	p.mu.RLock()
 	cpuPct := p.cpuPercent
@@ -671,43 +681,160 @@ if ($d.ShowDialog() -eq 'OK') { [Console]::OutputEncoding = [System.Text.Encodin
 }
 
 func (p *platformProbe) TopProcesses(limit int) []ProcessMetric {
-	if limit <= 0 || limit > 80 {
-		limit = 45
+	if limit <= 0 || limit > 120 {
+		limit = 80
 	}
 	selfPID := os.Getpid()
+	numCPU := runtime.NumCPU()
+	if numCPU < 1 {
+		numCPU = 1
+	}
 	script := fmt.Sprintf(`
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Get-Process -ErrorAction SilentlyContinue | Sort-Object @{Expression={$_.MainWindowHandle -ne 0}; Descending=$true}, WorkingSet64 -Descending | Select-Object -First %d | ForEach-Object {
-  $p = ""
-  try { $p = $_.Path } catch {}
-  [PSCustomObject]@{
-    pid = $_.Id
-    name = $_.ProcessName
-    title = [string]$_.MainWindowTitle
-    has_window = ($_.MainWindowHandle -ne 0 -and [string]$_.MainWindowTitle -ne "")
-    status = if ($_.Responding) { "Работает" } else { "Не отвечает" }
-    cpu_pct = [math]::Round(($_.CPU), 1)
-    mem_mb = [math]::Round($_.WorkingSet64 / 1MB, 1)
-    exe_path = [string]$p
+$perfMap = @{}
+try {
+  Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -ErrorAction SilentlyContinue | ForEach-Object {
+    if ($_.IDProcess -gt 0) {
+      $perfMap[[int]$_.IDProcess] = @{
+        cpu = [double]$_.PercentProcessorTime
+        priv = [double]$_.WorkingSetPrivate
+      }
+    }
   }
-} | ConvertTo-Json -Compress
-`, limit)
+} catch {}
+$procs = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Id -gt 0 } | Sort-Object @{Expression={$_.MainWindowHandle -ne 0 -and [string]$_.MainWindowTitle -ne ""}; Descending=$true}, WorkingSet64 -Descending | Select-Object -First %d
+$out = foreach ($pr in $procs) {
+  $path = ""
+  $desc = ""
+  $cpuSec = 0.0
+  $th = 0
+  try { $path = [string]$pr.Path } catch {}
+  try { $desc = [string]$pr.MainModule.FileVersionInfo.FileDescription } catch {}
+  try { $cpuSec = [double]$pr.TotalProcessorTime.TotalSeconds } catch {}
+  try { $th = [int]$pr.Threads.Count } catch {}
+  $perfCpu = -1.0
+  $privMB = [math]::Round($pr.PrivateMemorySize64 / 1MB, 1)
+  if ($perfMap.ContainsKey($pr.Id)) {
+    $perfCpu = [math]::Round($perfMap[$pr.Id].cpu / %d, 1)
+    if ($perfMap[$pr.Id].priv -gt 0) {
+      $privMB = [math]::Round($perfMap[$pr.Id].priv / 1MB, 1)
+    }
+  }
+  [PSCustomObject]@{
+    pid = $pr.Id
+    name = [string]$pr.ProcessName
+    title = [string]$pr.MainWindowTitle
+    description = $desc
+    has_window = ($pr.MainWindowHandle -ne 0 -and [string]$pr.MainWindowTitle -ne "")
+    status = if ($pr.Responding) { "Работает" } else { "Не отвечает" }
+    cpu_pct = $perfCpu
+    cpu_sec = $cpuSec
+    mem_mb = [math]::Round($pr.WorkingSet64 / 1MB, 1)
+    private_mb = $privMB
+    threads = $th
+    exe_path = $path
+  }
+}
+@($out) | ConvertTo-Json -Compress
+`, limit, numCPU)
+
 	out, err := runHiddenPowerShell(script)
 	if err != nil || out == "" {
 		return nil
 	}
-	var list []ProcessMetric
-	if json.Unmarshal([]byte(out), &list) != nil {
-		var single ProcessMetric
+	type rawWinProc struct {
+		PID         int     `json:"pid"`
+		Name        string  `json:"name"`
+		Title       string  `json:"title"`
+		Description string  `json:"description"`
+		HasWindow   bool    `json:"has_window"`
+		Status      string  `json:"status"`
+		CPUPct      float64 `json:"cpu_pct"`
+		CPUSec      float64 `json:"cpu_sec"`
+		MemMB       float64 `json:"mem_mb"`
+		PrivateMB   float64 `json:"private_mb"`
+		Threads     int     `json:"threads"`
+		ExePath     string  `json:"exe_path"`
+	}
+	var rawList []rawWinProc
+	if strings.HasPrefix(out, "[") {
+		_ = json.Unmarshal([]byte(out), &rawList)
+	} else if strings.HasPrefix(out, "{") {
+		var single rawWinProc
 		if json.Unmarshal([]byte(out), &single) == nil && single.PID > 0 {
-			list = append(list, single)
+			rawList = append(rawList, single)
 		}
 	}
-	for i := range list {
-		if list[i].PID == selfPID {
-			list[i].IsSelf = true
-		}
+
+	now := time.Now()
+	p.mu.Lock()
+	if p.prevProcCPU == nil {
+		p.prevProcCPU = make(map[int]procCPUSample)
 	}
+	nextSamples := make(map[int]procCPUSample, len(rawList))
+	list := make([]ProcessMetric, 0, len(rawList))
+	for _, r := range rawList {
+		// Compute true instantaneous CPU% via delta TotalProcessorTime, fallback to Win32_PerfFormattedData
+		cpuPct := r.CPUPct
+		if prev, ok := p.prevProcCPU[r.PID]; ok && r.CPUSec >= prev.cpuSec {
+			dt := now.Sub(prev.ts).Seconds()
+			if dt >= 0.4 {
+				deltaPct := ((r.CPUSec - prev.cpuSec) / (dt * float64(numCPU))) * 100.0
+				if deltaPct >= 0 && deltaPct <= 100 {
+					cpuPct = math.Round(deltaPct*10) / 10
+				}
+			}
+		}
+		if cpuPct < 0 {
+			cpuPct = 0
+		}
+		if cpuPct > 100 {
+			cpuPct = 100
+		}
+		nextSamples[r.PID] = procCPUSample{cpuSec: r.CPUSec, ts: now}
+
+		friendly := friendlyAppName(r.Name, r.Title)
+		cat := "background"
+		lowName := strings.ToLower(r.Name)
+		if r.HasWindow {
+			cat = "app"
+		} else if r.PID <= 100 || lowName == "system" || lowName == "registry" || lowName == "smss" ||
+			lowName == "csrss" || lowName == "wininit" || lowName == "services" || lowName == "lsass" ||
+			lowName == "svchost" || lowName == "dwm" || lowName == "memory compression" || lowName == "fontdrvhost" ||
+			lowName == "wudfhost" || lowName == "audiodg" || lowName == "spoolsv" || lowName == "msmpeng" {
+			cat = "system"
+		}
+		desc := strings.TrimSpace(r.Description)
+		if desc == "" {
+			if r.PID == selfPID {
+				desc = "Ядро и графическая оболочка Luma OS"
+			} else if cat == "system" {
+				desc = "Системная служба Windows"
+			} else if r.HasWindow {
+				desc = "Открытое приложение"
+			} else {
+				desc = "Фоновый процесс"
+			}
+		}
+		list = append(list, ProcessMetric{
+			PID:          r.PID,
+			Name:         r.Name,
+			FriendlyName: friendly,
+			Title:        r.Title,
+			Description:  desc,
+			Category:     cat,
+			HasWindow:    r.HasWindow,
+			Status:       r.Status,
+			CPUPct:       cpuPct,
+			MemMB:        r.MemMB,
+			PrivateMB:    r.PrivateMB,
+			Threads:      r.Threads,
+			ExePath:      r.ExePath,
+			IsSelf:       r.PID == selfPID,
+		})
+	}
+	p.prevProcCPU = nextSamples
+	p.mu.Unlock()
 	return list
 }
 
@@ -740,15 +867,32 @@ Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -
 			}
 		}
 	}
+	noise := map[string]bool{
+		"textinputhost":           true,
+		"shellexperiencehost":     true,
+		"startmenuexperiencehost": true,
+		"searchhost":              true,
+		"searchapp":               true,
+		"lockapp":                 true,
+		"widgetservice":           true,
+		"widgets":                 true,
+		"nvidia share":            true,
+		"nvcontainer":             true,
+		"systemsettingsbroker":    true,
+	}
 	filtered := make([]HostWindowItem, 0, len(list))
 	for _, item := range list {
 		if item.PID == selfPID {
 			continue
 		}
-		lower := strings.ToLower(item.Name)
-		if lower == "textinputhost" || lower == "applicationframehost" && strings.TrimSpace(item.Title) == "" {
+		lower := strings.ToLower(strings.TrimSpace(item.Name))
+		if noise[lower] {
 			continue
 		}
+		if lower == "applicationframehost" && strings.TrimSpace(item.Title) == "" {
+			continue
+		}
+		item.FriendlyName = friendlyAppName(item.Name, item.Title)
 		filtered = append(filtered, item)
 	}
 	p.mu.Lock()
@@ -1044,19 +1188,68 @@ func (p *platformProbe) OpenSystemApplet(applet string) error {
 	}
 }
 
+type powercfgBatteryReport struct {
+	Batteries struct {
+		Battery []struct {
+			Manufacturer       string `xml:"Manufacturer"`
+			Chemistry          string `xml:"Chemistry"`
+			DesignCapacity     int    `xml:"DesignCapacity"`
+			FullChargeCapacity int    `xml:"FullChargeCapacity"`
+			CycleCount         int    `xml:"CycleCount"`
+		} `xml:"Battery"`
+	} `xml:"Batteries"`
+}
+
+func readPowerCfgBatteryXML() (design, full, cycles int, mfg, chem string, ok bool) {
+	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("luma_batt_%d.xml", os.Getpid()))
+	defer os.Remove(tmpFile)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powercfg.exe", "/batteryreport", "/xml", "/output", tmpFile)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	if err := cmd.Run(); err != nil {
+		return 0, 0, 0, "", "", false
+	}
+	raw, err := os.ReadFile(tmpFile)
+	if err != nil || len(raw) == 0 {
+		return 0, 0, 0, "", "", false
+	}
+	var rep powercfgBatteryReport
+	if err := xml.Unmarshal(raw, &rep); err != nil || len(rep.Batteries.Battery) == 0 {
+		return 0, 0, 0, "", "", false
+	}
+	for _, b := range rep.Batteries.Battery {
+		design += b.DesignCapacity
+		full += b.FullChargeCapacity
+		if b.CycleCount > cycles {
+			cycles = b.CycleCount
+		}
+		if mfg == "" && strings.TrimSpace(b.Manufacturer) != "" {
+			mfg = strings.TrimSpace(b.Manufacturer)
+		}
+		if chem == "" && strings.TrimSpace(b.Chemistry) != "" {
+			chem = strings.TrimSpace(b.Chemistry)
+		}
+	}
+	return design, full, cycles, mfg, chem, design > 0 || full > 0 || cycles > 0
+}
+
 func (p *platformProbe) GetBatteryDetails() BatteryHardwareDetails {
 	var ps systemPowerStatus
 	present := false
 	pct := 100
-	charging := true
+	acOnline := true
+	charging := false
 	estMin := 0
 	if r, _, _ := procGetSystemPowerStatus.Call(uintptr(unsafe.Pointer(&ps))); r != 0 {
-		if ps.BatteryFlag != 128 && ps.BatteryFlag != 255 {
+		acOnline = ps.ACLineStatus == 1
+		if (ps.BatteryFlag&128) == 0 && ps.BatteryFlag != 255 {
 			present = true
 			if ps.BatteryLifePercent <= 100 {
 				pct = int(ps.BatteryLifePercent)
 			}
-			charging = ps.ACLineStatus == 1 || (ps.BatteryFlag&8) != 0
+			// Actively charging ONLY if bit 8 (Charging) is set, OR on AC and below 100%
+			charging = (ps.BatteryFlag&8) != 0 || (acOnline && pct < 100)
 			if ps.BatteryLifeTime != 0xFFFFFFFF && ps.BatteryLifeTime > 0 {
 				estMin = int(ps.BatteryLifeTime / 60)
 			}
@@ -1067,79 +1260,199 @@ func (p *platformProbe) GetBatteryDetails() BatteryHardwareDetails {
 		Present:               present,
 		Percent:               pct,
 		Charging:              charging,
+		ACOnline:              acOnline,
 		HealthPercent:         100,
 		DesignCapacityMWh:     0,
 		FullChargeCapacityMWh: 0,
 		CycleCount:            0,
+		CycleSupported:        false,
 		PowerWatts:            0,
 		VoltageMV:             0,
 		EstimatedMinutes:      estMin,
-		StatusText:            "Питание от сети",
+		StatusText:            "Питание от сети (ПК)",
 		Chemistry:             "Li-Ion",
+		DataSource:            "Win32 GetSystemPowerStatus",
 	}
 	if !present {
 		return details
 	}
-	if charging {
+	switch {
+	case charging:
 		details.StatusText = "Заряжается от сети"
-	} else {
+	case acOnline && pct >= 99:
+		details.StatusText = "Заряжено (от сети)"
+	case acOnline:
+		details.StatusText = "Подключено, не заряжается"
+	default:
 		details.StatusText = "Работа от батареи"
 	}
 
+	// Layer 2 & 3: Win32_Battery (works WITHOUT Admin!) + root\WMI (when available)
 	script := `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$res = @{ design = 0; full = 0; cycles = 0; rate = 0; volt = 0; mfg = ""; chem = "Li-Ion" }
+$res = @{ design = 0; full = 0; cycles = 0; rate = 0; volt = 0; mfg = ""; chem = ""; status_code = 0; est_min = 0; pct = -1; wmi_ok = $false }
+try {
+  $wb = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($wb) {
+    if ($wb.EstimatedChargeRemaining -ne $null) { $res.pct = [int]$wb.EstimatedChargeRemaining }
+    if ($wb.BatteryStatus -ne $null) { $res.status_code = [int]$wb.BatteryStatus }
+    if ($wb.DesignCapacity -gt 0) { $res.design = [int]$wb.DesignCapacity }
+    if ($wb.FullChargeCapacity -gt 0) { $res.full = [int]$wb.FullChargeCapacity }
+    if ($wb.DesignVoltage -gt 0) { $res.volt = [int]$wb.DesignVoltage }
+    if ($wb.EstimatedRunTime -gt 0 -and $wb.EstimatedRunTime -lt 70000000) { $res.est_min = [int]$wb.EstimatedRunTime }
+    $chMap = @{ 3='Lead Acid'; 4='NiCd'; 5='NiMH'; 6='Li-Ion'; 7='Zinc-Air'; 8='Li-Poly' }
+    if ($chMap.ContainsKey([int]$wb.Chemistry)) { $res.chem = $chMap[[int]$wb.Chemistry] }
+  }
+} catch {}
 try {
   $st = Get-CimInstance -Namespace root\WMI -ClassName BatteryStaticData -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($st) {
-    $res.design = [int]$st.DesignedCapacity
-    $res.mfg = [string]$st.ManufactureName
+    $res.wmi_ok = $true
+    if ($st.DesignedCapacity -gt 0) { $res.design = [int]$st.DesignedCapacity }
+    if ($st.ManufactureName) { $res.mfg = [string]$st.ManufactureName }
   }
   $fc = Get-CimInstance -Namespace root\WMI -ClassName BatteryFullChargedCapacity -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($fc) { $res.full = [int]$fc.FullChargedCapacity }
+  if ($fc -and $fc.FullChargedCapacity -gt 0) { $res.full = [int]$fc.FullChargedCapacity; $res.wmi_ok = $true }
   $cc = Get-CimInstance -Namespace root\WMI -ClassName BatteryCycleCount -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($cc) { $res.cycles = [int]$cc.CycleCount }
+  if ($cc -and $cc.CycleCount -gt 0) { $res.cycles = [int]$cc.CycleCount; $res.wmi_ok = $true }
   $bs = Get-CimInstance -Namespace root\WMI -ClassName BatteryStatus -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($bs) {
-    $res.volt = [int]$bs.Voltage
-    if ($bs.DischargeRate -gt 0) { $res.rate = [int]$bs.DischargeRate }
-    elseif ($bs.ChargeRate -gt 0) { $res.rate = [int]$bs.ChargeRate }
+    $res.wmi_ok = $true
+    if ($bs.Voltage -gt 0) { $res.volt = [int]$bs.Voltage }
+    if ($bs.DischargeRate -gt 0 -and $bs.DischargeRate -lt 500000) { $res.rate = [int]$bs.DischargeRate }
+    elseif ($bs.ChargeRate -gt 0 -and $bs.ChargeRate -lt 500000) { $res.rate = [int]$bs.ChargeRate }
   }
 } catch {}
 $res | ConvertTo-Json -Compress
 `
 	if out, err := runHiddenPowerShell(script); err == nil && out != "" {
 		var parsed struct {
-			Design int    `json:"design"`
-			Full   int    `json:"full"`
-			Cycles int    `json:"cycles"`
-			Rate   int    `json:"rate"`
-			Volt   int    `json:"volt"`
-			Mfg    string `json:"mfg"`
-			Chem   string `json:"chem"`
+			Design     int    `json:"design"`
+			Full       int    `json:"full"`
+			Cycles     int    `json:"cycles"`
+			Rate       int    `json:"rate"`
+			Volt       int    `json:"volt"`
+			Mfg        string `json:"mfg"`
+			Chem       string `json:"chem"`
+			StatusCode int    `json:"status_code"`
+			EstMin     int    `json:"est_min"`
+			Pct        int    `json:"pct"`
+			WMIOk      bool   `json:"wmi_ok"`
 		}
 		if json.Unmarshal([]byte(out), &parsed) == nil {
-			details.DesignCapacityMWh = parsed.Design
-			details.FullChargeCapacityMWh = parsed.Full
-			details.CycleCount = parsed.Cycles
-			details.VoltageMV = parsed.Volt
+			if parsed.Pct >= 0 && parsed.Pct <= 100 {
+				details.Percent = parsed.Pct
+			}
+			if parsed.Design > 0 {
+				details.DesignCapacityMWh = parsed.Design
+			}
+			if parsed.Full > 0 {
+				details.FullChargeCapacityMWh = parsed.Full
+			}
+			if parsed.Cycles > 0 {
+				details.CycleCount = parsed.Cycles
+				details.CycleSupported = true
+			}
+			if parsed.Volt > 0 {
+				details.VoltageMV = parsed.Volt
+			}
+			if parsed.EstMin > 0 && details.EstimatedMinutes == 0 {
+				details.EstimatedMinutes = parsed.EstMin
+			}
 			if parsed.Rate > 0 {
 				details.PowerWatts = math.Round((float64(parsed.Rate)/1000.0)*10) / 10
-			}
-			if parsed.Design > 0 && parsed.Full > 0 {
-				h := int(math.Round(float64(parsed.Full) * 100.0 / float64(parsed.Design)))
-				if h > 100 {
-					h = 100
-				}
-				if h < 1 {
-					h = 1
-				}
-				details.HealthPercent = h
 			}
 			if parsed.Mfg != "" {
 				details.Manufacturer = parsed.Mfg
 			}
+			if parsed.Chem != "" {
+				details.Chemistry = parsed.Chem
+			}
+			if parsed.WMIOk {
+				details.DataSource = "Windows ACPI WMI"
+			} else if parsed.StatusCode > 0 {
+				details.DataSource = "Win32_Battery CIM"
+			}
+			// Refine status code from Win32_Battery (1=Discharging, 2=AC/Not charging, 3=Fully Charged, 6/7/8/9=Charging)
+			switch parsed.StatusCode {
+			case 1:
+				details.Charging = false
+				details.ACOnline = false
+				details.StatusText = "Работа от батареи"
+			case 3:
+				details.Charging = false
+				details.ACOnline = true
+				details.StatusText = "Заряжено (от сети)"
+			case 6, 7, 8, 9:
+				details.Charging = true
+				details.ACOnline = true
+				details.StatusText = "Заряжается от сети"
+			case 2:
+				details.ACOnline = true
+				if details.Percent >= 99 {
+					details.Charging = false
+					details.StatusText = "Заряжено (от сети)"
+				} else if !details.Charging {
+					details.StatusText = "Подключено, не заряжается"
+				}
+			}
 		}
+	}
+
+	// Layer 4: Cached non-admin powercfg /batteryreport /xml fallback (refreshed at most once every 10 min)
+	// Gives exact DesignCapacity, FullChargeCapacity, and CycleCount on standard non-admin Windows!
+	if details.DesignCapacityMWh == 0 || details.FullChargeCapacityMWh == 0 || !details.CycleSupported {
+		p.mu.RLock()
+		cached := p.cachedBattStatic
+		cachedAge := time.Since(p.cachedBattStaticT)
+		p.mu.RUnlock()
+
+		if cachedAge > 10*time.Minute || p.cachedBattStaticT.IsZero() {
+			if d, f, cyc, mfg, chem, ok := readPowerCfgBatteryXML(); ok {
+				cached = BatteryHardwareDetails{
+					DesignCapacityMWh:     d,
+					FullChargeCapacityMWh: f,
+					CycleCount:            cyc,
+					CycleSupported:        cyc > 0,
+					Manufacturer:          mfg,
+					Chemistry:             chem,
+				}
+			}
+			p.mu.Lock()
+			p.cachedBattStatic = cached
+			p.cachedBattStaticT = time.Now()
+			p.mu.Unlock()
+		}
+
+		if details.DesignCapacityMWh == 0 && cached.DesignCapacityMWh > 0 {
+			details.DesignCapacityMWh = cached.DesignCapacityMWh
+			details.DataSource = "Windows BatteryReport XML"
+		}
+		if details.FullChargeCapacityMWh == 0 && cached.FullChargeCapacityMWh > 0 {
+			details.FullChargeCapacityMWh = cached.FullChargeCapacityMWh
+			details.DataSource = "Windows BatteryReport XML"
+		}
+		if !details.CycleSupported && cached.CycleCount > 0 {
+			details.CycleCount = cached.CycleCount
+			details.CycleSupported = true
+		}
+		if details.Manufacturer == "" && cached.Manufacturer != "" {
+			details.Manufacturer = cached.Manufacturer
+		}
+		if cached.Chemistry != "" && details.Chemistry == "Li-Ion" {
+			details.Chemistry = cached.Chemistry
+		}
+	}
+
+	if details.DesignCapacityMWh > 0 && details.FullChargeCapacityMWh > 0 {
+		h := int(math.Round(float64(details.FullChargeCapacityMWh) * 100.0 / float64(details.DesignCapacityMWh)))
+		if h > 100 {
+			h = 100
+		}
+		if h < 1 {
+			h = 1
+		}
+		details.HealthPercent = h
 	}
 	return details
 }
