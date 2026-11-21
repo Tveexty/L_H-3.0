@@ -312,10 +312,10 @@ export const LumaTaskManagerWindow: React.FC<{
           ))}
         </div>
 
-        {/* Bottom LumaCore 1.1 Badge */}
+        {/* Bottom LumaCore 1.2 Badge */}
         <div className={`hidden sm:block p-2.5 rounded-xl border text-[10px] font-mono space-y-1 ${surfaceCls}`}>
           <div className="flex items-center justify-between">
-            <span className="font-bold text-[var(--luma-accent)]">LumaCore 1.1</span>
+            <span className="font-bold text-[var(--luma-accent)]">LumaCore 1.2</span>
             <span className="text-emerald-500">{kernelConnected ? 'ONLINE' : 'LOCAL'}</span>
           </div>
           <div className={mutedCls}>ЦП {cpuLoad}% · ОЗУ {ramLoad}%</div>
@@ -790,7 +790,7 @@ export const LumaTaskManagerWindow: React.FC<{
                 </div>
                 <div className={`p-3 rounded-xl border ${surfaceCls}`}>
                   <div className={`text-[10px] ${mutedCls}`}>Ядро</div>
-                  <div className="text-base font-bold mt-0.5 text-[var(--luma-accent)]">LumaCore 1.1</div>
+                  <div className="text-base font-bold mt-0.5 text-[var(--luma-accent)]">LumaCore 1.2</div>
                 </div>
               </div>
 

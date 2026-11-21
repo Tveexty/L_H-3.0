@@ -215,6 +215,120 @@
 .luma-shape-leaf {
   border-radius: 30px 8px 30px 8px !important;
 }
+.luma-shape-chamfer {
+  border-radius: 4px !important;
+  clip-path: polygon(14px 0%, calc(100% - 14px) 0%, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0% calc(100% - 14px), 0% 14px);
+}
+
+/* ==================== 1.2.0 (LITHIUM) WALLPAPER TRANSITION ANIMATIONS ==================== */
+@keyframes lumaWpIris {
+  0% {
+    clip-path: circle(0% at 50% 50%);
+    transform: scale(1.08);
+    opacity: 0.7;
+  }
+  100% {
+    clip-path: circle(150% at 50% 50%);
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes lumaWpBloom {
+  0% {
+    opacity: 0;
+    transform: scale(1.13);
+    filter: brightness(1.35) saturate(1.4);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: brightness(1) saturate(1);
+  }
+}
+
+@keyframes lumaWpWipe {
+  0% {
+    clip-path: polygon(0 0, 0 0, -25% 100%, -25% 100%);
+    opacity: 0.85;
+  }
+  100% {
+    clip-path: polygon(0 0, 125% 0, 100% 100%, 0 100%);
+    opacity: 1;
+  }
+}
+
+@keyframes lumaWpMorph {
+  0% {
+    opacity: 0;
+    filter: blur(28px) saturate(1.5);
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px) saturate(1);
+    transform: scale(1);
+  }
+}
+
+.luma-wp-anim-iris {
+  animation: lumaWpIris 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.luma-wp-anim-bloom {
+  animation: lumaWpBloom 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.luma-wp-anim-wipe {
+  animation: lumaWpWipe 0.78s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.luma-wp-anim-morph {
+  animation: lumaWpMorph 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* ==================== LIVE ANIMATED MESH WALLPAPERS ==================== */
+@keyframes lumaMeshDrift {
+  0% {
+    background-position: 0% 50%;
+    filter: hue-rotate(0deg);
+  }
+  50% {
+    background-position: 100% 50%;
+    filter: hue-rotate(14deg);
+  }
+  100% {
+    background-position: 0% 50%;
+    filter: hue-rotate(0deg);
+  }
+}
+
+.luma-live-wp-lithium {
+  background: radial-gradient(circle at 20% 25%, rgba(16, 185, 129, 0.42), transparent 52%),
+    radial-gradient(circle at 80% 72%, rgba(6, 182, 212, 0.38), transparent 55%),
+    radial-gradient(circle at 52% 48%, rgba(15, 118, 110, 0.3), transparent 60%),
+    linear-gradient(125deg, #020b10 0%, #052026 48%, #04131c 100%);
+  background-size: 200% 200%;
+  animation: lumaMeshDrift 16s ease-in-out infinite;
+}
+
+.luma-live-wp-nebula {
+  background: radial-gradient(circle at 22% 30%, rgba(168, 85, 247, 0.42), transparent 52%),
+    radial-gradient(circle at 78% 68%, rgba(236, 72, 153, 0.36), transparent 54%),
+    radial-gradient(circle at 50% 85%, rgba(59, 130, 246, 0.32), transparent 55%),
+    linear-gradient(130deg, #070514 0%, #150b2e 50%, #090616 100%);
+  background-size: 200% 200%;
+  animation: lumaMeshDrift 18s ease-in-out infinite;
+}
+
+.luma-live-wp-solar {
+  background: radial-gradient(circle at 25% 22%, rgba(245, 158, 11, 0.36), transparent 52%),
+    radial-gradient(circle at 76% 74%, rgba(225, 29, 72, 0.34), transparent 54%),
+    radial-gradient(circle at 48% 50%, rgba(180, 83, 9, 0.25), transparent 60%),
+    linear-gradient(135deg, #0c0908 0%, #1f120e 52%, #0c0a0d 100%);
+  background-size: 200% 200%;
+  animation: lumaMeshDrift 20s ease-in-out infinite;
+}
 
 /* ==================== 4 SELECTABLE ANIMATION PRESETS (STANDARD / SPRING / GLIDE / NONE) ==================== */
 @keyframes lumaFadeUp {

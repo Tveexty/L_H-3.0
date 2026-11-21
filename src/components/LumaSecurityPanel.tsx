@@ -128,14 +128,14 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       await fetchStatus();
       const count = d?.threats?.length ?? 0;
       onPushToast(
-        'LumaShield 1.1',
+        'LumaShield 1.2',
         count > 0
           ? `Обнаружено угроз: ${count} (проверено ${d.files_scanned} файлов за ${d.elapsed_ms} мс)`
           : `Угроз не найдено · Проверено ${d.files_scanned} файлов за ${d.elapsed_ms} мс`,
         count > 0 ? 'warning' : 'success'
       );
     } catch {
-      onPushToast('LumaShield 1.1', 'Не удалось выполнить сканирование', 'warning');
+      onPushToast('LumaShield 1.2', 'Не удалось выполнить сканирование', 'warning');
     } finally {
       setScanning(false);
       setScanLabel('');
@@ -292,7 +292,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
               <div className="text-[11px] opacity-85">
                 {status?.defender?.available
                   ? `Windows Defender активен (реальное время: ${status.defender.realtime_enabled ? 'ВКЛ' : 'ВЫКЛ'} · базы ${status.defender.signature_version}). LumaShield работает поверх как лёгкий user-space сканер по запросу.`
-                  : 'LumaShield 1.1 не ставит драйверы ядра и не отключает Windows Defender — оба антивируса работают в полной гармонии.'}
+                  : 'LumaShield 1.2 не ставит драйверы ядра и не отключает Windows Defender — оба антивируса работают в полной гармонии.'}
               </div>
             </div>
           </div>
@@ -501,7 +501,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
           <div className="flex items-center justify-between text-xs">
             <span className="font-bold flex items-center gap-1.5">
               <Activity className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
-              Журнал ядра безопасности LumaShield 1.1
+              Журнал ядра безопасности LumaShield 1.2
             </span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>{audit.length} событий</span>
           </div>

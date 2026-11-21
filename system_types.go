@@ -229,3 +229,41 @@ type HostHardwareSnapshot struct {
 	Location            LocationInfo     `json:"location"`
 	RealTelemetry       bool             `json:"real_telemetry"`
 }
+
+type BatteryHardwareDetails struct {
+	Present               bool    `json:"present"`
+	Percent               int     `json:"percent"`
+	Charging              bool    `json:"charging"`
+	HealthPercent         int     `json:"health_percent"`
+	DesignCapacityMWh     int     `json:"design_capacity_mwh"`
+	FullChargeCapacityMWh int     `json:"full_charge_capacity_mwh"`
+	CycleCount            int     `json:"cycle_count"`
+	PowerWatts            float64 `json:"power_watts"`
+	VoltageMV             int     `json:"voltage_mv"`
+	EstimatedMinutes      int     `json:"estimated_minutes"`
+	StatusText            string  `json:"status_text"`
+	Chemistry             string  `json:"chemistry"`
+	Manufacturer          string  `json:"manufacturer,omitempty"`
+}
+
+type HardwareDeviceInfo struct {
+	Name         string `json:"name"`
+	Class        string `json:"class"`
+	Status       string `json:"status"`
+	Manufacturer string `json:"manufacturer"`
+	InstanceID   string `json:"instance_id,omitempty"`
+}
+
+type NetworkAdapterInfo struct {
+	Name   string `json:"name"`
+	IPv4   string `json:"ipv4"`
+	IPv6   string `json:"ipv6,omitempty"`
+	MAC    string `json:"mac"`
+	Up     bool   `json:"up"`
+	Speed  string `json:"speed,omitempty"`
+}
+
+type FirewallProfileInfo struct {
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+}

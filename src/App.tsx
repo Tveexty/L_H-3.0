@@ -131,20 +131,24 @@ import {
   WindowsNotificationItem,
   WorkspacePreset,
 } from './data/launcherData';
-import { DesignStyle, DexWindow, TaskbarPosition } from './components/DexWindow';
+import { DesignStyle, DexWindow, SnapZone, TaskbarPosition } from './components/DexWindow';
 import {
   AI_PROVIDER_PRESETS,
   DEFAULT_LUMA_AI_CONFIG,
   LumaAIAssistantWindow,
   LumaAIConfig,
 } from './components/LumaAIAssistantWindow';
+import { LumaBatteryPanel } from './components/LumaBatteryPanel';
+import { LumaCalculatorWindow } from './components/LumaCalculatorWindow';
 import { LumaClockRenderer } from './components/LumaClockRenderer';
 import {
   DesktopGridCols,
   DesktopShortcut,
   FolderEntry,
+  LiveWallpaperId,
   LumaDesktopCanvas,
   WallpaperStyle,
+  WallpaperTransitionMode,
 } from './components/LumaDesktopCanvas';
 import { LumaExplorerWindow } from './components/LumaExplorerWindow';
 import { LumaHeliumEasterEggModal } from './components/LumaHeliumEasterEgg';
@@ -192,8 +196,9 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 };
 
 const ICON_NAMES = Object.keys(ICON_MAP);
-const STORAGE_KEY = 'luma_os_1_1_0_helium_state';
+const STORAGE_KEY = 'luma_os_permanent_shell_state_v1';
 const LEGACY_KEYS = [
+  'luma_os_1_1_0_helium_state',
   'luma_os_1_0_4_shell_state',
   'luma_os_1_0_3_shell_state',
   'luma_os_1_0_2b_shell_state',
@@ -208,6 +213,7 @@ type DexWinId =
   | 'terminal'
   | 'ai'
   | 'utilities'
+  | 'calculator'
   | 'tracker'
   | 'kernel'
   | 'settings'
@@ -221,6 +227,7 @@ type SettingsTabId =
   | 'kernel_ui'
   | 'security'
   | 'ai_settings'
+  | 'battery'
   | 'language'
   | 'shell_mode'
   | 'luma'
@@ -242,6 +249,7 @@ interface DexWinState {
   open: boolean;
   minimized: boolean;
   z: number;
+  desktop?: number;
 }
 
 interface ToastMessage {
@@ -334,18 +342,19 @@ function StatusPill({ active }: { active: boolean }) {
 }
 
 const INITIAL_WINDOWS: Record<DexWinId, DexWinState> = {
-  explorer: { open: false, minimized: false, z: 20 },
-  taskmgr: { open: false, minimized: false, z: 20 },
-  apps: { open: false, minimized: false, z: 20 },
-  terminal: { open: false, minimized: false, z: 20 },
-  ai: { open: false, minimized: false, z: 20 },
-  utilities: { open: false, minimized: false, z: 20 },
-  tracker: { open: false, minimized: false, z: 20 },
-  kernel: { open: false, minimized: false, z: 20 },
-  settings: { open: false, minimized: false, z: 20 },
-  plugins: { open: false, minimized: false, z: 20 },
-  island: { open: false, minimized: false, z: 20 },
-  spaces: { open: false, minimized: false, z: 20 },
+  explorer: { open: false, minimized: false, z: 20, desktop: 1 },
+  taskmgr: { open: false, minimized: false, z: 20, desktop: 1 },
+  apps: { open: false, minimized: false, z: 20, desktop: 1 },
+  terminal: { open: false, minimized: false, z: 20, desktop: 1 },
+  ai: { open: false, minimized: false, z: 20, desktop: 1 },
+  utilities: { open: false, minimized: false, z: 20, desktop: 1 },
+  calculator: { open: false, minimized: false, z: 20, desktop: 1 },
+  tracker: { open: false, minimized: false, z: 20, desktop: 1 },
+  kernel: { open: false, minimized: false, z: 20, desktop: 1 },
+  settings: { open: false, minimized: false, z: 20, desktop: 1 },
+  plugins: { open: false, minimized: false, z: 20, desktop: 1 },
+  island: { open: false, minimized: false, z: 20, desktop: 1 },
+  spaces: { open: false, minimized: false, z: 20, desktop: 1 },
 };
 
 export default function App() {
@@ -430,18 +439,30 @@ export default function App() {
   const locale = getLangLocale(lang);
   const t = (key: string, fallback?: string) => tr(lang, key, fallback);
 
-  // --- Extra Wallpaper Engine Customization ---
+  // --- Extra Wallpaper Engine Customization (Transitions + Live Animated Wallpapers) ---
   const [wallpaperImageUrl, setWallpaperImageUrl] = useState<string>(savedState?.wallpaperImageUrl || '');
   const [wallpaperBlur, setWallpaperBlur] = useState<number>(savedState?.wallpaperBlur ?? 0);
   const [wallpaperDim, setWallpaperDim] = useState<number>(savedState?.wallpaperDim ?? 24);
+  const [wallpaperTransition, setWallpaperTransition] = useState<WallpaperTransitionMode>(
+    savedState?.wallpaperTransition || 'iris'
+  );
+  const [liveWallpaper, setLiveWallpaper] = useState<LiveWallpaperId>(savedState?.liveWallpaper || '');
 
-  // --- Luma AI Multi-Provider Config ---
+  // --- Multitasking: Virtual Desktops, Task View Overview & Snap Layouts ---
+  const [multitaskingOpen, setMultitaskingOpen] = useState<boolean>(false);
+  const [activeDesktop, setActiveDesktop] = useState<number>(1);
+  const [virtualDesktops, setVirtualDesktops] = useState<number[]>([1, 2, 3]);
+  const [snapCommands, setSnapCommands] = useState<Partial<Record<DexWinId, { zone: SnapZone; seq: number }>>>({});
+  const snapSeqRef = useRef<number>(0);
+  const shellDiskHydratedRef = useRef<boolean>(false);
+
+  // --- Luma AI Multi-Provider Config (defaults to autonomous offline LumaNano 1.2) ---
   const [aiConfig, setAiConfig] = useState<LumaAIConfig>(() => ({
     ...DEFAULT_LUMA_AI_CONFIG,
     ...(savedState?.aiConfig || {}),
   }));
 
-  // --- Helium 1.1 Easter Egg & Power Confirmation Modal ---
+  // --- Lithium 1.2 Easter Egg & Power Confirmation Modal ---
   const [easterEggOpen, setEasterEggOpen] = useState<boolean>(false);
   const [powerConfirm, setPowerConfirm] = useState<null | {
     action: 'shutdown' | 'restart' | 'sleep' | 'lock' | 'signout' | 'exit_luma';
@@ -600,7 +621,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.1.0 (Helium) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.2.0 (Lithium) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -633,7 +654,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.1.0 (Helium)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.2.0 (Lithium)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -648,8 +669,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 1.1',
-      message: 'Инициализация оболочки Luma OS 1.1.0 (Helium) и шины IPC 127.0.0.1:49215',
+      source: 'LumaCore 1.2',
+      message: 'Инициализация оболочки Luma OS 1.2.0 (Lithium) и шины IPC 127.0.0.1:49215',
       level: 'success',
     },
   ]);
@@ -731,21 +752,143 @@ export default function App() {
     }, 3200);
   };
 
-  // --- DeX Window Controls ---
+  // --- DeX Window Controls & Multitasking Manager ---
   const openWindow = (id: DexWinId, tab?: SettingsTabId) => {
     if (id === 'settings' && tab) setSettingsTab(tab);
     zCounterRef.current += 1;
     const nextZ = zCounterRef.current;
     setWindows((prev) => ({
       ...prev,
-      [id]: { open: true, minimized: false, z: nextZ },
+      [id]: { open: true, minimized: false, z: nextZ, desktop: activeDesktop },
     }));
     setControlCenterOpen(false);
     setStartMenuOpen(false);
     setTaskListOpen(false);
+    setMultitaskingOpen(false);
     setTaskbarAppMenuId(null);
     setTaskbarHostWinPid(null);
     setTaskbarCtxMenu(null);
+  };
+
+  const sendSnapCommand = (id: DexWinId, zone: SnapZone) => {
+    snapSeqRef.current += 1;
+    const seq = snapSeqRef.current;
+    setWindows((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], open: true, minimized: false, desktop: prev[id].desktop ?? activeDesktop },
+    }));
+    setSnapCommands((prev) => ({ ...prev, [id]: { zone, seq } }));
+  };
+
+  const splitTopTwoWindows = () => {
+    const openOnDesk = (Object.keys(windows) as DexWinId[])
+      .filter((id) => windows[id].open && (windows[id].desktop ?? 1) === activeDesktop)
+      .sort((a, b) => windows[b].z - windows[a].z);
+    if (openOnDesk.length === 0) {
+      pushToast('Мультизадачность', 'Откройте минимум 2 окна для разделения 50/50', 'info');
+      return;
+    }
+    if (openOnDesk.length === 1) {
+      sendSnapCommand(openOnDesk[0], 'left');
+      openWindow('calculator');
+      window.setTimeout(() => sendSnapCommand('calculator', 'right'), 40);
+      setMultitaskingOpen(false);
+      return;
+    }
+    sendSnapCommand(openOnDesk[0], 'left');
+    sendSnapCommand(openOnDesk[1], 'right');
+    setMultitaskingOpen(false);
+    pushToast('Разделение экрана', 'Два активных окна закреплены 50/50', 'success');
+  };
+
+  const tileOpenWindows = () => {
+    const openOnDesk = (Object.keys(windows) as DexWinId[])
+      .filter((id) => windows[id].open && (windows[id].desktop ?? 1) === activeDesktop)
+      .sort((a, b) => windows[b].z - windows[a].z)
+      .slice(0, 4);
+    const zones: SnapZone[] =
+      openOnDesk.length === 1
+        ? ['maximize']
+        : openOnDesk.length === 2
+        ? ['left', 'right']
+        : openOnDesk.length === 3
+        ? ['left', 'tr', 'br']
+        : ['tl', 'tr', 'bl', 'br'];
+    openOnDesk.forEach((id, idx) => sendSnapCommand(id, zones[idx]));
+    setMultitaskingOpen(false);
+    if (openOnDesk.length > 0) {
+      pushToast('Сетка окон', `Расположено окон: ${openOnDesk.length}`, 'success');
+    }
+  };
+
+  const moveWindowToDesktop = (id: DexWinId, desk: number) => {
+    setWindows((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], desktop: desk },
+    }));
+    pushToast('Рабочие столы', `Окно перенесено на Стол ${desk}`, 'info');
+  };
+
+  const handleExportBackup = async () => {
+    try {
+      const desktopRaw = localStorage.getItem('luma_desktop_permanent_v1');
+      const shellRaw = localStorage.getItem(STORAGE_KEY);
+      const bundle = {
+        schema: 'luma_os_backup_v1',
+        exported_at: new Date().toISOString(),
+        version: '1.2.0 (Lithium)',
+        desktop_layout: desktopRaw ? JSON.parse(desktopRaw) : null,
+        shell_state: shellRaw ? JSON.parse(shellRaw) : null,
+      };
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `LumaOS_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      pushToast('Резервная копия', 'Все виджеты, папки, ярлыки и настройки сохранены в JSON', 'success');
+    } catch {
+      pushToast('Резервная копия', 'Не удалось экспортировать файл', 'warning');
+    }
+  };
+
+  const handleImportBackup = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const parsed = JSON.parse(String(reader.result || '{}'));
+        const patch: Record<string, unknown> = {};
+        if (parsed.desktop_layout) {
+          localStorage.setItem('luma_desktop_permanent_v1', JSON.stringify(parsed.desktop_layout));
+          window.dispatchEvent(new CustomEvent('luma-restore-desktop-layout', { detail: parsed.desktop_layout }));
+          patch.desktop_layout = parsed.desktop_layout;
+        }
+        if (parsed.shell_state) {
+          const st = parsed.shell_state;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(st));
+          if (st.themeKey) setThemeKey(st.themeKey);
+          if (st.lang) setLang(st.lang);
+          if (typeof st.wallpaperImageUrl === 'string') setWallpaperImageUrl(st.wallpaperImageUrl);
+          if (typeof st.liveWallpaper === 'string') setLiveWallpaper(st.liveWallpaper as LiveWallpaperId);
+          if (st.wallpaperTransition) setWallpaperTransition(st.wallpaperTransition);
+          if (Array.isArray(st.apps)) setApps(st.apps);
+          if (st.aiConfig) setAiConfig({ ...DEFAULT_LUMA_AI_CONFIG, ...st.aiConfig });
+          patch.shell_state = st;
+        }
+        if (Object.keys(patch).length > 0) {
+          await fetch('/api/kernel/state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patch }),
+          }).catch(() => {});
+          pushToast('Восстановление', 'Рабочий стол, виджеты и настройки успешно восстановлены!', 'success');
+        }
+      } catch {
+        pushToast('Восстановление', 'Некорректный JSON-файл резервной копии', 'warning');
+      }
+    };
+    reader.readAsText(file);
   };
 
   const openExplorerAt = (path?: string) => {
@@ -770,9 +913,14 @@ export default function App() {
     setStartMenuOpen(false);
     setTaskbarCtxMenu(null);
     const cur = windows[id];
-    const maxZ = Math.max(...Object.values(windows).map((w) => (w.open && !w.minimized ? w.z : 0)));
+    const maxZ = Math.max(
+      ...Object.values(windows).map((w) => (w.open && !w.minimized && (w.desktop ?? 1) === activeDesktop ? w.z : 0))
+    );
     if (!cur.open) {
       openWindow(id);
+    } else if ((cur.desktop ?? 1) !== activeDesktop) {
+      setActiveDesktop(cur.desktop ?? 1);
+      focusWindow(id);
     } else if (cur.minimized || cur.z < maxZ) {
       openWindow(id);
     } else {
@@ -989,88 +1137,98 @@ export default function App() {
 
   // --- Persist state cleanly ---
   useEffect(() => {
+    const payload = {
+      updated_at: Date.now(),
+      themeKey,
+      customThemes,
+      customAccentOverride,
+      fontPreset,
+      uiScale,
+      glassEnabled,
+      glassIntensity,
+      glassOpacity,
+      smoothAnimations,
+      animationPreset,
+      customDeviceName,
+      powerProfile,
+      screenBrightness,
+      autoSaverThreshold,
+      reduceEffectsOnSaver,
+      notificationsEnabled,
+      toastBannersEnabled,
+      notificationSoundEnabled,
+      uiDensity,
+      cardBorderRadius,
+      cardColumns,
+      showPluginsInGrid,
+      desktopCols,
+      wallpaper,
+      taskbarPosition,
+      taskbarSize,
+      taskbarSizePx,
+      taskbarShowLabels,
+      taskbarShowHostWindows,
+      taskbarShowTelemetry,
+      taskbarCenterIcons,
+      lang,
+      wallpaperImageUrl,
+      wallpaperBlur,
+      wallpaperDim,
+      wallpaperTransition,
+      liveWallpaper,
+      aiConfig,
+      designStyle,
+      clockStyle,
+      timeFormat,
+      showSeconds,
+      showDate,
+      clockGlowEnabled,
+      clockAccentColor,
+      clockGlowIntensity,
+      clockBlinkColon,
+      adaptiveThemeEnabled,
+      dayStartTime,
+      nightStartTime,
+      dayThemeKey,
+      nightThemeKey,
+      rightClickBackEnabled,
+      apps,
+      plugins,
+      volume,
+      isMuted,
+      dynamicIslandEnabled,
+      dndEnabled,
+      islandPosition,
+      islandSize,
+      islandShowEq,
+      islandShowClip,
+      islandShowBattery,
+      islandAutoClipboard,
+      islandGlowEnabled,
+      clipboardHistory: clipboardHistory.slice(0, 30),
+      islandScratchpad,
+      windowsNotifications: notifications,
+      islandPlayers,
+      activePlayerIndex,
+      mediaPlaying,
+      githubAutoUpdate,
+      githubRepoUrl,
+      groupedViewStyle,
+    };
     try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          themeKey,
-          customThemes,
-          customAccentOverride,
-          fontPreset,
-          uiScale,
-          glassEnabled,
-          glassIntensity,
-          glassOpacity,
-          smoothAnimations,
-          animationPreset,
-          customDeviceName,
-          powerProfile,
-          screenBrightness,
-          autoSaverThreshold,
-          reduceEffectsOnSaver,
-          notificationsEnabled,
-          toastBannersEnabled,
-          notificationSoundEnabled,
-          uiDensity,
-          cardBorderRadius,
-          cardColumns,
-          showPluginsInGrid,
-          desktopCols,
-          wallpaper,
-          taskbarPosition,
-          taskbarSize,
-          taskbarSizePx,
-          taskbarShowLabels,
-          taskbarShowHostWindows,
-          taskbarShowTelemetry,
-          taskbarCenterIcons,
-          lang,
-          wallpaperImageUrl,
-          wallpaperBlur,
-          wallpaperDim,
-          aiConfig,
-          designStyle,
-          clockStyle,
-          timeFormat,
-          showSeconds,
-          showDate,
-          clockGlowEnabled,
-          clockAccentColor,
-          clockGlowIntensity,
-          clockBlinkColon,
-          adaptiveThemeEnabled,
-          dayStartTime,
-          nightStartTime,
-          dayThemeKey,
-          nightThemeKey,
-          rightClickBackEnabled,
-          apps,
-          plugins,
-          volume,
-          isMuted,
-          dynamicIslandEnabled,
-          dndEnabled,
-          islandPosition,
-          islandSize,
-          islandShowEq,
-          islandShowClip,
-          islandShowBattery,
-          islandAutoClipboard,
-          islandGlowEnabled,
-          clipboardHistory: clipboardHistory.slice(0, 30),
-          islandScratchpad,
-          windowsNotifications: notifications,
-          islandPlayers,
-          activePlayerIndex,
-          mediaPlaying,
-          githubAutoUpdate,
-          githubRepoUrl,
-          groupedViewStyle,
-        })
-      );
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
       // ignore quota errors
     }
+    if (!shellDiskHydratedRef.current) return;
+    const syncTimer = window.setTimeout(() => {
+      fetch('/api/kernel/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patch: { shell_state: payload } }),
+      }).catch(() => {});
+    }, 650);
+    return () => window.clearTimeout(syncTimer);
   }, [
     themeKey,
     customThemes,
@@ -1094,6 +1252,8 @@ export default function App() {
     wallpaperImageUrl,
     wallpaperBlur,
     wallpaperDim,
+    wallpaperTransition,
+    liveWallpaper,
     aiConfig,
     notificationSoundEnabled,
     uiDensity,
@@ -1147,6 +1307,31 @@ export default function App() {
     groupedViewStyle,
   ]);
 
+  // --- Eternal Disk State Hydration on boot (protects apps, themes, wallpapers & language across upgrades) ---
+  useEffect(() => {
+    fetch('/api/kernel/state')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const st = d?.state?.shell_state;
+        const hasLocal = Boolean(localStorage.getItem(STORAGE_KEY));
+        if (st && !hasLocal) {
+          if (st.themeKey) setThemeKey(st.themeKey);
+          if (st.lang) setLang(st.lang);
+          if (typeof st.wallpaperImageUrl === 'string') setWallpaperImageUrl(st.wallpaperImageUrl);
+          if (typeof st.liveWallpaper === 'string') setLiveWallpaper(st.liveWallpaper as LiveWallpaperId);
+          if (st.wallpaperTransition) setWallpaperTransition(st.wallpaperTransition);
+          if (Array.isArray(st.apps) && st.apps.length > 0) setApps(st.apps);
+          if (st.aiConfig) setAiConfig({ ...DEFAULT_LUMA_AI_CONFIG, ...st.aiConfig });
+          if (typeof st.customDeviceName === 'string') setCustomDeviceName(st.customDeviceName);
+          if (st.clockStyle) setClockStyle(st.clockStyle);
+        }
+        shellDiskHydratedRef.current = true;
+      })
+      .catch(() => {
+        shellDiskHydratedRef.current = true;
+      });
+  }, []);
+
   // --- Single Persistent BroadcastChannel ---
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
@@ -1166,7 +1351,7 @@ export default function App() {
     };
   }, []);
 
-  // --- Global Keyboard Shortcuts (F11 Fullscreen, Alt+R Run/Spotlight [EN+RU], Alt+D Show Desktop, Escape) ---
+  // --- Global Keyboard Shortcuts (F11 Fullscreen, Alt+R Spotlight, Alt+W Multitasking, Alt+D Desktop, Escape) ---
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F11') {
@@ -1174,10 +1359,19 @@ export default function App() {
         handleToggleFullscreen();
         return;
       }
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyW' || e.key.toLowerCase() === 'w' || e.key.toLowerCase() === 'ц')) {
+        e.preventDefault();
+        setMultitaskingOpen((v) => !v);
+        setStartMenuOpen(false);
+        setSpotlightOpen(false);
+        setControlCenterOpen(false);
+        return;
+      }
       if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyR' || e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 'к')) {
         e.preventDefault();
         setSpotlightOpen((v) => !v);
         setStartMenuOpen(false);
+        setMultitaskingOpen(false);
         setTaskbarCtxMenu(null);
         return;
       }
@@ -1187,7 +1381,8 @@ export default function App() {
         return;
       }
       if (e.key === 'Escape') {
-        if (taskbarCtxMenu) setTaskbarCtxMenu(null);
+        if (multitaskingOpen) setMultitaskingOpen(false);
+        else if (taskbarCtxMenu) setTaskbarCtxMenu(null);
         else if (editingApp) setEditingApp(null);
         else if (propertiesTarget) setPropertiesTarget(null);
         else if (spotlightOpen) setSpotlightOpen(false);
@@ -1209,6 +1404,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    multitaskingOpen,
     taskbarCtxMenu,
     editingApp,
     propertiesTarget,
@@ -1326,7 +1522,7 @@ export default function App() {
         pushToast('Окно ОС', d?.detail || `Переключено на ${win?.title || win?.name || `PID ${pid}`}`, 'info');
       }
     } catch {
-      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.1.0.exe', 'info');
+      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.2.0.exe', 'info');
     }
   };
 
@@ -1486,7 +1682,7 @@ export default function App() {
         pushToast('Питание', d?.detail || `Выполнено: ${action}`, 'info');
       }
     } catch {
-      pushToast('Питание', 'Доступно при запуске LumaOS_1.1.0.exe', 'info');
+      pushToast('Питание', 'Доступно при запуске LumaOS_1.2.0.exe', 'info');
     }
   };
 
@@ -1519,7 +1715,7 @@ export default function App() {
         pushToast('Режим оболочки Windows', 'Параметры применены к системе', 'success');
       }
     } catch {
-      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.1.0.exe)', 'info');
+      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.2.0.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -1594,7 +1790,7 @@ export default function App() {
         pushToast('Обновления GitHub', d?.error || 'Ошибка связи с GitHub', 'warning');
       }
     } catch {
-      setGithubUpdateStatus('Нет ответа от службы обновлений LumaCore 1.1');
+      setGithubUpdateStatus('Нет ответа от службы обновлений LumaCore 1.2');
       pushToast('Обновления GitHub', 'Нет ответа от службы обновлений', 'warning');
     } finally {
       setCheckingGithub(false);
@@ -1798,7 +1994,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.1.0.exe', 'info');
+      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.2.0.exe', 'info');
     }
   };
 
@@ -2067,11 +2263,12 @@ export default function App() {
     return <Comp className={className} />;
   };
 
-  // Taskbar pinned + dynamic open windows (localized, includes Luma AI & System Utilities!)
+  // Taskbar pinned + dynamic open windows (localized, includes Luma AI, Calculator & System Utilities!)
   const taskbarApps: { id: DexWinId; label: string; icon: React.ReactNode; pinned: boolean }[] = [
     { id: 'explorer', label: t('explorer', 'Проводник'), icon: <FolderOpen className="w-4 h-4" />, pinned: true },
     { id: 'apps', label: t('apps', 'Приложения'), icon: <AppWindow className="w-4 h-4" />, pinned: true },
     { id: 'ai', label: t('ai', 'Luma AI'), icon: <Sparkles className="w-4 h-4" />, pinned: true },
+    { id: 'calculator', label: t('calculator', 'Калькулятор'), icon: <Calculator className="w-4 h-4" />, pinned: true },
     { id: 'terminal', label: t('terminal', 'Терминал'), icon: <Terminal className="w-4 h-4" />, pinned: true },
     { id: 'utilities', label: t('utilities', 'Службы'), icon: <Wrench className="w-4 h-4" />, pinned: true },
     { id: 'tracker', label: t('tracker', 'Трекер'), icon: <BarChart3 className="w-4 h-4" />, pinned: false },
@@ -2092,7 +2289,10 @@ export default function App() {
   // Automatic smart tab compression so 100+ open apps NEVER clip awkwardly!
   const barCompression: 'normal' | 'compact' | 'icons' =
     totalBarTabsCount > 14 ? 'icons' : totalBarTabsCount > 8 ? 'compact' : 'normal';
-  const topVisibleZ = Math.max(0, ...Object.values(windows).map((w) => (w.open && !w.minimized ? w.z : 0)));
+  const topVisibleZ = Math.max(
+    0,
+    ...Object.values(windows).map((w) => (w.open && !w.minimized && (w.desktop ?? 1) === activeDesktop ? w.z : 0))
+  );
 
   const handleTaskbarContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -2120,6 +2320,9 @@ export default function App() {
       : 'top-2.5';
 
   const islandHeightCls = islandSize === 'compact' ? 'h-7' : islandSize === 'expanded' ? 'h-10' : 'h-8';
+
+  const isWinVisible = (id: DexWinId) =>
+    windows[id].open && !windows[id].minimized && (windows[id].desktop ?? 1) === activeDesktop;
 
   return (
     <div
@@ -2170,7 +2373,10 @@ export default function App() {
         onSetGridCols={setDesktopCols}
         wallpaper={wallpaper}
         onSetWallpaper={setWallpaper}
-        onOpenSystemWindow={(w) => openWindow(w)}
+        onOpenSystemWindow={(w) => {
+          if (w === 'security') openWindow('settings', 'security');
+          else openWindow(w as DexWinId);
+        }}
         onRunTerminalCommand={handleRunTerminalCommand}
         onLaunchApp={handleLaunchApp}
         onToggleMediaPlay={handleToggleMediaPlay}
@@ -2202,6 +2408,8 @@ export default function App() {
         wallpaperImageUrl={wallpaperImageUrl}
         wallpaperBlur={wallpaperBlur}
         wallpaperDim={wallpaperDim}
+        wallpaperTransition={wallpaperTransition}
+        liveWallpaper={liveWallpaper}
       />
 
       {/* ==================== LAYER 2: SUPERCHARGED FLOATING LUMA ISLAND PILL (MEDIA + CLIPBOARD + TIMER) ==================== */}
@@ -2298,10 +2506,10 @@ export default function App() {
       {/* ==================== LAYER 3: REAL DRAGGABLE & RESIZABLE DEX WINDOWS ==================== */}
 
       {/* WINDOW 1: APPS & GROUPED LIBRARY (WITH MULTI-SELECT & PROPERTIES) */}
-      {windows.apps.open && !windows.apps.minimized && (
+      {isWinVisible('apps') && (
         <DexWindow
           id="apps"
-          title="Приложения"
+          title={t('apps', 'Приложения')}
           subtitle={
             selectedAppIds.length > 0
               ? `Выбрано: ${selectedAppIds.length} из ${filteredApps.length}`
@@ -2311,6 +2519,8 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
+          taskbarSizePx={taskbarSizePx}
+          snapCommand={snapCommands.apps || null}
           zIndex={windows.apps.z}
           initialWidth={1060}
           initialHeight={660}
@@ -2716,15 +2926,17 @@ export default function App() {
       )}
 
       {/* WINDOW 1B: FULL SYSTEM FILE EXPLORER («ПРОВОДНИК LUMA») */}
-      {windows.explorer.open && !windows.explorer.minimized && (
+      {isWinVisible('explorer') && (
         <DexWindow
           id="explorer"
-          title="Проводник Luma"
+          title={t('explorer', 'Проводник Luma')}
           subtitle="Системные файлы · Скрытые файлы · Вкладки"
           icon={<FolderOpen className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
+          taskbarSizePx={taskbarSizePx}
+          snapCommand={snapCommands.explorer || null}
           zIndex={windows.explorer.z}
           initialWidth={1080}
           initialHeight={660}
@@ -2763,15 +2975,17 @@ export default function App() {
       )}
 
       {/* WINDOW 1C: WINDOWS-STYLE TASK MANAGER («ДИСПЕТЧЕР ЗАДАЧ») */}
-      {windows.taskmgr.open && !windows.taskmgr.minimized && (
+      {isWinVisible('taskmgr') && (
         <DexWindow
           id="taskmgr"
-          title="Диспетчер задач"
+          title={t('taskmgrFull', 'Диспетчер задач')}
           subtitle="Процессы Luma OS · Окна ОС · Производительность"
           icon={<Cpu className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
+          taskbarSizePx={taskbarSizePx}
+          snapCommand={snapCommands.taskmgr || null}
           zIndex={windows.taskmgr.z}
           initialWidth={980}
           initialHeight={640}
@@ -2814,15 +3028,17 @@ export default function App() {
       )}
 
       {/* WINDOW 2: LUMA TERMINAL PRO */}
-      {windows.terminal.open && !windows.terminal.minimized && (
+      {isWinVisible('terminal') && (
         <DexWindow
           id="terminal"
-          title="Терминал Luma Pro"
+          title={t('terminal', 'Терминал Luma Pro')}
           subtitle="Multi-Tab · Host Exec · IPC 49215"
           icon={<Terminal className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
+          taskbarSizePx={taskbarSizePx}
+          snapCommand={snapCommands.terminal || null}
           zIndex={windows.terminal.z}
           initialWidth={840}
           initialHeight={520}
@@ -2866,15 +3082,17 @@ export default function App() {
       )}
 
       {/* WINDOW 3: SESSION TRACKER */}
-      {windows.tracker.open && !windows.tracker.minimized && (
+      {isWinVisible('tracker') && (
         <DexWindow
           id="tracker"
-          title="Трекер времени"
+          title={t('tracker', 'Трекер времени')}
           subtitle="Сессии и лимиты"
           icon={<BarChart3 className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
+          taskbarSizePx={taskbarSizePx}
+          snapCommand={snapCommands.tracker || null}
           zIndex={windows.tracker.z}
           initialWidth={860}
           initialHeight={580}
@@ -2962,15 +3180,17 @@ export default function App() {
       )}
 
       {/* WINDOW 4: SUPERCHARGED LUMA KERNEL, MONITOR, JSON-RPC, LIVE EVENT LOG & SEARCHABLE CODE */}
-      {windows.kernel.open && !windows.kernel.minimized && (
+      {isWinVisible('kernel') && (
         <DexWindow
           id="kernel"
-          title="Ядро LumaCore 1.1 (ПО 1.1.0 Helium)"
+          title="Ядро LumaCore 1.2 (ПО 1.2.0 Lithium)"
           subtitle={kernelConnected ? 'CONNECTED · 127.0.0.1:49215' : 'STANDALONE'}
           icon={<Code2 className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
+          taskbarSizePx={taskbarSizePx}
+          snapCommand={snapCommands.kernel || null}
           zIndex={windows.kernel.z}
           initialWidth={1040}
           initialHeight={660}
@@ -3010,12 +3230,12 @@ export default function App() {
                   Диспетчер задач
                 </button>
                 <a
-                  href="/LumaOS_1.1.0.exe"
-                  download="LumaOS_1.1.0.exe"
+                  href="/LumaOS_1.2.0.exe"
+                  download="LumaOS_1.2.0.exe"
                   className="px-3.5 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  LumaOS_1.1.0.exe
+                  LumaOS_1.2.0.exe
                 </a>
               </div>
             </div>
@@ -3029,7 +3249,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 1.1`,
+                        sub: `${ramLoad}% занято · LumaCore 1.2`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -3055,7 +3275,7 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.1.0 (Helium)'],
+                      ['Версия ПО', '1.2.0 (Lithium)'],
                       ['Версия Ядра', '1.0 (LumaCore)'],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
                       ['LumaGuard', `AES-256 #${cryptoKeyVersion}`],
@@ -3116,7 +3336,7 @@ export default function App() {
                         lumaRpcLiveData || {
                           kernel: 'LumaCore',
                           kernel_engine_version: '1.0',
-                          software_version: '1.1.0 (Helium)',
+                          software_version: '1.2.0 (Lithium)',
                           ipc: 'tcp://127.0.0.1:49215',
                           real_telemetry: Boolean(liveSystem?.real_telemetry),
                         },
@@ -3246,15 +3466,17 @@ export default function App() {
       )}
 
       {/* WINDOW 5: SYSTEM SETTINGS (1.0.4: SEARCH + KERNEL UI + TASKBAR + BLUETOOTH + POWER + STORAGE/HIDDEN FILES + APPS + NOTIFICATIONS + 8 THEMES + PERSONALIZATION) */}
-      {windows.settings.open && !windows.settings.minimized && (
+      {isWinVisible('settings') && (
         <DexWindow
           id="settings"
-          title="Настройки системы"
-          subtitle="Luma OS 1.1.0 (Helium)"
+          title={t('settings', 'Настройки системы')}
+          subtitle="Luma OS 1.2.0 (Lithium)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
+          taskbarSizePx={taskbarSizePx}
+          snapCommand={snapCommands.settings || null}
           zIndex={windows.settings.z}
           initialWidth={1060}
           initialHeight={680}
@@ -3290,25 +3512,26 @@ export default function App() {
               <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-0.5">
                 {(
                   [
-                    ['kernel_ui', t('tabKernelUI', 'Ядро UI'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.1.0 helium ядра 1.1 пасхалка kernel'],
+                    ['kernel_ui', t('tabKernelUI', 'Ядро UI'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.2.0 lithium ядра 1.2 пасхалка kernel'],
                     ['security', t('tabSecurity', 'Безопасность и AV'), <ShieldCheck className="w-4 h-4 shrink-0" />, 'безопасность антивирус lumashield defender карантин eicar вирусы проверка security'],
-                    ['ai_settings', t('tabAI', 'ИИ и Нейросети'), <Sparkles className="w-4 h-4 shrink-0" />, 'ии нейросети gemini openai chatgpt claude deepseek ollama ai api'],
+                    ['ai_settings', t('tabAI', 'ИИ и Нейросети'), <Sparkles className="w-4 h-4 shrink-0" />, 'ии нейросети luma_local автономный голос gemini openai chatgpt claude deepseek ollama ai api'],
+                    ['battery', t('tabBattery', 'Батарея и экран'), <BatteryCharging className="w-4 h-4 shrink-0" />, 'батарея акб циклы зарядки график разряда здоровье экранное время ноутбук battery screen time'],
                     ['language', t('tabLanguage', 'Язык и регион'), <Languages className="w-4 h-4 shrink-0" />, 'язык language english romanian deutsch chinese french spanish ukrainian japanese регион'],
                     ['shell_mode', t('tabShellMode', 'Оболочка Windows'), <Monitor className="w-4 h-4 shrink-0" />, 'оболочка windows полный экран fullscreen автозапуск autostart поверх виндовс скрыть панель задач chrome'],
-                    ['appearance', t('tabThemes', 'Темы и обои'), <Sliders className="w-4 h-4 shrink-0" />, 'темы 8 тем акцент шрифт масштаб прозрачность blur размытие скругление анимации стиль nothing pixelbook сетка обои wallpaper'],
+                    ['appearance', t('tabThemes', 'Темы и обои'), <Sliders className="w-4 h-4 shrink-0" />, 'темы 8 тем акцент шрифт масштаб прозрачность blur размытие скругление анимации стиль nothing pixelbook сетка обои wallpaper бэкап backup'],
                     ['taskbar', t('tabTaskbar', 'Панель задач'), <LayoutPanelLeft className="w-4 h-4 shrink-0" />, 'панель задач док снизу слева сверху размер высота сжатие вкладок окна ос диспетчер задач taskbar'],
                     ['storage', t('tabStorage', 'Память и Файлы'), <HardDrive className="w-4 h-4 shrink-0" />, 'память озу ram диски накопители проводник скрытые файлы storage disk files'],
                     ['bluetooth', t('tabBluetooth', 'Bluetooth'), <Bluetooth className="w-4 h-4 shrink-0" />, 'bluetooth блютуз беспроводные наушники адаптер устройства'],
                     ['power', t('tabPower', 'Питание'), <Leaf className="w-4 h-4 shrink-0" />, 'энергосбережение питание батарея яркость производительность сбалансированный сон power battery'],
                     ['apps_list', t('apps', 'Приложения'), <AppWindow className="w-4 h-4 shrink-0" />, 'приложения программы список удалить свойства вес размер дата скачивания apps'],
-                    ['notifications', 'Уведомления', <Bell className="w-4 h-4 shrink-0" />, 'уведомления оповещения звук баннеры dnd не беспокоить журнал notifications'],
+                    ['notifications', t('notifications', 'Уведомления'), <Bell className="w-4 h-4 shrink-0" />, 'уведомления оповещения звук баннеры dnd не беспокоить журнал notifications'],
                     ['island', t('tabIsland', 'Luma Island'), <Disc3 className="w-4 h-4 shrink-0" />, 'luma island динамический остров буфер обмена заметка эквалайзер таймер'],
                     ['clock', t('tabClock', 'Часы'), <Clock className="w-4 h-4 shrink-0" />, 'часы циферблат время секунды дата свечение формат clock'],
                     ['luma', 'Система и Железо', <Activity className="w-4 h-4 shrink-0" />, 'система железо процессор видеокарта cpu gpu регион погода музыка'],
-                    ['navigation', 'Навигация', <MousePointerClick className="w-4 h-4 shrink-0" />, 'навигация пкм назад горячие клавиши alt+r spotlight выполнить'],
+                    ['navigation', 'Навигация', <MousePointerClick className="w-4 h-4 shrink-0" />, 'навигация пкм назад горячие клавиши alt+r alt+w spotlight мультизадачность'],
                     ['plugins', 'Окна и Плагины', <LayoutGrid className="w-4 h-4 shrink-0" />, 'окна плагины колонки сетка расширения'],
                     ['updater', t('tabUpdater', 'Обновления GitHub'), <Stethoscope className="w-4 h-4 shrink-0" />, 'обновления github ota прогресс бар новая версия диагностика тест ядро'],
-                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.1.0 helium история изменений changelog exe скачать'],
+                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.2.0 lithium история изменений changelog exe скачать'],
                   ] as [SettingsTabId, string, React.ReactNode, string][]
                 )
                   .filter(([, label, , keywords]) => {
@@ -3360,6 +3583,16 @@ export default function App() {
                   mutedCls={mutedCls}
                   onPushToast={pushToast}
                   onOpenWindowsDefender={() => void handleOpenWindowsApplet('defender', 'Windows Defender')}
+                />
+              )}
+
+              {/* LAPTOP BATTERY ANALYTICS, CYCLES, HEALTH & 7-DAY SCREEN-ON TIME */}
+              {settingsTab === 'battery' && (
+                <LumaBatteryPanel
+                  isDark={isDark}
+                  lang={lang}
+                  activePowerPlan={powerProfile}
+                  onSelectPowerPlan={handleChangePowerProfile}
                 />
               )}
 
@@ -3576,7 +3809,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.1.0.exe).
+                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.2.0.exe).
                   </div>
                 </div>
               )}
@@ -3806,14 +4039,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.1.0 (Helium)',
-                        message: 'Система оповещений Luma OS 1.1.0 (Helium) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.2.0 (Lithium)',
+                        message: 'Система оповещений Luma OS 1.2.0 (Lithium) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.1.0 (Helium)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.2.0 (Lithium)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -3825,7 +4058,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.1.0 (Helium) · LumaCore 1.1</div>
+                      <div className="text-sm font-bold">Luma OS 1.2.0 (Lithium) · LumaCore 1.2</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -4119,59 +4352,152 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Wallpaper Image Engine (Built-in Helium 3D Orb, Custom URL, Local Upload, Blur & Dim) */}
-                  <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
+                  {/* Wallpaper Image Engine 1.2.0 (Bespoke Lithium/Obsidian/Helium Art, Live Mesh, 4 Transitions, Custom Upload) */}
+                  <div className={`p-4 rounded-xl border space-y-3.5 ${surfaceCls}`}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <div className="text-sm font-bold flex items-center gap-2">
                           <Image className="w-4 h-4 text-[var(--luma-accent)]" />
-                          Обои рабочего стола (Wallpaper Engine)
+                          {t('wallpaperLabel', 'Галерея обоев и анимации смены')}
                         </div>
                         <div className={`text-xs ${mutedCls}`}>
-                          Фирменные 3D-обои Helium, любая ссылка или загрузка фото с ПК + размытие и затемнение
+                          Фирменные 3D-обои Lithium & Obsidian, живые градиенты, загрузка фото и плавная анимация смены
                         </div>
                       </div>
-                      {wallpaperImageUrl && (
+                      {(wallpaperImageUrl || liveWallpaper) && (
                         <button
-                          onClick={() => setWallpaperImageUrl('')}
+                          onClick={() => {
+                            setWallpaperImageUrl('');
+                            setLiveWallpaper('');
+                          }}
                           className={`px-2.5 py-1 rounded-lg border text-xs font-mono cursor-pointer ${btnCls}`}
                         >
-                          Сбросить обои
+                          {t('reset', 'Сбросить')}
                         </button>
                       )}
                     </div>
 
+                    {/* 4 Wallpaper Transition Animations */}
+                    <div className="space-y-1.5">
+                      <div className={`text-[11px] font-mono uppercase tracking-wider ${mutedCls}`}>
+                        {t('wallpaperAnimTitle', 'Анимация смены обоев')}
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs">
+                        {(
+                          [
+                            ['iris', t('animIris', 'Сфера (Iris)')],
+                            ['bloom', t('animBloom', 'Сияние (Bloom)')],
+                            ['wipe', t('animWipe', 'Луч (Wipe)')],
+                            ['morph', t('animMorph', 'Фокус (Morph)')],
+                          ] as [WallpaperTransitionMode, string][]
+                        ).map(([mId, mLabel]) => (
+                          <button
+                            key={mId}
+                            onClick={() => setWallpaperTransition(mId)}
+                            className={`py-1.5 px-2.5 rounded-xl border font-semibold cursor-pointer transition ${
+                              wallpaperTransition === mId
+                                ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white shadow'
+                                : btnCls
+                            }`}
+                          >
+                            {mLabel}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Bespoke & Curated Static Wallpapers */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                       {[
-                        { label: 'Без картинки (Тема)', url: '' },
-                        { label: 'Helium 1.1 Orb', url: '/luma-helium-hero.jpg' },
+                        { label: 'Без картинки (Тема)', url: '', preview: '' },
+                        { label: 'Lithium 1.2 Crystal', url: '/luma-lithium-hero.jpg', preview: '/luma-lithium-hero.jpg' },
+                        { label: 'Obsidian Silk', url: '/luma-obsidian-silk.jpg', preview: '/luma-obsidian-silk.jpg' },
+                        { label: 'Helium 1.1 Orb', url: '/luma-helium-hero.jpg', preview: '/luma-helium-hero.jpg' },
                         {
                           label: 'Cosmic Aurora',
                           url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1920&q=80',
+                          preview: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=320&q=60',
                         },
                         {
                           label: 'Dark Glass Waves',
                           url: 'https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?auto=format&fit=crop&w=1920&q=80',
+                          preview: 'https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?auto=format&fit=crop&w=320&q=60',
+                        },
+                        {
+                          label: 'Midnight Peaks',
+                          url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1920&q=80',
+                          preview: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=320&q=60',
+                        },
+                        {
+                          label: 'Emerald Forest',
+                          url: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=1920&q=80',
+                          preview: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=320&q=60',
                         },
                       ].map((wp) => (
                         <button
                           key={wp.label}
-                          onClick={() => setWallpaperImageUrl(wp.url)}
-                          className={`p-2 rounded-xl border text-left transition cursor-pointer ${
-                            wallpaperImageUrl === wp.url
-                              ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] font-bold'
+                          onClick={() => {
+                            setLiveWallpaper('');
+                            setWallpaperImageUrl(wp.url);
+                          }}
+                          className={`group relative overflow-hidden rounded-xl border text-left transition cursor-pointer ${
+                            !liveWallpaper && wallpaperImageUrl === wp.url
+                              ? 'border-[var(--luma-accent)] ring-1 ring-[var(--luma-accent)] font-bold'
                               : btnCls
                           }`}
                         >
-                          <div className="truncate">{wp.label}</div>
+                          <div
+                            className="h-14 w-full bg-cover bg-center"
+                            style={
+                              wp.preview
+                                ? { backgroundImage: `url("${wp.preview}")` }
+                                : { background: currentTheme.bgGradient }
+                            }
+                          />
+                          <div className="px-2 py-1.5 text-[11px] truncate">{wp.label}</div>
                         </button>
                       ))}
+                    </div>
+
+                    {/* 3 Live Animated Mesh Wallpapers */}
+                    <div className="space-y-1.5">
+                      <div className={`text-[11px] font-mono uppercase tracking-wider ${mutedCls}`}>
+                        {t('liveWallpaperLabel', 'Живые анимированные обои')}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        {(
+                          [
+                            ['lithium', 'Lithium Aurora (Live)', 'luma-live-wp-lithium'],
+                            ['nebula', 'Cosmic Nebula (Live)', 'luma-live-wp-nebula'],
+                            ['solar', 'Solar Kinetic (Live)', 'luma-live-wp-solar'],
+                          ] as [LiveWallpaperId, string, string][]
+                        ).map(([lwId, lwLabel, cls]) => (
+                          <button
+                            key={lwId}
+                            onClick={() => {
+                              setWallpaperImageUrl('');
+                              setLiveWallpaper(lwId);
+                            }}
+                            className={`overflow-hidden rounded-xl border text-left cursor-pointer transition ${
+                              liveWallpaper === lwId
+                                ? 'border-[var(--luma-accent)] ring-1 ring-[var(--luma-accent)] font-bold'
+                                : btnCls
+                            }`}
+                          >
+                            <div className={`h-10 w-full ${cls}`} />
+                            <div className="px-2 py-1 text-[11px] truncate">{lwLabel}</div>
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2 text-xs">
                       <input
                         value={wallpaperImageUrl}
-                        onChange={(e) => setWallpaperImageUrl(e.target.value)}
+                        onChange={(e) => {
+                          setLiveWallpaper('');
+                          setWallpaperImageUrl(e.target.value);
+                        }}
                         placeholder="URL изображения обоев или загрузите файл..."
                         className={`flex-1 min-w-[200px] px-3 py-1.5 rounded-xl border font-mono text-xs outline-none ${btnCls}`}
                       />
@@ -4187,7 +4513,10 @@ export default function App() {
                             if (!f) return;
                             const reader = new FileReader();
                             reader.onload = () => {
-                              if (typeof reader.result === 'string') setWallpaperImageUrl(reader.result);
+                              if (typeof reader.result === 'string') {
+                                setLiveWallpaper('');
+                                setWallpaperImageUrl(reader.result);
+                              }
                             };
                             reader.readAsDataURL(f);
                           }}
@@ -4195,7 +4524,7 @@ export default function App() {
                       </label>
                     </div>
 
-                    {wallpaperImageUrl && (
+                    {(wallpaperImageUrl || liveWallpaper) && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                         <label className="space-y-1">
                           <div className="flex justify-between font-mono text-[11px]">
@@ -4227,6 +4556,47 @@ export default function App() {
                         </label>
                       </div>
                     )}
+                  </div>
+
+                  {/* Eternal Desktop Persistence & Backup Export/Import Card */}
+                  <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-bold flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                          {t('persistenceTitle', 'Вечное сохранение рабочего стола')}
+                        </div>
+                        <div className={`text-xs mt-0.5 ${mutedCls}`}>
+                          {t(
+                            'persistenceDesc',
+                            'Виджеты, папки, ярлыки и настройки сохраняются на диск (%APPDATA%/LumaOS) и не сбрасываются при обновлении версии.'
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <button
+                          onClick={() => void handleExportBackup()}
+                          className="px-3 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white font-semibold cursor-pointer inline-flex items-center gap-1.5"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          {t('exportBackup', 'Экспорт JSON')}
+                        </button>
+                        <label className={`px-3 py-1.5 rounded-xl border font-semibold cursor-pointer inline-flex items-center gap-1.5 ${btnCls}`}>
+                          <FolderOpen className="w-3.5 h-3.5" />
+                          {t('importBackup', 'Импорт')}
+                          <input
+                            type="file"
+                            accept=".json,application/json"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleImportBackup(f);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Selectable Animation Presets (Standard + 3 Variants) */}
@@ -4814,7 +5184,7 @@ export default function App() {
                   <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="text-sm font-bold">Диагностика служб LumaCore 1.1</div>
+                        <div className="text-sm font-bold">Диагностика служб LumaCore 1.2</div>
                         <div className={`text-xs ${mutedCls}`}>{diagnosticsTime}</div>
                       </div>
                       <button
@@ -4830,8 +5200,8 @@ export default function App() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
                       {[
-                        ['Ядро LumaCore 1.1', kernelConnected ? 'ONLINE · 49215' : 'FALLBACK'],
-                        ['Ядро LumaShield 1.1', `AES-256-GCM #${cryptoKeyVersion} · Zero-Conflict AV`],
+                        ['Ядро LumaCore 1.2', kernelConnected ? 'ONLINE · 49215' : 'FALLBACK'],
+                        ['Ядро LumaShield 1.2', `AES-256-GCM #${cryptoKeyVersion} · Zero-Conflict AV`],
                         ['Телеметрия', `CPU ${cpuLoad}% · RAM ${ramLoad}%`],
                         ['Окна ОС на панели', `${hostWindows.length} активн.`],
                       ].map(([k, v]) => (
@@ -4850,18 +5220,18 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.1.0 (HELIUM)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.2.0 (LITHIUM)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.1 · LumaShield 1.1
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.2 · LumaShield 1.2
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.1.0.exe"
-                      download="LumaOS_1.1.0.exe"
+                      href="/LumaOS_1.2.0.exe"
+                      download="LumaOS_1.2.0.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.1.0.exe
+                      LumaOS_1.2.0.exe
                     </a>
                   </div>
 
@@ -4898,14 +5268,14 @@ export default function App() {
                       <div
                         key={ver}
                         className={`p-4 rounded-xl border space-y-2 ${
-                          ver === '1.1.0 (Helium)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
+                          ver === '1.2.0 (Lithium)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-mono font-bold">
                             Версия {ver}
                           </span>
-                          {ver === '1.1.0 (Helium)' && <StatusPill active={true} />}
+                          {ver === '1.2.0 (Lithium)' && <StatusPill active={true} />}
                         </div>
                         <ul className="space-y-1 text-xs leading-relaxed">
                           {items.map((line, i) => (
@@ -4922,7 +5292,7 @@ export default function App() {
       )}
 
       {/* WINDOW 6: PLUGINS MANAGER & STORE */}
-      {windows.plugins.open && !windows.plugins.minimized && (
+      {isWinVisible('plugins') && (
         <DexWindow
           id="plugins"
           title="Расширения"
@@ -4931,6 +5301,8 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
+          taskbarSizePx={taskbarSizePx}
+          snapCommand={snapCommands.plugins || null}
           zIndex={windows.plugins.z}
           initialWidth={860}
           initialHeight={580}
@@ -5019,7 +5391,7 @@ export default function App() {
                       {
                         id: slug.toLowerCase(),
                         name: newPluginTitle.trim() || slug,
-                        version: '1.1.0',
+                        version: '1.2.0',
                         author: 'Luma SDK',
                         category: 'Пользовательские',
                         icon: 'Puzzle',
@@ -5046,7 +5418,7 @@ export default function App() {
       )}
 
       {/* WINDOW 7: SUPERCHARGED LUMA ISLAND HUB (MEDIA + CLIPBOARD MANAGER + SCRATCHPAD + TIMER + SETTINGS) */}
-      {windows.island.open && !windows.island.minimized && (
+      {isWinVisible('island') && (
         <DexWindow
           id="island"
           title="Luma Island"
@@ -5055,6 +5427,8 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
+          taskbarSizePx={taskbarSizePx}
+          snapCommand={snapCommands.island || null}
           zIndex={windows.island.z}
           initialWidth={780}
           initialHeight={560}
@@ -5475,7 +5849,7 @@ export default function App() {
       )}
 
       {/* WINDOW 8: LUMA SPACES */}
-      {windows.spaces.open && !windows.spaces.minimized && (
+      {isWinVisible('spaces') && (
         <DexWindow
           id="spaces"
           title="Пространства"
@@ -5484,6 +5858,8 @@ export default function App() {
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
+          taskbarSizePx={taskbarSizePx}
+          snapCommand={snapCommands.spaces || null}
           zIndex={windows.spaces.z}
           initialWidth={600}
           initialHeight={420}
@@ -5524,16 +5900,18 @@ export default function App() {
         </DexWindow>
       )}
 
-      {/* WINDOW: LUMA AI (MULTI-PROVIDER NEURAL NETWORK ASSISTANT) */}
-      {windows.ai.open && !windows.ai.minimized && (
+      {/* WINDOW: LUMA AI (AUTONOMOUS OFFLINE LUMANANO 1.2 + VOICE INPUT + CLOUD MODELS) */}
+      {isWinVisible('ai') && (
         <DexWindow
           id="ai"
-          title="Luma AI"
-          subtitle={`${AI_PROVIDER_PRESETS.find((p) => p.id === aiConfig.provider)?.label || 'Gemini'} · Нейросеть системы`}
+          title={t('ai', 'Luma AI')}
+          subtitle={`${AI_PROVIDER_PRESETS.find((p) => p.id === aiConfig.provider)?.label || 'Luma AI'} · LumaNano 1.2 + Voice`}
           icon={<Sparkles className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
+          taskbarSizePx={taskbarSizePx}
+          snapCommand={snapCommands.ai || null}
           zIndex={windows.ai.z}
           initialWidth={940}
           initialHeight={620}
@@ -5546,6 +5924,7 @@ export default function App() {
             surfaceCls={surfaceCls}
             btnCls={btnCls}
             mutedCls={mutedCls}
+            locale={locale}
             config={aiConfig}
             onChangeConfig={setAiConfig}
             onRunInTerminal={(cmd) => {
@@ -5557,34 +5936,64 @@ export default function App() {
         </DexWindow>
       )}
 
-      {/* WINDOW: SYSTEM UTILITIES & ADAPTED WINDOWS SERVICES */}
-      {windows.utilities.open && !windows.utilities.minimized && (
+      {/* WINDOW: NATIVE SYSTEM UTILITIES & ADAPTED WINDOWS SERVICES */}
+      {isWinVisible('utilities') && (
         <DexWindow
           id="utilities"
-          title="Службы и утилиты системы"
-          subtitle="Калькулятор · Блокнот · Службы ОС · Апплеты Windows"
+          title={t('utilities', 'Службы и утилиты системы')}
+          subtitle="Устройства · Службы ОС · Сеть & Firewall · Звук · Блокнот Pro · Диски"
           icon={<Wrench className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
           taskbarPosition={taskbarPosition}
+          taskbarSizePx={taskbarSizePx}
+          snapCommand={snapCommands.utilities || null}
           zIndex={windows.utilities.z}
-          initialWidth={920}
-          initialHeight={600}
+          initialWidth={960}
+          initialHeight={620}
           onFocus={() => focusWindow('utilities')}
           onMinimize={() => minimizeWindow('utilities')}
           onClose={() => closeWindow('utilities')}
         >
           <LumaSystemUtilitiesWindow
             isDark={isDark}
+            lang={lang}
             surfaceCls={surfaceCls}
             btnCls={btnCls}
             mutedCls={mutedCls}
             volume={volume}
             isMuted={isMuted}
+            disks={liveSystem?.disks}
             onChangeVolume={handleVolumeChange}
             onToggleMute={handleToggleMute}
+            onOpenCalculator={() => openWindow('calculator')}
             onPushToast={pushToast}
           />
+        </DexWindow>
+      )}
+
+      {/* WINDOW: NATIVE LUMA CALCULATOR (STANDARD / SCIENTIFIC / PROGRAMMER / CONVERTER) */}
+      {isWinVisible('calculator') && (
+        <DexWindow
+          id="calculator"
+          title={t('calculator', 'Калькулятор Luma')}
+          subtitle="Стандартный · Инженерный · Программист · Конвертер"
+          icon={<Calculator className="w-4 h-4" />}
+          isDark={isDark}
+          designStyle={designStyle}
+          taskbarPosition={taskbarPosition}
+          taskbarSizePx={taskbarSizePx}
+          snapCommand={snapCommands.calculator || null}
+          zIndex={windows.calculator.z}
+          initialWidth={460}
+          initialHeight={590}
+          minWidth={360}
+          minHeight={440}
+          onFocus={() => focusWindow('calculator')}
+          onMinimize={() => minimizeWindow('calculator')}
+          onClose={() => closeWindow('calculator')}
+        >
+          <LumaCalculatorWindow isDark={isDark} lang={lang} />
         </DexWindow>
       )}
 
@@ -5896,7 +6305,7 @@ export default function App() {
                 setTaskbarHostWinPid(null);
                 setTaskbarCtxMenu(null);
               }}
-              title={`${t('start', 'Пуск')} (Luma OS 1.1.0)`}
+              title={`${t('start', 'Пуск')} (Luma OS 1.2.0)`}
               className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
                 startMenuOpen
                   ? 'bg-[var(--luma-accent)] text-white'
@@ -5925,6 +6334,21 @@ export default function App() {
             >
               <Search className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
               <span className="hidden sm:inline font-mono text-[11px]">Alt+R</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setMultitaskingOpen((v) => !v);
+                setStartMenuOpen(false);
+                setControlCenterOpen(false);
+              }}
+              title={`${t('multitasking', 'Обзор окон')} (Alt+W · ${t('desktopLabel', 'Стол')} ${activeDesktop})`}
+              className={`h-8 px-2 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center gap-1 text-xs transition cursor-pointer ${
+                multitaskingOpen ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white shadow' : btnCls
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span className="font-mono text-[10px] font-bold">D{activeDesktop}</span>
             </button>
 
             <button
@@ -6687,8 +7111,8 @@ export default function App() {
           {!startSearch.trim() && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                <span className={mutedCls}>Luma OS 1.1.0 (Helium)</span>
-                <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.1</span>
+                <span className={mutedCls}>Luma OS 1.2.0 (Lithium)</span>
+                <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.2</span>
               </div>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
                 {taskbarApps.map((m) => (
@@ -6787,12 +7211,12 @@ export default function App() {
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-7 h-7 rounded-full bg-[var(--luma-accent)] text-white text-xs font-mono font-bold flex items-center justify-center shrink-0">
-                  He
+                  Li
                 </div>
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.1.0 (Helium)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.2.0 (Lithium)'}
                   </div>
                 </div>
               </div>
@@ -6900,7 +7324,7 @@ export default function App() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.1.0 (HELIUM)</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.2.0 (LITHIUM)</span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>
               {liveSystem?.location?.city || 'LOCAL'}
             </span>
@@ -7002,8 +7426,8 @@ export default function App() {
               </button>
             </div>
             <a
-              href="/LumaOS_1.1.0.exe"
-              download="LumaOS_1.1.0.exe"
+              href="/LumaOS_1.2.0.exe"
+              download="LumaOS_1.2.0.exe"
               className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-mono font-bold inline-flex items-center gap-1 ${btnCls}`}
             >
               <Download className="w-3 h-3 text-[var(--luma-accent)]" />
@@ -7371,7 +7795,249 @@ export default function App() {
         ))}
       </div>
 
-      {/* ==================== HELIUM 1.1 AWAKENING ANIMATION & PLAYABLE EASTER-EGG MINI-GAME ==================== */}
+      {/* ==================== MULTITASKING OVERVIEW / TASK VIEW & VIRTUAL DESKTOPS (ALT+W) ==================== */}
+      {multitaskingOpen && (
+        <div
+          onClick={() => setMultitaskingOpen(false)}
+          className="luma-animate-in fixed inset-0 z-[105] bg-black/75 backdrop-blur-2xl flex flex-col p-6 gap-5 overflow-hidden text-white"
+        >
+          {/* Top Bar: Title + Layout Actions */}
+          <div onClick={(e) => e.stopPropagation()} className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-[var(--luma-accent)] text-white flex items-center justify-center shadow-lg">
+                <Layers className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-base font-extrabold tracking-tight">
+                  {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
+                </div>
+                <div className="text-xs font-mono text-zinc-400">
+                  Luma OS 1.2.0 (Lithium) · Alt+W — Обзор · 8-сторонний ресайз и Snap Layouts
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <button
+                onClick={splitTopTwoWindows}
+                className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] hover:brightness-110 text-white font-bold cursor-pointer inline-flex items-center gap-1.5 shadow"
+              >
+                <LayoutPanelLeft className="w-3.5 h-3.5" />
+                {t('splitScreen', 'Разделить 50/50')}
+              </button>
+              <button
+                onClick={tileOpenWindows}
+                className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 font-semibold cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                {t('tileWindows', 'Сетка 2×2')}
+              </button>
+              <button
+                onClick={() => {
+                  showDesktop();
+                  setMultitaskingOpen(false);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 font-semibold cursor-pointer"
+              >
+                {t('closeAllWindows', 'Свернуть все')}
+              </button>
+              <button
+                onClick={() => setMultitaskingOpen(false)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-rose-500/40 border border-white/15 cursor-pointer"
+                title={t('close', 'Закрыть')}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Open Luma Windows Grid on Active Desktop */}
+          <div onClick={(e) => e.stopPropagation()} className="flex-1 min-h-0 overflow-y-auto space-y-5 pr-1">
+            {(() => {
+              const deskWins = taskbarApps.filter(
+                (item) => windows[item.id].open && (windows[item.id].desktop ?? 1) === activeDesktop
+              );
+              if (deskWins.length === 0) {
+                return (
+                  <div className="h-56 rounded-3xl border border-dashed border-white/15 bg-white/[0.03] flex flex-col items-center justify-center gap-3 text-center p-6">
+                    <Layers className="w-8 h-8 text-zinc-500" />
+                    <div className="text-sm font-bold text-zinc-300">
+                      {t('noOpenWindows', 'На этом рабочем столе нет открытых окон')}
+                    </div>
+                    <div className="flex flex-wrap justify-center gap-2 text-xs">
+                      {(['explorer', 'ai', 'calculator', 'terminal', 'utilities', 'settings'] as DexWinId[]).map((wid) => {
+                        const meta = taskbarApps.find((x) => x.id === wid);
+                        if (!meta) return null;
+                        return (
+                          <button
+                            key={wid}
+                            onClick={() => openWindow(wid)}
+                            className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-[var(--luma-accent)] border border-white/15 inline-flex items-center gap-1.5 cursor-pointer transition"
+                          >
+                            {meta.icon}
+                            <span>{meta.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {deskWins.map((item) => {
+                    const st = windows[item.id];
+                    return (
+                      <div
+                        key={item.id}
+                        className="group rounded-2xl border border-white/15 bg-white/[0.06] hover:border-[var(--luma-accent)] p-4 flex flex-col justify-between gap-3 transition shadow-xl"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <button
+                            onClick={() => openWindow(item.id)}
+                            className="flex items-center gap-2.5 min-w-0 text-left cursor-pointer"
+                          >
+                            <span className="w-8 h-8 rounded-xl bg-[var(--luma-accent)]/20 text-[var(--luma-accent)] flex items-center justify-center shrink-0">
+                              {item.icon}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold truncate">{item.label}</div>
+                              <div className="text-[10px] font-mono text-zinc-400">
+                                {st.minimized ? 'Свёрнуто' : 'Активно'} · Стол {st.desktop ?? 1}
+                              </div>
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => closeWindow(item.id)}
+                            className="p-1.5 rounded-lg bg-white/10 hover:bg-rose-500 text-zinc-300 hover:text-white cursor-pointer"
+                            title="Закрыть окно"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Quick Snap Controls */}
+                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
+                          <button
+                            onClick={() => {
+                              sendSnapCommand(item.id, 'left');
+                              setMultitaskingOpen(false);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-white/10 hover:bg-[var(--luma-accent)] cursor-pointer"
+                          >
+                            ◀ 50%
+                          </button>
+                          <button
+                            onClick={() => {
+                              sendSnapCommand(item.id, 'right');
+                              setMultitaskingOpen(false);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-white/10 hover:bg-[var(--luma-accent)] cursor-pointer"
+                          >
+                            50% ▶
+                          </button>
+                          <button
+                            onClick={() => {
+                              sendSnapCommand(item.id, 'maximize');
+                              setMultitaskingOpen(false);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-white/10 hover:bg-[var(--luma-accent)] cursor-pointer"
+                          >
+                            MAX
+                          </button>
+                          <span className="flex-1" />
+                          {virtualDesktops
+                            .filter((d) => d !== activeDesktop)
+                            .map((d) => (
+                              <button
+                                key={d}
+                                onClick={() => moveWindowToDesktop(item.id, d)}
+                                className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/20 border border-white/10 cursor-pointer"
+                                title={`${t('moveToDesktop', 'Переместить на стол')} ${d}`}
+                              >
+                                → D{d}
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* Real Host PC Windows */}
+            {hostWindows.length > 0 && (
+              <div className="space-y-2.5">
+                <div className="text-[11px] font-mono uppercase tracking-widest text-zinc-400">
+                  {t('hostWindows', 'Открытые окна системы (ПК)')} ({hostWindows.length})
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                  {hostWindows.map((hw) => (
+                    <button
+                      key={hw.pid}
+                      onClick={() => {
+                        void handleFocusHostWindow(hw.pid);
+                        setMultitaskingOpen(false);
+                      }}
+                      className="p-3 rounded-xl border border-white/10 bg-white/[0.04] hover:border-[var(--luma-accent)] text-left transition cursor-pointer"
+                    >
+                      <div className="text-xs font-bold truncate">{hw.title || hw.name}</div>
+                      <div className="text-[10px] font-mono text-zinc-400 truncate mt-0.5">
+                        {hw.name} · PID {hw.pid} · {hw.mem_mb.toFixed(0)} МБ
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Virtual Desktops Strip */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-center gap-2.5"
+          >
+            {virtualDesktops.map((desk) => {
+              const count = (Object.keys(windows) as DexWinId[]).filter(
+                (id) => windows[id].open && (windows[id].desktop ?? 1) === desk
+              ).length;
+              return (
+                <button
+                  key={desk}
+                  onClick={() => setActiveDesktop(desk)}
+                  className={`px-4 py-2.5 rounded-2xl border text-xs font-bold flex items-center gap-2.5 cursor-pointer transition ${
+                    activeDesktop === desk
+                      ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white shadow-lg'
+                      : 'bg-white/[0.06] border-white/15 hover:bg-white/15 text-zinc-200'
+                  }`}
+                >
+                  <Monitor className="w-4 h-4" />
+                  <span>
+                    {t('desktopLabel', 'Стол')} {desk}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-md bg-black/25 font-mono text-[10px]">{count}</span>
+                </button>
+              );
+            })}
+            {virtualDesktops.length < 6 && (
+              <button
+                onClick={() => {
+                  const next = Math.max(...virtualDesktops) + 1;
+                  setVirtualDesktops((prev) => [...prev, next]);
+                  setActiveDesktop(next);
+                }}
+                className="px-3.5 py-2.5 rounded-2xl border border-dashed border-white/25 hover:border-white/50 text-xs font-semibold flex items-center gap-1.5 cursor-pointer text-zinc-300"
+              >
+                <Plus className="w-4 h-4" />
+                {t('newDesktop', 'Новый стол')}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ==================== LITHIUM 1.2 AWAKENING ANIMATION & PLAYABLE EASTER-EGG MINI-GAME ==================== */}
       <LumaHeliumEasterEggModal open={easterEggOpen} onClose={() => setEasterEggOpen(false)} />
 
       {/* ==================== PC POWER CONFIRMATION MODAL (SHUTDOWN / RESTART / EXIT LUMA) ==================== */}

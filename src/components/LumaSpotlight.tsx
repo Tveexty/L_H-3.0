@@ -163,7 +163,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'win_terminal',
         group: 'Окна системы',
         title: 'Терминал Luma',
-        subtitle: 'Командная строка ядра LumaCore 1.1 (ПО 1.1.0 Helium)',
+        subtitle: 'Командная строка ядра LumaCore 1.2 (ПО 1.2.0 Lithium)',
         shortcut: 'CLI',
         keywords: 'терминал консоль cmd shell cli',
         icon: <Terminal className="w-4 h-4" />,
@@ -181,8 +181,8 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'win_kernel',
         group: 'Окна системы',
-        title: 'Ядро LumaCore 1.1 & IPC',
-        subtitle: 'Телеметрия, LumaShield 1.1, код ядра и консоль JSON-RPC 2.0',
+        title: 'Ядро LumaCore 1.2 & IPC',
+        subtitle: 'Телеметрия, LumaShield 1.2, код ядра и консоль JSON-RPC 2.0',
         keywords: 'ядро код kernel ipc rpc безопасность',
         icon: <Code2 className="w-4 h-4" />,
         run: () => onOpenWindow('kernel'),
@@ -553,7 +553,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
             isDark ? 'border-white/[0.08]' : 'border-zinc-200'
           }`}
         >
-          <span>LUMA RUN & SPOTLIGHT 1.1.0 (HELIUM) · ↑↓ · ENTER</span>
+          <span>LUMA RUN & SPOTLIGHT 1.2.0 (LITHIUM) · ↑↓ · ENTER</span>
           <span>ALT + R</span>
         </div>
       </div>

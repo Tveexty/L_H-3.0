@@ -370,8 +370,8 @@ func isNativeFullscreen() bool {
 	return nativeFull
 }
 
-// runNativeDesktopWindow hosts Luma OS 1.1.0 (Helium) inside its standalone Win32 WebView2 GUI window
-// with custom embedded Luma icon, dark titlebar, optional startup fullscreen & Windows shell overlay mode.
+// runNativeDesktopWindow hosts Luma OS 1.2.0 (Lithium) inside its standalone Win32 WebView2 GUI window
+// with permanent version-independent WebView2 DataPath so user widgets, folders & apps survive EVERY update!
 func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 	cfg := loadShellConfig()
 	if forceFullscreen {
@@ -382,7 +382,23 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 	if err != nil {
 		cfgDir = os.TempDir()
 	}
-	dataPath := filepath.Join(cfgDir, "LumaOS_Helium", "WebView2")
+	dataPath := filepath.Join(cfgDir, "LumaOS", "WebView2")
+	// Auto-migrate existing WebView2 localStorage from older versioned folders if permanent profile doesn't exist yet
+	if _, statErr := os.Stat(dataPath); os.IsNotExist(statErr) {
+		for _, legacy := range []string{
+			filepath.Join(cfgDir, "LumaOS_Helium", "WebView2"),
+			filepath.Join(cfgDir, "LumaOS_1.0.4", "WebView2"),
+			filepath.Join(cfgDir, "LumaOS_1.0.3", "WebView2"),
+		} {
+			if st, err2 := os.Stat(legacy); err2 == nil && st.IsDir() {
+				_ = os.MkdirAll(filepath.Dir(dataPath), 0o700)
+				if errMove := os.Rename(legacy, dataPath); errMove != nil {
+					_ = copyPathRecursive(legacy, dataPath)
+				}
+				break
+			}
+		}
+	}
 	_ = os.MkdirAll(dataPath, 0o700)
 
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
@@ -390,7 +406,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.1.0 (Helium)",
+			Title:  "Luma OS 1.2.0 (Lithium)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,

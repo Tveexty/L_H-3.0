@@ -8,14 +8,14 @@ interface HeroCardProps {
 }
 
 /**
- * Flagship ColorOS-16-inspired sculptural 3D orb hero banner adapted for Luma OS 1.1 (Helium).
+ * Flagship sculptural 3D Lithium crystal orb hero banner for Luma OS 1.2 (Lithium · Li-3).
  * Features interactive 3D pointer parallax, liquid glass specular sweep, and launches the
- * Helium Awakening animation -> playable Helium Orbit mini-game on click!
+ * Lithium Awakening animation -> playable LITHIUM ORBIT (Li-3) 3-electron mini-game on click!
  */
 export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
   onTriggerEasterEgg,
-  kernelVersion = '1.1',
-  securityVersion = '1.1',
+  kernelVersion = '1.2',
+  securityVersion = '1.2',
 }) => {
   const cardRef = useRef<HTMLButtonElement | null>(null);
   const [tilt, setTilt] = useState({ rx: 0, ry: 0, gx: 50, gy: 35 });
@@ -51,12 +51,12 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
       style={{
         transform: `perspective(1000px) rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg) scale(${ripple ? 0.985 : 1})`,
       }}
-      title="Нажмите, чтобы запустить анимацию Helium и пасхалку!"
+      title="Нажмите, чтобы запустить анимацию Lithium и мини-игру Li-3!"
     >
-      {/* Bespoke 3D Sculpted Helium Orb Artwork */}
+      {/* Bespoke 3D Sculpted Lithium Crystal Orb Artwork */}
       <img
-        src="/luma-helium-hero.jpg"
-        alt="Luma OS 1.1 Helium"
+        src="/luma-lithium-hero.jpg"
+        alt="Luma OS 1.2 Lithium"
         className="absolute inset-0 w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
       />
 
@@ -64,49 +64,48 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
       <div
         className="pointer-events-none absolute inset-0 transition-opacity duration-300 opacity-75 group-hover:opacity-100"
         style={{
-          background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.22) 0%, rgba(168,85,247,0.12) 28%, transparent 62%)`,
+          background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.24) 0%, rgba(16,185,129,0.16) 28%, transparent 62%)`,
         }}
       />
 
-      {/* Subtle top-to-bottom readability vignette */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0b0820]/30 via-transparent to-[#090518]/65" />
+      {/* Subtle readability vignette */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#041418]/35 via-transparent to-[#020a10]/70" />
 
       {/* Top badges */}
       <div className="relative z-10 flex items-center justify-between px-5 pt-4">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/12 backdrop-blur-md border border-white/20 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
-          <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-300 animate-pulse" />
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
           LUMACORE {kernelVersion} · SHIELD {securityVersion}
         </span>
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/25 backdrop-blur-md border border-white/15 text-[10px] font-mono text-white/85 group-hover:bg-white/20 transition">
-          <Sparkles className="w-3 h-3 text-pink-200" />
-          Пасхалка Helium
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/25 backdrop-blur-md border border-white/15 text-[10px] font-mono text-white/90 group-hover:bg-white/20 transition">
+          <Sparkles className="w-3 h-3 text-emerald-200" />
+          Пасхалка Lithium
         </span>
       </div>
 
-      {/* Centered Flagship Glass Typography (ColorOS 16 inspired) */}
+      {/* Centered Flagship Glass Typography */}
       <div className="relative z-10 flex flex-col items-center justify-center text-center h-[calc(100%-56px)] pb-4 px-4">
         <div
           className="text-6xl sm:text-7xl font-black tracking-tight leading-none select-none transition-transform duration-500 group-hover:scale-105"
           style={{
-            backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #f5e6ff 55%, #d8c8ff 100%)',
+            backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #d1fae5 55%, #67e8f9 100%)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
-            filter: 'drop-shadow(0 8px 26px rgba(139, 92, 246, 0.55))',
+            filter: 'drop-shadow(0 8px 26px rgba(16, 185, 129, 0.55))',
           }}
         >
-          1.1
+          1.2
         </div>
         <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white/95 drop-shadow-[0_2px_12px_rgba(0,0,0,0.45)]">
           LumaOS
         </div>
-        <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-pink-100/90">
-          <span>HELIUM</span>
+        <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-emerald-100/95">
+          <span>LITHIUM</span>
           <span className="opacity-50">·</span>
-          <span>He-2</span>
+          <span>Li-3</span>
         </div>
       </div>
 
-      {/* Click pulse ring */}
       {ripple && (
         <div className="pointer-events-none absolute inset-0 bg-white/25 animate-ping rounded-3xl" />
       )}
@@ -114,7 +113,9 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
   );
 };
 
-// ==================== FULL-SCREEN CINEMATIC ANIMATION + PLAYABLE MINI-GAME «HELIUM ORBIT» ====================
+export const LumaLithiumHeroCard = LumaHeliumHeroCard;
+
+// ==================== FULL-SCREEN CINEMATIC ANIMATION + PLAYABLE MINI-GAME «LITHIUM ORBIT · Li-3» ====================
 
 interface EasterEggModalProps {
   open: boolean;
@@ -143,7 +144,7 @@ interface Particle {
   size: number;
 }
 
-const HIGH_SCORE_KEY = 'luma_helium_orbit_highscore_v1';
+const HIGH_SCORE_KEY = 'luma_lithium_orbit_highscore_v1';
 
 export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, onClose }) => {
   const [phase, setPhase] = useState<'intro' | 'game'>('intro');
@@ -211,21 +212,20 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
       osc.start();
       osc.stop(ctx.currentTime + dur);
     } catch {
-      // audio optional
+      /* ignore */
     }
   };
 
-  // Cinematic 2.2s Helium Awakening Intro
   useEffect(() => {
     if (!open) return;
     setPhase('intro');
     setIntroProgress(0);
     setGameOver(false);
     setPaused(false);
-    playTone(320, 0.28, 'sine', 0.06);
-    const t1 = window.setTimeout(() => playTone(480, 0.3, 'triangle', 0.06), 450);
-    const t2 = window.setTimeout(() => playTone(640, 0.35, 'sine', 0.07), 950);
-    const t3 = window.setTimeout(() => playTone(960, 0.45, 'sine', 0.07), 1550);
+    playTone(340, 0.28, 'sine', 0.06);
+    const t1 = window.setTimeout(() => playTone(510, 0.3, 'triangle', 0.06), 450);
+    const t2 = window.setTimeout(() => playTone(680, 0.35, 'sine', 0.07), 950);
+    const t3 = window.setTimeout(() => playTone(1020, 0.45, 'sine', 0.07), 1550);
 
     const started = performance.now();
     let raf = 0;
@@ -279,20 +279,19 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
 
   const triggerFusionPulse = () => {
     const st = gameStateRef.current;
-    if (st.over || st.paused || st.energy < 45) return;
-    st.energy = Math.max(0, st.energy - 45);
-    st.pulseRadius = 18;
+    if (st.over || st.paused || st.energy < 40) return;
+    st.energy = Math.max(0, st.energy - 40);
+    st.pulseRadius = 20;
     st.pulseAlpha = 1;
     st.shake = 10;
     setEnergy(Math.round(st.energy));
-    playTone(220, 0.25, 'sawtooth', 0.07);
-    playTone(880, 0.32, 'sine', 0.08);
-    // Destroy nearby dark shards
+    playTone(240, 0.24, 'sawtooth', 0.07);
+    playTone(920, 0.32, 'sine', 0.08);
     const kept: OrbEntity[] = [];
     for (const e of st.entities) {
       const dist = Math.hypot(e.x - st.px, e.y - st.py);
-      if (e.kind === 'shard' && dist < 240) {
-        st.score += 15 * st.combo;
+      if (e.kind === 'shard' && dist < 260) {
+        st.score += 18 * st.combo;
         for (let i = 0; i < 12; i++) {
           const a = Math.random() * Math.PI * 2;
           const sp = 1.5 + Math.random() * 4.5;
@@ -303,7 +302,7 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
             vy: Math.sin(a) * sp,
             life: 28,
             maxLife: 28,
-            color: '#f472b6',
+            color: '#34d399',
             size: 3,
           });
         }
@@ -315,7 +314,6 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
     setScore(st.score);
   };
 
-  // Main 60FPS Game Loop
   useEffect(() => {
     if (!open || phase !== 'game') return;
     const canvas = canvasRef.current;
@@ -374,8 +372,7 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
       st.frame++;
 
       if (!st.paused && !st.over) {
-        // Keyboard steering overrides target smoothly
-        const speed = 6.2;
+        const speed = 6.4;
         if (st.keys.has('w') || st.keys.has('arrowup')) st.ty = Math.max(24, st.ty - speed);
         if (st.keys.has('s') || st.keys.has('arrowdown')) st.ty = Math.min(H - 24, st.ty + speed);
         if (st.keys.has('a') || st.keys.has('arrowleft')) st.tx = Math.max(24, st.tx - speed);
@@ -384,9 +381,8 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         st.px += (st.tx - st.px) * 0.2;
         st.py += (st.ty - st.py) * 0.2;
         st.trail.push({ x: st.px, y: st.py });
-        if (st.trail.length > 22) st.trail.shift();
+        if (st.trail.length > 24) st.trail.shift();
 
-        // Combo decay + energy recharge
         if (st.comboTimer > 0) {
           st.comboTimer--;
           if (st.comboTimer === 0 && st.combo > 1) {
@@ -395,17 +391,15 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
           }
         }
         if (st.energy < 100) {
-          st.energy = Math.min(100, st.energy + 0.14);
+          st.energy = Math.min(100, st.energy + 0.16);
           if (st.frame % 6 === 0) setEnergy(Math.round(st.energy));
         }
 
-        // Dynamic wave difficulty
-        const curWave = 1 + Math.floor(st.score / 220);
+        const curWave = 1 + Math.floor(st.score / 240);
         if (st.frame % 15 === 0) setWave(curWave);
 
-        // Spawn entities from edges
         st.spawnTick++;
-        const spawnEvery = Math.max(16, 40 - curWave * 3);
+        const spawnEvery = Math.max(15, 38 - curWave * 3);
         if (st.spawnTick >= spawnEvery) {
           st.spawnTick = 0;
           const side = Math.floor(Math.random() * 4);
@@ -416,7 +410,7 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
           else { sx = -20; sy = Math.random() * H; }
 
           const roll = Math.random();
-          const kind: OrbEntity['kind'] = roll < 0.44 ? 'photon' : roll < 0.54 ? 'fusion' : 'shard';
+          const kind: OrbEntity['kind'] = roll < 0.45 ? 'photon' : roll < 0.56 ? 'fusion' : 'shard';
           const aimX = kind === 'shard' ? st.px + (Math.random() - 0.5) * 140 : W * 0.2 + Math.random() * W * 0.6;
           const aimY = kind === 'shard' ? st.py + (Math.random() - 0.5) * 140 : H * 0.2 + Math.random() * H * 0.6;
           const ang = Math.atan2(aimY - sy, aimX - sx);
@@ -432,12 +426,11 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
             vy: Math.sin(ang) * spd,
             r: kind === 'shard' ? 11 + Math.random() * 5 : kind === 'fusion' ? 12 : 9,
             kind,
-            hue: kind === 'fusion' ? 188 : 315 + Math.random() * 35,
+            hue: kind === 'fusion' ? 188 : 148 + Math.random() * 30,
             spin: Math.random() * Math.PI * 2,
           });
         }
 
-        // Update entities & collisions
         const nextEntities: OrbEntity[] = [];
         for (const e of st.entities) {
           e.x += e.vx;
@@ -446,34 +439,33 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
           if (e.x < -60 || e.x > W + 60 || e.y < -60 || e.y > H + 60) continue;
 
           const d = Math.hypot(e.x - st.px, e.y - st.py);
-          if (d < e.r + 15) {
+          if (d < e.r + 16) {
             if (e.kind === 'photon' || e.kind === 'fusion') {
-              const pts = (e.kind === 'fusion' ? 40 : 15) * st.combo;
-              st.score += pts;
-              st.combo = Math.min(8, st.combo + 1);
+              const pts = e.kind === 'fusion' ? 40 : 12;
+              st.score += pts * st.combo;
+              st.combo = Math.min(9, st.combo + 1);
               st.comboTimer = 170;
-              if (e.kind === 'fusion') st.energy = Math.min(100, st.energy + 35);
-              spawnBurst(e.x, e.y, e.kind === 'fusion' ? '#38bdf8' : '#f472b6', 16);
-              playTone(e.kind === 'fusion' ? 760 : 520 + st.combo * 45, 0.1, 'sine', 0.065);
+              st.energy = Math.min(100, st.energy + (e.kind === 'fusion' ? 35 : 9));
               setScore(st.score);
               setCombo(st.combo);
               setEnergy(Math.round(st.energy));
+              spawnBurst(e.x, e.y, e.kind === 'fusion' ? '#67e8f9' : '#34d399', e.kind === 'fusion' ? 22 : 12);
+              playTone(e.kind === 'fusion' ? 880 : 540 + st.combo * 42, 0.09, 'sine', 0.06);
               continue;
             } else {
-              // Hit dark shard -> Game Over!
               st.over = true;
               st.shake = 16;
-              spawnBurst(st.px, st.py, '#ef4444', 32);
-              playTone(130, 0.4, 'sawtooth', 0.09);
               setGameOver(true);
+              spawnBurst(st.px, st.py, '#fb7185', 36);
+              playTone(140, 0.38, 'sawtooth', 0.08);
               setBestScore((prev) => {
-                const nb = Math.max(prev, st.score);
+                const best = Math.max(prev, st.score);
                 try {
-                  localStorage.setItem(HIGH_SCORE_KEY, String(nb));
+                  localStorage.setItem(HIGH_SCORE_KEY, String(best));
                 } catch {
-                  // ignore
+                  /* ignore */
                 }
-                return nb;
+                return best;
               });
               continue;
             }
@@ -482,14 +474,13 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         }
         st.entities = nextEntities;
 
-        // Update Fusion pulse ring
         if (st.pulseAlpha > 0) {
-          st.pulseRadius += 12;
+          st.pulseRadius += 15;
           st.pulseAlpha = Math.max(0, st.pulseAlpha - 0.045);
         }
+        if (st.shake > 0) st.shake *= 0.86;
       }
 
-      // Update particles even after game over for nice explosion finish
       st.particles = st.particles.filter((p) => {
         p.x += p.vx;
         p.y += p.vy;
@@ -498,24 +489,20 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         p.life--;
         return p.life > 0;
       });
-      if (st.shake > 0) st.shake *= 0.85;
 
-      // ==================== RENDER FRAME ====================
+      // Render Lithium deep emerald-obsidian space
       ctx.save();
       if (st.shake > 0.5) {
         ctx.translate((Math.random() - 0.5) * st.shake, (Math.random() - 0.5) * st.shake);
       }
-
-      // Deep cosmic Helium background
-      const bg = ctx.createRadialGradient(W * 0.5, H * 0.85, 40, W * 0.5, H * 0.5, W * 0.85);
-      bg.addColorStop(0, '#2b1348');
-      bg.addColorStop(0.5, '#120a27');
-      bg.addColorStop(1, '#070411');
+      const bg = ctx.createRadialGradient(W * 0.5, H * 0.5, 40, W * 0.5, H * 0.5, W * 0.72);
+      bg.addColorStop(0, '#072226');
+      bg.addColorStop(0.55, '#041219');
+      bg.addColorStop(1, '#02070d');
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, W, H);
 
-      // Subtle orbital grid rings
-      ctx.strokeStyle = 'rgba(255,255,255,0.045)';
+      ctx.strokeStyle = 'rgba(52, 211, 153, 0.08)';
       ctx.lineWidth = 1;
       for (const rad of [90, 175, 265, 355]) {
         ctx.beginPath();
@@ -523,19 +510,18 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         ctx.stroke();
       }
 
-      // Fusion pulse shockwave
       if (st.pulseAlpha > 0) {
-        ctx.strokeStyle = `rgba(125, 211, 252, ${st.pulseAlpha})`;
+        ctx.strokeStyle = `rgba(52, 211, 153, ${st.pulseAlpha})`;
         ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.arc(st.px, st.py, st.pulseRadius, 0, Math.PI * 2);
         ctx.stroke();
       }
 
-      // Player ribbon trail
+      // Emerald-cyan ribbon trail
       for (let i = 1; i < st.trail.length; i++) {
         const a = i / st.trail.length;
-        ctx.strokeStyle = `rgba(244, 114, 182, ${a * 0.55})`;
+        ctx.strokeStyle = `rgba(52, 211, 153, ${a * 0.55})`;
         ctx.lineWidth = a * 9;
         ctx.lineCap = 'round';
         ctx.beginPath();
@@ -544,7 +530,6 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         ctx.stroke();
       }
 
-      // Entities
       for (const e of st.entities) {
         ctx.save();
         ctx.translate(e.x, e.y);
@@ -564,10 +549,10 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         } else {
           const grad = ctx.createRadialGradient(0, 0, 1, 0, 0, e.r);
           grad.addColorStop(0, '#ffffff');
-          grad.addColorStop(0.55, e.kind === 'fusion' ? '#38bdf8' : `hsl(${e.hue}, 95%, 70%)`);
+          grad.addColorStop(0.55, e.kind === 'fusion' ? '#67e8f9' : `hsl(${e.hue}, 90%, 62%)`);
           grad.addColorStop(1, 'transparent');
           ctx.fillStyle = grad;
-          ctx.shadowColor = e.kind === 'fusion' ? '#38bdf8' : '#ec4899';
+          ctx.shadowColor = e.kind === 'fusion' ? '#22d3ee' : '#10b981';
           ctx.shadowBlur = 16;
           ctx.beginPath();
           ctx.arc(0, 0, e.r, 0, Math.PI * 2);
@@ -576,52 +561,67 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         ctx.restore();
       }
 
-      // Player Helium-2 Atom (Nucleus + 2 Orbiting Electrons!)
+      // Player Lithium-3 Atom (Nucleus + 2 inner shell electrons + 1 outer valence electron!)
       if (!st.over) {
         ctx.save();
         ctx.translate(st.px, st.py);
-        // Electron orbit ring
-        ctx.strokeStyle = 'rgba(216, 180, 254, 0.5)';
-        ctx.lineWidth = 1.4;
+
+        // Inner 1s orbit (2 electrons)
+        ctx.strokeStyle = 'rgba(110, 231, 183, 0.48)';
+        ctx.lineWidth = 1.3;
         ctx.beginPath();
-        ctx.arc(0, 0, 20, 0, Math.PI * 2);
+        ctx.arc(0, 0, 19, 0, Math.PI * 2);
         ctx.stroke();
 
-        // 2 Helium electrons
+        // Outer 2s valence orbit (1 electron)
+        ctx.strokeStyle = 'rgba(103, 232, 249, 0.35)';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.arc(0, 0, 27, 0, Math.PI * 2);
+        ctx.stroke();
+
         const t = st.frame * 0.11;
         for (const offset of [0, Math.PI]) {
-          const ex = Math.cos(t + offset) * 20;
-          const ey = Math.sin(t + offset) * 20;
-          ctx.fillStyle = '#7dd3fc';
-          ctx.shadowColor = '#38bdf8';
+          const ex = Math.cos(t + offset) * 19;
+          const ey = Math.sin(t + offset) * 19;
+          ctx.fillStyle = '#6ee7b7';
+          ctx.shadowColor = '#10b981';
           ctx.shadowBlur = 10;
           ctx.beginPath();
-          ctx.arc(ex, ey, 3.6, 0, Math.PI * 2);
+          ctx.arc(ex, ey, 3.4, 0, Math.PI * 2);
           ctx.fill();
         }
 
-        // Core nucleus
+        // 3rd valence electron
+        const vx = Math.cos(-t * 0.72) * 27;
+        const vy = Math.sin(-t * 0.72) * 27;
+        ctx.fillStyle = '#e0f2fe';
+        ctx.shadowColor = '#22d3ee';
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(vx, vy, 3.8, 0, Math.PI * 2);
+        ctx.fill();
+
         const coreGrad = ctx.createRadialGradient(-3, -3, 2, 0, 0, 14);
         coreGrad.addColorStop(0, '#ffffff');
-        coreGrad.addColorStop(0.5, '#f0abfc');
-        coreGrad.addColorStop(1, '#7c3aed');
+        coreGrad.addColorStop(0.5, '#6ee7b7');
+        coreGrad.addColorStop(1, '#0d9488');
         ctx.fillStyle = coreGrad;
-        ctx.shadowColor = '#d946ef';
+        ctx.shadowColor = '#10b981';
         ctx.shadowBlur = 20;
         ctx.beginPath();
         ctx.arc(0, 0, 13, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = '#1e1038';
+        ctx.fillStyle = '#022c22';
         ctx.font = 'bold 9px monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.shadowBlur = 0;
-        ctx.fillText('He', 0, 0.5);
+        ctx.fillText('Li', 0, 0.5);
         ctx.restore();
       }
 
-      // Particles
       for (const p of st.particles) {
         ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
         ctx.fillStyle = p.color;
@@ -647,31 +647,33 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-[#060312]/90 backdrop-blur-2xl p-4"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-[#020a0d]/90 backdrop-blur-2xl p-4"
       onClick={(e) => e.stopPropagation()}
     >
       {phase === 'intro' ? (
-        <div className="relative flex flex-col items-center justify-center w-full max-w-2xl h-[460px] rounded-3xl overflow-hidden border border-white/15 bg-[#090518] shadow-2xl">
+        <div className="relative flex flex-col items-center justify-center w-full max-w-2xl h-[460px] rounded-3xl overflow-hidden border border-white/15 bg-[#031216] shadow-2xl">
           <img
-            src="/luma-helium-hero.jpg"
-            alt="Helium Awakening"
+            src="/luma-lithium-hero.jpg"
+            alt="Lithium Awakening"
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000"
             style={{
               transform: `scale(${1 + introProgress * 0.22})`,
-              opacity: 0.4 + introProgress * 0.45,
+              opacity: 0.42 + introProgress * 0.45,
             }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#070312] via-[#13072c]/50 to-[#070312]/80" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#02090c] via-[#041f24]/50 to-[#02090c]/80" />
 
-          {/* Expanding Helium Orbital Rings */}
+          {/* Expanding Lithium 3-Electron Orbital Rings */}
           <div className="relative z-10 flex items-center justify-center">
             <div
-              className="absolute w-64 h-64 rounded-full border-2 border-fuchsia-300/60"
+              className="absolute w-72 h-72 rounded-full border-2 border-emerald-300/55"
               style={{
                 transform: `scale(${0.4 + introProgress * 1.45}) rotate(${introProgress * 220}deg)`,
                 opacity: 1 - introProgress * 0.55,
               }}
-            />
+            >
+              <span className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-[0_0_16px_#67e8f9]" />
+            </div>
             <div
               className="absolute w-44 h-44 rounded-full border border-cyan-300/80"
               style={{
@@ -679,7 +681,7 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
               }}
             >
               <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-cyan-300 shadow-[0_0_16px_#67e8f9]" />
-              <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-pink-300 shadow-[0_0_16px_#f472b6]" />
+              <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-emerald-300 shadow-[0_0_16px_#34d399]" />
             </div>
 
             <div
@@ -689,14 +691,14 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
                 opacity: Math.min(1, introProgress * 1.8),
               }}
             >
-              <div className="text-7xl font-black tracking-tight bg-gradient-to-b from-white via-fuchsia-100 to-purple-300 bg-clip-text text-transparent drop-shadow-[0_0_32px_rgba(217,70,239,0.7)]">
-                1.1
+              <div className="text-7xl font-black tracking-tight bg-gradient-to-b from-white via-emerald-100 to-cyan-300 bg-clip-text text-transparent drop-shadow-[0_0_32px_rgba(16,185,129,0.7)]">
+                1.2
               </div>
               <div className="text-xl font-bold tracking-[0.28em] text-white uppercase mt-1">
-                LUMA HELIUM
+                LUMA LITHIUM
               </div>
-              <div className="text-[11px] font-mono text-cyan-200/85 mt-2 tracking-widest">
-                ЗАПУСК ОРБИТАЛЬНОЙ ПАСХАЛКИ...
+              <div className="text-[11px] font-mono text-emerald-200/90 mt-2 tracking-widest">
+                ЗАПУСК ОРБИТЫ Li-3 · 3 ЭЛЕКТРОНА...
               </div>
             </div>
           </div>
@@ -709,24 +711,24 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
           </button>
         </div>
       ) : (
-        <div className="w-full max-w-[860px] rounded-3xl border border-white/15 bg-[#0b071b] text-white shadow-2xl overflow-hidden flex flex-col">
+        <div className="w-full max-w-[860px] rounded-3xl border border-white/15 bg-[#041016] text-white shadow-2xl overflow-hidden flex flex-col">
           {/* Top Arcade HUD */}
           <div className="px-4 py-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-3 bg-white/[0.03]">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-fuchsia-500 to-cyan-400 flex items-center justify-center font-mono font-black text-xs text-slate-950">
-                He
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-400 flex items-center justify-center font-mono font-black text-xs text-slate-950">
+                Li
               </div>
               <div>
-                <div className="text-xs font-extrabold tracking-wide uppercase">HELIUM ORBIT · Пасхалка 1.1</div>
+                <div className="text-xs font-extrabold tracking-wide uppercase">LITHIUM ORBIT · Пасхалка 1.2</div>
                 <div className="text-[10px] font-mono text-zinc-400">
-                  Мышь / WASD — полёт · Пробел — импульс слияния
+                  Мышь / WASD — полёт · Пробел — кристальный импульс
                 </div>
               </div>
             </div>
 
             <div className="flex items-center gap-3 text-xs font-mono">
               <div className="px-2.5 py-1 rounded-xl bg-white/[0.06] border border-white/10">
-                СЧЁТ <span className="text-fuchsia-300 font-bold">{score}</span>
+                СЧЁТ <span className="text-emerald-300 font-bold">{score}</span>
               </div>
               <div className="px-2.5 py-1 rounded-xl bg-white/[0.06] border border-white/10">
                 x<span className="text-cyan-300 font-bold">{combo}</span> · W{wave}
@@ -737,8 +739,8 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
               </div>
               <button
                 onClick={triggerFusionPulse}
-                disabled={energy < 45 || gameOver}
-                className="px-2.5 py-1 rounded-xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 disabled:opacity-35 inline-flex items-center gap-1 cursor-pointer"
+                disabled={energy < 40 || gameOver}
+                className="px-2.5 py-1 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 disabled:opacity-35 inline-flex items-center gap-1 cursor-pointer"
                 title="Импульс (Пробел)"
               >
                 <Zap className="w-3.5 h-3.5" />
@@ -771,8 +773,7 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
             </div>
           </div>
 
-          {/* Interactive 60 FPS Canvas Stage */}
-          <div className="relative w-full bg-[#070411] flex items-center justify-center">
+          <div className="relative w-full bg-[#02080d] flex items-center justify-center">
             <canvas
               ref={canvasRef}
               width={820}
@@ -797,7 +798,7 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
                     gameStateRef.current.paused = false;
                     setPaused(false);
                   }}
-                  className="px-5 py-2 rounded-full bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white text-xs font-bold cursor-pointer"
+                  className="px-5 py-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-white text-xs font-bold cursor-pointer"
                 >
                   Продолжить
                 </button>
@@ -805,9 +806,9 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
             )}
 
             {gameOver && (
-              <div className="absolute inset-0 bg-[#080414]/75 backdrop-blur-md flex flex-col items-center justify-center gap-3 p-6 text-center">
-                <div className="text-[11px] font-mono uppercase tracking-[0.26em] text-fuchsia-300">
-                  ЯДРО HELIUM СТАБИЛИЗИРОВАНО
+              <div className="absolute inset-0 bg-[#020b0f]/75 backdrop-blur-md flex flex-col items-center justify-center gap-3 p-6 text-center">
+                <div className="text-[11px] font-mono uppercase tracking-[0.26em] text-emerald-300">
+                  ЯДРО LITHIUM СТАБИЛИЗИРОВАНО
                 </div>
                 <div className="text-4xl font-black">{score} очков</div>
                 <div className="text-xs font-mono text-zinc-300">
@@ -816,7 +817,7 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
                 <div className="flex items-center gap-2 mt-2">
                   <button
                     onClick={resetGame}
-                    className="px-5 py-2.5 rounded-full bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-lg"
+                    className="px-5 py-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-lg"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     Играть снова
@@ -836,3 +837,5 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
     </div>
   );
 };
+
+export const LumaLithiumEasterEggModal = LumaHeliumEasterEggModal;

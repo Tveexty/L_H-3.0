@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// LumaShield 1.1 — Lightweight, zero-conflict user-space security core & on-demand antivirus.
+// LumaShield 1.2 — Lightweight, zero-conflict user-space security core & on-demand antivirus.
 // Does NOT register kernel filter drivers or replace Windows SecurityCenter, so it runs
 // cleanly alongside Windows Defender with zero locks or conflicts.
 
@@ -50,7 +50,7 @@ func NewSecurityKernel() *SecurityKernel {
 		auditLog:      []SecurityAuditEvent{},
 	}
 	sk.loadQuarantineIndex()
-	sk.LogAudit("ok", "kernel", "LumaShield 1.1 инициализирован", "Пассивный user-space режим (без конфликтов с Windows Defender), loopback IPC 127.0.0.1")
+	sk.LogAudit("ok", "kernel", "LumaShield 1.2 инициализирован", "Пассивный user-space режим (без конфликтов с Windows Defender), loopback IPC 127.0.0.1")
 	return sk
 }
 
@@ -384,7 +384,7 @@ func (s *SecurityKernel) RunScan(mode, customPath string, probe *platformProbe) 
 	if len(threats) > 0 {
 		level = "danger"
 	}
-	s.LogAudit(level, "antivirus", "Проверка LumaShield 1.1 завершена", msg)
+	s.LogAudit(level, "antivirus", "Проверка LumaShield 1.2 завершена", msg)
 
 	return map[string]interface{}{
 		"ok":            true,
@@ -543,7 +543,7 @@ func (s *SecurityKernel) StatusSnapshot(probe *platformProbe) map[string]interfa
 	return map[string]interface{}{
 		"ok":                    true,
 		"security_core_version": SecurityCoreVersion,
-		"engine_name":           "LumaShield 1.1 (Zero-Conflict User-Space)",
+		"engine_name":           "LumaShield 1.2 (Zero-Conflict User-Space)",
 		"score":                 score,
 		"defender":              def,
 		"last_scan_time":        s.lastScanTime,

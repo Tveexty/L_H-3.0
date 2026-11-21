@@ -15,9 +15,23 @@ import {
   User,
   Loader2,
   SlidersHorizontal,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  Zap,
 } from 'lucide-react';
 
-export type AIProviderId = 'gemini' | 'openai' | 'claude' | 'deepseek' | 'openrouter' | 'groq' | 'ollama' | 'custom';
+export type AIProviderId =
+  | 'luma_local'
+  | 'gemini'
+  | 'openai'
+  | 'claude'
+  | 'deepseek'
+  | 'openrouter'
+  | 'groq'
+  | 'ollama'
+  | 'custom';
 
 export interface AIProviderPreset {
   id: AIProviderId;
@@ -32,9 +46,19 @@ export interface AIProviderPreset {
 
 export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
   {
+    id: 'luma_local',
+    label: 'Luma AI (Автономный)',
+    badge: 'Без API',
+    defaultModel: 'luma-nano-1.2',
+    models: ['luma-nano-1.2', 'luma-code-1.2'],
+    defaultBaseUrl: 'internal://lumanano-1.2',
+    needsKey: false,
+    hint: 'Встроенный офлайн-движок LumaNano 1.2 внутри ядра: работает без API-ключей и интернета — диагностика ПК, лёгкий код (Python/JS/Go/HTML/SQL/PS), математика, SHA-256, пароли и JSON.',
+  },
+  {
     id: 'gemini',
     label: 'Google Gemini',
-    badge: 'Рекомендуем',
+    badge: 'Cloud',
     defaultModel: 'gemini-2.5-flash',
     models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'],
     defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
@@ -104,7 +128,7 @@ export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
     models: ['llama3.2', 'qwen2.5:7b', 'deepseek-r1:8b', 'gemma3:4b', 'mistral'],
     defaultBaseUrl: 'http://127.0.0.1:11434/v1',
     needsKey: false,
-    hint: 'Работает офлайн без API-ключа (порт 11434 / 1234)',
+    hint: 'Локальная LLM без API-ключа (порт 11434 / 1234)',
   },
   {
     id: 'custom',
@@ -129,12 +153,12 @@ export interface LumaAIConfig {
 }
 
 export const DEFAULT_LUMA_AI_CONFIG: LumaAIConfig = {
-  provider: 'gemini',
+  provider: 'luma_local',
   apiKeys: {},
   models: {},
   baseUrls: {},
   systemPrompt:
-    'Ты — встроенный системный ИИ-ассистент Luma OS 1.1.0 (Helium). Отвечай чётко, структурированно и на языке пользователя.',
+    'Ты — встроенный системный ИИ-ассистент Luma OS 1.2.0 (Lithium). Отвечай чётко, структурированно и на языке пользователя.',
   temperature: 0.7,
   includeSystemContext: true,
 };
@@ -156,11 +180,34 @@ interface ChatThread {
 
 const THREADS_KEY = 'luma_ai_threads_v1';
 
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: {
+    length: number;
+    [i: number]: {
+      isFinal: boolean;
+      [j: number]: { transcript: string };
+    };
+  };
+}
+
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((ev: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((ev: { error: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
 interface LumaAIAssistantWindowProps {
   isDark: boolean;
   surfaceCls: string;
   btnCls: string;
   mutedCls: string;
+  locale?: string;
   config: LumaAIConfig;
   onChangeConfig: (next: LumaAIConfig) => void;
   onRunInTerminal?: (cmd: string) => void;
@@ -172,6 +219,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
   surfaceCls,
   btnCls,
   mutedCls,
+  locale = 'ru-RU',
   config,
   onChangeConfig,
   onRunInTerminal,
@@ -201,6 +249,12 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
   const [loading, setLoading] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Voice Input & Speech Synthesis TTS state
+  const [listening, setListening] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(false);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const preset = AI_PROVIDER_PRESETS.find((p) => p.id === config.provider) || AI_PROVIDER_PRESETS[0];
@@ -221,6 +275,108 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeThread?.messages.length, loading]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        recognitionRef.current?.stop();
+        window.speechSynthesis?.cancel();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, []);
+
+  const speakText = (text: string, msgId?: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      onPushToast('Luma AI Голос', 'Синтез речи не поддерживается браузером', 'warning');
+      return;
+    }
+    try {
+      if (msgId && speakingId === msgId) {
+        window.speechSynthesis.cancel();
+        setSpeakingId(null);
+        return;
+      }
+      window.speechSynthesis.cancel();
+      // Strip markdown code blocks for cleaner speech
+      const clean = text.replace(/```[\s\S]*?```/g, ' (блок кода) ').replace(/[*#`_]/g, '').slice(0, 900);
+      const utter = new SpeechSynthesisUtterance(clean);
+      utter.lang = locale;
+      utter.rate = 1.02;
+      utter.onend = () => setSpeakingId(null);
+      utter.onerror = () => setSpeakingId(null);
+      setSpeakingId(msgId || 'auto');
+      window.speechSynthesis.speak(utter);
+    } catch {
+      setSpeakingId(null);
+    }
+  };
+
+  const toggleVoiceInput = () => {
+    if (listening) {
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        /* ignore */
+      }
+      setListening(false);
+      return;
+    }
+
+    const win = window as unknown as {
+      SpeechRecognition?: new () => SpeechRecognitionLike;
+      webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+    };
+    const SR = win.SpeechRecognition || win.webkitSpeechRecognition;
+    if (!SR) {
+      onPushToast(
+        'Голосовой ввод',
+        'Web Speech API недоступен в этом движке. В Windows WebView2 (Edge/Chromium) голосовой ввод работает нативно.',
+        'warning'
+      );
+      return;
+    }
+
+    try {
+      const rec = new SR();
+      rec.lang = locale;
+      rec.continuous = false;
+      rec.interimResults = true;
+      let finalTranscript = '';
+
+      rec.onresult = (ev) => {
+        let interim = '';
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          const piece = ev.results[i][0]?.transcript || '';
+          if (ev.results[i].isFinal) {
+            finalTranscript += piece;
+          } else {
+            interim += piece;
+          }
+        }
+        setInput((finalTranscript + interim).trim());
+      };
+
+      rec.onerror = (ev) => {
+        setListening(false);
+        if (ev.error !== 'aborted' && ev.error !== 'no-speech') {
+          onPushToast('Голосовой ввод', `Ошибка микрофона: ${ev.error}`, 'warning');
+        }
+      };
+
+      rec.onend = () => {
+        setListening(false);
+      };
+
+      recognitionRef.current = rec;
+      setListening(true);
+      rec.start();
+    } catch {
+      setListening(false);
+      onPushToast('Голосовой ввод', 'Не удалось запустить микрофон', 'warning');
+    }
+  };
 
   const createNewThread = () => {
     const id = `t_${Date.now()}`;
@@ -251,6 +407,15 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
   const sendMessage = async (textOverride?: string) => {
     const content = (textOverride ?? input).trim();
     if (!content || loading || !activeThread) return;
+
+    if (listening) {
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        /* ignore */
+      }
+      setListening(false);
+    }
 
     const userMsg: ChatMsg = {
       id: `m_${Date.now()}`,
@@ -291,23 +456,27 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
         }),
       });
       const data = await r.json();
+      const replyText = data?.ok
+        ? data.reply
+        : `Ошибка (${preset.label}): ${data?.error || 'Не удалось получить ответ'}.\n\nСовет: переключитесь на «Luma AI (Автономный · Без API)» — он работает без API-ключей прямо из ядра LumaCore 1.2!`;
       const botMsg: ChatMsg = {
         id: `m_${Date.now()}_a`,
         role: 'assistant',
-        content: data?.ok
-          ? data.reply
-          : `Ошибка (${preset.label}): ${data?.error || 'Не удалось получить ответ'}.\n\nОткройте «Настройки модели» справа сверху, чтобы указать API-ключ или переключиться на локальную Ollama.`,
+        content: replyText,
         time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
         model: data?.model || currentModel,
       };
       setThreads((prev) =>
         prev.map((t) => (t.id === activeThread.id ? { ...t, messages: [...t.messages, botMsg] } : t))
       );
+      if (data?.ok && autoSpeak) {
+        speakText(replyText, botMsg.id);
+      }
       if (!data?.ok) {
         onPushToast('Luma AI', data?.error || 'Требуется настройка провайдера', 'warning');
       }
     } catch {
-      onPushToast('Luma AI', 'Нет ответа от шлюза LumaCore 1.1', 'warning');
+      onPushToast('Luma AI', 'Нет ответа от шлюза LumaCore 1.2', 'warning');
     } finally {
       setLoading(false);
     }
@@ -383,6 +552,22 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
           Новый диалог
         </button>
 
+        {/* Quick 1-click toggle to Offline LumaNano 1.2 */}
+        <button
+          onClick={() => {
+            onChangeConfig({ ...config, provider: 'luma_local' });
+            onPushToast('Luma AI', 'Включён встроенный автономный движок LumaNano 1.2 (без API)', 'success');
+          }}
+          className={`w-full py-1.5 px-2.5 rounded-xl border text-[11px] font-semibold inline-flex items-center gap-1.5 cursor-pointer transition ${
+            config.provider === 'luma_local'
+              ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-400'
+              : btnCls
+          }`}
+        >
+          <Zap className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">Автономный (без API)</span>
+        </button>
+
         <div className="flex-1 overflow-y-auto space-y-1 pr-0.5">
           {threads.map((t) => (
             <div
@@ -422,17 +607,17 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
           }`}
         >
           <div className="flex items-center justify-between text-[10px] font-mono uppercase">
-            <span className="text-[var(--luma-accent)] font-bold">{preset.label}</span>
-            <Settings2 className="w-3 h-3" />
+            <span className="text-[var(--luma-accent)] font-bold truncate">{preset.label}</span>
+            <Settings2 className="w-3 h-3 shrink-0" />
           </div>
           <div className="text-[11px] font-mono truncate opacity-80">{currentModel}</div>
           <div className={`text-[10px] ${preset.needsKey && !currentKey ? 'text-amber-500' : 'text-emerald-500'}`}>
-            {preset.needsKey ? (currentKey ? 'API-ключ задан' : 'Нужен API-ключ') : 'Без ключа / Локально'}
+            {preset.needsKey ? (currentKey ? 'API-ключ задан' : 'Нужен API-ключ') : 'Без ключа · Готов'}
           </div>
         </button>
       </aside>
 
-      {/* Main Content: Either Provider Setup or Live Chat */}
+      {/* Main Content */}
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Header Bar */}
         <div
@@ -447,6 +632,21 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
           </div>
           <div className="flex items-center gap-1.5">
             <button
+              onClick={() => {
+                if (autoSpeak) window.speechSynthesis?.cancel();
+                setAutoSpeak((v) => !v);
+              }}
+              className={`px-2.5 py-1 rounded-lg border text-[11px] inline-flex items-center gap-1 cursor-pointer ${
+                autoSpeak
+                  ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-400 font-semibold'
+                  : btnCls
+              }`}
+              title="Автоматически озвучивать ответы Luma AI голосом"
+            >
+              {autoSpeak ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
+              <span className="hidden md:inline">Озвучка</span>
+            </button>
+            <button
               onClick={() => onChangeConfig({ ...config, includeSystemContext: !config.includeSystemContext })}
               className={`px-2.5 py-1 rounded-lg border text-[11px] inline-flex items-center gap-1 cursor-pointer ${
                 config.includeSystemContext
@@ -456,7 +656,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
               title="Передавать ИИ живую телеметрию ПК (CPU/RAM/ОС)"
             >
               <Cpu className="w-3 h-3" />
-              Контекст ПК
+              <span className="hidden sm:inline">Контекст ПК</span>
             </button>
             <button
               onClick={() => setShowConfig((v) => !v)}
@@ -465,7 +665,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
               }`}
             >
               <SlidersHorizontal className="w-3 h-3" />
-              Настройки модели
+              Модель
             </button>
           </div>
         </div>
@@ -473,8 +673,8 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
         {showConfig ? (
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
-              <div className="text-xs font-bold">Выберите нейросеть (провайдер)</div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="text-xs font-bold">Выберите нейросеть (встроенная без API или облачная)</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {AI_PROVIDER_PRESETS.map((p) => (
                   <button
                     key={p.id}
@@ -486,7 +686,9 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
                     }`}
                   >
                     <div className="text-xs font-bold truncate">{p.label}</div>
-                    <div className={`text-[10px] font-mono ${mutedCls}`}>{p.badge}</div>
+                    <div className={`text-[10px] font-mono ${p.id === 'luma_local' ? 'text-emerald-400 font-bold' : mutedCls}`}>
+                      {p.badge}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -502,6 +704,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
                   </span>
                   <input
                     type="password"
+                    disabled={config.provider === 'luma_local'}
                     value={currentKey}
                     onChange={(e) =>
                       onChangeConfig({
@@ -509,8 +712,14 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
                         apiKeys: { ...config.apiKeys, [config.provider]: e.target.value },
                       })
                     }
-                    placeholder={preset.needsKey ? 'Вставьте API-ключ...' : 'Опционально для локального сервера'}
-                    className={`w-full px-3 py-2 rounded-xl border text-xs font-mono outline-none ${btnCls}`}
+                    placeholder={
+                      config.provider === 'luma_local'
+                        ? 'Не требуется — работает автономно!'
+                        : preset.needsKey
+                        ? 'Вставьте API-ключ...'
+                        : 'Опционально для локального сервера'
+                    }
+                    className={`w-full px-3 py-2 rounded-xl border text-xs font-mono outline-none disabled:opacity-55 ${btnCls}`}
                   />
                 </label>
 
@@ -549,23 +758,25 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
                 ))}
               </div>
 
-              <label className="block space-y-1 text-xs">
-                <span className={`text-[11px] font-mono flex items-center gap-1 ${mutedCls}`}>
-                  <Globe className="w-3 h-3" />
-                  Base URL (API Endpoint)
-                </span>
-                <input
-                  value={currentBaseUrl}
-                  onChange={(e) =>
-                    onChangeConfig({
-                      ...config,
-                      baseUrls: { ...config.baseUrls, [config.provider]: e.target.value },
-                    })
-                  }
-                  placeholder={preset.defaultBaseUrl || 'https://your-endpoint.com/v1'}
-                  className={`w-full px-3 py-2 rounded-xl border text-xs font-mono outline-none ${btnCls}`}
-                />
-              </label>
+              {config.provider !== 'luma_local' && (
+                <label className="block space-y-1 text-xs">
+                  <span className={`text-[11px] font-mono flex items-center gap-1 ${mutedCls}`}>
+                    <Globe className="w-3 h-3" />
+                    Base URL (API Endpoint)
+                  </span>
+                  <input
+                    value={currentBaseUrl}
+                    onChange={(e) =>
+                      onChangeConfig({
+                        ...config,
+                        baseUrls: { ...config.baseUrls, [config.provider]: e.target.value },
+                      })
+                    }
+                    placeholder={preset.defaultBaseUrl || 'https://your-endpoint.com/v1'}
+                    className={`w-full px-3 py-2 rounded-xl border text-xs font-mono outline-none ${btnCls}`}
+                  />
+                </label>
+              )}
 
               <label className="block space-y-1 text-xs">
                 <span className={`text-[11px] font-mono ${mutedCls}`}>Системный промпт</span>
@@ -614,15 +825,15 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
                   <div>
                     <div className="text-base font-extrabold">Luma AI · {preset.label}</div>
                     <div className={`text-xs mt-1 ${mutedCls}`}>
-                      Поддерживает Google Gemini, OpenAI, Claude, DeepSeek, OpenRouter, Groq, локальную Ollama и любой свой API.
+                      Работает из коробки без API-ключей (движок LumaNano 1.2 + голосовой ввод), а также поддерживает Gemini, OpenAI, Claude, DeepSeek, Groq и Ollama.
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
                     {[
-                      'Проанализируй текущую нагрузку моего ПК и дай 3 совета',
-                      'Напиши PowerShell команду для очистки временных файлов',
-                      'Помоги настроить быстрый бэкап папки Проекты',
-                      'Объясни разницу между RAM и файлом подкачки кратко',
+                      'Диагностика ПК и текущая нагрузка системы',
+                      'Напиши код на Python для быстрого HTTP-сервера',
+                      'Напиши HTML/CSS карточку с эффектом стекла',
+                      'Сгенерируй надёжный пароль и UUID',
                     ].map((prompt) => (
                       <button
                         key={prompt}
@@ -651,11 +862,24 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
                     >
                       {renderMessageContent(m)}
                       <div
-                        className={`mt-1 text-[9px] font-mono ${
-                          m.role === 'user' ? 'text-white/75 text-right' : mutedCls
+                        className={`mt-1.5 flex items-center justify-between gap-3 text-[9px] font-mono ${
+                          m.role === 'user' ? 'text-white/75 justify-end' : mutedCls
                         }`}
                       >
-                        {m.time} {m.model ? `· ${m.model}` : ''}
+                        <span>
+                          {m.time} {m.model ? `· ${m.model}` : ''}
+                        </span>
+                        {m.role === 'assistant' && (
+                          <button
+                            onClick={() => speakText(m.content, m.id)}
+                            title="Озвучить ответ"
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-white/10 cursor-pointer ${
+                              speakingId === m.id ? 'text-emerald-400' : ''
+                            }`}
+                          >
+                            <Volume2 className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
                     </div>
                     {m.role === 'user' && (
@@ -676,7 +900,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
               <div ref={endRef} />
             </div>
 
-            {/* Composer */}
+            {/* Composer with Voice Input Mic */}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -686,10 +910,22 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
                 isDark ? 'border-white/[0.08]' : 'border-zinc-900/10'
               }`}
             >
+              <button
+                type="button"
+                onClick={toggleVoiceInput}
+                title={listening ? 'Остановить запись голоса' : `Голосовой ввод (${locale})`}
+                className={`p-2.5 rounded-xl border cursor-pointer transition shrink-0 ${
+                  listening
+                    ? 'bg-rose-500 border-rose-400 text-white animate-pulse shadow-lg shadow-rose-500/30'
+                    : btnCls
+                }`}
+              >
+                {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={`Спросите ${preset.label}...`}
+                placeholder={listening ? 'Говорите в микрофон...' : `Спросите ${preset.label} (или нажмите микрофон)...`}
                 className={`flex-1 px-3.5 py-2.5 rounded-xl border text-xs outline-none ${btnCls}`}
               />
               <button

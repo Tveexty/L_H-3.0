@@ -50,6 +50,7 @@ import {
   SkipForward,
   Sliders,
   Snowflake,
+  Sparkles,
   StickyNote,
   Sun,
   Terminal,
@@ -79,6 +80,8 @@ export { DESKTOP_WIDGET_CATALOG };
 export type { WidgetShape };
 export type DesktopGridCols = 22 | 20;
 export type WallpaperStyle = 'dots' | 'grid' | 'matte';
+export type WallpaperTransitionMode = 'iris' | 'bloom' | 'wipe' | 'morph';
+export type LiveWallpaperId = '' | 'lithium' | 'nebula' | 'solar';
 
 export type DesktopSystemWinId =
   | 'apps'
@@ -90,7 +93,11 @@ export type DesktopSystemWinId =
   | 'island'
   | 'spaces'
   | 'explorer'
-  | 'taskmgr';
+  | 'taskmgr'
+  | 'calculator'
+  | 'ai'
+  | 'utilities'
+  | 'security';
 
 export interface FolderEntry {
   id: string;
@@ -159,8 +166,8 @@ const DEFAULT_SHORTCUTS: DesktopShortcut[] = [
   { id: 'sc_settings', kind: 'system', label: 'Настройки', icon: 'Settings', target: 'settings', col: 1, row: 5 },
 ];
 
-const DESKTOP_STORAGE_KEY = 'luma_os_1_0_4_dex_desktop_v1';
-const LEGACY_DESKTOP_KEY = 'luma_os_1_0_2b_dex_desktop_v1';
+const DESKTOP_STORAGE_KEY = 'luma_desktop_permanent_v1';
+const LEGACY_DESKTOP_KEYS = ['luma_os_1_0_4_dex_desktop_v1', 'luma_os_1_0_2b_dex_desktop_v1'];
 
 interface WeatherLive {
   city: string;
@@ -259,6 +266,8 @@ export interface LumaDesktopCanvasProps {
   wallpaperImageUrl?: string;
   wallpaperBlur?: number;
   wallpaperDim?: number;
+  wallpaperTransition?: WallpaperTransitionMode;
+  liveWallpaper?: LiveWallpaperId;
 }
 
 export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
@@ -318,35 +327,39 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   wallpaperImageUrl = '',
   wallpaperBlur = 0,
   wallpaperDim = 25,
+  wallpaperTransition = 'iris',
+  liveWallpaper = '',
 }) => {
   const totalRows = 10;
   const totalCells = gridCols * totalRows;
   const gridRef = useRef<HTMLDivElement>(null);
 
-  const [widgets, setWidgets] = useState<DesktopWidgetInstance[]>(() => {
+  const readStoredDesktop = () => {
     try {
-      const raw = localStorage.getItem(DESKTOP_STORAGE_KEY) || localStorage.getItem(LEGACY_DESKTOP_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.widgets)) return parsed.widgets;
+      const keys = [DESKTOP_STORAGE_KEY, ...LEGACY_DESKTOP_KEYS];
+      for (const k of keys) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && (Array.isArray(parsed.widgets) || Array.isArray(parsed.shortcuts))) {
+            return parsed as { widgets?: DesktopWidgetInstance[]; shortcuts?: DesktopShortcut[] };
+          }
+        }
       }
     } catch {
-      // ignore
+      /* ignore */
     }
-    return DEFAULT_MINIMAL_WIDGETS;
+    return null;
+  };
+
+  const [widgets, setWidgets] = useState<DesktopWidgetInstance[]>(() => {
+    const stored = readStoredDesktop();
+    return Array.isArray(stored?.widgets) ? stored.widgets : DEFAULT_MINIMAL_WIDGETS;
   });
 
   const [shortcuts, setShortcuts] = useState<DesktopShortcut[]>(() => {
-    try {
-      const raw = localStorage.getItem(DESKTOP_STORAGE_KEY) || localStorage.getItem(LEGACY_DESKTOP_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.shortcuts)) return parsed.shortcuts;
-      }
-    } catch {
-      // ignore
-    }
-    return DEFAULT_SHORTCUTS;
+    const stored = readStoredDesktop();
+    return Array.isArray(stored?.shortcuts) ? stored.shortcuts : DEFAULT_SHORTCUTS;
   });
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -554,15 +567,142 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   const pomoRunningRef = useRef(pomoRunning);
   pomoRunningRef.current = pomoRunning;
   const fetchedCityRef = useRef<string>('');
+  const diskHydratedRef = useRef(false);
 
-  // Persist desktop layout
+  // New 1.2.0 Widget interactive states (Mini AI + Battery/ScreenTime Analytics)
+  const [miniAiInput, setMiniAiInput] = useState('');
+  const [miniAiAnswer, setMiniAiAnswer] = useState('Готов помочь без API (LumaNano 1.2)');
+  const [miniAiBusy, setMiniAiBusy] = useState(false);
+  const [batteryMini, setBatteryMini] = useState<{
+    health: number;
+    cycles: number;
+    screenMin: number;
+    days: { weekday: string; minutes: number }[];
+  }>({ health: 96, cycles: 0, screenMin: 1, days: [] });
+
+  // Wallpaper transition state (keeps previous wallpaper underneath during animation!)
+  const activeWpKey = liveWallpaper ? `live:${liveWallpaper}` : wallpaperImageUrl ? `img:${wallpaperImageUrl}` : '';
+  const [prevWpKey, setPrevWpKey] = useState<string>('');
+  const [wpAnimSeq, setWpAnimSeq] = useState<number>(0);
+  const lastWpKeyRef = useRef<string>(activeWpKey);
+
   useEffect(() => {
-    try {
-      localStorage.setItem(DESKTOP_STORAGE_KEY, JSON.stringify({ widgets, shortcuts }));
-    } catch {
-      // ignore
+    if (activeWpKey !== lastWpKeyRef.current) {
+      setPrevWpKey(lastWpKeyRef.current);
+      lastWpKeyRef.current = activeWpKey;
+      setWpAnimSeq((n) => n + 1);
+      const t = window.setTimeout(() => setPrevWpKey(''), 950);
+      return () => window.clearTimeout(t);
     }
+  }, [activeWpKey]);
+
+  // Fetch battery & screen-on time summary for new widgets
+  useEffect(() => {
+    const loadBatt = () => {
+      fetch('/api/kernel/battery/report')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d?.ok) {
+            setBatteryMini({
+              health: d.details?.health_percent ?? 100,
+              cycles: d.details?.cycle_count ?? 0,
+              screenMin: d.screen_time_today_min ?? 1,
+              days: Array.isArray(d.screen_time_7d) ? d.screen_time_7d : [],
+            });
+          }
+        })
+        .catch(() => {});
+    };
+    loadBatt();
+    const id = window.setInterval(loadBatt, 45000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Eternal Disk Hydration on mount (guarantees zero loss across exe upgrades / cache clears)
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/kernel/state')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled) return;
+        const layout = d?.state?.desktop_layout;
+        const hasLocal = Boolean(localStorage.getItem(DESKTOP_STORAGE_KEY));
+        if (layout && !hasLocal) {
+          if (Array.isArray(layout.widgets) && layout.widgets.length > 0) setWidgets(layout.widgets);
+          if (Array.isArray(layout.shortcuts) && layout.shortcuts.length > 0) setShortcuts(layout.shortcuts);
+        } else if (layout && hasLocal) {
+          // If disk layout is newer than local, restore it seamlessly
+          try {
+            const localParsed = JSON.parse(localStorage.getItem(DESKTOP_STORAGE_KEY) || '{}');
+            if ((layout.updated_at || 0) > (localParsed.updated_at || 0)) {
+              if (Array.isArray(layout.widgets)) setWidgets(layout.widgets);
+              if (Array.isArray(layout.shortcuts)) setShortcuts(layout.shortcuts);
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        diskHydratedRef.current = true;
+      })
+      .catch(() => {
+        diskHydratedRef.current = true;
+      });
+
+    const onRestoreBackup = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail;
+      if (detail?.widgets && Array.isArray(detail.widgets)) setWidgets(detail.widgets);
+      if (detail?.shortcuts && Array.isArray(detail.shortcuts)) setShortcuts(detail.shortcuts);
+    };
+    window.addEventListener('luma-restore-desktop-layout', onRestoreBackup);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('luma-restore-desktop-layout', onRestoreBackup);
+    };
+  }, []);
+
+  // Persist desktop layout to BOTH localStorage AND permanent disk store (%APPDATA%/LumaOS)
+  useEffect(() => {
+    const payload = { widgets, shortcuts, updated_at: Date.now() };
+    try {
+      localStorage.setItem(DESKTOP_STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      /* ignore */
+    }
+    if (!diskHydratedRef.current) return;
+    const t = window.setTimeout(() => {
+      fetch('/api/kernel/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patch: { desktop_layout: payload } }),
+      }).catch(() => {});
+    }, 450);
+    return () => window.clearTimeout(t);
   }, [widgets, shortcuts]);
+
+  const askMiniAi = async () => {
+    const q = miniAiInput.trim();
+    if (!q || miniAiBusy) return;
+    setMiniAiBusy(true);
+    try {
+      const r = await fetch('/api/kernel/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'luma_local',
+          model: 'luma-nano-1.2',
+          include_context: true,
+          messages: [{ role: 'user', content: q }],
+        }),
+      });
+      const d = await r.json();
+      setMiniAiAnswer(d?.reply || 'Нет ответа от LumaNano 1.2');
+      setMiniAiInput('');
+    } catch {
+      setMiniAiAnswer('Ошибка связи с LumaNano 1.2');
+    } finally {
+      setMiniAiBusy(false);
+    }
+  };
 
   // Single stable 1s tick
   useEffect(() => {
@@ -2247,11 +2387,187 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           </div>
         );
 
+      case 'luma_battery_pro': {
+        const battPct = liveSystem?.battery_percent ?? 100;
+        const charging = Boolean(liveSystem?.battery_charging);
+        return (
+          <div className="h-full flex flex-col justify-between gap-2">
+            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
+              <span className="inline-flex items-center gap-1 text-emerald-400 font-bold">
+                <BatteryCharging className="w-3.5 h-3.5" />
+                БАТАРЕЯ PRO
+              </span>
+              <span className={mutedCls}>{charging ? 'ЗАРЯДКА' : 'АКБ'}</span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <div className="text-2xl font-mono font-black tabular-nums">{battPct}%</div>
+              <div className="text-right font-mono text-[10px]">
+                <div className="text-emerald-400 font-bold">Здоровье {batteryMini.health}%</div>
+                <div className={mutedCls}>Циклов: {batteryMini.cycles}</div>
+              </div>
+            </div>
+            <div className={`h-2 rounded-full overflow-hidden ${railTrackCls}`}>
+              <div
+                style={{ width: `${Math.min(100, battPct)}%` }}
+                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-500"
+              />
+            </div>
+          </div>
+        );
+      }
+
+      case 'luma_ai_quick': {
+        const isPill = variant === 'pill_ai';
+        return (
+          <div className="h-full flex flex-col justify-between gap-1.5" onClick={(e) => e.stopPropagation()}>
+            {!isPill && (
+              <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
+                <span className="inline-flex items-center gap-1 text-[var(--luma-accent)] font-bold">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  LUMA AI · АВТОНОМНО
+                </span>
+                <button
+                  onClick={() => onOpenSystemWindow('ai')}
+                  className={`px-1.5 py-0.5 rounded border text-[9px] cursor-pointer ${subBtnCls}`}
+                >
+                  ОКНО
+                </button>
+              </div>
+            )}
+            {!isPill && (
+              <div className={`flex-1 overflow-y-auto text-[11px] leading-snug pr-1 ${mutedCls}`}>
+                {miniAiBusy ? 'LumaNano 1.2 думает...' : miniAiAnswer.slice(0, 180)}
+              </div>
+            )}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void askMiniAi();
+              }}
+              className="flex items-center gap-1.5"
+            >
+              <input
+                value={miniAiInput}
+                onChange={(e) => setMiniAiInput(e.target.value)}
+                placeholder="Спросите LumaNano 1.2 (без API)..."
+                className={`flex-1 min-w-0 px-2.5 py-1 rounded-lg border text-[11px] outline-none ${subBtnCls}`}
+              />
+              <button
+                type="submit"
+                disabled={miniAiBusy}
+                className="px-2.5 py-1 rounded-lg bg-[var(--luma-accent)] text-white text-[10px] font-bold cursor-pointer"
+              >
+                →
+              </button>
+            </form>
+          </div>
+        );
+      }
+
+      case 'luma_world_clock': {
+        const fmtCity = (tz: string) => {
+          try {
+            return new Intl.DateTimeFormat(locale, { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(now);
+          } catch {
+            return '--:--';
+          }
+        };
+        const cities = [
+          { code: 'MSK', name: 'Москва', tz: 'Europe/Moscow' },
+          { code: 'LON', name: 'Лондон', tz: 'Europe/London' },
+          { code: 'TYO', name: 'Токио', tz: 'Asia/Tokyo' },
+        ];
+        return (
+          <div className="h-full flex flex-col justify-between">
+            <div className={`text-[10px] font-mono uppercase tracking-[0.14em] ${mutedCls}`}>МИРОВЫЕ ЧАСЫ · UTC</div>
+            <div className="grid grid-cols-3 gap-2">
+              {cities.map((c) => (
+                <div key={c.code} className={`rounded-xl border px-2 py-1.5 text-center ${subBtnCls}`}>
+                  <div className="text-[9px] font-mono opacity-70">{c.name}</div>
+                  <div className="text-sm font-mono font-black tabular-nums">{fmtCity(c.tz)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
+      case 'luma_screentime': {
+        const h = Math.floor(batteryMini.screenMin / 60);
+        const m = batteryMini.screenMin % 60;
+        const bars = batteryMini.days.length > 0 ? batteryMini.days : [{ weekday: 'Сегодня', minutes: batteryMini.screenMin }];
+        const maxM = Math.max(30, ...bars.map((b) => b.minutes));
+        return (
+          <div className="h-full flex flex-col justify-between gap-1.5">
+            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
+              <span className={`inline-flex items-center gap-1 ${mutedCls}`}>
+                <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                ЭКРАННОЕ ВРЕМЯ
+              </span>
+              <span className="font-bold text-cyan-400">{h > 0 ? `${h}ч ${m}м` : `${m} мин`}</span>
+            </div>
+            <div className="flex-1 flex items-end gap-1.5 pt-1">
+              {bars.slice(-7).map((b, i) => (
+                <div key={`${b.weekday}-${i}`} className="flex-1 flex flex-col items-center gap-0.5 h-full justify-end">
+                  <div
+                    style={{ height: `${Math.max(15, Math.round((b.minutes / maxM) * 100))}%` }}
+                    className="w-full rounded-t bg-gradient-to-t from-[var(--luma-accent)] to-cyan-400"
+                  />
+                  <span className="text-[8px] font-mono opacity-65">{b.weekday.slice(0, 2)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
+      case 'luma_lithium_spectrum': {
+        return (
+          <div className="h-full flex flex-col justify-between gap-2">
+            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
+              <span className="text-emerald-400 font-bold">LITHIUM Li-3</span>
+              <span className={mutedCls}>CPU {liveSystem?.cpu_percent ?? 0}%</span>
+            </div>
+            <div className="flex items-end justify-between gap-1 h-7 px-1">
+              {[0.4, 0.85, 0.55, 1, 0.7, 0.9, 0.5, 0.8, 0.6, 0.95].map((h, i) => (
+                <div
+                  key={i}
+                  style={{ height: `${Math.round(h * 100)}%` }}
+                  className={`flex-1 rounded-full bg-gradient-to-t from-emerald-500 to-cyan-300 ${
+                    i % 3 === 0 ? 'luma-eq-bar' : i % 3 === 1 ? 'luma-eq-bar luma-eq-bar-2' : 'luma-eq-bar luma-eq-bar-3'
+                  }`}
+                />
+              ))}
+            </div>
+            <div className="grid grid-cols-3 gap-1">
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenSystemWindow('calculator'); }}
+                className={`py-1 rounded-lg border text-[9px] font-mono font-bold cursor-pointer ${subBtnCls}`}
+              >
+                CALC
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenSystemWindow('ai'); }}
+                className={`py-1 rounded-lg border text-[9px] font-mono font-bold cursor-pointer ${subBtnCls}`}
+              >
+                LUMA AI
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenSystemWindow('utilities'); }}
+                className={`py-1 rounded-lg border text-[9px] font-mono font-bold cursor-pointer ${subBtnCls}`}
+              >
+                СЛУЖБЫ
+              </button>
+            </div>
+          </div>
+        );
+      }
+
       case 'luma_utils':
       default: {
         const mods = [
           { label: 'Файлы', icon: <FolderOpen className="w-3.5 h-3.5" />, win: 'explorer' as const },
-          { label: 'Задачи', icon: <Cpu className="w-3.5 h-3.5" />, win: 'taskmgr' as const },
+          { label: 'Кальк.', icon: <Calculator className="w-3.5 h-3.5" />, win: 'calculator' as const },
           { label: 'Терм.', icon: <Terminal className="w-3.5 h-3.5" />, win: 'terminal' as const },
           { label: 'Опции', icon: <Settings className="w-3.5 h-3.5" />, win: 'settings' as const },
         ];
@@ -2299,6 +2615,47 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
   const resizingFolder = resizingTarget?.kind === 'folder' ? shortcuts.find((s) => s.id === resizingTarget.id && s.kind === 'folder') || null : null;
   const resizingWidgetDef = resizingWidget ? getWidgetDef(resizingWidget.widgetType) : null;
 
+  const renderWpSurface = (wpKey: string, animClass = '') => {
+    if (!wpKey) return null;
+    if (wpKey.startsWith('live:')) {
+      const id = wpKey.slice(5);
+      return (
+        <div
+          className={`pointer-events-none absolute inset-0 luma-live-wp-${id} ${animClass}`}
+          style={{
+            filter: wallpaperBlur > 0 ? `blur(${wallpaperBlur}px)` : undefined,
+            transform: wallpaperBlur > 0 ? 'scale(1.06)' : undefined,
+          }}
+        />
+      );
+    }
+    if (wpKey.startsWith('img:')) {
+      const url = wpKey.slice(4);
+      return (
+        <div
+          className={`pointer-events-none absolute inset-0 bg-cover bg-center ${animClass}`}
+          style={{
+            backgroundImage: `url("${url}")`,
+            filter: wallpaperBlur > 0 ? `blur(${wallpaperBlur}px)` : undefined,
+            transform: wallpaperBlur > 0 ? 'scale(1.06)' : undefined,
+          }}
+        />
+      );
+    }
+    return null;
+  };
+
+  const wpAnimCls =
+    wpAnimSeq > 0
+      ? wallpaperTransition === 'bloom'
+        ? 'luma-wp-anim-bloom'
+        : wallpaperTransition === 'wipe'
+        ? 'luma-wp-anim-wipe'
+        : wallpaperTransition === 'morph'
+        ? 'luma-wp-anim-morph'
+        : 'luma-wp-anim-iris'
+      : '';
+
   return (
     <div
       className="relative w-full h-full overflow-hidden select-none"
@@ -2308,17 +2665,15 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = ({
           (isDark ? 'linear-gradient(160deg, #09090b 0%, #101014 100%)' : 'linear-gradient(160deg, #e1e2dc 0%, #d4d6ce 100%)'),
       }}
     >
-      {/* Optional Custom Wallpaper Image Layer with Adjustable Blur & Dimming */}
-      {wallpaperImageUrl && (
+      {/* Outgoing Wallpaper underneath during cinematic transition */}
+      {prevWpKey && renderWpSurface(prevWpKey)}
+
+      {/* Incoming Active Wallpaper (Image or Live Mesh) with Cinematic Transition Animation */}
+      {activeWpKey && (
         <>
-          <div
-            className="pointer-events-none absolute inset-0 bg-cover bg-center transition-all duration-500"
-            style={{
-              backgroundImage: `url("${wallpaperImageUrl}")`,
-              filter: wallpaperBlur > 0 ? `blur(${wallpaperBlur}px)` : undefined,
-              transform: wallpaperBlur > 0 ? 'scale(1.06)' : undefined,
-            }}
-          />
+          <div key={`${activeWpKey}_${wpAnimSeq}`} className="pointer-events-none absolute inset-0">
+            {renderWpSurface(activeWpKey, wpAnimCls)}
+          </div>
           <div
             className="pointer-events-none absolute inset-0"
             style={{

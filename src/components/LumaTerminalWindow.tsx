@@ -87,7 +87,7 @@ function createTab(idx: number): TermTab {
     cwd: '~',
     history: [],
     lines: [
-      { id: 1, kind: 'accent', text: 'LUMA OS 1.1.0 (HELIUM) · LUMACORE 1.1 PRO TERMINAL  [IPC 127.0.0.1:49215]' },
+      { id: 1, kind: 'accent', text: 'LUMA OS 1.2.0 (LITHIUM) · LUMACORE 1.2 PRO TERMINAL  [IPC 127.0.0.1:49215]' },
       { id: 2, kind: 'out', text: 'Команды: help, neofetch, top, kill, explorer, taskmgr, ls, find, mkdir, touch, cat, theme, anim, sh <cmd>.' },
     ],
   };
@@ -248,12 +248,12 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         [
           `  ██╗     ██╗   ██╗███╗   ███╗ █████╗      luma@${hostName}`,
           `  ██║     ██║   ██║████╗ ████║██╔══██╗     ──────────────────────────`,
-          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.1.0 Helium (${os})`,
+          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.2.0 Lithium (${os})`,
           `  ██║     ██║   ██║██║╚██╔╝██║██╔══██║     STYLE   : ${designStyle.toUpperCase()} · TASKBAR ${taskbarPosition.toUpperCase()}`,
           `  ███████╗╚██████╔╝██║ ╚═╝ ██║██║  ██║     CPU     : ${cpu}`,
           `  ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝     GPU     : ${gpu}`,
           `                                           RAM     : ${ram}`,
-          `  KERNEL : LumaCore 1.1 · Shield 1.1       REGION  : ${loc}`,
+          `  KERNEL : LumaCore 1.2 · Shield 1.2       REGION  : ${loc}`,
         ].join('\n'),
         'accent'
       );

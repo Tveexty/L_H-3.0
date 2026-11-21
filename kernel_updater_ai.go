@@ -441,8 +441,8 @@ type AIChatRequest struct {
 
 func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]interface{} {
 	provider := strings.ToLower(strings.TrimSpace(req.Provider))
-	if provider == "" {
-		provider = "gemini"
+	if provider == "" || provider == "luma_local" || provider == "offline" || provider == "local" {
+		return RunLumaLocalAI(req.Messages, kernel)
 	}
 	apiKey := strings.TrimSpace(req.APIKey)
 	model := strings.TrimSpace(req.Model)
@@ -453,12 +453,12 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 
 	sysPrompt := strings.TrimSpace(req.SystemPrompt)
 	if sysPrompt == "" {
-		sysPrompt = "Ты — встроенный системный ИИ-ассистент Luma OS 1.1.0 (Helium). Отвечай чётко, по делу и помогай пользователю с ПК, командами и кодом."
+		sysPrompt = "Ты — встроенный системный ИИ-ассистент Luma OS 1.2.0 (Lithium). Отвечай чётко, по делу и помогай пользователю с ПК, командами и кодом."
 	}
 	if req.IncludeContext && kernel != nil {
 		snap := kernel.SystemSnapshot()
 		sysPrompt += fmt.Sprintf(
-			"\n\n[Живой контекст ПК LumaCore 1.1: Хост=%s, ОС=%s, Модель=%s, CPU=%d%% (%s), RAM=%.1f/%.1f ГБ (%d%%), Город=%s, Сеть=%.1f/%.1f Мбит/с]",
+			"\n\n[Живой контекст ПК LumaCore 1.2: Хост=%s, ОС=%s, Модель=%s, CPU=%d%% (%s), RAM=%.1f/%.1f ГБ (%d%%), Город=%s, Сеть=%.1f/%.1f Мбит/с]",
 			snap.Hostname, snap.OSName, snap.DeviceModel, snap.CPUPercent, snap.CPUModel,
 			snap.RAMUsedGB, snap.RAMTotalGB, snap.RAMPercent, snap.Location.City, snap.NetDownMbps, snap.NetUpMbps,
 		)
@@ -686,7 +686,7 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 	}
 	if provider == "openrouter" {
 		httpReq.Header.Set("HTTP-Referer", "https://github.com/Tveexty/L_H-3.0")
-		httpReq.Header.Set("X-Title", "Luma OS 1.1.0 Helium")
+		httpReq.Header.Set("X-Title", "Luma OS 1.2.0 Lithium")
 	}
 
 	resp, err := client.Do(httpReq)

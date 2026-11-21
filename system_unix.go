@@ -680,4 +680,112 @@ func (p *platformProbe) OpenSystemApplet(applet string) error {
 	return nil
 }
 
+func (p *platformProbe) GetBatteryDetails() BatteryHardwareDetails {
+	details := BatteryHardwareDetails{
+		Present:               false,
+		Percent:               100,
+		Charging:              true,
+		HealthPercent:         100,
+		DesignCapacityMWh:     0,
+		FullChargeCapacityMWh: 0,
+		CycleCount:            0,
+		PowerWatts:            0,
+		VoltageMV:             0,
+		EstimatedMinutes:      0,
+		StatusText:            "Питание от сети",
+		Chemistry:             "Li-Ion",
+	}
+	entries, err := os.ReadDir("/sys/class/power_supply")
+	if err != nil {
+		return details
+	}
+	readInt := func(path string) int {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return 0
+		}
+		v, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+		return v
+	}
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), "BAT") {
+			continue
+		}
+		base := filepath.Join("/sys/class/power_supply", e.Name())
+		details.Present = true
+		details.Percent = readInt(filepath.Join(base, "capacity"))
+		stBytes, _ := os.ReadFile(filepath.Join(base, "status"))
+		st := strings.TrimSpace(string(stBytes))
+		details.Charging = strings.EqualFold(st, "Charging") || strings.EqualFold(st, "Full")
+		if details.Charging {
+			details.StatusText = "Заряжается от сети"
+		} else {
+			details.StatusText = "Работа от батареи"
+		}
+		details.CycleCount = readInt(filepath.Join(base, "cycle_count"))
+		full := readInt(filepath.Join(base, "energy_full")) / 1000
+		design := readInt(filepath.Join(base, "energy_full_design")) / 1000
+		if full == 0 {
+			full = readInt(filepath.Join(base, "charge_full")) / 1000
+			design = readInt(filepath.Join(base, "charge_full_design")) / 1000
+		}
+		details.FullChargeCapacityMWh = full
+		details.DesignCapacityMWh = design
+		if design > 0 && full > 0 {
+			h := int(math.Round(float64(full) * 100.0 / float64(design)))
+			if h > 100 {
+				h = 100
+			}
+			details.HealthPercent = h
+		}
+		if pw := readInt(filepath.Join(base, "power_now")); pw > 0 {
+			details.PowerWatts = math.Round((float64(pw)/1000000.0)*10) / 10
+		}
+		details.VoltageMV = readInt(filepath.Join(base, "voltage_now")) / 1000
+		if mfg, err := os.ReadFile(filepath.Join(base, "manufacturer")); err == nil {
+			details.Manufacturer = strings.TrimSpace(string(mfg))
+		}
+		break
+	}
+	return details
+}
+
+func (p *platformProbe) ListHardwareDevices() []HardwareDeviceInfo {
+	snap := p.Collect(LocationInfo{})
+	out := []HardwareDeviceInfo{
+		{Name: snap.CPUModel, Class: "Processor", Status: "OK", Manufacturer: "CPU HAL"},
+		{Name: snap.GPUName, Class: "Display", Status: "OK", Manufacturer: "GPU HAL"},
+	}
+	for _, d := range snap.Disks {
+		out = append(out, HardwareDeviceInfo{
+			Name:         fmt.Sprintf("%s (%s · %.1f ГБ)", d.Label, d.Mount, d.TotalGB),
+			Class:        "DiskDrive",
+			Status:       "OK",
+			Manufacturer: "Storage HAL",
+		})
+	}
+	if entries, err := os.ReadDir("/sys/class/net"); err == nil {
+		for _, e := range entries {
+			out = append(out, HardwareDeviceInfo{
+				Name:         e.Name(),
+				Class:        "Net",
+				Status:       "OK",
+				Manufacturer: "Network Interface",
+			})
+		}
+	}
+	return out
+}
+
+func (p *platformProbe) GetFirewallProfiles() []FirewallProfileInfo {
+	return []FirewallProfileInfo{
+		{Name: "Loopback Isolation (LumaShield 1.2)", Enabled: true},
+		{Name: "Host System Firewall", Enabled: true},
+	}
+}
+
+func (p *platformProbe) ControlService(name, action string) error {
+	return fmt.Errorf("управление системными службами ОС доступно с правами администратора")
+}
+
 

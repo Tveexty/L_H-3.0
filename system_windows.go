@@ -1044,4 +1044,174 @@ func (p *platformProbe) OpenSystemApplet(applet string) error {
 	}
 }
 
+func (p *platformProbe) GetBatteryDetails() BatteryHardwareDetails {
+	var ps systemPowerStatus
+	present := false
+	pct := 100
+	charging := true
+	estMin := 0
+	if r, _, _ := procGetSystemPowerStatus.Call(uintptr(unsafe.Pointer(&ps))); r != 0 {
+		if ps.BatteryFlag != 128 && ps.BatteryFlag != 255 {
+			present = true
+			if ps.BatteryLifePercent <= 100 {
+				pct = int(ps.BatteryLifePercent)
+			}
+			charging = ps.ACLineStatus == 1 || (ps.BatteryFlag&8) != 0
+			if ps.BatteryLifeTime != 0xFFFFFFFF && ps.BatteryLifeTime > 0 {
+				estMin = int(ps.BatteryLifeTime / 60)
+			}
+		}
+	}
+
+	details := BatteryHardwareDetails{
+		Present:               present,
+		Percent:               pct,
+		Charging:              charging,
+		HealthPercent:         100,
+		DesignCapacityMWh:     0,
+		FullChargeCapacityMWh: 0,
+		CycleCount:            0,
+		PowerWatts:            0,
+		VoltageMV:             0,
+		EstimatedMinutes:      estMin,
+		StatusText:            "Питание от сети",
+		Chemistry:             "Li-Ion",
+	}
+	if !present {
+		return details
+	}
+	if charging {
+		details.StatusText = "Заряжается от сети"
+	} else {
+		details.StatusText = "Работа от батареи"
+	}
+
+	script := `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$res = @{ design = 0; full = 0; cycles = 0; rate = 0; volt = 0; mfg = ""; chem = "Li-Ion" }
+try {
+  $st = Get-CimInstance -Namespace root\WMI -ClassName BatteryStaticData -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($st) {
+    $res.design = [int]$st.DesignedCapacity
+    $res.mfg = [string]$st.ManufactureName
+  }
+  $fc = Get-CimInstance -Namespace root\WMI -ClassName BatteryFullChargedCapacity -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($fc) { $res.full = [int]$fc.FullChargedCapacity }
+  $cc = Get-CimInstance -Namespace root\WMI -ClassName BatteryCycleCount -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($cc) { $res.cycles = [int]$cc.CycleCount }
+  $bs = Get-CimInstance -Namespace root\WMI -ClassName BatteryStatus -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($bs) {
+    $res.volt = [int]$bs.Voltage
+    if ($bs.DischargeRate -gt 0) { $res.rate = [int]$bs.DischargeRate }
+    elseif ($bs.ChargeRate -gt 0) { $res.rate = [int]$bs.ChargeRate }
+  }
+} catch {}
+$res | ConvertTo-Json -Compress
+`
+	if out, err := runHiddenPowerShell(script); err == nil && out != "" {
+		var parsed struct {
+			Design int    `json:"design"`
+			Full   int    `json:"full"`
+			Cycles int    `json:"cycles"`
+			Rate   int    `json:"rate"`
+			Volt   int    `json:"volt"`
+			Mfg    string `json:"mfg"`
+			Chem   string `json:"chem"`
+		}
+		if json.Unmarshal([]byte(out), &parsed) == nil {
+			details.DesignCapacityMWh = parsed.Design
+			details.FullChargeCapacityMWh = parsed.Full
+			details.CycleCount = parsed.Cycles
+			details.VoltageMV = parsed.Volt
+			if parsed.Rate > 0 {
+				details.PowerWatts = math.Round((float64(parsed.Rate)/1000.0)*10) / 10
+			}
+			if parsed.Design > 0 && parsed.Full > 0 {
+				h := int(math.Round(float64(parsed.Full) * 100.0 / float64(parsed.Design)))
+				if h > 100 {
+					h = 100
+				}
+				if h < 1 {
+					h = 1
+				}
+				details.HealthPercent = h
+			}
+			if parsed.Mfg != "" {
+				details.Manufacturer = parsed.Mfg
+			}
+		}
+	}
+	return details
+}
+
+func (p *platformProbe) ListHardwareDevices() []HardwareDeviceInfo {
+	script := `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$classes = @('Processor','Display','DiskDrive','Net','MEDIA','Bluetooth','Monitor','USB','HIDClass')
+$devs = Get-PnpDevice -Class $classes -PresentOnly -ErrorAction SilentlyContinue | Select-Object -First 75
+$out = foreach ($d in $devs) {
+  [PSCustomObject]@{
+    name = [string]$d.FriendlyName
+    class = [string]$d.Class
+    status = [string]$d.Status
+    manufacturer = [string]$d.Manufacturer
+    instance_id = [string]$d.InstanceId
+  }
+}
+@($out) | ConvertTo-Json -Compress
+`
+	out, err := runHiddenPowerShell(script)
+	if err != nil || out == "" {
+		return []HardwareDeviceInfo{}
+	}
+	var list []HardwareDeviceInfo
+	if strings.HasPrefix(out, "[") {
+		_ = json.Unmarshal([]byte(out), &list)
+	} else if strings.HasPrefix(out, "{") {
+		var single HardwareDeviceInfo
+		if json.Unmarshal([]byte(out), &single) == nil {
+			list = append(list, single)
+		}
+	}
+	return list
+}
+
+func (p *platformProbe) GetFirewallProfiles() []FirewallProfileInfo {
+	script := `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $pf = Get-NetFirewallProfile -ErrorAction Stop
+  $out = foreach ($x in $pf) { [PSCustomObject]@{ name = [string]$x.Name; enabled = [bool]$x.Enabled } }
+  @($out) | ConvertTo-Json -Compress
+} catch { '[]' }
+`
+	out, err := runHiddenPowerShell(script)
+	if err != nil || out == "" {
+		return []FirewallProfileInfo{}
+	}
+	var list []FirewallProfileInfo
+	_ = json.Unmarshal([]byte(out), &list)
+	return list
+}
+
+func (p *platformProbe) ControlService(name, action string) error {
+	clean := strings.TrimSpace(name)
+	if clean == "" || strings.ContainsAny(clean, ";|&`$<>\"'") {
+		return fmt.Errorf("некорректное имя службы")
+	}
+	var cmd string
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "start":
+		cmd = fmt.Sprintf(`Start-Service -Name '%s' -ErrorAction Stop`, clean)
+	case "stop":
+		cmd = fmt.Sprintf(`Stop-Service -Name '%s' -ErrorAction Stop`, clean)
+	case "restart":
+		cmd = fmt.Sprintf(`Restart-Service -Name '%s' -ErrorAction Stop`, clean)
+	default:
+		return fmt.Errorf("неподдерживаемое действие: %s", action)
+	}
+	_, err := runHiddenPowerShell(cmd)
+	return err
+}
+
 

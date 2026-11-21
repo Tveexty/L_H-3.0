@@ -22,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 
-export type WidgetShape = 'squircle' | 'circle' | 'pill' | 'sharp' | 'leaf';
+export type WidgetShape = 'squircle' | 'circle' | 'pill' | 'sharp' | 'leaf' | 'chamfer';
 export type WidgetCategoryId = 'all' | 'clock' | 'battery' | 'weather' | 'media' | 'system' | 'tools';
 
 export interface WidgetVariantDef {
@@ -54,6 +54,7 @@ export const SHAPE_OPTIONS: { id: WidgetShape; label: string; cls: string }[] = 
   { id: 'pill', label: 'Капсула', cls: 'luma-shape-pill' },
   { id: 'sharp', label: 'Квадрат', cls: 'luma-shape-sharp' },
   { id: 'leaf', label: 'Лист', cls: 'luma-shape-leaf' },
+  { id: 'chamfer', label: 'Грань', cls: 'luma-shape-chamfer' },
 ];
 
 export function getShapeClass(shape?: WidgetShape): string {
@@ -66,6 +67,8 @@ export function getShapeClass(shape?: WidgetShape): string {
       return 'luma-shape-sharp';
     case 'leaf':
       return 'luma-shape-leaf';
+    case 'chamfer':
+      return 'luma-shape-chamfer';
     default:
       return 'luma-shape-squircle';
   }
@@ -346,6 +349,79 @@ export const DESKTOP_WIDGET_CATALOG: WidgetCatalogDef[] = [
       { id: 'default', label: 'Лента 3 тикера', desc: 'BTC, ETH и USD в ряд', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
     ],
   },
+  {
+    type: 'luma_battery_pro',
+    title: 'Аналитика Батареи Pro',
+    group: 'Система',
+    category: 'battery',
+    defaultW: 5,
+    defaultH: 3,
+    defaultVariant: 'lithium_prism',
+    defaultShape: 'squircle',
+    summary: 'Здоровье АКБ %, циклы зарядки, график разряда и переход в настройки батареи',
+    variants: [
+      { id: 'lithium_prism', label: 'Призма Lithium', desc: 'График, здоровье % и циклы', w: 5, h: 3, shape: 'squircle', previewKind: 'wide' },
+      { id: 'chamfer_pro', label: 'Техно-грань', desc: 'Скошенные углы со статистикой', w: 5, h: 2, shape: 'chamfer', previewKind: 'wide' },
+    ],
+  },
+  {
+    type: 'luma_ai_quick',
+    title: 'Luma AI Мини-чат',
+    group: 'Инструменты',
+    category: 'tools',
+    defaultW: 6,
+    defaultH: 3,
+    defaultVariant: 'lithium_prism',
+    defaultShape: 'squircle',
+    summary: 'Быстрые вопросы к автономному LumaNano 1.2 прямо с рабочего стола (без API)',
+    variants: [
+      { id: 'lithium_prism', label: 'Карточка чата', desc: 'Поле запроса и мгновенный ответ', w: 6, h: 3, shape: 'squircle', previewKind: 'wide' },
+      { id: 'pill_ai', label: 'AI-строка', desc: 'Компактная капсула запроса 6×1', w: 6, h: 1, shape: 'pill', previewKind: 'pill' },
+    ],
+  },
+  {
+    type: 'luma_world_clock',
+    title: 'Мировые часы (3 города)',
+    group: 'Основное',
+    category: 'clock',
+    defaultW: 6,
+    defaultH: 2,
+    defaultVariant: 'minimal_editorial',
+    defaultShape: 'squircle',
+    summary: 'Точное время в 3 мировых столицах в реальном времени (Москва / Лондон / Токио)',
+    variants: [
+      { id: 'minimal_editorial', label: '3 Города в ряд', desc: 'Синхронизация по UTC', w: 6, h: 2, shape: 'squircle', previewKind: 'wide' },
+      { id: 'chamfer_cities', label: 'Гранёный блок', desc: 'Контрастный стиль с гранями', w: 6, h: 2, shape: 'chamfer', previewKind: 'wide' },
+    ],
+  },
+  {
+    type: 'luma_screentime',
+    title: 'Экранное время Pro',
+    group: 'Инструменты',
+    category: 'tools',
+    defaultW: 5,
+    defaultH: 2,
+    defaultVariant: 'lithium_prism',
+    defaultShape: 'squircle',
+    summary: 'Живое экранное время за сегодня и столбцы активности за 7 дней',
+    variants: [
+      { id: 'lithium_prism', label: '7-дневная шкала', desc: 'Экранное время и график', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
+    ],
+  },
+  {
+    type: 'luma_lithium_spectrum',
+    title: 'Спектр Lithium Li-3',
+    group: 'Основное',
+    category: 'media',
+    defaultW: 5,
+    defaultH: 2,
+    defaultVariant: 'chamfer_pro',
+    defaultShape: 'chamfer',
+    summary: 'Эквалайзер и быстрый запуск Калькулятора, Luma AI и Служб ОС',
+    variants: [
+      { id: 'chamfer_pro', label: 'Кристалл Li-3', desc: 'Живые волны и быстрые ярлыки', w: 5, h: 2, shape: 'chamfer', previewKind: 'wide' },
+    ],
+  },
 ];
 
 export function getWidgetDef(widgetType: string): WidgetCatalogDef {
@@ -355,12 +431,15 @@ export function getWidgetDef(widgetType: string): WidgetCatalogDef {
 function getWidgetFamilyIcon(type: string) {
   switch (type) {
     case 'luma_clock':
+    case 'luma_world_clock':
       return <Clock className="w-4 h-4" />;
     case 'luma_battery':
+    case 'luma_battery_pro':
       return <BatteryCharging className="w-4 h-4" />;
     case 'luma_weather':
       return <CloudSun className="w-4 h-4" />;
     case 'luma_media':
+    case 'luma_lithium_spectrum':
       return <Disc3 className="w-4 h-4" />;
     case 'luma_sys':
       return <Cpu className="w-4 h-4" />;
@@ -385,8 +464,10 @@ function getWidgetFamilyIcon(type: string) {
     case 'luma_guard':
       return <ShieldCheck className="w-4 h-4" />;
     case 'luma_wellbeing':
+    case 'luma_screentime':
       return <Activity className="w-4 h-4" />;
     case 'luma_rings':
+    case 'luma_ai_quick':
       return <Sparkles className="w-4 h-4" />;
     case 'luma_markets':
       return <TrendingUp className="w-4 h-4" />;
