@@ -140,7 +140,7 @@ export const LumaSystemUtilitiesWindow: React.FC<LumaSystemUtilitiesWindowProps>
   const [notePath, setNotePath] = useState('~/Desktop/luma_note.txt');
   const [noteContent, setNoteContent] = useState<string>(() => {
     try {
-      return localStorage.getItem(NOTEPAD_STORAGE_KEY) || 'Быстрая заметка Luma OS 1.2.3 (Lithium)\n';
+      return localStorage.getItem(NOTEPAD_STORAGE_KEY) || 'Быстрая заметка Luma OS 1.2.3B (Lithium)\n';
     } catch {
       return '';
     }
@@ -894,7 +894,7 @@ export const LumaSystemUtilitiesWindow: React.FC<LumaSystemUtilitiesWindowProps>
         {tab === 'applets' && (
           <div className="space-y-3">
             <div className={`text-xs ${mutedCls}`}>
-              Быстрый вызов классических консолей Windows напрямую из Luma OS 1.2.3 (Lithium).
+              Быстрый вызов классических консолей Windows напрямую из Luma OS 1.2.3B (Lithium).
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
               {windowsApplets.map((a) => (

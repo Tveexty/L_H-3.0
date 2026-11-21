@@ -47,9 +47,9 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.2.3"
+	KernelVersion       = "1.2.3B"
 	KernelCodename      = "Lithium"
-	KernelEngineVersion = "1.3"
+	KernelEngineVersion = "1.3B"
 	SecurityCoreVersion = "1.3"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
@@ -435,6 +435,7 @@ func (k *LumaKernel) TelemetrySnapshot() map[string]interface{} {
 		"kernel_engine_version":  KernelEngineVersion,
 		"security_core_version":  SecurityCoreVersion,
 		"zero_powershell_engine": true,
+		"zero_wmi_engine":        true,
 		"goroutines":             runtime.NumGoroutine(),
 		"device_model":           hw.DeviceModel,
 		"manufacturer":           hw.Manufacturer,
@@ -2057,10 +2058,11 @@ func main() {
 
 	// ==================== LUMA OS 1.2.2 NATIVE ENDPOINTS ====================
 
-	// Real Audio Output & Input Devices Enumeration
+	// Real Audio Output & Input Devices Enumeration (60s cached; ?refresh=1 forces re-scan)
 	mux.HandleFunc("/api/kernel/audio/devices", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = json.NewEncoder(w).Encode(kernel.probe.ListAudioDevices())
+		force := r.URL.Query().Get("refresh") == "1"
+		_ = json.NewEncoder(w).Encode(kernel.probe.ListAudioDevices(force))
 	})
 
 	// Real Audio Default Output/Input Switcher
@@ -2076,10 +2078,24 @@ func main() {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
 			return
 		}
-		snap := kernel.probe.ListAudioDevices()
+		snap := kernel.probe.ListAudioDevices(true)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":      true,
 			"devices": snap,
+		})
+	})
+
+	// Dynamic Island Media Polling Gate (0% background SMTC PowerShell when Dynamic Island is disabled!)
+	mux.HandleFunc("/api/kernel/island/toggle", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			Enabled bool `json:"enabled"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		kernel.probe.SetMediaPollingEnabled(payload.Enabled)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":      true,
+			"enabled": payload.Enabled,
 		})
 	})
 
@@ -2191,12 +2207,12 @@ func main() {
 		})
 	})
 
-	// Serve standalone executable download for LumaOS_1.2.3.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.2.3B.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.3.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.3B.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -2204,12 +2220,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.3.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.3B.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.2.3B.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.3.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.2.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.1.exe", serveExe)
@@ -2262,8 +2279,8 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.2.3 (LITHIUM) — LUMACORE 1.3 & LUMASHIELD 1.3")
-	log.Printf("  - Zero-PowerShell Win32 Engine: ENABLED")
+	log.Printf("  LUMA OS 1.2.3B (LITHIUM) — LUMACORE 1.3B & LUMASHIELD 1.3")
+	log.Printf("  - True Zero-WMI & Zero-PowerShell Win32 Engine: ENABLED")
 	log.Printf("  - Desktop Environment:          http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:    http://%s/api/kernel/status", addr)

@@ -165,7 +165,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'win_terminal',
         group: 'Окна системы',
         title: 'Терминал Luma',
-        subtitle: 'Командная строка ядра LumaCore 1.3 (ПО 1.2.3 Lithium)',
+        subtitle: 'Командная строка ядра LumaCore 1.3 (ПО 1.2.3B Lithium)',
         shortcut: 'CLI',
         keywords: 'терминал консоль cmd shell cli',
         icon: <Terminal className="w-4 h-4" />,
@@ -555,7 +555,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
             isDark ? 'border-white/[0.08]' : 'border-zinc-200'
           }`}
         >
-          <span>LUMA RUN & SPOTLIGHT 1.2.3 (LITHIUM) · ↑↓ · ENTER</span>
+          <span>LUMA RUN & SPOTLIGHT 1.2.3B (LITHIUM) · ↑↓ · ENTER</span>
           <span>ALT + R</span>
         </div>
       </div>

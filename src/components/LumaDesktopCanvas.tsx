@@ -632,9 +632,10 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
     }
   }, [activeWpKey]);
 
-  // Fetch battery & screen-on time summary for new widgets
+  // Fetch battery & screen-on time summary for new widgets (low-frequency 120s + paused while hidden)
   useEffect(() => {
     const loadBatt = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       fetch('/api/kernel/battery/report')
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
@@ -656,7 +657,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         .catch(() => {});
     };
     loadBatt();
-    const id = window.setInterval(loadBatt, 45000);
+    const id = window.setInterval(loadBatt, 120000);
     return () => window.clearInterval(id);
   }, []);
 

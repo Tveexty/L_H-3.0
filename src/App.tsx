@@ -797,7 +797,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.2.3 (Lithium) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.2.3B (Lithium) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -830,7 +830,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.2.3 (Lithium)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.2.3B (Lithium)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -846,7 +846,7 @@ export default function App() {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
       source: 'LumaCore 1.3',
-      message: 'Инициализация оболочки Luma OS 1.2.3 (Lithium) и шины IPC 127.0.0.1:49215',
+      message: 'Инициализация оболочки Luma OS 1.2.3B (Lithium) и шины IPC 127.0.0.1:49215',
       level: 'success',
     },
   ]);
@@ -1012,7 +1012,7 @@ export default function App() {
       const bundle = {
         schema: 'luma_os_backup_v1',
         exported_at: new Date().toISOString(),
-        version: '1.2.3 (Lithium)',
+        version: '1.2.3B (Lithium)',
         desktop_layout: desktopRaw ? JSON.parse(desktopRaw) : null,
         shell_state: shellRaw ? JSON.parse(shellRaw) : null,
       };
@@ -1234,15 +1234,24 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!islandAutoClipboard) return;
+    if (!dynamicIslandEnabled || !islandAutoClipboard) return;
     readOsClipboardNow(true);
     const id = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       readOsClipboardNow(true);
-    }, 3500);
+    }, 4000);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [islandAutoClipboard]);
+  }, [dynamicIslandEnabled, islandAutoClipboard]);
+
+  // Notify LumaCore 1.3B backend when Dynamic Island is toggled so SMTC media polling stops completely when Island is off
+  useEffect(() => {
+    fetch('/api/kernel/island/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: dynamicIslandEnabled }),
+    }).catch(() => {});
+  }, [dynamicIslandEnabled]);
 
   // --- LumaCore 1.3 Zero-GPU Idle Saver (freezes all CSS animations & background polling while hidden/minimized) ---
   useEffect(() => {
@@ -1933,7 +1942,7 @@ export default function App() {
         pushToast('Окно ОС', d?.detail || `Переключено на ${win?.title || win?.name || `PID ${pid}`}`, 'info');
       }
     } catch {
-      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.2.3.exe', 'info');
+      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.2.3B.exe', 'info');
     }
   };
 
@@ -1998,7 +2007,7 @@ export default function App() {
     }, 2600);
   };
 
-  // --- Audio Input/Output Devices Switcher (1.2.3) ---
+  // --- Audio Input/Output Devices Switcher (1.2.3B) ---
   const fetchAudioDevices = async (force = false) => {
     try {
       const r = await fetch(`/api/kernel/audio/devices${force ? '?refresh=1' : ''}`);
@@ -2031,7 +2040,7 @@ export default function App() {
     }
   };
 
-  // --- Wireless Peripheral Batteries Loader (1.2.3) ---
+  // --- Wireless Peripheral Batteries Loader (1.2.3B) ---
   const fetchWirelessBatteries = async (force = false) => {
     try {
       const r = await fetch(`/api/kernel/wireless/batteries${force ? '?refresh=1' : ''}`);
@@ -2044,7 +2053,7 @@ export default function App() {
     }
   };
 
-  // --- World Keyboard Layout Manager & Switcher (120+ Languages, 1.2.3) ---
+  // --- World Keyboard Layout Manager & Switcher (120+ Languages, 1.2.3B) ---
   const fetchKeyboardLayouts = async () => {
     try {
       const r = await fetch('/api/kernel/keyboard/layouts');
@@ -2100,7 +2109,7 @@ export default function App() {
     }
   };
 
-  // --- Version Rollback Releases Loader & Executor (1.2.3) ---
+  // --- Version Rollback Releases Loader & Executor (1.2.3B) ---
   const fetchRollbackReleases = async () => {
     setRollbackLoading(true);
     try {
@@ -2137,10 +2146,9 @@ export default function App() {
     }
   };
 
-  // Boot & Reactive Loaders for Audio I/O, Wireless Batteries, Keyboard Layouts & Rollback History
+  // Boot & Reactive Loaders (0 PowerShell on boot! Keyboard & wireless batteries are 100% pure Win32 in LumaCore 1.3B)
   useEffect(() => {
     void fetchKeyboardLayouts();
-    void fetchAudioDevices(false);
     void fetchWirelessBatteries(false);
     const id = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
@@ -2152,8 +2160,8 @@ export default function App() {
 
   useEffect(() => {
     if (controlCenterOpen) {
-      void fetchAudioDevices(true);
-      void fetchWirelessBatteries(true);
+      void fetchAudioDevices(false);
+      void fetchWirelessBatteries(false);
     } else {
       setAudioPickerSection('none');
     }
@@ -2278,7 +2286,7 @@ export default function App() {
         pushToast('Питание', d?.detail || `Выполнено: ${action}`, 'info');
       }
     } catch {
-      pushToast('Питание', 'Доступно при запуске LumaOS_1.2.3.exe', 'info');
+      pushToast('Питание', 'Доступно при запуске LumaOS_1.2.3B.exe', 'info');
     }
   };
 
@@ -2311,7 +2319,7 @@ export default function App() {
         pushToast('Режим оболочки Windows', 'Параметры применены к системе', 'success');
       }
     } catch {
-      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.2.3.exe)', 'info');
+      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.2.3B.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -2740,7 +2748,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.2.3.exe', 'info');
+      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.2.3B.exe', 'info');
     }
   };
 
@@ -4038,7 +4046,7 @@ export default function App() {
       {isWinVisible('kernel') && (
         <DexWindow
           id="kernel"
-          title="Ядро LumaCore 1.3 (ПО 1.2.3 Lithium)"
+          title="Ядро LumaCore 1.3 (ПО 1.2.3B Lithium)"
           subtitle={kernelConnected ? 'CONNECTED · 127.0.0.1:49215' : 'STANDALONE'}
           icon={<Code2 className="w-4 h-4" />}
           isDark={isDark}
@@ -4085,12 +4093,12 @@ export default function App() {
                   Диспетчер задач
                 </button>
                 <a
-                  href="/LumaOS_1.2.3.exe"
-                  download="LumaOS_1.2.3.exe"
+                  href="/LumaOS_1.2.3B.exe"
+                  download="LumaOS_1.2.3B.exe"
                   className="px-3.5 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  LumaOS_1.2.3.exe
+                  LumaOS_1.2.3B.exe
                 </a>
               </div>
             </div>
@@ -4130,7 +4138,7 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.2.3 (Lithium)'],
+                      ['Версия ПО', '1.2.3B (Lithium)'],
                       ['Версия Ядра', '1.3 (LumaCore)'],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
                       ['LumaGuard', `AES-256 #${cryptoKeyVersion}`],
@@ -4191,7 +4199,7 @@ export default function App() {
                         lumaRpcLiveData || {
                           kernel: 'LumaCore',
                           kernel_engine_version: '1.3',
-                          software_version: '1.2.3 (Lithium)',
+                          software_version: '1.2.3B (Lithium)',
                           ipc: 'tcp://127.0.0.1:49215',
                           real_telemetry: Boolean(liveSystem?.real_telemetry),
                         },
@@ -4325,7 +4333,7 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.2.3 (Lithium)"
+          subtitle="Luma OS 1.2.3B (Lithium)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -4367,7 +4375,7 @@ export default function App() {
               <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-0.5">
                 {(
                   [
-                    ['kernel_ui', t('tabKernelUI', 'Ядро UI'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.2.3 lithium ядра 1.3 пасхалка kernel'],
+                    ['kernel_ui', t('tabKernelUI', 'Ядро UI'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.2.3B lithium ядра 1.3 пасхалка kernel'],
                     ['graphics', 'Графика и Экран', <Monitor className="w-4 h-4 shrink-0" />, 'графика gpu цп оптимизация lumacore 1.3 турбо эко адаптация экрана масштаб монитор ноутбук размытие blur тени fps'],
                     ['security', t('tabSecurity', 'Безопасность и AV'), <ShieldCheck className="w-4 h-4 shrink-0" />, 'безопасность антивирус lumashield 1.3 guard defender карантин eicar исключения вирусы проверка security'],
                     ['ai_settings', t('tabAI', 'ИИ и Нейросети'), <Sparkles className="w-4 h-4 shrink-0" />, 'ии нейросети luma lang code объём кратко баланс подробно verbosity кодер языковая отключить автономный голос ai'],
@@ -4387,7 +4395,7 @@ export default function App() {
                     ['navigation', 'Навигация', <MousePointerClick className="w-4 h-4 shrink-0" />, 'навигация пкм назад горячие клавиши alt+r ctrl+k alt+w spotlight мультизадачность'],
                     ['plugins', 'Окна и Плагины', <LayoutGrid className="w-4 h-4 shrink-0" />, 'окна плагины api 2.0 колонки сетка расширения'],
                     ['updater', t('tabUpdater', 'Обновления и Откат'), <Stethoscope className="w-4 h-4 shrink-0" />, 'обновления откат версии rollback downgrade github ota ежедневная проверка патч прогресс бар новая версия диагностика'],
-                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.2.3 lithium история изменений changelog exe скачать'],
+                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.2.3B lithium история изменений changelog exe скачать'],
                   ] as [SettingsTabId, string, React.ReactNode, string][]
                 )
                   .filter(([, label, , keywords]) => {
@@ -4430,26 +4438,26 @@ export default function App() {
                 />
               )}
 
-              {/* GRAPHICS, GPU OPTIMIZATION & ADAPTIVE DISPLAY SCALING (1.2.3 LITHIUM · LUMACORE 1.3) */}
+              {/* GRAPHICS, GPU OPTIMIZATION & ADAPTIVE DISPLAY SCALING (1.2.3B LITHIUM · LUMACORE 1.3) */}
               {settingsTab === 'graphics' && (
                 <div className="space-y-4 text-xs">
-                  {/* 0. LumaCore 1.3 Zero-PowerShell & GPU Engine Banner */}
+                  {/* 0. LumaCore 1.3B True Zero-WMI & Zero-PowerShell Engine Banner */}
                   <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-bold flex items-center gap-2">
                           <Zap className="w-4 h-4 text-emerald-400" />
-                          LumaCore 1.3 · Колоссальная оптимизация ЦП и GPU
+                          LumaCore 1.3B · True Zero-WMI Engine (ЦП и GPU)
                         </div>
                         <div className={`mt-0.5 ${mutedCls}`}>
-                          Прямые системные вызовы Win32 без фоновых PowerShell-процессов, 0% GPU при сворачивании и изолированный рендер интерфейса
+                          0 вызовов WMI (WMI Provider Host 24% → 0%), чистые Win32 API (SetupDi, Power API, Registry), 0% GPU при сворачивании и кэш аудио
                         </div>
                       </div>
                       <button
                         onClick={() => {
                           applyGpuProfile('performance');
                           setGlassIntensity('light');
-                          pushToast('LumaCore 1.3', 'Включён режим максимальной экономии ЦП и GPU', 'success');
+                          pushToast('LumaCore 1.3B', 'Включён режим максимальной экономии ЦП и GPU', 'success');
                         }}
                         className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer"
                       >
@@ -4459,16 +4467,16 @@ export default function App() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono text-[10px]">
                       <div className={`p-2.5 rounded-xl border ${btnCls}`}>
-                        <div className="font-bold text-emerald-400">Zero-PowerShell Win32</div>
-                        <div className={mutedCls}>Процессы, окна, сеть, буфер обмена напрямую в ядре</div>
+                        <div className="font-bold text-emerald-400">Zero-WMI Win32</div>
+                        <div className={mutedCls}>setupapi, powrprof, Registry, Toolhelp, iphlpapi напрямую</div>
                       </div>
                       <div className={`p-2.5 rounded-xl border ${btnCls}`}>
-                        <div className="font-bold text-sky-400">0% GPU в фоне</div>
-                        <div className={mutedCls}>Полная заморозка анимаций и опроса при скрытии окна</div>
+                        <div className="font-bold text-sky-400">0% GPU и 0 PS в фоне</div>
+                        <div className={mutedCls}>Умный Dynamic Island, кэш CoreAudio и Idle-заморозка</div>
                       </div>
                       <div className={`p-2.5 rounded-xl border ${btnCls}`}>
                         <div className="font-bold text-purple-400">Memo-рендер UI</div>
-                        <div className={mutedCls}>Изолированные часы и окна, сниженный blur 8–12 px</div>
+                        <div className={mutedCls}>Изолированные часы, окна и Luma AI (0% ЦП в простое)</div>
                       </div>
                     </div>
                   </div>
@@ -5132,7 +5140,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.2.3.exe).
+                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.2.3B.exe).
                   </div>
                 </div>
               )}
@@ -5357,7 +5365,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Reorderable Open Windows Host Applications Order Editor (1.2.3) */}
+                  {/* Reorderable Open Windows Host Applications Order Editor (1.2.3B) */}
                   <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
@@ -5605,14 +5613,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.2.3 (Lithium)',
-                        message: 'Система оповещений Luma OS 1.2.3 (Lithium) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.2.3B (Lithium)',
+                        message: 'Система оповещений Luma OS 1.2.3B (Lithium) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.2.3 (Lithium)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.2.3B (Lithium)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -5624,7 +5632,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.2.3 (Lithium) · LumaCore 1.3</div>
+                      <div className="text-sm font-bold">Luma OS 1.2.3B (Lithium) · LumaCore 1.3</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -6818,7 +6826,7 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* Version Rollback Card (1.2.3) — Safe downgrade to any previous release while keeping all desktop widgets & settings */}
+                  {/* Version Rollback Card (1.2.3B) — Safe downgrade to any previous release while keeping all desktop widgets & settings */}
                   <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
@@ -6929,23 +6937,23 @@ export default function App() {
                 </div>
               )}
 
-              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.2.3 LITHIUM) */}
+              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.2.3B LITHIUM) */}
               {settingsTab === 'about' && (
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.2.3 (LITHIUM)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.2.3B (LITHIUM)</div>
                       <div className={`text-xs ${mutedCls}`}>
                         Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.3 · LumaShield 1.3 · Plugin API v2.0
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.2.3.exe"
-                      download="LumaOS_1.2.3.exe"
+                      href="/LumaOS_1.2.3B.exe"
+                      download="LumaOS_1.2.3B.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.2.3.exe
+                      LumaOS_1.2.3B.exe
                     </a>
                   </div>
 
@@ -6982,14 +6990,14 @@ export default function App() {
                       <div
                         key={ver}
                         className={`p-4 rounded-xl border space-y-2 ${
-                          ver === '1.2.3 (Lithium)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
+                          ver === '1.2.3B (Lithium)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-mono font-bold">
                             Версия {ver}
                           </span>
-                          {ver === '1.2.3 (Lithium)' && <StatusPill active={true} />}
+                          {ver === '1.2.3B (Lithium)' && <StatusPill active={true} />}
                         </div>
                         <ul className="space-y-1 text-xs leading-relaxed">
                           {items.map((line, i) => (
@@ -8250,7 +8258,7 @@ export default function App() {
                 setTaskbarHostWinPid(null);
                 setTaskbarCtxMenu(null);
               }}
-              title={`${t('start', 'Пуск')} (Luma OS 1.2.3)`}
+              title={`${t('start', 'Пуск')} (Luma OS 1.2.3B)`}
               className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
                 startMenuOpen
                   ? 'bg-[var(--luma-accent)] text-white'
@@ -8832,7 +8840,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== COLLAPSED "LUMA СИСТЕМА" TASKBAR FOLDER POPOVER (1.2.3) ==================== */}
+      {/* ==================== COLLAPSED "LUMA СИСТЕМА" TASKBAR FOLDER POPOVER (1.2.3B) ==================== */}
       {sysFolderOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
@@ -8910,7 +8918,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== KEYBOARD LAYOUT & 120+ WORLD LANGUAGES POPOVER (1.2.3) ==================== */}
+      {/* ==================== KEYBOARD LAYOUT & 120+ WORLD LANGUAGES POPOVER (1.2.3B) ==================== */}
       {kbdPopoverOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
@@ -9412,7 +9420,7 @@ export default function App() {
           {!startSearch.trim() && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                <span className={mutedCls}>Luma OS 1.2.3 (Lithium)</span>
+                <span className={mutedCls}>Luma OS 1.2.3B (Lithium)</span>
                 <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.3</span>
               </div>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
@@ -9517,7 +9525,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.2.3 (Lithium)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.2.3B (Lithium)'}
                   </div>
                 </div>
               </div>
@@ -9625,7 +9633,7 @@ export default function App() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.2.3 (LITHIUM)</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.2.3B (LITHIUM)</span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>
               {liveSystem?.location?.city || 'LOCAL'}
             </span>
@@ -9676,7 +9684,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Volume + Real Audio Output & Input Device Switcher (1.2.3) */}
+          {/* Volume + Real Audio Output & Input Device Switcher (1.2.3B) */}
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-mono">
               <span className={mutedCls}>ГРОМКОСТЬ</span>
@@ -9886,8 +9894,8 @@ export default function App() {
               </button>
             </div>
             <a
-              href="/LumaOS_1.2.3.exe"
-              download="LumaOS_1.2.3.exe"
+              href="/LumaOS_1.2.3B.exe"
+              download="LumaOS_1.2.3B.exe"
               className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-mono font-bold inline-flex items-center gap-1 ${btnCls}`}
             >
               <Download className="w-3 h-3 text-[var(--luma-accent)]" />
@@ -10272,7 +10280,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.2.3 (Lithium) · Alt+W — Обзор · 8-сторонний ресайз и Snap Layouts
+                  Luma OS 1.2.3B (Lithium) · Alt+W — Обзор · 8-сторонний ресайз и Snap Layouts
                 </div>
               </div>
             </div>
@@ -10633,7 +10641,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== VERSION ROLLBACK CONFIRMATION MODAL (1.2.3) ==================== */}
+      {/* ==================== VERSION ROLLBACK CONFIRMATION MODAL (1.2.3B) ==================== */}
       {rollbackConfirm && (
         <div
           onClick={() => setRollbackConfirm(null)}
@@ -10674,7 +10682,7 @@ export default function App() {
             <div className={`p-3 rounded-xl border border-emerald-500/35 bg-emerald-500/10 text-[11px] flex items-start gap-2`}>
               <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
               <span>
-                Текущая сборка <b>1.2.3</b> будет автоматически сохранена в <code>%APPDATA%/LumaOS/versions</code>, а все ваши виджеты, папки, обои и настройки останутся на месте.
+                Текущая сборка <b>1.2.3B</b> будет автоматически сохранена в <code>%APPDATA%/LumaOS/versions</code>, а все ваши виджеты, папки, обои и настройки останутся на месте.
               </span>
             </div>
 
@@ -10719,7 +10727,7 @@ export default function App() {
 
             <div className="space-y-1">
               <div className="text-lg font-extrabold tracking-tight">
-                Установка Luma OS {updateProgress.target_version || '1.2.3'}
+                Установка Luma OS {updateProgress.target_version || '1.2.3B'}
               </div>
               <div className="text-xs font-mono text-zinc-300">
                 {updateProgress.message || 'Подготовка обновления...'}

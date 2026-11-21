@@ -9,25 +9,32 @@ interface HeroCardProps {
 }
 
 /**
- * Flagship sculptural 3D Lithium crystal orb hero banner for Luma OS 1.2.3 (Lithium · Li-3).
- * Uses content-hashed Vite asset + dual CSS background + eager <img> inside an isolated layer
- * (without Chromium 3D perspective clipping) so the artwork NEVER disappears inside WebView2!
+ * Flagship sculptural 3D Lithium crystal orb hero banner for Luma OS 1.2.3B (Lithium · Li-3).
+ * Restores the smooth subtle 3D tilt & gentle orientation shift on hover using an outer perspective wrapper,
+ * backfaceVisibility: hidden, content-hashed Vite asset, and dual CSS+<img> layers so WebView2 NEVER drops the image!
  */
 export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
   onTriggerEasterEgg,
-  kernelVersion = '1.3',
+  kernelVersion = '1.3B',
   securityVersion = '1.3',
 }) => {
   const cardRef = useRef<HTMLDivElement | null>(null);
-  const [glowPos, setGlowPos] = useState({ gx: 50, gy: 38 });
+  const [tilt, setTilt] = useState({ rx: 0, ry: 0, gx: 50, gy: 38, hovering: false });
   const [ripple, setRipple] = useState(false);
 
   const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = cardRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const px = ((e.clientX - rect.left) / rect.width) * 100;
-    const py = ((e.clientY - rect.top) / rect.height) * 100;
-    setGlowPos({ gx: px, gy: py });
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    // Gentle, refined 3D tilt (±5.5deg max) + subtle orientation parallax
+    const rx = (0.5 - y) * 11;
+    const ry = (x - 0.5) * 11;
+    setTilt({ rx, ry, gx: x * 100, gy: y * 100, hovering: true });
+  };
+
+  const handleLeave = () => {
+    setTilt({ rx: 0, ry: 0, gx: 50, gy: 38, hovering: false });
   };
 
   const handleClick = () => {
@@ -37,88 +44,111 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
   };
 
   return (
-    <div
-      ref={cardRef}
-      role="button"
-      tabIndex={0}
-      onMouseMove={handleMove}
-      onMouseLeave={() => setGlowPos({ gx: 50, gy: 38 })}
-      onClick={handleClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          handleClick();
-        }
-      }}
-      className="group relative block w-full h-56 sm:h-64 rounded-3xl overflow-hidden border border-white/15 shadow-xl cursor-pointer text-left select-none transition-transform duration-200 hover:scale-[1.006] active:scale-[0.99] focus:outline-none"
-      style={{
-        isolation: 'isolate',
-        backgroundColor: '#04121b',
-        backgroundImage: `url("${lithiumHeroImg}")`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-      }}
-      title="Нажмите, чтобы запустить анимацию Lithium и мини-игру Li-3!"
-    >
-      {/* Guaranteed eager image layer over identical CSS background so WebView2 GPU never drops the texture */}
-      <img
-        src={lithiumHeroImg}
-        alt="Luma OS 1.2.3 Lithium"
-        loading="eager"
-        decoding="sync"
-        draggable={false}
-        className="pointer-events-none absolute inset-0 w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-[1.03]"
-      />
-
-      {/* Dynamic pointer glass specular sheen */}
+    <div style={{ perspective: '1100px' }} className="w-full">
       <div
-        className="pointer-events-none absolute inset-0 transition-opacity duration-200 opacity-70 group-hover:opacity-100"
-        style={{
-          background: `radial-gradient(circle at ${glowPos.gx}% ${glowPos.gy}%, rgba(255,255,255,0.22) 0%, rgba(16,185,129,0.14) 30%, transparent 62%)`,
+        ref={cardRef}
+        role="button"
+        tabIndex={0}
+        onMouseMove={handleMove}
+        onMouseLeave={handleLeave}
+        onClick={handleClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleClick();
+          }
         }}
-      />
-
-      {/* Subtle readability vignette (preserves full crystal orb brightness in center) */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#041418]/30 via-transparent to-[#020a10]/65" />
-
-      {/* Top badges */}
-      <div className="relative z-10 flex items-center justify-between px-5 pt-4">
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/35 border border-white/20 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-          LUMACORE {kernelVersion} · SHIELD {securityVersion}
-        </span>
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/35 border border-white/15 text-[10px] font-mono text-white/95 group-hover:bg-white/20 transition">
-          <Sparkles className="w-3 h-3 text-emerald-200" />
-          Пасхалка Lithium
-        </span>
-      </div>
-
-      {/* Centered Flagship Glass Typography */}
-      <div className="relative z-10 flex flex-col items-center justify-center text-center h-[calc(100%-56px)] pb-4 px-4">
-        <div
-          className="text-6xl sm:text-7xl font-black tracking-tight leading-none select-none transition-transform duration-300 group-hover:scale-105"
+        className="group relative block w-full h-56 sm:h-64 rounded-3xl overflow-hidden border border-white/15 shadow-xl cursor-pointer text-left select-none active:scale-[0.99] focus:outline-none"
+        style={{
+          isolation: 'isolate',
+          transformStyle: 'flat',
+          backfaceVisibility: 'hidden',
+          WebkitBackfaceVisibility: 'hidden',
+          transform: `rotateX(${tilt.rx.toFixed(2)}deg) rotateY(${tilt.ry.toFixed(2)}deg) scale(${tilt.hovering ? 1.012 : 1}) translateZ(0)`,
+          transition: tilt.hovering
+            ? 'transform 0.14s ease-out, box-shadow 0.25s ease'
+            : 'transform 0.52s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease',
+          backgroundColor: '#04121b',
+          backgroundImage: `url("${lithiumHeroImg}")`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+        title="Нажмите, чтобы запустить анимацию Lithium и мини-игру Li-3!"
+      >
+        {/* Guaranteed eager image layer with subtle orientation shift on hover */}
+        <img
+          src={lithiumHeroImg}
+          alt="Luma OS 1.2.3B Lithium"
+          loading="eager"
+          decoding="sync"
+          draggable={false}
+          className="pointer-events-none absolute inset-0 w-full h-full object-cover object-center"
           style={{
-            backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #d1fae5 55%, #67e8f9 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            filter: 'drop-shadow(0 6px 20px rgba(16, 185, 129, 0.55))',
+            transform: `translate3d(${(-tilt.ry * 1.35).toFixed(2)}px, ${(tilt.rx * 1.35).toFixed(2)}px, 0) scale(${tilt.hovering ? 1.07 : 1.02})`,
+            transition: tilt.hovering
+              ? 'transform 0.16s ease-out'
+              : 'transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)',
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+          }}
+        />
+
+        {/* Dynamic pointer glass specular sheen */}
+        <div
+          className="pointer-events-none absolute inset-0 transition-opacity duration-200 opacity-70 group-hover:opacity-100"
+          style={{
+            background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.24) 0%, rgba(16,185,129,0.16) 30%, transparent 62%)`,
+          }}
+        />
+
+        {/* Subtle readability vignette (preserves full crystal orb brightness in center) */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#041418]/30 via-transparent to-[#020a10]/65" />
+
+        {/* Top badges */}
+        <div className="relative z-10 flex items-center justify-between px-5 pt-4">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/35 border border-white/20 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+            LUMACORE {kernelVersion} · SHIELD {securityVersion}
+          </span>
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/35 border border-white/15 text-[10px] font-mono text-white/95 group-hover:bg-white/20 transition">
+            <Sparkles className="w-3 h-3 text-emerald-200" />
+            Пасхалка Lithium
+          </span>
+        </div>
+
+        {/* Centered Flagship Glass Typography with gentle counter-parallax */}
+        <div
+          className="relative z-10 flex flex-col items-center justify-center text-center h-[calc(100%-56px)] pb-4 px-4"
+          style={{
+            transform: `translate3d(${(tilt.ry * 0.75).toFixed(2)}px, ${(-tilt.rx * 0.75).toFixed(2)}px, 0)`,
+            transition: tilt.hovering ? 'transform 0.16s ease-out' : 'transform 0.52s cubic-bezier(0.22, 1, 0.36, 1)',
           }}
         >
-          1.2.3
+          <div
+            className="text-5xl sm:text-6xl font-black tracking-tight leading-none select-none transition-transform duration-300 group-hover:scale-105"
+            style={{
+              backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #d1fae5 55%, #67e8f9 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              filter: 'drop-shadow(0 6px 20px rgba(16, 185, 129, 0.55))',
+            }}
+          >
+            1.2.3B
+          </div>
+          <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
+            LumaOS
+          </div>
+          <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-emerald-100/95">
+            <span>LITHIUM</span>
+            <span className="opacity-50">·</span>
+            <span>Li-3</span>
+          </div>
         </div>
-        <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
-          LumaOS
-        </div>
-        <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-emerald-100/95">
-          <span>LITHIUM</span>
-          <span className="opacity-50">·</span>
-          <span>Li-3</span>
-        </div>
-      </div>
 
-      {ripple && (
-        <div className="pointer-events-none absolute inset-0 bg-white/20 animate-ping rounded-3xl" />
-      )}
+        {ripple && (
+          <div className="pointer-events-none absolute inset-0 bg-white/20 animate-ping rounded-3xl" />
+        )}
+      </div>
     </div>
   );
 };

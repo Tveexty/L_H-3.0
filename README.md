@@ -1,44 +1,39 @@
 <div align="center">
 
-<img src="public/luma-lithium-hero.jpg" alt="Luma OS 1.2.3 Lithium" width="100%" style="border-radius: 20px;" />
+<img src="public/luma-lithium-hero.jpg" alt="Luma OS 1.2.3B Lithium" width="100%" style="border-radius: 20px;" />
 
-# Luma OS `1.2.3 (Lithium)`
+# Luma OS `1.2.3B (Lithium)`
 
-**Настольная операционная среда на ультра-оптимизированном Go-ядре `LumaCore 1.3` (Zero-PowerShell Win32 Engine), антивирусе `LumaShield 1.3` и шине `Plugin API v2.0`**
+**Настольная операционная среда на ядре `LumaCore 1.3B` (True Zero-WMI & Zero-PowerShell Win32 Engine), антивирусе `LumaShield 1.3` и шине `Plugin API v2.0`**
 
-[![Version](https://img.shields.io/badge/Luma%20OS-1.2.3%20Lithium%20Patch-10b981?style=for-the-badge)](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.2.3)
-[![Kernel](https://img.shields.io/badge/LumaCore-1.3%20Zero--PS-06b6d4?style=for-the-badge)](luma_kernel_main.go)
+[![Version](https://img.shields.io/badge/Luma%20OS-1.2.3B%20Lithium%20Patch-10b981?style=for-the-badge)](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.2.3B)
+[![Kernel](https://img.shields.io/badge/LumaCore-1.3B%20Zero--WMI-06b6d4?style=for-the-badge)](luma_kernel_main.go)
 [![Security](https://img.shields.io/badge/LumaShield-1.3-ef4444?style=for-the-badge)](kernel_security.go)
-[![AI](https://img.shields.io/badge/Luma%20AI-Lang%20%2B%20Code%20%2B%20Verbosity-8b5cf6?style=for-the-badge)](kernel_ai_local.go)
-[![Windows](https://img.shields.io/badge/Windows%20x64-Standalone%20GUI-111113?style=for-the-badge)](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.2.3.exe)
+[![AI](https://img.shields.io/badge/Luma%20AI-0%25%20Idle%20CPU-8b5cf6?style=for-the-badge)](kernel_ai_local.go)
+[![Windows](https://img.shields.io/badge/Windows%20x64-Standalone%20GUI-111113?style=for-the-badge)](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.2.3B.exe)
 
-### [⬇ Скачать LumaOS_1.2.3.exe (Windows x64 · Без браузера · Встроенная иконка)](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.2.3.exe)
+### [⬇ Скачать LumaOS_1.2.3B.exe (Windows x64 · Без браузера · Встроенная иконка)](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.2.3B.exe)
 
 </div>
 
 ---
 
-## Что нового в патче `1.2.3 (Lithium)` · `LumaCore 1.3`
+## Что нового в патче `1.2.3B (Lithium)` · `LumaCore 1.3B`
 
 > **Схема версий SemVer `X.Y.Z`:** 1-я цифра `X` — Глобальное обновление · 2-я цифра `Y` — Большое обновление версии · 3-я цифра `Z` — Патч исправлений и улучшений.
 
 | Модуль | Возможности и исправления |
 | :--- | :--- |
-| **Ядро `LumaCore 1.3` (Zero-PowerShell Win32 Engine)** | Полностью переписаны горячие системные пути на чистые нативные Win32 API: список процессов (`CreateToolhelp32Snapshot` + `GetProcessTimes` + `GetProcessMemoryInfo` + `QueryFullProcessImageNameW`), открытые окна (`EnumWindows` с единым переиспользуемым callback без утечек), фокус окон (`SetForegroundWindow`), буфер обмена (`OpenClipboard` + `CF_UNICODETEXT`) и сетевая телеметрия (`iphlpapi.dll GetIfTable`). **Фоновые запуски `powershell.exe` сокращены на ~96%** (с 60–100/мин до минимума) |
-| **Колоссальная оптимизация ЦП и GPU** | Изолированы часы панели задач (`LumaTaskbarClock` — **0 лишних рендеров** корневой оболочки в простое), добавлен **Zero-GPU Idle Freeze** (`visibilitychange` + `data-luma-idle="true"` мгновенно замораживает все CSS-анимации и фоновые запросы при сворачивании), `React.memo` для окон и рабочего стола, оптимизированное размытие (`8–12 px` без двойного прохода `saturate()`), убран `box-shadow`-аниматор на Dynamic Island + кнопка **«Турбо-Эко (1 клик)»** в **Настройки → Графика и Экран** |
-| **Улучшенный Диспетчер задач с интерактивными графиками** | Выделенный высокочастотный опрос в реальном времени (**`0.5с` / `1с` по умолчанию / `2с` / `5с`** + пауза) и новые **интерактивные графики** ЦП / ОЗУ / Диски / Сеть / GPU на 60 точек с точными временными метками: **наведите курсор на любую часть графика**, чтобы увидеть вертикальное перекрестие, маркер и точный процент/значение на тот момент + Мин / Сред / Пик |
-| **Автоскрытие панели задач при наведении** | Новая опция **«Автоматически скрывать панель задач»** в **Настройки → Панель задач** и в ПКМ по панели задач: освобождает 100% рабочей области рабочего стола и развёрнутых окон (для всех 3 позиций: снизу, слева, сверху) и плавно выезжает при наведении курсора на край экрана |
-| **Исправлен исчезающий баннер «Ядро UI» и баги** | Изображение кристалла `LumaHeliumHeroCard` переведено в хешируемый бандл Vite (`src/assets/luma-lithium-hero.jpg`), убран конфликтный 3D-слой `perspective/rotateX/Y` WebView2 и добавлены правильные заголовки `Cache-Control` в ядре. Также исправлены: двойное переключение `Alt+R` (240 мс debounce + `stopImmediatePropagation`), запуск «Новая задача» в Диспетчере задач (`/api/kernel/launch` `target`/`url`), версионные бейджи `LumaCore 1.3` / `Shield 1.3` |
-| **Облегчённая мини-игра пасхалки «Lithium Orbit · Li-3»** | Вместо мгновенной смерти с 1 удара добавлены **3 щита (`♥ ♥ ♥`)** с неуязвимостью `1.5с` и отталкиванием, магнитное притяжение золотых фотонов и бирюзовых сфер слияния, восстановление +1 щита за каждые 3 сферы слияния, более честный и плавный спавн красных осколков и отказ от тяжёлого `ctx.shadowBlur` |
-
-### Ранее добавлено в ветке `1.2.x (Lithium)`
-- **120+ языков мира и раскладки клавиатуры**, **переключение вывода/ввода звука** в Центре управления, **процент заряда беспроводных устройств** (Bluetooth/HID), **LumaShield 1.3** (Real-Time Guard, сканер процессов, карантин, белый список), **Luma AI** (`Luma Lang 1.2` + `Luma Code 1.2` + выбор объёма ответов), **18 языков системы**, **Dynamic Island 2.0**, **Откат версии (Version Rollback)** и **Проводник Pro**.
+| **True Zero-WMI Engine (`WMI Provider Host`: 24% → 0%)** | Найдена и полностью устранена главная скрытая причина загрузки ЦП в Windows (`WMI Provider Host / WmiPrvSE.exe` до 24% ЦП): все WMI-вызовы (`Get-PnpDevice`, `Get-PnpDeviceProperty -Class ...,System`, `Get-CimInstance Win32_Battery / root\WMI / Win32_Processor / Win32_VideoController`) полностью удалены и переписаны на чистые нативные Win32 API: `setupapi.dll` (`SetupDiGetClassDevsW` + `SetupDiGetDevicePropertyW` только по беспроводным шинам `BTHENUM/BTHLE/HID` за ~1.5 мс), `powrprof.dll` (`CallNtPowerInformation`), и системный реестр Windows (<1 мс). **В ядре `LumaCore 1.3B` ровно `0` вызовов WMI** |
+| **0 фоновых PowerShell при старте и в простое** | Раскладки клавиатуры считываются напрямую через Win32 `GetKeyboardLayoutList` (0.005 мс), аудиоустройства CoreAudio кэшируются на 60с и загружаются только при открытии Центра управления, а медиа-опрос SMTC для Dynamic Island запускается только при активном острове и открытом плеере/браузере (раз в 30с) с полной остановкой при скрытии острова (`/api/kernel/island/toggle`). Проверено: локальный `Luma AI` потребляет **0% ЦП** в простое и обёрнут в `React.memo` |
+| **Возвращён плавный 3D-наклон баннера «Ядро UI»** | Баннер `1.2.3B LumaOS` в **Настройки → Ядро UI** снова мягко наклоняется и плавно меняет ориентацию кристалла при наведении курсора (внешний `perspective: 1100px` + `backface-visibility: hidden` + хешированный Vite-бандл, поэтому картинка никогда не пропадает в WebView2) |
+| **Интерактивный Диспетчер задач + Автоскрытие панели** | Частота опроса `0.5с / 1с / 2с / 5с`, интерактивные графики ЦП / ОЗУ / Диски / Сеть / GPU с перекрестием и точным процентом при наведении, автоскрытие панели задач при наведении на край экрана и облегчённая мини-игра пасхалки «Lithium Orbit · Li-3» (3 щита, магнит, восстановление щитов) |
 
 ---
 
 ## Быстрый старт (Windows)
 
-1. Скачайте автономный файл **[LumaOS_1.2.3.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.2.3.exe)**.
+1. Скачайте автономный файл **[LumaOS_1.2.3B.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.2.3B.exe)**.
 2. Запустите двойным кликом — Luma OS откроется в собственном окне WebView2 со встроенной иконкой (без открытия Microsoft Edge), а все ваши виджеты, папки, ярлыки и настройки с предыдущих версий подхватятся автоматически.
 3. Горячие клавиши:
    - `Alt + R` или `Ctrl + K` — Поиск / Выполнить (Spotlight)
@@ -57,16 +52,5 @@ npm install
 npm run build
 
 # 2. Сборка автономного Windows EXE со встроенным UI и ресурсами
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui" -o LumaOS_1.2.3.exe .
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui" -o LumaOS_1.2.3B.exe .
 ```
-
-## Архитектура проекта
-
-- [`luma_kernel_main.go`](luma_kernel_main.go) — ядро `LumaCore 1.3`, HTTP/RPC-сервер (`127.0.0.1:49215/49216`), 350 мс кэш снапшотов, `Cache-Control` middleware, `LumaShield 1.3` и Version Rollback API
-- [`system_windows.go`](system_windows.go) / [`window_windows.go`](window_windows.go) — Zero-PowerShell Win32 движок (`CreateToolhelp32Snapshot`, `GetProcessTimes`, `GetProcessMemoryInfo`, `EnumWindows`, `SetForegroundWindow`, `OpenClipboard`, `iphlpapi GetIfTable`), WebView2 профиль и нативный `Alt+R` перехватчик
-- [`kernel_security.go`](kernel_security.go) — ядро безопасности `LumaShield 1.3`: 20+ эвристических правил, PE-анализ, энтропия Шеннона, Real-Time Guard, сканер процессов, карантин и белый список
-- [`kernel_ai_local.go`](kernel_ai_local.go) — двойной ИИ-движок `Luma Lang 1.2` и `Luma Code 1.2` с 3 режимами объёма информации (`brief` / `balanced` / `detailed`)
-- [`kernel_updater_ai.go`](kernel_updater_ai.go) — GitHub OTA-обновлятор + движок **Version Rollback** с автобэкапом в `%APPDATA%/LumaOS/versions` и проверкой PE32+
-- [`src/components/LumaTaskManagerWindow.tsx`](src/components/LumaTaskManagerWindow.tsx) — Диспетчер задач 1.2.3 с настраиваемой частотой опроса (`0.5с–5с`) и интерактивными графиками с наведением
-- [`src/components/LumaHeliumEasterEgg.tsx`](src/components/LumaHeliumEasterEgg.tsx) — баннер «Ядро UI» со встроенным хешированным ассетом и сбалансированная мини-игра `Lithium Orbit · Li-3`
-- [`src/components/LumaDesktopCanvas.tsx`](src/components/LumaDesktopCanvas.tsx) / [`src/components/DexWindow.tsx`](src/components/DexWindow.tsx) — мемоизированные сетка рабочего стола и оконный менеджер с поддержкой автоскрытия панели задач

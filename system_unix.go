@@ -879,7 +879,12 @@ var (
 	}
 )
 
-func (p *platformProbe) ListAudioDevices() AudioDevicesSnapshot {
+func (p *platformProbe) SetMediaPollingEnabled(enabled bool) {
+	// No-op on Linux/Unix (playerctl is lightweight)
+}
+
+func (p *platformProbe) ListAudioDevices(forceRefresh bool) AudioDevicesSnapshot {
+	_ = forceRefresh
 	unixAudioMu.Lock()
 	actOut := unixActiveOut
 	actIn := unixActiveIn

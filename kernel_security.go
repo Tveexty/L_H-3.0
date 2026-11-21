@@ -72,7 +72,7 @@ func NewSecurityKernel() *SecurityKernel {
 }
 
 func (s *SecurityKernel) realtimeGuardLoop() {
-	ticker := time.NewTicker(20 * time.Second)
+	ticker := time.NewTicker(45 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
 		s.mu.RLock()

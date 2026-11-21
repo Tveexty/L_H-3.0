@@ -522,7 +522,7 @@ export const LumaTaskManagerWindow: React.FC<{
     }
   }, []);
 
-  // Dedicated high-frequency real-time loop (0.5s / 1s / 2s / 5s) powered by LumaCore 1.3 zero-PowerShell Win32 APIs
+  // Dedicated high-frequency real-time loop (0.5s / 1s / 2s / 5s) powered by LumaCore 1.3B zero-PowerShell Win32 APIs
   useEffect(() => {
     void pollFastSnapshot();
     void fetchServicesAndStartup();
@@ -660,10 +660,10 @@ export const LumaTaskManagerWindow: React.FC<{
           ))}
         </div>
 
-        {/* Bottom LumaCore 1.3 Live Engine Badge */}
+        {/* Bottom LumaCore 1.3B Live Engine Badge */}
         <div className={`hidden sm:block p-2.5 rounded-xl border text-[10px] font-mono space-y-1 ${surfaceCls}`}>
           <div className="flex items-center justify-between">
-            <span className="font-bold text-[var(--luma-accent)]">LumaCore 1.3</span>
+            <span className="font-bold text-[var(--luma-accent)]">LumaCore 1.3B</span>
             <span className="text-emerald-500">{kernelConnected ? 'WIN32' : 'LOCAL'}</span>
           </div>
           <div className={mutedCls}>ЦП {liveCpu}% · ОЗУ {liveRam}%</div>

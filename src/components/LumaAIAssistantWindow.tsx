@@ -227,7 +227,7 @@ interface LumaAIAssistantWindowProps {
   onPushToast: (title: string, message: string, level?: 'info' | 'success' | 'warning') => void;
 }
 
-export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
+export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React.memo(({
   isDark,
   surfaceCls,
   btnCls,
@@ -1185,4 +1185,5 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = ({
       </div>
     </div>
   );
-};
+});
+
