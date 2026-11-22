@@ -47,10 +47,10 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.3.1"
-	KernelCodename      = "Beryllium"
-	KernelEngineVersion = "1.4"
-	SecurityCoreVersion = "1.4"
+	KernelVersion       = "1.4"
+	KernelCodename      = "Boron"
+	KernelEngineVersion = "1.5"
+	SecurityCoreVersion = "1.5"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
 )
@@ -2332,7 +2332,7 @@ func main() {
 		})
 	})
 
-	// LumaShield 1.4 Startup Persistence Auditor
+	// LumaShield 1.5 Startup Persistence Auditor
 	mux.HandleFunc("/api/kernel/security/startup-audit", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		entries := kernel.probe.ListStartupItems()
@@ -2344,12 +2344,142 @@ func main() {
 		})
 	})
 
-	// Serve standalone executable download for LumaOS_1.3.1.exe (with backward-compatible aliases)
+	// ==================== LUMA OS 1.4 (BORON) LUMACORE 1.5 & SDK v3.0 ENDPOINTS ====================
+
+	// LumaShield 1.5 OS Hosts File DNS Integrity Auditor
+	mux.HandleFunc("/api/kernel/security/hosts-audit", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(kernel.security.AuditHostsFile())
+	})
+
+	// LumaCore 1.5 Native Mouse Speed & Effective DPI Service (Win32 SPI_SETMOUSESPEED / Raw Input / Wheel)
+	mux.HandleFunc("/api/kernel/mouse/dpi", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodPost {
+			var payload struct {
+				SensorDPI        int   `json:"sensor_dpi"`
+				EffectiveDPI     int   `json:"effective_dpi"`
+				WindowsSpeed     int   `json:"windows_speed"`
+				EnhancePrecision *bool `json:"enhance_precision"`
+				ScrollLines      int   `json:"scroll_lines"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			cfg, err := kernel.probe.SetMouseDPIConfig(
+				payload.SensorDPI,
+				payload.EffectiveDPI,
+				payload.WindowsSpeed,
+				payload.EnhancePrecision,
+				payload.ScrollLines,
+			)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(cfg)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(kernel.probe.GetMouseDPIConfig())
+	})
+
+	// LumaCore 1.5 Kernel Health, Memory & Goroutine Diagnostics (with optional ?gc=1 memory trim)
+	mux.HandleFunc("/api/kernel/diagnostics", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		trimmed := false
+		if r.URL.Query().Get("gc") == "1" {
+			runtime.GC()
+			trimmed = true
+		}
+		var ms runtime.MemStats
+		runtime.ReadMemStats(&ms)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":                true,
+			"os_version":        KernelVersion,
+			"codename":          KernelCodename,
+			"kernel_version":    KernelEngineVersion,
+			"security_version":  SecurityCoreVersion,
+			"goroutines":        runtime.NumGoroutine(),
+			"heap_alloc_mb":     math.Round((float64(ms.Alloc)/(1024*1024))*100) / 100,
+			"sys_mem_mb":        math.Round((float64(ms.Sys)/(1024*1024))*100) / 100,
+			"gc_cycles":         ms.NumGC,
+			"uptime_sec":        int64(time.Since(kernel.bootTime).Seconds()),
+			"wmi_calls":         0,
+			"gc_trimmed":        trimmed,
+			"sdk_version":       "3.0",
+		})
+	})
+
+	// Developer SDK v3.0 Persistent Theme & Plugin Registry (Any developer can add themes or plugins!)
+	sdkStore := NewDeveloperSDKStore()
+	mux.HandleFunc("/api/v3/sdk", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(sdkStore.SDKManifest())
+	})
+	mux.HandleFunc("/api/v3/themes", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		switch r.Method {
+		case http.MethodPost:
+			var item DeveloperThemeItem
+			if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Некорректный JSON темы: " + err.Error()})
+				return
+			}
+			saved, err := sdkStore.UpsertTheme(item)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			if kernel.security != nil {
+				kernel.security.LogAudit("ok", "sdk-v3", "Зарегистрирована пользовательская тема SDK v3.0", fmt.Sprintf("%s (%s)", saved.Name, saved.ID))
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "theme": saved, "themes": sdkStore.ListThemes()})
+		case http.MethodDelete:
+			id := strings.TrimSpace(r.URL.Query().Get("id"))
+			ok := sdkStore.DeleteTheme(id)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": ok, "id": id, "themes": sdkStore.ListThemes()})
+		default:
+			list := sdkStore.ListThemes()
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "sdk_version": "3.0", "count": len(list), "themes": list})
+		}
+	})
+	mux.HandleFunc("/api/v3/plugins", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		switch r.Method {
+		case http.MethodPost:
+			var item DeveloperPluginItem
+			if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Некорректный JSON плагина: " + err.Error()})
+				return
+			}
+			saved, err := sdkStore.UpsertPlugin(item)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			if kernel.security != nil {
+				kernel.security.LogAudit("ok", "sdk-v3", "Установлен разработческий плагин SDK v3.0", fmt.Sprintf("%s v%s", saved.Name, saved.Version))
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "plugin": saved, "plugins": sdkStore.ListPlugins()})
+		case http.MethodDelete:
+			id := strings.TrimSpace(r.URL.Query().Get("id"))
+			ok := sdkStore.DeletePlugin(id)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": ok, "id": id, "plugins": sdkStore.ListPlugins()})
+		default:
+			list := sdkStore.ListPlugins()
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "sdk_version": "3.0", "count": len(list), "plugins": list})
+		}
+	})
+
+	// Serve standalone executable download for LumaOS_1.4.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.3.1.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.4.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -2357,12 +2487,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.3.1.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.4.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.4.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.3.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.3.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.3B.exe", serveExe)
@@ -2418,8 +2549,8 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.3.1 (BERYLLIUM) — LUMACORE 1.4 & LUMASHIELD 1.4")
-	log.Printf("  - Instant Alt+Shift, Native App Icons, Multi-Player Island: ON")
+	log.Printf("  LUMA OS 1.4 (BORON · B-5) — LUMACORE 1.5 & LUMASHIELD 1.5")
+	log.Printf("  - Wireless HID Mice, DPI Service, SDK v3.0, Hosts Guard: ON")
 	log.Printf("  - Desktop Environment:          http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:    http://%s/api/kernel/status", addr)

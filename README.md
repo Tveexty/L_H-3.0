@@ -1,70 +1,179 @@
-# Luma OS 1.3.1 (Beryllium · Be-4)
+<div align="center">
 
-<p align="center">
-  <img src="public/luma-beryllium-hero.jpg" alt="Luma OS 1.3.1 Beryllium" width="840" style="border-radius: 18px;" />
+<img src="public/luma-boron-hero.jpg" alt="Luma OS 1.4 (Boron · B-5)" width="100%" style="border-radius: 18px;" />
+
+<br />
+
+# Luma OS 1.4 — **Boron · B-5**
+
+**Настольная операционная среда нового поколения для Windows 10 / 11 на нативном Zero-WMI ядре `LumaCore 1.5` и модуле защиты `LumaShield 1.5`**
+
+<p>
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.4"><img src="https://img.shields.io/badge/Release-v1.4%20(Boron%20·%20B--5)-6366f1?style=for-the-badge" alt="Release v1.4" /></a>
+  <img src="https://img.shields.io/badge/Kernel-LumaCore%201.5%20(Zero--WMI)-10b981?style=for-the-badge" alt="LumaCore 1.5" />
+  <img src="https://img.shields.io/badge/Security-LumaShield%201.5%20(85+%20Rules)-f43f5e?style=for-the-badge" alt="LumaShield 1.5" />
+  <img src="https://img.shields.io/badge/Developer-SDK%20v3.0%20API-8b5cf6?style=for-the-badge" alt="Developer SDK v3.0" />
+  <img src="https://img.shields.io/badge/Platform-Windows%2010%2F11%20x64-0ea5e9?style=for-the-badge" alt="Windows x64" />
 </p>
 
-<p align="center">
-  <strong>Флагманская настольная ОС-оболочка с ядром LumaCore 1.4 (True Zero-WMI), мгновенным Alt+Shift на панели задач, родными иконками всех предустановленных и установленных приложений, мультиплеерным Dynamic Island, панелью задач справа, полной накопительной галереей обоев и игрой «Beryllium Vanguard · Be-4»</strong>
-</p>
+<h3>
+  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.4.exe">⬇️ Скачать LumaOS_1.4.exe (Portable · 1 файл · 0 зависимостей)</a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.4">📦 Страница релиза v1.4</a>
+</h3>
 
-<p align="center">
-  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.3.1.exe"><strong>⬇ Скачать LumaOS_1.3.1.exe (Windows x64, 23 МБ)</strong></a> ·
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.3.1">Релиз v1.3.1 на GitHub</a> ·
-  <a href="https://github.com/Tveexty/L_H-3.0/releases">Все релизы (1.0.2b – 1.3.1)</a>
-</p>
+</div>
 
 ---
 
-## Что нового в патче Luma OS 1.3.1 (Beryllium)
+## Что нового в **Luma OS 1.4 (Boron · B-5)**
 
-- **Мгновенная реакция раскладки клавиатуры на `Alt + Shift` / `Ctrl + Shift` / `Win + Space`** — нативный Win32-монитор (40 мс) + прямой push-сигнал в WebView2 + мгновенный отклик индикатора на Панели задач (0 мс ощущаемой задержки, 0% лишней нагрузки ЦП).
-- **Родные нативные иконки всех предустановленных и установленных приложений** — обновлённый экстрактор `SHGetFileInfoW` с корректной маской прозрачности и авто-поиском через `App Paths` / `System32` отображает настоящие системные значки Chrome, Steam, Telegram, Edge, Калькулятора, Блокнота, Проводника, Paint, PowerShell, VLC, Firefox и всех программ на устройстве.
-- **Полная накопительная галерея обоев** — возвращены все классические обои прошлых версий (*Dark Glass Waves*, *Midnight Peaks*, *Emerald Forest*, *Helium 1.1 Orb*, *Lithium 1.2 Crystal*, *Obsidian Silk*) рядом с артами *Beryllium* и 6 живыми CSS-обоями: с каждым обновлением выбор только увеличивается.
-- **Мультиплеерный Dynamic Island** — если на устройстве открыто несколько медиа-плееров (Chrome, Spotify, VLC, Telegram, Edge и др.), Dynamic Island показывает их полный список и позволяет индивидуально включать, ставить на паузу, переключать треки или закреплять любой плеер основным.
-- **Панель задач справа** — добавлено 4-е расположение панели задач (**Снизу / Слева / Справа / Сверху**) с поддержкой автоскрытия, масштабирования ширины, отступов окон, уведомлений и резервирования рабочей области Windows Shell.
-- **Уникальный студийный 3D-арт Beryllium (Be-4)** — переработанный минималистичный студийный 3D-рендер титаново-бериллиевой оптической призмы в чистом индустриальном стиле с мягким 3D-наклоном при наведении.
-
----
-
-## Ключевые возможности ветки 1.3 (Beryllium)
-
-### 1. Беспроводные и 2.4GHz радиоканальные устройства + закрепление на Панели задач
-- Нативный Win32-сканер **Bluetooth / BLE + HID Battery Feature Reports (`UsagePage 0x06/0x20` & `0x84/0x66`) + `ContainerID`** показывает реальный заряд мышек, наушников, клавиатур и геймпадов, подключённых как по Bluetooth, так и через **USB-донглы 2.4GHz радиоканала**.
-- Любое устройство можно в 1 клик закрепить прямо в трее Панели задач (**«На панель задач»**) — с живым `%` заряда и ПКМ-меню управления.
-
-### 2. Единые настройки «Питание и Батарея»
-- Разделы «Батарея и экран» и «Питание» объединены в один мощный центр **«Питание и Батарея»**: аналитика АКБ ноутбука, 24-часовой график разряда/зарядки, беспроводные и 2.4GHz устройства, профили питания Windows (`powercfg`), комфортная яркость, авто-энергосбережение и быстрые действия (Блокировка, Сон, Перезагрузка, Выключение ПК).
-
-### 3. Диспетчер задач: Чип GPU (%) + Видеопамять VRAM (МБ/ГБ)
-- Прямой опрос **NVIDIA NVML** (50 мкс, 0% ЦП) с универсальным fallback на **Win32 PDH (`\GPU Engine`, `\GPU Adapter Memory`) + Реестр** без единого вызова WMI!
-- Вкладка «Производительность → Графика GPU» отображает **два интерактивных графика по наведению**: загрузку графического чипа (%) и выделенную видеопамять VRAM (ГБ / МБ / %), а также температуру и источник телеметрии.
-
-### 4. Минималистичный `Alt + R` (Luma Search)
-- Чистое минималистичное окно поиска: мгновенно находит **все установленные программы ПК** (с реальными иконками) и приложения Luma, **все настройки системы**, **системные службы и утилиты Windows** (`services.msc`, `devmgmt.msc`, `regedit`, `control`, `wf.msc`), а если локально ничего не найдено — сразу предлагает **поиск в Интернете** (Google / DuckDuckGo / YouTube).
-
-### 5. Клик по любому виджету → мгновенные настройки этого виджета
-- Нажмите на любой виджет на рабочем столе — сразу откроется панель настроек именно этого виджета (смена стиля/варианта, 6 форм HarmonyOS, размер `W×H`, перетаскивание и переход в соответствующий раздел системных настроек).
-
-### 6. Умная Панель задач, правые уведомления и Трекер сессий 2.0
-- Отсутствие дублей между каталогом Luma и окнами Windows, ПКМ-меню трея, автоскрытие, сжатие системных утилит в папку и перетаскивание порядка приложений.
-- Увеличенные системные уведомления справа и **Трекер сессий и лимитов 2.0** с дневными лимитами, Фокус-сессиями, 7-дневной аналитикой и экспортом CSV.
-
-### 7. Ядро LumaCore 1.4, LumaShield 1.4 и игра «Beryllium Vanguard · Be-4»
-- **LumaCore 1.4**: True Zero-WMI архитектура, 10 горутин в простое, адаптивный троттлинг, Zero-GPU Idle Freeze.
-- **LumaShield 1.4**: **71+ правило безопасности**, живой **Сетевой экран TCP** (`GetExtendedTcpTable`) и **Аудит автозагрузки**.
-- **Roguelite-арена «Beryllium Vanguard · Be-4»** в пасхалке «Ядро UI» (плюс классический режим «Lithium Orbit»).
+| Модуль | Ключевые возможности релиза 1.4 |
+| :--- | :--- |
+| **Календарь Luma OS** | Полноценное встроенное приложение: сетка месяца, события и напоминания с цветными тегами, лента ближайших дел, запуск по клику на часы в панели задач и интерактивный виджет месяца на рабочем столе. |
+| **Полный сканер беспроводных мышек (BT / BLE / 2.4GHz)** | Переписанный глубокий HID/Bluetooth сканер `LumaCore 1.5` распознаёт **35+ брендов** (Logitech, Razer, SteelSeries, HyperX, Corsair, Keychron, Asus ROG, Attack Shark, Lamzu, Pulsar, Glorious, Ajazz, Redragon, Bloody, Apple, Sony, Microsoft и др.) и отображает все подключённые беспроводные устройства (BT, BLE и 2.4GHz радиоканал) даже если драйвер не передаёт процент заряда в Windows. |
+| **Системный сервис «Мышь и DPI»** | Нативный Win32-контроллер скорости указателя и эффективного DPI (**eDPI**): слайдер скорости Windows `1–20`, калибровка сенсора `400–6400 DPI`, отключение акселерации (**Raw Input**), 5 быстрых пресетов (`Снайпер` / `Точность` / `Баланс` / `Игры` / `Ультра`), строки прокрутки колеса и живая тест-площадка отклика курсора. |
+| **Developer SDK & Theme/Plugin API v3.0** | Открытый REST API (`/api/v3/sdk`, `/api/v3/themes`, `/api/v3/plugins`), глобальный браузерный SDK `window.LumaSDK` и встроенная **«Студия SDK v3.0»** прямо в окне Расширений — любой разработчик может создать, импортировать (`.luma-theme.json` / JSON-манифест плагина), экспортировать и применить свою тему или плагин за 1 клик. |
+| **Ядро `LumaCore 1.5` + Защита `LumaShield 1.5`** | **85+ поведенческих правил безопасности** (+14 новых эвристик против инъекций, криптомайнеров и стилеров), встроенный **Аудит файла Hosts (DNS Hijack Protection)**, живой TCP-монитор, аудит автозагрузки и диагностика памяти ядра с очисткой RAM (GC Trim). |
+| **Кинематографичная анимация обновления** | Полноэкранная 60 FPS GPU-анимация **Boron Cinema** с орбитальными кольцами `B-5`, светящимся ореолом прогресса, живой телеметрией скорости МБ/с, 4-этапной шкалой проверки SHA-256 и кнопкой **«Анимация обновления»** для предпросмотра в *Настройки → Обновления*. |
+| **4 уникальных студийных арта обоев + 2 живых обоев** | Абсолютно новые студийные рендеры **Boron 1.4 (3D Prism)**, **Boron Dusk Horizon**, **Cobalt Silk Fold**, **Solar Eclipse Gold** и 2 плавных живых градиента (**Boron Sapphire**, **Cobalt Obsidian**). **Все обои прошлых версий полностью сохранены** — выбор с каждым релизом только растёт! |
+| **Новые виджеты погоды, часов, энергии и календаря** | **«Погода на неделю (Арт · 7 дней)»** с живописными векторными иллюстрациями неба и реальным прогнозом Open-Meteo на 7 дней, **«Часы Студия Pro»** (Швейцарский хронограф, Стеклянный Флип, Двойной пояс), **«Энергия Boron (ПК + Мыши/BT)»** и **«Календарь (Месяц)»**. |
+| **Прозрачность и фон каждого виджета** | Клик по любому виджету на рабочем столе (или *Настройки → Темы, Обои и Виджеты*) открывает настройку непрозрачности `0%–100%`, 7 режимов фона (`Тема` / `Стекло` / `Тёмный` / `Светлый` / `Акцент` / `Прозрачный` / `Свой цвет`), выбор цвета и силу размытия (`0 / 8 / 16 / 24 px`). |
 
 ---
 
-## Быстрый старт
+## Галерея студийных обоев **Boron 1.4**
 
-### Windows (Автономный EXE)
-Просто скачайте и запустите [`LumaOS_1.3.1.exe`](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.3.1.exe) — ядро **LumaCore 1.4**, антивирус **LumaShield 1.4** и вся оболочка встроены в один исполняемый файл.
+> Все обои встроены прямо в `LumaOS_1.4.exe` и дополняют полную коллекцию классических обоев (`Beryllium 1.3.1`, `Beryl Aurora`, `Amber Monolith`, `Lithium 1.2`, `Obsidian Silk`, `Helium 1.1` + 8 живых CSS-обоев).
 
-### Сборка из исходников
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="public/luma-boron-hero.jpg" alt="Boron 1.4 3D Prism" width="100%" />
+      <br />
+      <b>Boron 1.4 — 3D Prism (B-5 Flagship)</b>
+    </td>
+    <td width="50%" align="center">
+      <img src="public/luma-boron-horizon.jpg" alt="Boron Dusk Horizon" width="100%" />
+      <br />
+      <b>Boron Dusk Horizon</b>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="public/luma-boron-silk.jpg" alt="Cobalt Silk Fold" width="100%" />
+      <br />
+      <b>Cobalt Silk Fold</b>
+    </td>
+    <td width="50%" align="center">
+      <img src="public/luma-boron-eclipse.jpg" alt="Solar Eclipse Gold" width="100%" />
+      <br />
+      <b>Solar Eclipse Gold</b>
+    </td>
+  </tr>
+</table>
+
+---
+
+## Developer SDK v3.0 — Создавайте свои темы и плагины
+
+В **Luma OS 1.4 (Boron)** открыт единый **Developer SDK v3.0** с сохранением пользовательских тем и плагинов на диске (`~/.config/LumaOS/sdk_v3/`).
+
+### 1. REST API ядра `LumaCore 1.5`
+
+| Метод и эндпоинт | Назначение |
+| :--- | :--- |
+| `GET /api/v3/sdk` | Манифест SDK v3.0, список хуков и доступных эндпоинтов |
+| `GET / POST / DELETE /api/v3/themes` | Чтение, установка и удаление пользовательских тем оформления |
+| `GET / POST / DELETE /api/v3/plugins` | Чтение, установка и удаление пользовательских плагинов |
+| `GET / POST /api/kernel/mouse/dpi` | Чтение и изменение скорости указателя Windows / eDPI / Raw Input |
+| `GET /api/kernel/wireless/batteries?refresh=1` | Сканер Bluetooth, BLE и 2.4GHz радиоканальных мышек/гарнитур |
+| `GET /api/kernel/security/hosts-audit` | Аудит системного файла `hosts` (DNS Hijack Protection) |
+| `GET /api/kernel/diagnostics?gc=1` | Диагностика памяти ядра и принудительная очистка GC |
+
+### 2. Быстрый старт через `window.LumaSDK` (JS / DevTools / Студия SDK v3.0)
+
+```js
+// Зарегистрировать и сразу применить собственную тему оформления
+await window.LumaSDK.registerTheme({
+  id: 'my_midnight_boron',
+  name: 'Midnight Boron',
+  description: 'Авторская тёмная тема с сапфировым акцентом',
+  isDark: true,
+  bgGradient: 'linear-gradient(155deg, #050814 0%, #111a3a 55%, #080c1c 100%)',
+  surfaceRgba: 'rgba(13, 18, 34, 0.90)',
+  cardHex: '#131c36',
+  accent: 'indigo',
+  accentHex: '#818cf8',
+}, true);
+
+// Зарегистрировать пользовательский плагин SDK v3.0
+await window.LumaSDK.registerPlugin({
+  id: 'my_dev_plugin',
+  name: 'Dev Telemetry Pulse',
+  version: '1.0.0',
+  apiVersion: '3.0',
+  author: 'Your Name',
+  category: 'Инструменты',
+  icon: 'Zap',
+  description: 'Показывает системное уведомление с состоянием ядра',
+  enabled: true,
+  hooks: ['onBoot', 'onAction'],
+  permissions: ['notify', 'telemetry.read'],
+  actionId: 'custom_sdk_v3',
+});
+
+window.LumaSDK.notify('Developer SDK v3.0', 'Тема и плагин успешно установлены!', 'success');
+```
+
+---
+
+## Горячие клавиши
+
+| Комбинация | Действие |
+| :--- | :--- |
+| `Alt + R` / `Ctrl + K` | **Luma Search** — мгновенный поиск приложений ПК, настроек, служб и веба |
+| `Alt + Shift` / `Win + Space` | Мгновенная смена раскладки клавиатуры (0 мс задержки на панели задач) |
+| `Alt + W` | Обзор открытых окон и виртуальных рабочих столов |
+| `Alt + D` | Свернуть все окна / показать рабочий стол |
+| `F11` | Полноэкранный режим оболочки |
+| `Ctrl + Alt + Shift + W` | Экстренное восстановление системной панели задач Windows |
+
+---
+
+## Скачать Luma OS (все сборки)
+
+Все исполняемые файлы автономны (**Single-Binary Portable EXE** — встроенный фронтенд + Go-ядро, установка не требуется):
+
+| Версия | Кодовое имя | Ядро / Защита | Прямая ссылка |
+| :--- | :--- | :--- | :--- |
+| **1.4 (Актуальная)** | **Boron · B-5** | `LumaCore 1.5` · `LumaShield 1.5` · `SDK v3.0` | [**LumaOS_1.4.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.4.exe) |
+| **1.3.1** | Beryllium · Be-4 | `LumaCore 1.4` · `LumaShield 1.4` | [LumaOS_1.3.1.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.3.1.exe) |
+| **1.3** | Beryllium · Be-4 | `LumaCore 1.4` · `LumaShield 1.4` | [LumaOS_1.3.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.3.exe) |
+| **1.2.3B** | Lithium · Li-3 | `LumaCore 1.3B` (True Zero-WMI) | [LumaOS_1.2.3B.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.2.3B.exe) |
+| **1.2.3** | Lithium · Li-3 | `LumaCore 1.3` · `LumaShield 1.3` | [LumaOS_1.2.3.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.2.3.exe) |
+| **1.2.2** | Lithium · Li-3 | `LumaCore 1.2.2` · `LumaShield 1.3` | [LumaOS_1.2.2.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.2.2.exe) |
+| **1.2.1** | Lithium · Li-3 | `LumaCore 1.2` | [LumaOS_1.2.1.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.2.1.exe) |
+| **1.2** | Lithium · Li-3 | `LumaCore 1.2` | [LumaOS_1.2.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.2.exe) |
+| **1.1** | Helium · He-2 | `LumaCore 1.1` | [LumaOS_1.1.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.1.exe) |
+| **1.0.4** | Classic DeX | `LumaCore 1.0` | [LumaOS_1.0.4.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.0.4.exe) |
+
+> Встроенный менеджер **Настройки → Обновления и Откат** позволяет в 1 клик обновиться до новой версии через GitHub OTA или откатиться на любую предыдущую сборку с полным сохранением виджетов, ярлыков и настроек.
+
+---
+
+## Сборка из исходного кода
+
 ```bash
+# 1. Установка зависимостей и сборка UI (React + TypeScript + Tailwind + Vite)
 npm install
 npm run build
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui" -o LumaOS_1.3.1.exe .
+
+# 2. Сборка автономного Windows EXE (встраивает dist/ через go:embed)
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui" -o LumaOS_1.4.exe .
 ```
+
+<div align="center">
+  <br />
+  <sub>Создано с любовью к скорости, чистому дизайну и контролю над системой · <b>Luma OS 1.4 (Boron · B-5)</b></sub>
+</div>

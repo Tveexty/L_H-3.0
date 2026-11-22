@@ -329,6 +329,54 @@
   background-size: 100% 100%, 100% 100%, 38px 38px, 38px 38px;
 }
 
+.luma-live-wp-boron {
+  background: radial-gradient(circle at 22% 24%, rgba(99, 102, 241, 0.48), transparent 50%),
+    radial-gradient(circle at 78% 72%, rgba(168, 85, 247, 0.38), transparent 52%),
+    radial-gradient(circle at 50% 14%, rgba(56, 189, 248, 0.30), transparent 46%),
+    linear-gradient(135deg, #050714 0%, #0e1430 50%, #070a18 100%);
+  background-size: 200% 200%;
+  animation: lumaMeshDrift 17s ease-in-out infinite;
+}
+
+.luma-live-wp-cobalt {
+  background: radial-gradient(ellipse 75% 48% at 25% 26%, rgba(56, 189, 248, 0.42), transparent 56%),
+    radial-gradient(ellipse 68% 44% at 76% 70%, rgba(129, 140, 248, 0.36), transparent 56%),
+    radial-gradient(ellipse 60% 40% at 50% 90%, rgba(244, 114, 182, 0.22), transparent 54%),
+    linear-gradient(155deg, #030714 0%, #0c1733 54%, #060b1c 100%);
+  background-size: 200% 200%;
+  animation: lumaMeshDrift 21s ease-in-out infinite;
+}
+
+/* ==================== 1.4 (BORON) CINEMATIC UPDATE OVERLAY ANIMATIONS ==================== */
+@keyframes lumaUpdateOrbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes lumaUpdateOrbitRev {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+@keyframes lumaUpdateAuroraA {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(55px, 35px, 0) scale(1.12); }
+}
+@keyframes lumaUpdateAuroraB {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-55px, -30px, 0) scale(1.1); }
+}
+.luma-update-orbit-slow {
+  animation: lumaUpdateOrbit 9s linear infinite;
+}
+.luma-update-orbit-rev {
+  animation: lumaUpdateOrbitRev 13s linear infinite;
+}
+.luma-update-aurora-a {
+  animation: lumaUpdateAuroraA 10s ease-in-out infinite;
+}
+.luma-update-aurora-b {
+  animation: lumaUpdateAuroraB 12s ease-in-out infinite;
+}
+
 /* ==================== 6 SELECTABLE ANIMATION PRESETS (STANDARD / SPRING / GLIDE / SILK / ELASTIC / NONE) ==================== */
 @keyframes lumaFadeUp {
   from {

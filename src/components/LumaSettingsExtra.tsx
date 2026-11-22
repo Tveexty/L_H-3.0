@@ -161,11 +161,11 @@ export const KernelUIPanel: React.FC<{
 
   return (
     <div className="space-y-4">
-      {/* Flagship Sculpted 3D Beryllium 1.3 Hero Artwork — Click for Beryllium Vanguard Mini-Game! */}
+      {/* Flagship Sculpted 3D Boron 1.4 Hero Artwork — Click for Easter Egg Mini-Game! */}
       <LumaHeliumHeroCard
         onTriggerEasterEgg={() => onTriggerEasterEgg?.()}
-        kernelVersion={liveSystem?.kernel_engine_version || '1.4'}
-        securityVersion="1.4"
+        kernelVersion={liveSystem?.kernel_engine_version || '1.5'}
+        securityVersion="1.5"
       />
 
       {/* Device & Kernel UI Identity Card */}
@@ -173,28 +173,28 @@ export const KernelUIPanel: React.FC<{
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
             <div className="w-12 h-12 rounded-2xl bg-[var(--luma-accent)] text-white flex items-center justify-center font-mono font-black text-xl shrink-0">
-              Be
+              B
             </div>
             <div className="min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--luma-accent)] font-bold">
-                ЯДРО UI · LUMA BERYLLIUM
+                ЯДРО UI · LUMA BORON · B-5
               </div>
               <div className="text-lg font-extrabold tracking-tight truncate">
-                Luma OS 1.3.1 (Beryllium)
+                Luma OS 1.4 (Boron)
               </div>
               <div className={`text-xs font-mono truncate ${mutedCls}`}>
-                LumaCore {liveSystem?.kernel_engine_version || '1.4'} · LumaShield 1.4 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
+                LumaCore {liveSystem?.kernel_engine_version || '1.5'} · LumaShield 1.5 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
               </div>
             </div>
           </div>
 
           <a
-            href="/LumaOS_1.3.1.exe"
-            download="LumaOS_1.3.1.exe"
+            href="/LumaOS_1.4.exe"
+            download="LumaOS_1.4.exe"
             className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
-            LumaOS_1.3.1.exe
+            LumaOS_1.4.exe
           </a>
         </div>
 
@@ -248,17 +248,17 @@ export const KernelUIPanel: React.FC<{
           {/* 3. Версия ПО */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия ПО</div>
-            <div className="text-sm font-mono font-bold">1.3.1 (Beryllium)</div>
+            <div className="text-sm font-mono font-bold">1.4 (Boron)</div>
           </div>
 
-          {/* 4. Версия Ядра (1.4) */}
+          {/* 4. Версия Ядра (1.5) */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия Ядра</div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-mono font-bold text-[var(--luma-accent)]">
-                {liveSystem?.kernel_engine_version || '1.4'}
+                {liveSystem?.kernel_engine_version || '1.5'}
               </span>
-              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore 1.4 · Zero-WMI</span>
+              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore 1.5 · Zero-WMI</span>
             </div>
           </div>
         </div>
@@ -276,8 +276,8 @@ export const KernelUIPanel: React.FC<{
           ],
           ['Оперативная память', liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ (${liveSystem.ram_percent}%)` : '—'],
           ['Платформа / Архитектура', `${liveSystem?.os_name || 'Luma OS'} · ${liveSystem?.arch || 'amd64'}`],
-          ['Ядро безопасности', 'LumaShield 1.4 · 32+ Rules + TCP Monitor + Audit'],
-          ['Шина ядра / StateVault', 'TCP JSON-RPC 2.0 :49215 · Eternal Disk Sync'],
+          ['Ядро безопасности', 'LumaShield 1.5 · 85+ Rules + Hosts DNS Audit + TCP'],
+          ['Шина ядра / SDK', 'TCP JSON-RPC 2.0 :49215 · Developer SDK v3.0'],
         ].map(([k, v]) => (
           <div key={k} className={`p-3.5 rounded-xl border space-y-1 ${surfaceCls}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>{k}</div>
@@ -298,7 +298,16 @@ export const BluetoothSettingsPanel: React.FC<{
 }> = ({ surfaceCls, btnCls, mutedCls, onPushToast }) => {
   const [bt, setBt] = useState<BluetoothStatusInfo | null>(null);
   const [wirelessBats, setWirelessBats] = useState<
-    { name: string; device_type: string; battery_percent: number; connected: boolean; transport: string }[]
+    {
+      name: string;
+      device_type: string;
+      battery_percent: number;
+      connected: boolean;
+      transport: string;
+      vendor_id?: string;
+      product_id?: string;
+      manufacturer?: string;
+    }[]
   >([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
@@ -368,7 +377,7 @@ export const BluetoothSettingsPanel: React.FC<{
       case 'phone':
         return 'Телефон';
       default:
-        return 'Bluetooth';
+        return 'Беспроводное';
     }
   };
 
@@ -382,13 +391,13 @@ export const BluetoothSettingsPanel: React.FC<{
             <BluetoothOff className={`w-5 h-5 shrink-0 ${mutedCls}`} />
           )}
           <div className="min-w-0">
-            <div className="text-sm font-bold">Bluetooth и Беспроводные устройства</div>
+            <div className="text-sm font-bold">Bluetooth и Радиоканал 2.4GHz (LumaCore 1.5)</div>
             <div className={`text-xs truncate ${mutedCls}`}>
               {loading
-                ? 'Проверка адаптера и датчиков заряда...'
+                ? 'Глубокое сканирование Bluetooth, BLE и 2.4GHz USB HID мышек/гарнитур...'
                 : bt?.available
                 ? bt.adapter_name || 'Адаптер Bluetooth обнаружен'
-                : 'Адаптер Bluetooth на этом устройстве не обнаружен'}
+                : 'Адаптер Bluetooth не найден (радиоканальные 2.4GHz устройства сканируются напрямую)'}
             </div>
           </div>
         </div>
@@ -400,7 +409,7 @@ export const BluetoothSettingsPanel: React.FC<{
             className={`px-3 py-1.5 rounded-lg border text-xs font-mono inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Обновить
+            Сканировать
           </button>
           {bt?.available && (
             <button onClick={toggleBt} disabled={toggling} className="cursor-pointer">
@@ -410,37 +419,54 @@ export const BluetoothSettingsPanel: React.FC<{
         </div>
       </div>
 
-      {/* Wireless Peripherals Live Battery Strip (Bluetooth + 2.4GHz HID Mice/Keyboards/Headphones) */}
+      {/* Wireless Peripherals Live Strip (Bluetooth + BLE + 2.4GHz HID Mice/Keyboards/Headphones) */}
       {wirelessBats.length > 0 && (
         <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
-          <div className="text-xs font-bold flex items-center gap-2">
-            <BatteryCharging className="w-4 h-4 text-emerald-400" />
-            Уровень заряда беспроводных устройств ({wirelessBats.length})
+          <div className="text-xs font-bold flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-2">
+              <BatteryCharging className="w-4 h-4 text-emerald-400" />
+              Подключённые беспроводные и радиоканальные устройства ({wirelessBats.length})
+            </span>
+            <span className={`text-[10px] font-mono ${mutedCls}`}>BT · BLE · 2.4GHz HID</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {wirelessBats.map((wb, idx) => {
-              const pct = Math.max(0, Math.min(100, wb.battery_percent));
+              const hasBat = typeof wb.battery_percent === 'number' && wb.battery_percent >= 0;
+              const pct = hasBat ? Math.max(0, Math.min(100, wb.battery_percent)) : 0;
               const barColor = pct <= 20 ? 'bg-rose-500' : pct <= 45 ? 'bg-amber-400' : 'bg-emerald-500';
               return (
                 <div key={`${wb.name}_${idx}`} className={`p-3 rounded-xl border space-y-1.5 text-xs ${btnCls}`}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <div className="font-bold truncate">{wb.name}</div>
-                      <div className={`text-[10px] font-mono ${mutedCls}`}>
+                      <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
                         {kindTag(wb.device_type)} · {wb.transport}
+                        {wb.vendor_id ? ` · ${wb.vendor_id}${wb.product_id ? `:${wb.product_id}` : ''}` : ''}
                       </div>
                     </div>
-                    <span
-                      className={`font-mono text-sm font-black shrink-0 ${
-                        pct <= 20 ? 'text-rose-400' : pct <= 45 ? 'text-amber-400' : 'text-emerald-400'
-                      }`}
-                    >
-                      {pct}%
-                    </span>
+                    {hasBat ? (
+                      <span
+                        className={`font-mono text-sm font-black shrink-0 ${
+                          pct <= 20 ? 'text-rose-400' : pct <= 45 ? 'text-amber-400' : 'text-emerald-400'
+                        }`}
+                      >
+                        {pct}%
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">
+                        Подключено
+                      </span>
+                    )}
                   </div>
-                  <div className="h-1.5 rounded-full bg-black/25 overflow-hidden">
-                    <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
-                  </div>
+                  {hasBat ? (
+                    <div className="h-1.5 rounded-full bg-black/25 overflow-hidden">
+                      <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                    </div>
+                  ) : (
+                    <div className={`text-[10px] font-mono ${mutedCls}`}>
+                      Активное соединение · драйвер не передаёт % АКБ в Windows
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -448,11 +474,11 @@ export const BluetoothSettingsPanel: React.FC<{
         </div>
       )}
 
-      {!loading && !bt?.available && (
+      {!loading && !bt?.available && wirelessBats.length === 0 && (
         <div className={`p-5 rounded-xl border space-y-2 text-xs ${surfaceCls}`}>
-          <div className="font-bold">Модуль Bluetooth отсутствует</div>
+          <div className="font-bold">Модуль Bluetooth и 2.4GHz периферия не обнаружены</div>
           <div className={mutedCls}>
-            Ядро LumaCore 1.3 проверило шину устройств хоста — встроенный или USB-адаптер Bluetooth не найден. Если вы подключите USB-донгл Bluetooth или беспроводную мышь/наушники, нажмите «Обновить» выше.
+            Ядро LumaCore 1.5 проверило Bluetooth, BLE и USB HID радиоканалы хоста. Подключите беспроводную мышь, клавиатуру или наушники и нажмите «Сканировать» выше.
           </div>
           <button
             onClick={() => {
@@ -511,7 +537,7 @@ export const BluetoothSettingsPanel: React.FC<{
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        {hasBat && (
+                        {hasBat ? (
                           <span
                             className={`px-2 py-0.5 rounded-lg font-mono text-[11px] font-bold inline-flex items-center gap-1 ${
                               pct <= 20
@@ -523,6 +549,10 @@ export const BluetoothSettingsPanel: React.FC<{
                           >
                             <BatteryCharging className="w-3 h-3" />
                             {pct}%
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-lg font-mono text-[10px] font-bold bg-emerald-500/15 text-emerald-400">
+                            Подключено
                           </span>
                         )}
                         <StatusBadge active={dev.connected} onLabel="ПОДКЛ" offLabel="ГОТОВО" />

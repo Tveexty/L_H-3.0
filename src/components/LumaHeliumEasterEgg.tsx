@@ -16,7 +16,7 @@ import {
   Swords,
   Magnet,
 } from 'lucide-react';
-import berylliumHeroImg from '../assets/luma-beryllium-hero.jpg';
+import boronHeroImg from '../assets/luma-boron-hero.jpg';
 
 interface HeroCardProps {
   onTriggerEasterEgg: () => void;
@@ -25,14 +25,14 @@ interface HeroCardProps {
 }
 
 /**
- * Flagship sculptural 3D Beryllium crystal prism hero banner for Luma OS 1.3 (Beryllium · Be-4).
+ * Flagship sculptural 3D Boron pentagonal optical prism hero banner for Luma OS 1.4 (Boron · B-5).
  * Uses outer perspective wrapper, backfaceVisibility: hidden, content-hashed Vite asset,
  * and dual CSS+<img> layers so WebView2 smoothly tilts on hover without ever dropping the image.
  */
 export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
   onTriggerEasterEgg,
-  kernelVersion = '1.4',
-  securityVersion = '1.4',
+  kernelVersion = '1.5',
+  securityVersion = '1.5',
 }) => {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [tilt, setTilt] = useState({ rx: 0, ry: 0, gx: 50, gy: 38, hovering: false });
@@ -73,7 +73,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
             handleClick();
           }
         }}
-        className="group relative block w-full h-56 sm:h-64 rounded-3xl overflow-hidden border border-emerald-300/20 shadow-xl cursor-pointer text-left select-none active:scale-[0.99] focus:outline-none"
+        className="group relative block w-full h-56 sm:h-64 rounded-3xl overflow-hidden border border-indigo-300/25 shadow-xl cursor-pointer text-left select-none active:scale-[0.99] focus:outline-none"
         style={{
           isolation: 'isolate',
           transformStyle: 'flat',
@@ -83,16 +83,16 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
           transition: tilt.hovering
             ? 'transform 0.14s ease-out, box-shadow 0.25s ease'
             : 'transform 0.52s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease',
-          backgroundColor: '#031114',
-          backgroundImage: `url("${berylliumHeroImg}")`,
+          backgroundColor: '#050814',
+          backgroundImage: `url("${boronHeroImg}")`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
-        title="Нажмите, чтобы запустить игру «Beryllium Vanguard · Be-4»!"
+        title="Нажмите, чтобы запустить игру «Boron / Beryllium Vanguard»!"
       >
         <img
-          src={berylliumHeroImg}
-          alt="Luma OS 1.3.1 Beryllium"
+          src={boronHeroImg}
+          alt="Luma OS 1.4 Boron"
           loading="eager"
           decoding="sync"
           draggable={false}
@@ -110,20 +110,20 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
         <div
           className="pointer-events-none absolute inset-0 transition-opacity duration-200 opacity-65 group-hover:opacity-100"
           style={{
-            background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.22) 0%, rgba(16,185,129,0.18) 28%, rgba(45,212,191,0.08) 46%, transparent 64%)`,
+            background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.22) 0%, rgba(129,140,248,0.22) 28%, rgba(168,85,247,0.12) 48%, transparent 66%)`,
           }}
         />
 
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#020a0c]/30 via-[#02080a]/12 to-[#02080b]/70" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#040612]/28 via-transparent to-[#030510]/72" />
 
         <div className="relative z-10 flex items-center justify-between px-5 pt-4">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/45 border border-emerald-300/25 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/45 border border-indigo-300/30 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
             LUMACORE {kernelVersion} · SHIELD {securityVersion}
           </span>
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/45 border border-emerald-300/25 text-[10px] font-mono text-emerald-100 group-hover:bg-white/20 transition">
-            <Sparkles className="w-3 h-3 text-emerald-300" />
-            Beryllium Vanguard
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/45 border border-violet-300/30 text-[10px] font-mono text-indigo-100 group-hover:bg-white/20 transition">
+            <Sparkles className="w-3 h-3 text-indigo-300" />
+            Boron · SDK v3.0
           </span>
         </div>
 
@@ -137,25 +137,25 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
           <div
             className="text-5xl sm:text-6xl font-black tracking-tight leading-none select-none transition-transform duration-300 group-hover:scale-105"
             style={{
-              backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #d1fae5 55%, #5eead4 100%)',
+              backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #e0e7ff 52%, #a5b4fc 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
-              filter: 'drop-shadow(0 6px 24px rgba(16, 185, 129, 0.45))',
+              filter: 'drop-shadow(0 6px 26px rgba(99, 102, 241, 0.55))',
             }}
           >
-            1.3.1
+            1.4
           </div>
-          <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)]">
+          <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">
             LumaOS
           </div>
-          <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-emerald-100/95">
-            <span>BERYLLIUM</span>
+          <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-indigo-100/95">
+            <span>BORON</span>
             <span className="opacity-50">·</span>
-            <span className="text-teal-200">Be-4</span>
+            <span className="text-violet-200">B-5</span>
           </div>
         </div>
 
-        {ripple && <div className="pointer-events-none absolute inset-0 bg-emerald-200/20 animate-ping rounded-3xl" />}
+        {ripple && <div className="pointer-events-none absolute inset-0 bg-indigo-200/20 animate-ping rounded-3xl" />}
       </div>
     </div>
   );
@@ -163,6 +163,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
 
 export const LumaLithiumHeroCard = LumaHeliumHeroCard;
 export const LumaBerylliumHeroCard = LumaHeliumHeroCard;
+export const LumaBoronHeroCard = LumaHeliumHeroCard;
 
 // ==================== MINI-GAME ENGINE: BERYLLIUM VANGUARD (ROGUELITE ARENA) + LITHIUM ORBIT ====================
 
@@ -1608,14 +1609,14 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         <div
           className="relative flex flex-col items-center justify-center w-full max-w-2xl h-[460px] rounded-3xl overflow-hidden border border-emerald-300/20 bg-[#031216] shadow-2xl"
           style={{
-            backgroundImage: `url("${berylliumHeroImg}")`,
+            backgroundImage: `url("${boronHeroImg}")`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}
         >
           <img
-            src={berylliumHeroImg}
-            alt="Beryllium Awakening"
+            src={boronHeroImg}
+            alt="Boron Awakening"
             loading="eager"
             decoding="sync"
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000"

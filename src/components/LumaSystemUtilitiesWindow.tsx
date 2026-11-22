@@ -29,8 +29,11 @@ import {
   Calculator,
   CheckCircle2,
   AlertTriangle,
+  MousePointer2,
 } from 'lucide-react';
 import { LumaLangCode, tr } from '../i18n/translations';
+import { WirelessBatteryInfo } from '../data/launcherData';
+import { LumaMouseDpiPanel } from './LumaMouseDpiPanel';
 
 interface SystemServiceItem {
   name: string;
@@ -82,13 +85,14 @@ interface LumaSystemUtilitiesWindowProps {
   volume: number;
   isMuted: boolean;
   disks?: DiskInfoItem[];
+  wirelessDevices?: WirelessBatteryInfo[];
   onChangeVolume: (val: number) => void;
   onToggleMute: () => void;
   onOpenCalculator?: () => void;
   onPushToast: (title: string, message: string, level?: 'info' | 'success' | 'warning') => void;
 }
 
-type UtilTab = 'devices' | 'services' | 'network' | 'sound' | 'notepad' | 'disks' | 'applets';
+type UtilTab = 'devices' | 'mouse_dpi' | 'services' | 'network' | 'sound' | 'notepad' | 'disks' | 'applets';
 
 const NOTEPAD_STORAGE_KEY = 'luma_notepad_text_v1';
 
@@ -101,6 +105,7 @@ export const LumaSystemUtilitiesWindow: React.FC<LumaSystemUtilitiesWindowProps>
   volume,
   isMuted,
   disks = [],
+  wirelessDevices = [],
   onChangeVolume,
   onToggleMute,
   onOpenCalculator,
@@ -140,7 +145,7 @@ export const LumaSystemUtilitiesWindow: React.FC<LumaSystemUtilitiesWindowProps>
   const [notePath, setNotePath] = useState('~/Desktop/luma_note.txt');
   const [noteContent, setNoteContent] = useState<string>(() => {
     try {
-      return localStorage.getItem(NOTEPAD_STORAGE_KEY) || 'Быстрая заметка Luma OS 1.3.1 (Beryllium)\n';
+      return localStorage.getItem(NOTEPAD_STORAGE_KEY) || 'Быстрая заметка Luma OS 1.4 (Boron)\n';
     } catch {
       return '';
     }
@@ -420,6 +425,7 @@ export const LumaSystemUtilitiesWindow: React.FC<LumaSystemUtilitiesWindowProps>
 
   const navTabs: { id: UtilTab; label: string; icon: React.ReactNode }[] = [
     { id: 'devices', label: tr(lang, 'utilDevices'), icon: <Cpu className="w-3.5 h-3.5" /> },
+    { id: 'mouse_dpi', label: 'Мышь и DPI', icon: <MousePointer2 className="w-3.5 h-3.5" /> },
     { id: 'services', label: tr(lang, 'utilServices'), icon: <Server className="w-3.5 h-3.5" /> },
     { id: 'network', label: tr(lang, 'utilNetwork'), icon: <Wifi className="w-3.5 h-3.5" /> },
     { id: 'sound', label: tr(lang, 'utilSound'), icon: <Volume2 className="w-3.5 h-3.5" /> },
@@ -465,6 +471,18 @@ export const LumaSystemUtilitiesWindow: React.FC<LumaSystemUtilitiesWindowProps>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
+        {/* 0. MOUSE SPEED & DPI SERVICE (Luma OS 1.4 Boron) */}
+        {tab === 'mouse_dpi' && (
+          <LumaMouseDpiPanel
+            isDark={isDark}
+            surfaceCls={surfaceCls}
+            btnCls={btnCls}
+            mutedCls={mutedCls}
+            wirelessDevices={wirelessDevices}
+            onNotify={onPushToast}
+          />
+        )}
+
         {/* 1. NATIVE LUMA DEVICE MANAGER */}
         {tab === 'devices' && (
           <div className="space-y-3">

@@ -19,8 +19,26 @@ import {
   Sparkles,
   Network,
   ListChecks,
+  Globe,
 } from 'lucide-react';
 import { ActiveTcpConnectionInfo, StartupAuditFindingInfo } from '../data/launcherData';
+
+interface HostsAuditEntry {
+  ip: string;
+  host: string;
+  line: number;
+  suspicious: boolean;
+  reason?: string;
+}
+
+interface HostsAuditResult {
+  ok: boolean;
+  path: string;
+  total_mappings: number;
+  suspicious_count: number;
+  checked_at?: string;
+  entries: HostsAuditEntry[];
+}
 
 export interface SecurityThreatItem {
   id: string;
@@ -102,14 +120,16 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
   const [scanLabel, setScanLabel] = useState('');
   const [customPath, setCustomPath] = useState('');
   const [newExclusion, setNewExclusion] = useState('');
-  const [subTab, setSubTab] = useState<'scanner' | 'network' | 'startup_audit' | 'quarantine' | 'exclusions' | 'audit'>('scanner');
+  const [subTab, setSubTab] = useState<'scanner' | 'network' | 'startup_audit' | 'hosts_audit' | 'quarantine' | 'exclusions' | 'audit'>('scanner');
 
-  // LumaShield 1.4 Network Monitor & Startup Auditor state
+  // LumaShield 1.5 Network Monitor, Startup Auditor & Hosts File DNS Integrity Auditor state
   const [tcpConns, setTcpConns] = useState<ActiveTcpConnectionInfo[]>([]);
   const [tcpLoading, setTcpLoading] = useState(false);
   const [tcpOnlySusp, setTcpOnlySusp] = useState(false);
   const [startupFindings, setStartupFindings] = useState<StartupAuditFindingInfo[]>([]);
   const [startupLoading, setStartupLoading] = useState(false);
+  const [hostsAudit, setHostsAudit] = useState<HostsAuditResult | null>(null);
+  const [hostsLoading, setHostsLoading] = useState(false);
 
   const fetchStatus = async () => {
     try {
@@ -153,6 +173,21 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
     }
   };
 
+  const fetchHostsAudit = async () => {
+    setHostsLoading(true);
+    try {
+      const r = await fetch('/api/kernel/security/hosts-audit');
+      if (r.ok) {
+        const d = (await r.json()) as HostsAuditResult;
+        if (d?.ok) setHostsAudit(d);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setHostsLoading(false);
+    }
+  };
+
   useEffect(() => {
     void fetchStatus();
   }, []);
@@ -160,6 +195,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
   useEffect(() => {
     if (subTab === 'network') void fetchNetworkMonitor();
     if (subTab === 'startup_audit') void fetchStartupAudit();
+    if (subTab === 'hosts_audit') void fetchHostsAudit();
   }, [subTab]);
 
   const toggleRealtimeGuard = async () => {
@@ -173,13 +209,13 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       if (r.ok) {
         await fetchStatus();
         onPushToast(
-          'LumaShield 1.4 Real-Time Guard',
+          'LumaShield 1.5 Real-Time Guard',
           next ? 'Фоновая защита Загрузок и Рабочего стола включена' : 'Фоновая защита приостановлена',
           next ? 'success' : 'info'
         );
       }
     } catch {
-      onPushToast('LumaShield 1.4', 'Не удалось переключить Real-Time Guard', 'warning');
+      onPushToast('LumaShield 1.5', 'Не удалось переключить Real-Time Guard', 'warning');
     }
   };
 
@@ -189,7 +225,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       mode === 'quick'
         ? 'Быстрая проверка (Загрузки, Рабочий стол, Автозагрузка, PE-маскировка)...'
         : mode === 'deep'
-        ? 'Глубокое сканирование (32+ правила LumaShield 1.4, Энтропия Шеннона, AMSI/Стиллеры/Майнеры)...'
+        ? 'Глубокое сканирование (85+ правил LumaShield 1.5, Энтропия Шеннона, AMSI/Стиллеры/Майнеры/Инъекции)...'
         : mode === 'startup'
         ? 'Аудит автозагрузки и скриптов...'
         : mode === 'processes'
@@ -206,14 +242,14 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       await fetchStatus();
       const count = d?.threats?.length ?? 0;
       onPushToast(
-        'LumaShield 1.4',
+        'LumaShield 1.5',
         count > 0
           ? `Обнаружено угроз: ${count} (проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс)`
           : `Угроз не найдено · Проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс`,
         count > 0 ? 'warning' : 'success'
       );
     } catch {
-      onPushToast('LumaShield 1.4', 'Не удалось выполнить сканирование', 'warning');
+      onPushToast('LumaShield 1.5', 'Не удалось выполнить сканирование', 'warning');
     } finally {
       setScanning(false);
       setScanLabel('');
@@ -228,12 +264,12 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       const d = await r.json();
       await fetchStatus();
       onPushToast(
-        'LumaShield 1.4 EICAR-Тест',
+        'LumaShield 1.5 EICAR-Тест',
         `Тестовый файл обнаружен (${d?.threats?.length || 1})! Можно изолировать в карантин.`,
         'warning'
       );
     } catch {
-      onPushToast('LumaShield 1.4', 'Ошибка EICAR-теста', 'warning');
+      onPushToast('LumaShield 1.5', 'Ошибка EICAR-теста', 'warning');
     } finally {
       setScanning(false);
       setScanLabel('');
@@ -364,9 +400,9 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
             </div>
             <div>
               <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--luma-accent)] font-bold flex flex-wrap items-center gap-1.5">
-                <span>ЯДРО БЕЗОПАСНОСТИ · LUMASHIELD {status?.security_core_version || '1.4'}</span>
+                <span>ЯДРО БЕЗОПАСНОСТИ · LUMASHIELD {status?.security_core_version || '1.5'}</span>
                 <span className="px-1.5 py-0.5 rounded bg-[var(--luma-accent-soft)] text-[9px]">
-                  {status?.rules_count || 68}+ ПРАВИЛ
+                  {status?.rules_count || 85}+ ПРАВИЛ
                 </span>
               </div>
               <div className="text-base font-extrabold flex items-center gap-2">
@@ -383,7 +419,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
                 )}
               </div>
               <div className={`text-[11px] font-mono ${mutedCls}`}>
-                {status?.crypto || 'AES-256-GCM + 32+ Heuristics + TCP Network Monitor + Startup Auditor'}
+                {status?.crypto || 'AES-256-GCM + 85+ Heuristics + Hosts DNS Audit + TCP Monitor + Startup Auditor'}
               </div>
             </div>
           </div>
@@ -420,11 +456,11 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
             <div className="min-w-0">
-              <div className="font-bold">LumaShield 1.4 + Windows Defender (Без конфликтов)</div>
+              <div className="font-bold">LumaShield 1.5 + Windows Defender (Без конфликтов)</div>
               <div className="text-[11px] opacity-85">
                 {status?.defender?.available
-                  ? `Windows Defender активен (реальное время: ${status.defender.realtime_enabled ? 'ВКЛ' : 'ВЫКЛ'} · базы ${status.defender.signature_version}). LumaShield 1.4 добавляет 32+ правил (AMSI/Стиллеры/Майнеры), Сетевой монитор TCP и Аудит автозагрузки.`
-                  : 'LumaShield 1.4 работает в безопасном user-space режиме: 32+ эвристик, PE-маскировка, энтропия Шеннона, живой TCP-монитор и аудит автозагрузки.'}
+                  ? `Windows Defender активен (реальное время: ${status.defender.realtime_enabled ? 'ВКЛ' : 'ВЫКЛ'} · базы ${status.defender.signature_version}). LumaShield 1.5 добавляет 85+ правил, Аудит Hosts (DNS), Сетевой монитор TCP и Аудит автозагрузки.`
+                  : 'LumaShield 1.5 работает в безопасном user-space режиме: 85+ поведенческих правил, Аудит Hosts (DNS), PE-маскировка, энтропия Шеннона, TCP-монитор и аудит автозагрузки.'}
               </div>
             </div>
           </div>
@@ -442,7 +478,8 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       {/* Sub-Tabs */}
       <div className="flex flex-wrap gap-1.5 text-xs">
         {[
-          { id: 'scanner' as const, label: 'Антивирус 1.4', badge: threats.length || undefined },
+          { id: 'scanner' as const, label: 'Антивирус 1.5', badge: threats.length || undefined },
+          { id: 'hosts_audit' as const, label: 'Аудит Hosts (DNS)', badge: hostsAudit ? hostsAudit.suspicious_count || undefined : undefined },
           { id: 'network' as const, label: 'Сетевой экран', badge: suspTcpCount || (tcpConns.length || undefined) },
           { id: 'startup_audit' as const, label: 'Аудит автозагрузки', badge: startupFindings.filter((f) => f.risk !== 'safe').length || undefined },
           { id: 'quarantine' as const, label: 'Карантин', badge: quarantine.length || undefined },
@@ -463,6 +500,93 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
           </button>
         ))}
       </div>
+
+      {/* TAB 1B: HOSTS FILE DNS INTEGRITY AUDITOR (LUMASHIELD 1.5) */}
+      {subTab === 'hosts_audit' && (
+        <div className={`p-4 rounded-2xl border space-y-3 text-xs ${surfaceCls}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="font-bold flex items-center gap-1.5">
+                <Globe className="w-4 h-4 text-[var(--luma-accent)]" />
+                Аудит целостности файла Hosts (DNS Hijack Protection · LumaShield 1.5)
+              </div>
+              <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
+                Проверка системного файла hosts на скрытые DNS-перенаправления банков, антивирусов, обновлений Windows и фишинговые подмены
+              </div>
+            </div>
+            <button
+              onClick={() => void fetchHostsAudit()}
+              disabled={hostsLoading}
+              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-mono inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${hostsLoading ? 'animate-spin' : ''}`} />
+              Проверить Hosts
+            </button>
+          </div>
+
+          {hostsAudit ? (
+            <div className="space-y-2.5">
+              <div
+                className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 ${
+                  hostsAudit.suspicious_count === 0
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                    : 'bg-rose-500/15 border-rose-500/40 text-rose-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {hostsAudit.suspicious_count === 0 ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertTriangle className="w-4 h-4 text-rose-400" />}
+                  <span className="font-bold">
+                    {hostsAudit.suspicious_count === 0
+                      ? 'Файл hosts чист — подозрительных DNS-подмен не обнаружено'
+                      : `Обнаружено подозрительных DNS-записей: ${hostsAudit.suspicious_count}`}
+                  </span>
+                </div>
+                <span className="font-mono text-[10px] opacity-80">
+                  {hostsAudit.path} · записей: {hostsAudit.total_mappings}
+                </span>
+              </div>
+
+              {hostsAudit.entries && hostsAudit.entries.length > 0 ? (
+                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                  {hostsAudit.entries.map((entry, idx) => (
+                    <div
+                      key={`${entry.line}_${idx}`}
+                      className={`p-2.5 rounded-xl border flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] ${
+                        entry.suspicious ? 'bg-rose-500/15 border-rose-500/40 text-rose-200' : btnCls
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold">
+                          <span className="opacity-60 mr-2">L{entry.line}</span>
+                          <span>{entry.ip}</span>
+                          <span className="mx-2 opacity-50">→</span>
+                          <span>{entry.host}</span>
+                        </div>
+                        {entry.reason && <div className="text-[10px] opacity-85 mt-0.5">{entry.reason}</div>}
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                          entry.suspicious ? 'bg-rose-600 text-white' : 'bg-emerald-500/15 text-emerald-400'
+                        }`}
+                      >
+                        {entry.suspicious ? 'ПОДМЕНА' : 'OK'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className={`py-4 text-center font-mono ${mutedCls}`}>
+                  В файле hosts нет активных пользовательских перенаправлений (стандартная конфигурация ОС).
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className={`py-6 text-center font-mono ${mutedCls}`}>
+              {hostsLoading ? 'Чтение и проверка файла hosts...' : 'Нажмите «Проверить Hosts» для запуска аудита DNS'}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* TAB 1: ANTIVIRUS SCANNER */}
       {subTab === 'scanner' && (

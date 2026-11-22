@@ -15,6 +15,7 @@ import {
   BellOff,
   Bluetooth,
   Calculator,
+  Calendar,
   Check,
   CheckCircle2,
   CheckSquare,
@@ -67,6 +68,7 @@ import {
   Monitor,
   Moon,
   MoreVertical,
+  MousePointer2,
   MousePointerClick,
   Music,
   Palette,
@@ -153,7 +155,9 @@ import {
 } from './components/LumaAIAssistantWindow';
 import { LumaBatteryPanel } from './components/LumaBatteryPanel';
 import { LumaCalculatorWindow } from './components/LumaCalculatorWindow';
+import { LumaCalendarWindow } from './components/LumaCalendarWindow';
 import { LumaClockRenderer } from './components/LumaClockRenderer';
+import { LumaDeveloperSdkStudio } from './components/LumaDeveloperSdkStudio';
 import {
   DesktopGridCols,
   DesktopShortcut,
@@ -162,9 +166,11 @@ import {
   LumaDesktopCanvas,
   WallpaperStyle,
   WallpaperTransitionMode,
+  WidgetBgMode,
 } from './components/LumaDesktopCanvas';
 import { LumaExplorerWindow } from './components/LumaExplorerWindow';
 import { LumaHeliumEasterEggModal } from './components/LumaHeliumEasterEgg';
+import { LumaMouseDpiPanel } from './components/LumaMouseDpiPanel';
 import { LumaSecurityPanel } from './components/LumaSecurityPanel';
 import {
   BluetoothSettingsPanel,
@@ -181,6 +187,7 @@ import { LumaSystemUtilitiesWindow } from './components/LumaSystemUtilitiesWindo
 import { LumaTaskManagerWindow } from './components/LumaTaskManagerWindow';
 import { LumaTerminalWindow } from './components/LumaTerminalWindow';
 import { LumaTrackerWindow } from './components/LumaTrackerWindow';
+import { LumaUpdateCinemaOverlay } from './components/LumaUpdateCinemaOverlay';
 import { getLangLocale, LUMA_LANGUAGES, LumaLangCode, tr } from './i18n/translations';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -195,6 +202,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Compass,
   Trophy,
   Calculator,
+  Calendar,
   FolderOpen,
   Activity,
   Terminal,
@@ -227,6 +235,7 @@ type DexWinId =
   | 'ai'
   | 'utilities'
   | 'calculator'
+  | 'calendar'
   | 'tracker'
   | 'kernel'
   | 'settings'
@@ -238,6 +247,7 @@ type TaskbarSizePreset = 'compact' | 'standard' | 'large';
 type FontPreset = 'sans' | 'mono' | 'rounded';
 type SettingsTabId =
   | 'kernel_ui'
+  | 'mouse_dpi'
   | 'security'
   | 'ai_settings'
   | 'power_battery'
@@ -439,6 +449,7 @@ const INITIAL_WINDOWS: Record<DexWinId, DexWinState> = {
   ai: { open: false, minimized: false, z: 20, desktop: 1 },
   utilities: { open: false, minimized: false, z: 20, desktop: 1 },
   calculator: { open: false, minimized: false, z: 20, desktop: 1 },
+  calendar: { open: false, minimized: false, z: 20, desktop: 1 },
   tracker: { open: false, minimized: false, z: 20, desktop: 1 },
   kernel: { open: false, minimized: false, z: 20, desktop: 1 },
   settings: { open: false, minimized: false, z: 20, desktop: 1 },
@@ -740,6 +751,25 @@ export default function App() {
     target_version: '',
     message: 'Нажмите «Проверить обновления» для запроса релизов GitHub',
   });
+  // Luma OS 1.4 Boron: Cinematic Update Animation Preview, SDK v3.0 Studio, Kernel Diagnostics & Global Widget Styling
+  const [updateCinemaDemo, setUpdateCinemaDemo] = useState<GitHubUpdateProgress | null>(null);
+  const [updateCinemaDismissed, setUpdateCinemaDismissed] = useState<boolean>(false);
+  const [pluginsTab, setPluginsTab] = useState<'catalog' | 'sdk_studio'>('catalog');
+  const [kernelDiag, setKernelDiag] = useState<{
+    go_version?: string;
+    goroutines?: number;
+    heap_alloc_mb?: number;
+    sys_mem_mb?: number;
+    gc_cycles?: number;
+    uptime_sec?: number;
+    security_rules?: number;
+    sdk_themes?: number;
+    sdk_plugins?: number;
+  } | null>(null);
+  const [globalWidgetBgMode, setGlobalWidgetBgMode] = useState<WidgetBgMode>('glass');
+  const [globalWidgetOpacity, setGlobalWidgetOpacity] = useState<number>(78);
+  const [globalWidgetBlur, setGlobalWidgetBlur] = useState<number>(16);
+  const [globalWidgetColor, setGlobalWidgetColor] = useState<string>('#1e1b4b');
 
   const [designStyle, setDesignStyle] = useState<DesignStyle>(
     savedState?.designStyle === 'pixelbook' ? 'pixelbook' : 'nothing'
@@ -892,7 +922,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.3.1 (Beryllium) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.4 (Boron · B-5) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -925,7 +955,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.3.1 (Beryllium)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.4 (Boron)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -940,8 +970,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 1.4',
-      message: 'Инициализация оболочки Luma OS 1.3.1 (Beryllium) и шины IPC 127.0.0.1:49215',
+      source: 'LumaCore 1.5',
+      message: 'Инициализация оболочки Luma OS 1.4 (Boron · B-5), LumaShield 1.5 и SDK v3.0',
       level: 'success',
     },
   ]);
@@ -1041,6 +1071,268 @@ export default function App() {
     setTaskbarCtxMenu(null);
   };
 
+  // --- Developer SDK v3.0 (Persistent Custom Themes & Plugins + Global window.LumaSDK API) ---
+  const registerSdkTheme = async (theme: CustomThemeConfig, applyNow = false) => {
+    setCustomThemes((prev) => ({ ...prev, [theme.id]: theme }));
+    if (applyNow) {
+      setThemeKey(theme.id);
+    }
+    try {
+      await fetch('/api/v3/themes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: theme.id,
+          name: theme.name,
+          description: theme.description,
+          is_dark: theme.isDark,
+          bg_gradient: theme.bgGradient,
+          surface_rgba: theme.surfaceRgba,
+          card_hex: theme.cardHex,
+          accent: theme.accent,
+          accent_hex: theme.accentHex,
+        }),
+      });
+    } catch {
+      /* offline fallback keeps localStorage state */
+    }
+  };
+
+  const deleteSdkTheme = async (id: string) => {
+    setCustomThemes((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    if (themeKey === id) setThemeKey('nothing_mono');
+    try {
+      await fetch(`/api/v3/themes?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const registerSdkPlugin = async (plugin: PluginItem) => {
+    setPlugins((prev) => {
+      const exists = prev.some((p) => p.id === plugin.id);
+      return exists ? prev.map((p) => (p.id === plugin.id ? plugin : p)) : [plugin, ...prev];
+    });
+    try {
+      await fetch('/api/v3/plugins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: plugin.id,
+          name: plugin.name,
+          version: plugin.version,
+          api_version: plugin.apiVersion || '3.0',
+          author: plugin.author || 'Developer',
+          category: plugin.category || 'Инструменты',
+          icon: plugin.icon || 'Puzzle',
+          description: plugin.description,
+          enabled: plugin.enabled,
+          hooks: plugin.hooks || ['onAction'],
+          permissions: plugin.permissions || ['notify'],
+          action_id: plugin.actionId || 'custom_sdk_v3',
+        }),
+      });
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const deleteSdkPlugin = async (id: string) => {
+    setPlugins((prev) => prev.filter((p) => p.id !== id));
+    try {
+      await fetch(`/api/v3/plugins?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Hydrate Developer SDK v3.0 themes & plugins from ~/.config/LumaOS/sdk_v3 on boot
+  useEffect(() => {
+    fetch('/api/v3/themes')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!Array.isArray(d?.themes) || d.themes.length === 0) return;
+        setCustomThemes((prev) => {
+          const next = { ...prev };
+          for (const t of d.themes) {
+            if (!t?.id) continue;
+            next[t.id] = {
+              id: t.id,
+              name: t.name || t.id,
+              description: t.description || 'SDK v3.0 Theme',
+              isDark: t.is_dark !== false,
+              bgGradient: t.bg_gradient || 'linear-gradient(155deg, #060916, #111827)',
+              surfaceRgba: t.surface_rgba || 'rgba(15, 22, 42, 0.90)',
+              cardHex: t.card_hex || '#131c36',
+              accent: t.accent || 'indigo',
+              accentHex: t.accent_hex || '#6366f1',
+            };
+          }
+          return next;
+        });
+      })
+      .catch(() => {});
+
+    fetch('/api/v3/plugins')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!Array.isArray(d?.plugins) || d.plugins.length === 0) return;
+        setPlugins((prev) => {
+          const existing = new Set(prev.map((p) => p.id));
+          const merged = [...prev];
+          for (const p of d.plugins) {
+            if (!p?.id || existing.has(p.id)) continue;
+            merged.push({
+              id: p.id,
+              name: p.name || p.id,
+              version: p.version || '1.0.0',
+              apiVersion: p.api_version || '3.0',
+              author: p.author || 'Developer',
+              category: p.category || 'Инструменты',
+              icon: p.icon || 'Puzzle',
+              description: p.description || 'SDK v3.0 Plugin',
+              enabled: p.enabled !== false,
+              file: `${p.id}.luma.json`,
+              hooks: Array.isArray(p.hooks) ? p.hooks : ['onAction'],
+              permissions: Array.isArray(p.permissions) ? p.permissions : ['notify'],
+              actionId: p.action_id || 'custom_sdk_v3',
+            });
+          }
+          return merged;
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  // Expose live global window.LumaSDK v3.0 API for third-party developers & DevTools
+  useEffect(() => {
+    const sdkObj = {
+      version: '3.0',
+      osVersion: '1.4 (Boron)',
+      kernelVersion: '1.5',
+      registerTheme: (theme: CustomThemeConfig, applyNow = true) => registerSdkTheme(theme, applyNow),
+      deleteTheme: (id: string) => deleteSdkTheme(id),
+      applyTheme: (id: string) => {
+        const found = allThemesMap[id];
+        if (found) {
+          setThemeKey(id);
+        }
+      },
+      listThemes: () => Object.values(allThemesMap),
+      registerPlugin: (plugin: PluginItem) => registerSdkPlugin(plugin),
+      deletePlugin: (id: string) => deleteSdkPlugin(id),
+      listPlugins: () => plugins,
+      notify: (title: string, msg: string, type: 'info' | 'success' | 'warning' = 'info') => pushToast(title, msg, type),
+      openWindow: (id: DexWinId) => openWindow(id),
+      getTelemetry: () => liveSystem,
+    };
+    (window as unknown as { LumaSDK?: typeof sdkObj }).LumaSDK = sdkObj;
+  });
+
+  // Luma OS 1.4 Boron: Play Cinematic Update Animation Preview (6s smooth simulation)
+  const updateDemoTimersRef = useRef<number[]>([]);
+  const playUpdateCinemaDemo = () => {
+    updateDemoTimersRef.current.forEach((id) => window.clearTimeout(id));
+    updateDemoTimersRef.current = [];
+    const steps: { delay: number; data: GitHubUpdateProgress }[] = [
+      {
+        delay: 0,
+        data: {
+          running: true,
+          stage: 'connecting',
+          percent: 6,
+          downloaded_bytes: 1.2 * 1024 * 1024,
+          total_bytes: 23.4 * 1024 * 1024,
+          speed_mbps: 14.8,
+          target_version: '1.4 (Boron · B-5)',
+          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.4...',
+        },
+      },
+      {
+        delay: 900,
+        data: {
+          running: true,
+          stage: 'downloading',
+          percent: 29,
+          downloaded_bytes: 6.8 * 1024 * 1024,
+          total_bytes: 23.4 * 1024 * 1024,
+          speed_mbps: 24.2,
+          target_version: '1.4 (Boron · B-5)',
+          message: 'Загрузка образа LumaOS_1.4.exe (LumaCore 1.5 + LumaShield 1.5)...',
+        },
+      },
+      {
+        delay: 1900,
+        data: {
+          running: true,
+          stage: 'downloading',
+          percent: 64,
+          downloaded_bytes: 15.0 * 1024 * 1024,
+          total_bytes: 23.4 * 1024 * 1024,
+          speed_mbps: 31.6,
+          target_version: '1.4 (Boron · B-5)',
+          message: 'Потоковая загрузка ресурсов и студийных артов Boron 1.4...',
+        },
+      },
+      {
+        delay: 3000,
+        data: {
+          running: true,
+          stage: 'verifying',
+          percent: 89,
+          downloaded_bytes: 23.4 * 1024 * 1024,
+          total_bytes: 23.4 * 1024 * 1024,
+          speed_mbps: 0,
+          target_version: '1.4 (Boron · B-5)',
+          sha256: 'b5f9e20a7c14d389a6e1f2c904b77d21',
+          message: 'Криптографическая проверка SHA-256 и заголовка PE32+ (LumaShield 1.5)...',
+        },
+      },
+      {
+        delay: 4200,
+        data: {
+          running: true,
+          stage: 'restarting',
+          percent: 100,
+          downloaded_bytes: 23.4 * 1024 * 1024,
+          total_bytes: 23.4 * 1024 * 1024,
+          speed_mbps: 0,
+          target_version: '1.4 (Boron · B-5)',
+          sha256: 'b5f9e20a7c14d389a6e1f2c904b77d21',
+          message: 'Сборка Luma OS 1.4 (Boron) проверена и готова к мгновенному запуску!',
+        },
+      },
+    ];
+    for (const st of steps) {
+      const id = window.setTimeout(() => setUpdateCinemaDemo(st.data), st.delay);
+      updateDemoTimersRef.current.push(id);
+    }
+  };
+
+  // LumaCore 1.5 Kernel Diagnostics & GC Memory Trim
+  const runKernelDiagnostics = async (trimGc = false) => {
+    try {
+      const r = await fetch(`/api/kernel/diagnostics${trimGc ? '?gc=1' : ''}`);
+      if (r.ok) {
+        const d = await r.json();
+        setKernelDiag(d);
+        if (trimGc) {
+          pushToast(
+            'LumaCore 1.5 GC Trim',
+            `Память ядра очищена: Heap ${d.heap_alloc_mb} МБ · Горутин: ${d.goroutines}`,
+            'success'
+          );
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
   const sendSnapCommand = (id: DexWinId, zone: SnapZone) => {
     snapSeqRef.current += 1;
     const seq = snapSeqRef.current;
@@ -1107,7 +1399,7 @@ export default function App() {
       const bundle = {
         schema: 'luma_os_backup_v1',
         exported_at: new Date().toISOString(),
-        version: '1.3.1 (Beryllium)',
+        version: '1.4 (Boron)',
         desktop_layout: desktopRaw ? JSON.parse(desktopRaw) : null,
         shell_state: shellRaw ? JSON.parse(shellRaw) : null,
       };
@@ -2214,7 +2506,7 @@ export default function App() {
         pushToast('Окно ОС', d?.detail || `Переключено на ${win?.title || win?.name || `PID ${pid}`}`, 'info');
       }
     } catch {
-      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.3.1.exe', 'info');
+      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.4.exe', 'info');
     }
   };
 
@@ -2243,7 +2535,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Окна ОС', 'Доступно при запуске LumaOS_1.3.1.exe', 'info');
+      pushToast('Окна ОС', 'Доступно при запуске LumaOS_1.4.exe', 'info');
     }
   };
 
@@ -2281,7 +2573,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('2 окна рядом', 'Доступно при запуске LumaOS_1.3.1.exe', 'info');
+      pushToast('2 окна рядом', 'Доступно при запуске LumaOS_1.4.exe', 'info');
     }
   };
 
@@ -2702,7 +2994,7 @@ export default function App() {
         pushToast('Питание', d?.detail || `Выполнено: ${action}`, 'info');
       }
     } catch {
-      pushToast('Питание', 'Доступно при запуске LumaOS_1.3.1.exe', 'info');
+      pushToast('Питание', 'Доступно при запуске LumaOS_1.4.exe', 'info');
     }
   };
 
@@ -2735,7 +3027,7 @@ export default function App() {
         pushToast('Режим оболочки Windows', 'Параметры применены к системе', 'success');
       }
     } catch {
-      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.3.1.exe)', 'info');
+      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.4.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -3166,7 +3458,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.3.1.exe', 'info');
+      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.4.exe', 'info');
     }
   };
 
@@ -3502,6 +3794,7 @@ export default function App() {
   const rawTaskbarApps: { id: DexWinId; label: string; icon: React.ReactNode; pinned: boolean }[] = [
     { id: 'explorer', label: t('explorer', 'Проводник'), icon: <FolderOpen className="w-4 h-4" />, pinned: true },
     { id: 'apps', label: t('apps', 'Приложения'), icon: <AppWindow className="w-4 h-4" />, pinned: true },
+    { id: 'calendar', label: 'Календарь', icon: <Calendar className="w-4 h-4" />, pinned: true },
     { id: 'ai', label: t('ai', 'Luma AI'), icon: <Sparkles className="w-4 h-4" />, pinned: aiEnabled },
     { id: 'calculator', label: t('calculator', 'Калькулятор'), icon: <Calculator className="w-4 h-4" />, pinned: true },
     { id: 'terminal', label: t('terminal', 'Терминал'), icon: <Terminal className="w-4 h-4" />, pinned: true },
@@ -4516,7 +4809,7 @@ export default function App() {
       {isWinVisible('kernel') && (
         <DexWindow
           id="kernel"
-          title="Ядро LumaCore 1.4 (ПО 1.3.1 Beryllium)"
+          title="Ядро LumaCore 1.5 (ПО 1.4 Boron)"
           subtitle={kernelConnected ? 'CONNECTED · 127.0.0.1:49215' : 'STANDALONE'}
           icon={<Code2 className="w-4 h-4" />}
           isDark={isDark}
@@ -4556,6 +4849,14 @@ export default function App() {
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => void runKernelDiagnostics(true)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-semibold cursor-pointer inline-flex items-center gap-1.5 ${btnCls}`}
+                  title="Диагностика LumaCore 1.5 + освобождение памяти GC"
+                >
+                  <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                  Очистить RAM ядра (GC)
+                </button>
+                <button
                   onClick={() => openWindow('taskmgr')}
                   className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-semibold cursor-pointer inline-flex items-center gap-1.5 ${btnCls}`}
                 >
@@ -4563,12 +4864,12 @@ export default function App() {
                   Диспетчер задач
                 </button>
                 <a
-                  href="/LumaOS_1.3.1.exe"
-                  download="LumaOS_1.3.1.exe"
+                  href="/LumaOS_1.4.exe"
+                  download="LumaOS_1.4.exe"
                   className="px-3.5 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  LumaOS_1.3.1.exe
+                  LumaOS_1.4.exe
                 </a>
               </div>
             </div>
@@ -4582,7 +4883,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 1.4`,
+                        sub: `${ramLoad}% занято · LumaCore 1.5`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -4608,13 +4909,13 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.3.1 (Beryllium)'],
-                      ['Версия Ядра', '1.4 (LumaCore)'],
+                      ['Версия ПО', '1.4 (Boron · B-5)'],
+                      ['Версия Ядра', '1.5 (LumaCore)'],
+                      ['Безопасность', `LumaShield 1.5 (${kernelDiag?.security_rules ?? 85}+ правил)`],
+                      ['Developer SDK', `v3.0 (${kernelDiag?.sdk_themes ?? Object.keys(customThemes).length} тем / ${kernelDiag?.sdk_plugins ?? plugins.length} плаг.)`],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
                       ['LumaGuard', `AES-256 #${cryptoKeyVersion}`],
-                      ['Окна ОС', String(hostWindows.length)],
-                      ['Окна Luma', String(openSystemWindowsList.length)],
-                      ['Регион', liveSystem?.location?.city || 'Локально'],
+                      ['Память ядра', kernelDiag ? `${kernelDiag.heap_alloc_mb} МБ · ${kernelDiag.goroutines} gor.` : 'Нажмите GC выше'],
                       ['ОС хоста', liveSystem?.os_name || 'Luma Runtime'],
                     ].map(([k, v]) => (
                       <div key={k} className={`p-3 rounded-xl border ${surfaceCls}`}>
@@ -4669,7 +4970,7 @@ export default function App() {
                         lumaRpcLiveData || {
                           kernel: 'LumaCore',
                           kernel_engine_version: '1.3',
-                          software_version: '1.3.1 (Beryllium)',
+                          software_version: '1.4 (Boron)',
                           ipc: 'tcp://127.0.0.1:49215',
                           real_telemetry: Boolean(liveSystem?.real_telemetry),
                         },
@@ -4803,7 +5104,7 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.3.1 (Beryllium)"
+          subtitle="Luma OS 1.4 (Boron · B-5)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -4845,26 +5146,27 @@ export default function App() {
               <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-0.5">
                 {(
                   [
-                    ['kernel_ui', t('tabKernelUI', 'Ядро UI'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.3 beryllium ядра 1.4 пасхалка kernel'],
-                    ['graphics', 'Графика и Экран', <Monitor className="w-4 h-4 shrink-0" />, 'графика gpu цп оптимизация lumacore 1.4 турбо эко адаптация экрана масштаб монитор ноутбук размытие blur тени fps'],
-                    ['security', t('tabSecurity', 'Безопасность и AV'), <ShieldCheck className="w-4 h-4 shrink-0" />, 'безопасность антивирус lumashield 1.4 сетевой экран tcp аудит автозагрузки guard defender карантин eicar исключения security'],
+                    ['kernel_ui', t('tabKernelUI', 'Ядро UI'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.4 boron ядра 1.5 пасхалка kernel'],
+                    ['mouse_dpi', 'Мышь и DPI', <MousePointer2 className="w-4 h-4 shrink-0" />, 'мышь скорость dpi edpi сенсор курсор чувствительность raw input колесо mouse'],
+                    ['graphics', 'Графика и Экран', <Monitor className="w-4 h-4 shrink-0" />, 'графика gpu цп оптимизация lumacore 1.5 турбо эко адаптация экрана масштаб монитор ноутбук размытие blur тени fps'],
+                    ['security', t('tabSecurity', 'Безопасность и AV'), <ShieldCheck className="w-4 h-4 shrink-0" />, 'безопасность антивирус lumashield 1.5 85 правил hosts dns сетевой экран tcp аудит автозагрузки guard defender карантин eicar security'],
                     ['ai_settings', t('tabAI', 'ИИ и Нейросети'), <Sparkles className="w-4 h-4 shrink-0" />, 'ии нейросети luma lang code объём кратко баланс подробно verbosity кодер языковая отключить автономный голос ai'],
                     ['power_battery', 'Питание и Батарея', <BatteryCharging className="w-4 h-4 shrink-0" />, 'питание батарея экран акб беспроводные 2.4ghz радиоканал мышь клавиатура наушники циклы зарядки энергосбережение яркость сон выключение battery power'],
                     ['language', t('tabLanguage', 'Язык и клавиатура'), <Languages className="w-4 h-4 shrink-0" />, 'язык клавиатура раскладка адаптивная keyboard layout 120 стран мира language english romanian polish turkish arabic korean регион'],
                     ['shell_mode', t('tabShellMode', 'Оболочка Windows'), <Monitor className="w-4 h-4 shrink-0" />, 'оболочка windows полный экран fullscreen автозапуск autostart поверх виндовс скрыть панель задач chrome'],
-                    ['appearance', t('tabThemes', 'Темы и обои'), <Sliders className="w-4 h-4 shrink-0" />, 'темы обои beryllium aurora monolith живые анимации silk elastic акцент шрифт масштаб прозрачность blur скругление wallpaper theme'],
+                    ['appearance', t('tabThemes', 'Темы, Обои и Виджеты'), <Sliders className="w-4 h-4 shrink-0" />, 'темы обои boron cobalt eclipse живые анимации виджеты прозрачность фон акцент шрифт масштаб blur скругление wallpaper theme'],
                     ['taskbar', t('tabTaskbar', 'Панель задач'), <LayoutPanelLeft className="w-4 h-4 shrink-0" />, 'панель задач скрыть автоскрытие наведение буфер обмена cpu ram полный экран беспроводные док порядок приложений taskbar'],
                     ['storage', t('tabStorage', 'Память и Файлы'), <HardDrive className="w-4 h-4 shrink-0" />, 'память озу ram диски накопители проводник скрытые файлы storage disk files'],
-                    ['bluetooth', t('tabBluetooth', 'Bluetooth'), <Bluetooth className="w-4 h-4 shrink-0" />, 'bluetooth блютуз беспроводные мышь клавиатура наушники 2.4ghz заряд процент адаптер устройства'],
+                    ['bluetooth', t('tabBluetooth', 'Bluetooth и 2.4GHz'), <Bluetooth className="w-4 h-4 shrink-0" />, 'bluetooth блютуз беспроводные мышь клавиатура наушники 2.4ghz радиоканал заряд процент адаптер устройства'],
                     ['apps_list', t('apps', 'Приложения и иконки'), <AppWindow className="w-4 h-4 shrink-0" />, 'приложения иконки размер увеличить редактировать программы список удалить свойства apps'],
                     ['notifications', t('notifications', 'Уведомления'), <Bell className="w-4 h-4 shrink-0" />, 'уведомления оповещения справа звук баннеры dnd не беспокоить журнал notifications'],
-                    ['island', t('tabIsland', 'Luma Island'), <Disc3 className="w-4 h-4 shrink-0" />, 'luma island 2.0 динамический остров анимации музыка спектр буфер обмена заметка эквалайзер таймер'],
+                    ['island', t('tabIsland', 'Luma Island'), <Disc3 className="w-4 h-4 shrink-0" />, 'luma island 2.0 динамический остров анимации музыка плееры буфер обмена заметка эквалайзер таймер'],
                     ['clock', t('tabClock', 'Часы'), <Clock className="w-4 h-4 shrink-0" />, 'часы циферблат время секунды дата свечение формат clock'],
                     ['luma', 'Система и Железо', <Activity className="w-4 h-4 shrink-0" />, 'система железо процессор видеокарта vram cpu gpu регион погода музыка'],
                     ['navigation', 'Навигация', <MousePointerClick className="w-4 h-4 shrink-0" />, 'навигация пкм назад горячие клавиши alt+r поиск ctrl+k alt+w spotlight мультизадачность'],
-                    ['plugins', 'Окна и Плагины', <LayoutGrid className="w-4 h-4 shrink-0" />, 'окна плагины api 2.0 колонки сетка расширения'],
-                    ['updater', t('tabUpdater', 'Обновления и Откат'), <Stethoscope className="w-4 h-4 shrink-0" />, 'обновления откат версии rollback downgrade github ota ежедневная проверка патч прогресс бар новая версия диагностика'],
-                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.3 beryllium история изменений changelog exe скачать'],
+                    ['plugins', 'Окна и SDK v3.0', <LayoutGrid className="w-4 h-4 shrink-0" />, 'окна плагины api sdk 3.0 темы колонки сетка расширения разработчик'],
+                    ['updater', t('tabUpdater', 'Обновления и Откат'), <Stethoscope className="w-4 h-4 shrink-0" />, 'обновления откат версии анимация cinema rollback downgrade github ota ежедневная проверка патч прогресс бар новая версия'],
+                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.4 boron история изменений changelog exe скачать'],
                   ] as [SettingsTabId, string, React.ReactNode, string][]
                 )
                   .filter(([, label, , keywords]) => {
@@ -4904,6 +5206,17 @@ export default function App() {
                   mutedCls={mutedCls}
                   isDark={isDark}
                   onTriggerEasterEgg={() => setEasterEggOpen(true)}
+                />
+              )}
+
+              {settingsTab === 'mouse_dpi' && (
+                <LumaMouseDpiPanel
+                  isDark={isDark}
+                  surfaceCls={surfaceCls}
+                  btnCls={btnCls}
+                  mutedCls={mutedCls}
+                  wirelessDevices={wirelessBatteries}
+                  onNotify={pushToast}
                 />
               )}
 
@@ -5621,7 +5934,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.3.1.exe).
+                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.4.exe).
                   </div>
                 </div>
               )}
@@ -6088,14 +6401,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.3.1 (Beryllium)',
-                        message: 'Система оповещений Luma OS 1.3.1 (Beryllium) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.4 (Boron)',
+                        message: 'Система оповещений Luma OS 1.4 (Boron) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.3.1 (Beryllium)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.4 (Boron)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -6107,7 +6420,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.3.1 (Beryllium) · LumaCore 1.4</div>
+                      <div className="text-sm font-bold">Luma OS 1.4 (Boron) · LumaCore 1.5</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -6466,10 +6779,14 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Complete Additive Wallpaper Gallery (all classic & version artworks preserved!) */}
+                    {/* Complete Additive Wallpaper Gallery (ALL classic & version artworks preserved + 4 new 1.4 Boron Studio artworks!) */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                       {[
                         { label: 'Без картинки (Тема)', url: '', preview: '' },
+                        { label: 'Boron 1.4 (3D Prism)', url: '/luma-boron-hero.jpg', preview: '/luma-boron-hero.jpg' },
+                        { label: 'Boron Dusk Horizon (1.4)', url: '/luma-boron-horizon.jpg', preview: '/luma-boron-horizon.jpg' },
+                        { label: 'Cobalt Silk Fold (1.4)', url: '/luma-boron-silk.jpg', preview: '/luma-boron-silk.jpg' },
+                        { label: 'Solar Eclipse Gold (1.4)', url: '/luma-boron-eclipse.jpg', preview: '/luma-boron-eclipse.jpg' },
                         { label: 'Beryllium 1.3.1 (3D)', url: '/luma-beryllium-hero.jpg', preview: '/luma-beryllium-hero.jpg' },
                         { label: 'Beryl Aurora (1.3)', url: '/luma-beryl-aurora.jpg', preview: '/luma-beryl-aurora.jpg' },
                         { label: 'Amber Monolith (1.3)', url: '/luma-amber-monolith.jpg', preview: '/luma-amber-monolith.jpg' },
@@ -6522,14 +6839,16 @@ export default function App() {
                       ))}
                     </div>
 
-                    {/* 6 Lightweight CSS Live Animated Mesh Wallpapers */}
+                    {/* 8 Lightweight CSS Live Animated Mesh Wallpapers */}
                     <div className="space-y-1.5">
                       <div className={`text-[11px] font-mono uppercase tracking-wider ${mutedCls}`}>
-                        {t('liveWallpaperLabel', 'Живые анимированные обои (6 стилей · 0% ЦП)')}
+                        {t('liveWallpaperLabel', 'Живые анимированные обои (8 стилей · 0% ЦП)')}
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                         {(
                           [
+                            ['boron', 'Boron Sapphire (1.4 Live)', 'luma-live-wp-boron'],
+                            ['cobalt', 'Cobalt Obsidian (1.4 Live)', 'luma-live-wp-cobalt'],
                             ['beryllium', 'Beryllium Prism (1.3 Live)', 'luma-live-wp-beryllium'],
                             ['borealis', 'Emerald Borealis (1.3 Live)', 'luma-live-wp-borealis'],
                             ['cybergrid', 'Cyber Grid Flow (1.3 Live)', 'luma-live-wp-cybergrid'],
@@ -6554,6 +6873,126 @@ export default function App() {
                             <div className="px-2 py-1 text-[11px] truncate">{lwLabel}</div>
                           </button>
                         ))}
+                      </div>
+                    </div>
+
+                    {/* Luma OS 1.4 Boron: Global Widget Transparency & Background Customizer */}
+                    <div className={`p-3.5 rounded-2xl border space-y-3 text-xs ${btnCls}`}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="font-bold flex items-center gap-1.5">
+                            <Layers className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+                            Прозрачность и фон виджетов рабочего стола (1.4 Boron)
+                          </div>
+                          <div className={`text-[11px] ${mutedCls}`}>
+                            Примените стиль сразу ко всем виджетам или кликните по любому виджету на рабочем столе для индивидуальной настройки
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              window.dispatchEvent(
+                                new CustomEvent('luma-apply-widget-appearance', {
+                                  detail: {
+                                    bgMode: globalWidgetBgMode,
+                                    bgOpacity: globalWidgetOpacity,
+                                    bgBlur: globalWidgetBlur,
+                                    bgCustomColor: globalWidgetColor,
+                                  },
+                                })
+                              );
+                              pushToast('Виджеты', 'Фон и прозрачность применены ко всем виджетам!', 'success');
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-[11px] font-bold cursor-pointer"
+                          >
+                            Применить ко всем
+                          </button>
+                          <button
+                            onClick={() => {
+                              window.dispatchEvent(new CustomEvent('luma-apply-widget-appearance', { detail: { reset: true } }));
+                              pushToast('Виджеты', 'Фон всех виджетов сброшен к стилю темы', 'info');
+                            }}
+                            className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold cursor-pointer ${btnCls}`}
+                          >
+                            Сброс
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5">
+                        {(
+                          [
+                            ['theme', 'По теме'],
+                            ['glass', 'Стекло'],
+                            ['dark', 'Тёмный'],
+                            ['light', 'Светлый'],
+                            ['accent', 'Акцент'],
+                            ['transparent', 'Прозрачный'],
+                            ['custom', 'Свой цвет'],
+                          ] as [WidgetBgMode, string][]
+                        ).map(([mId, mLabel]) => (
+                          <button
+                            key={mId}
+                            onClick={() => {
+                              setGlobalWidgetBgMode(mId);
+                              if (mId === 'transparent') {
+                                setGlobalWidgetOpacity(0);
+                                setGlobalWidgetBlur(0);
+                              }
+                            }}
+                            className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold cursor-pointer ${
+                              globalWidgetBgMode === mId
+                                ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                                : btnCls
+                            }`}
+                          >
+                            {mLabel}
+                          </button>
+                        ))}
+                        {globalWidgetBgMode === 'custom' && (
+                          <input
+                            type="color"
+                            value={globalWidgetColor}
+                            onChange={(e) => setGlobalWidgetColor(e.target.value)}
+                            className="w-8 h-7 rounded cursor-pointer border-0 bg-transparent"
+                          />
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                        <div className="space-y-1">
+                          <div className="flex justify-between font-mono text-[11px]">
+                            <span className={mutedCls}>Непрозрачность виджетов</span>
+                            <span className="font-bold text-[var(--luma-accent)]">{globalWidgetOpacity}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={2}
+                            value={globalWidgetOpacity}
+                            onChange={(e) => setGlobalWidgetOpacity(Number(e.target.value))}
+                            className="w-full"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-[11px] font-mono ${mutedCls}`}>Размытие (Blur)</span>
+                          <div className="flex gap-1">
+                            {[0, 8, 16, 24].map((b) => (
+                              <button
+                                key={b}
+                                onClick={() => setGlobalWidgetBlur(b)}
+                                className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold cursor-pointer ${
+                                  globalWidgetBlur === b
+                                    ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                                    : btnCls
+                                }`}
+                              >
+                                {b}px
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -7192,6 +7631,15 @@ export default function App() {
                         <RefreshCw className={`w-3.5 h-3.5 ${checkingGithub ? 'animate-spin' : ''}`} />
                         {checkingGithub ? t('checking', 'Проверка...') : t('checkUpdates', 'Проверить обновления')}
                       </button>
+                      <button
+                        type="button"
+                        onClick={playUpdateCinemaDemo}
+                        className="px-3.5 py-2 rounded-xl border border-indigo-400/40 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition"
+                        title="Посмотреть новую полноэкранную кинематографичную анимацию обновления Boron 1.4"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Анимация обновления
+                      </button>
                       <a
                         href={updateInfo?.release_url || `${githubRepoUrl}/releases`}
                         target="_blank"
@@ -7431,23 +7879,23 @@ export default function App() {
                 </div>
               )}
 
-              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.3 LITHIUM) */}
+              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.4 BORON) */}
               {settingsTab === 'about' && (
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.3.1 (BERYLLIUM)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.4 (BORON · B-5)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.4 · LumaShield 1.4 · Plugin API v2.0
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5 · LumaShield 1.5 · Developer SDK v3.0
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.3.1.exe"
-                      download="LumaOS_1.3.1.exe"
+                      href="/LumaOS_1.4.exe"
+                      download="LumaOS_1.4.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.3.1.exe
+                      LumaOS_1.4.exe
                     </a>
                   </div>
 
@@ -7484,14 +7932,14 @@ export default function App() {
                       <div
                         key={ver}
                         className={`p-4 rounded-xl border space-y-2 ${
-                          ver === '1.3.1 (Beryllium)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
+                          ver === '1.4 (Boron)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-mono font-bold">
                             Версия {ver}
                           </span>
-                          {ver === '1.3.1 (Beryllium)' && <StatusPill active={true} />}
+                          {ver === '1.4 (Boron)' && <StatusPill active={true} />}
                         </div>
                         <ul className="space-y-1 text-xs leading-relaxed">
                           {items.map((line, i) => (
@@ -7507,12 +7955,12 @@ export default function App() {
         </DexWindow>
       )}
 
-      {/* WINDOW 6: PLUGINS MANAGER & STORE (LUMA PLUGIN API v2.0) */}
+      {/* WINDOW 6: PLUGINS MANAGER, STORE & DEVELOPER SDK v3.0 STUDIO */}
       {isWinVisible('plugins') && (
         <DexWindow
           id="plugins"
-          title="Расширения · Plugin API v2.0"
-          subtitle={`${plugins.filter((p) => p.enabled).length} активных · ${PLUGIN_CATALOG.length} в каталоге`}
+          title="Расширения · Developer SDK v3.0"
+          subtitle={`${plugins.filter((p) => p.enabled).length} активных · ${Object.keys(customThemes).length} польз. тем · /api/v3/sdk`}
           icon={<Puzzle className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -7520,32 +7968,72 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           snapCommand={snapCommands.plugins || null}
           zIndex={windows.plugins.z}
-          initialWidth={920}
-          initialHeight={620}
+          initialWidth={960}
+          initialHeight={650}
           onFocus={() => focusWindow('plugins')}
           onMinimize={() => minimizeWindow('plugins')}
           onClose={() => closeWindow('plugins')}
         >
           <div className="p-5 space-y-5">
-            {/* Plugin API v2.0 Runtime Banner */}
+            {/* Developer SDK v3.0 Runtime Banner + Mode Switch */}
             <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-2 ${surfaceCls}`}>
               <div className="space-y-0.5">
                 <div className="text-xs font-bold flex items-center gap-2">
                   <Sparkles className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
-                  Шина расширений Luma Plugin API v2.0
+                  Шина расширений & Тем — Luma Developer SDK v3.0
                   <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-mono text-[10px]">
                     ACTIVE
                   </span>
                 </div>
                 <div className={`text-[11px] ${mutedCls}`}>
-                  Песочница разрешений, прямой доступ к системным действиям LumaCore и мгновенный запуск модулей
+                  REST API /api/v3/themes & /api/v3/plugins + window.LumaSDK + импорт/экспорт тем и плагинов для разработчиков
                 </div>
               </div>
-              <div className="text-[10px] font-mono text-[var(--luma-accent)]">
-                POST /api/kernel/plugins/api · SDK 2.0
+              <div className={`flex items-center gap-1 p-0.5 rounded-xl border ${btnCls}`}>
+                <button
+                  onClick={() => setPluginsTab('catalog')}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition ${
+                    pluginsTab === 'catalog' ? 'bg-[var(--luma-accent)] text-white' : ''
+                  }`}
+                >
+                  Каталог ({plugins.length})
+                </button>
+                <button
+                  onClick={() => setPluginsTab('sdk_studio')}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition inline-flex items-center gap-1 ${
+                    pluginsTab === 'sdk_studio' ? 'bg-[var(--luma-accent)] text-white' : ''
+                  }`}
+                >
+                  <Code2 className="w-3.5 h-3.5" />
+                  Студия SDK v3.0
+                </button>
               </div>
             </div>
 
+            {pluginsTab === 'sdk_studio' ? (
+              <LumaDeveloperSdkStudio
+                isDark={isDark}
+                surfaceCls={surfaceCls}
+                btnCls={btnCls}
+                mutedCls={mutedCls}
+                customThemes={Object.values(customThemes)}
+                activeThemeKey={themeKey}
+                onRegisterTheme={registerSdkTheme}
+                onDeleteTheme={deleteSdkTheme}
+                onApplyTheme={(id) => {
+                  const found = allThemesMap[id];
+                  if (found) {
+                    setThemeKey(id);
+                  }
+                }}
+                plugins={plugins}
+                onRegisterPlugin={registerSdkPlugin}
+                onDeletePlugin={deleteSdkPlugin}
+                onRunPlugin={(p) => void handleRunPluginV2(p)}
+                onNotify={pushToast}
+              />
+            ) : (
+            <div className="space-y-5">
             <div className="space-y-2">
               <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>
                 Установленные модули ({plugins.length})
@@ -7729,6 +8217,8 @@ export default function App() {
                 </button>
               </div>
             </div>
+            </div>
+            )}
           </div>
         </DexWindow>
       )}
@@ -8386,7 +8876,7 @@ export default function App() {
         <DexWindow
           id="utilities"
           title={t('utilities', 'Службы и утилиты системы')}
-          subtitle="Устройства · Службы ОС · Сеть & Firewall · Звук · Блокнот Pro · Диски"
+          subtitle="Устройства · Мышь и DPI · Службы ОС · Сеть & Firewall · Звук · Блокнот Pro · Диски"
           icon={<Wrench className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -8409,6 +8899,7 @@ export default function App() {
             volume={volume}
             isMuted={isMuted}
             disks={liveSystem?.disks}
+            wirelessDevices={wirelessBatteries}
             onChangeVolume={handleVolumeChange}
             onToggleMute={handleToggleMute}
             onOpenCalculator={() => openWindow('calculator')}
@@ -8439,6 +8930,35 @@ export default function App() {
           onClose={() => closeWindow('calculator')}
         >
           <LumaCalculatorWindow isDark={isDark} lang={lang} />
+        </DexWindow>
+      )}
+
+      {/* WINDOW: NATIVE LUMA CALENDAR (Luma OS 1.4 Boron) */}
+      {isWinVisible('calendar') && (
+        <DexWindow
+          id="calendar"
+          title="Календарь Luma OS"
+          subtitle="Сетка месяца · События · Напоминания · Расписание"
+          icon={<Calendar className="w-4 h-4" />}
+          isDark={isDark}
+          designStyle={designStyle}
+          taskbarPosition={taskbarPosition}
+          taskbarSizePx={effectiveTaskbarSizePx}
+          snapCommand={snapCommands.calendar || null}
+          zIndex={windows.calendar.z}
+          initialWidth={860}
+          initialHeight={620}
+          minWidth={560}
+          minHeight={460}
+          onFocus={() => focusWindow('calendar')}
+          onMinimize={() => minimizeWindow('calendar')}
+          onClose={() => closeWindow('calendar')}
+        >
+          <LumaCalendarWindow
+            isDark={isDark}
+            accentHex={customAccentOverride || currentTheme.accentHex}
+            onNotify={pushToast}
+          />
         </DexWindow>
       )}
 
@@ -8852,8 +9372,13 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => openWindow('settings', 'clock')}
-              title="Настройка 18 циферблатов"
+              onClick={() => openWindow('calendar')}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openWindow('settings', 'clock');
+              }}
+              title="Календарь Luma OS (ЛКМ) · Настройка часов (ПКМ)"
               className={`w-11 py-1 rounded-xl flex flex-col items-center justify-center font-mono leading-tight cursor-pointer ${
                 isDark ? 'hover:bg-white/[0.08]' : 'hover:bg-zinc-900/[0.08]'
               }`}
@@ -9282,7 +9807,8 @@ export default function App() {
               .filter((wb) => pinnedWirelessNames.includes(wb.name))
               .slice(0, 3)
               .map((wb) => {
-                const pct = Math.max(0, Math.min(100, wb.battery_percent));
+                const hasBat = typeof wb.battery_percent === 'number' && wb.battery_percent >= 0;
+                const pct = hasBat ? Math.max(0, Math.min(100, wb.battery_percent)) : 0;
                 const shortName = wb.name.length > 10 ? `${wb.name.slice(0, 9)}…` : wb.name;
                 return (
                   <button
@@ -9300,7 +9826,7 @@ export default function App() {
                         wirelessName: wb.name,
                       });
                     }}
-                    title={`${wb.name} (${wb.transport}): ${pct}% · ЛКМ — Питание и Батарея · ПКМ — убрать с панели`}
+                    title={`${wb.name} (${wb.transport}): ${hasBat ? `${pct}%` : 'Подключено'} · ЛКМ — Питание и Батарея · ПКМ — убрать с панели`}
                     className={`hidden md:flex items-center gap-1.5 px-2 h-8 ${isPixel ? 'rounded-full' : 'rounded-xl'} border text-[11px] font-mono cursor-pointer ${btnCls}`}
                   >
                     {wb.device_type === 'headphones' ? (
@@ -9313,9 +9839,13 @@ export default function App() {
                       <BatteryCharging className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     )}
                     <span className="hidden 2xl:inline max-w-[70px] truncate">{shortName}</span>
-                    <span className={`font-bold ${pct <= 20 ? 'text-rose-400' : pct <= 45 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                      {pct}%
-                    </span>
+                    {hasBat ? (
+                      <span className={`font-bold ${pct <= 20 ? 'text-rose-400' : pct <= 45 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        {pct}%
+                      </span>
+                    ) : (
+                      <span className="font-bold text-emerald-400 text-[10px]">ON</span>
+                    )}
                   </button>
                 );
               })}
@@ -9447,10 +9977,15 @@ export default function App() {
               </span>
             </button>
 
-            {/* Taskbar Clock (Isolated memoized component — 0 App re-renders/min!) */}
+            {/* Taskbar Clock & Calendar Trigger (Isolated memoized component — 0 App re-renders/min!) */}
             <button
-              onClick={() => openWindow('settings', 'clock')}
-              title={`Циферблат: ${CLOCK_STYLE_OPTIONS.find((c) => c.id === clockStyle)?.label || clockStyle}`}
+              onClick={() => openWindow('calendar')}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openWindow('settings', 'clock');
+              }}
+              title={`Календарь Luma OS (ЛКМ) · Циферблат: ${CLOCK_STYLE_OPTIONS.find((c) => c.id === clockStyle)?.label || clockStyle} (ПКМ)`}
               className={`h-9 px-2.5 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex flex-col items-end justify-center leading-tight font-mono cursor-pointer transition ${
                 isDark ? 'hover:bg-white/[0.07]' : 'hover:bg-zinc-900/[0.07]'
               }`}
@@ -10309,7 +10844,7 @@ export default function App() {
           {!startSearch.trim() && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                <span className={mutedCls}>Luma OS 1.3.1 (Beryllium)</span>
+                <span className={mutedCls}>Luma OS 1.4 (Boron)</span>
                 <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.4</span>
               </div>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
@@ -10414,7 +10949,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.3.1 (Beryllium)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.4 (Boron)'}
                   </div>
                 </div>
               </div>
@@ -10524,7 +11059,7 @@ export default function App() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.3.1 (BERYLLIUM)</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.4 (BORON)</span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>
               {liveSystem?.location?.city || 'LOCAL'}
             </span>
@@ -10698,28 +11233,40 @@ export default function App() {
             })()}
           </div>
 
-          {/* Wireless Peripheral Batteries (Mice, Keyboards, Headphones, Gamepads) */}
+          {/* Wireless Peripheral Batteries & 2.4GHz Radio Devices (Mice, Keyboards, Headphones, Gamepads) */}
           {wirelessBatteries.length > 0 && (
             <div className={`pt-2.5 border-t space-y-1.5 ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
               <div className="flex items-center justify-between text-[10px] font-mono uppercase">
                 <span className={`flex items-center gap-1 ${mutedCls}`}>
                   <Bluetooth className="w-3 h-3 text-sky-400" />
-                  Заряд устройств ({wirelessBatteries.length})
+                  Устройства BT / 2.4GHz ({wirelessBatteries.length})
                 </span>
-                <button
-                  onClick={() => {
-                    setControlCenterOpen(false);
-                    openWindow('settings', 'bluetooth');
-                  }}
-                  className="text-[var(--luma-accent)] hover:underline cursor-pointer"
-                >
-                  Bluetooth
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setControlCenterOpen(false);
+                      openWindow('settings', 'mouse_dpi');
+                    }}
+                    className="text-emerald-400 hover:underline cursor-pointer"
+                  >
+                    DPI
+                  </button>
+                  <button
+                    onClick={() => {
+                      setControlCenterOpen(false);
+                      openWindow('settings', 'bluetooth');
+                    }}
+                    className="text-[var(--luma-accent)] hover:underline cursor-pointer"
+                  >
+                    Bluetooth
+                  </button>
+                </div>
               </div>
               <div className="space-y-1">
-                {wirelessBatteries.slice(0, 4).map((wb, i) => {
-                  const pct = Math.max(0, Math.min(100, wb.battery_percent));
-                  const low = pct <= 20;
+                {wirelessBatteries.slice(0, 5).map((wb, i) => {
+                  const hasBat = typeof wb.battery_percent === 'number' && wb.battery_percent >= 0;
+                  const pct = hasBat ? Math.max(0, Math.min(100, wb.battery_percent)) : 0;
+                  const low = hasBat && pct <= 20;
                   return (
                     <div
                       key={`${wb.name}_${i}`}
@@ -10737,17 +11284,23 @@ export default function App() {
                         )}
                         <span className="truncate font-medium">{wb.name}</span>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <div className="w-10 h-1.5 rounded-full bg-black/25 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${low ? 'bg-rose-500' : pct <= 45 ? 'bg-amber-400' : 'bg-emerald-400'}`}
-                            style={{ width: `${pct}%` }}
-                          />
+                      {hasBat ? (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="w-10 h-1.5 rounded-full bg-black/25 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${low ? 'bg-rose-500' : pct <= 45 ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className={`font-mono font-bold text-[10px] tabular-nums ${low ? 'text-rose-400' : ''}`}>
+                            {pct}%
+                          </span>
                         </div>
-                        <span className={`font-mono font-bold text-[10px] tabular-nums ${low ? 'text-rose-400' : ''}`}>
-                          {pct}%
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-400 shrink-0">
+                          Подключено
                         </span>
-                      </div>
+                      )}
                     </div>
                   );
                 })}
@@ -10786,8 +11339,8 @@ export default function App() {
               </button>
             </div>
             <a
-              href="/LumaOS_1.3.1.exe"
-              download="LumaOS_1.3.1.exe"
+              href="/LumaOS_1.4.exe"
+              download="LumaOS_1.4.exe"
               className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-mono font-bold inline-flex items-center gap-1 ${btnCls}`}
             >
               <Download className="w-3 h-3 text-[var(--luma-accent)]" />
@@ -11202,7 +11755,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.3.1 (Beryllium) · Alt+W — Обзор · 8-сторонний ресайз и Snap Layouts
+                  Luma OS 1.4 (Boron) · Alt+W — Обзор · 8-сторонний ресайз и Snap Layouts
                 </div>
               </div>
             </div>
@@ -11513,8 +12066,21 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== LITHIUM 1.2 AWAKENING ANIMATION & PLAYABLE EASTER-EGG MINI-GAME ==================== */}
+      {/* ==================== BORON 1.4 AWAKENING ANIMATION & PLAYABLE EASTER-EGG MINI-GAME ==================== */}
       <LumaHeliumEasterEggModal open={easterEggOpen} onClose={() => setEasterEggOpen(false)} />
+
+      {/* ==================== LUMA OS 1.4 BORON CINEMATIC UPDATE OVERLAY (REAL OTA + DEMO PREVIEW) ==================== */}
+      <LumaUpdateCinemaOverlay
+        open={Boolean(updateCinemaDemo) || (updateProgress.running && !updateCinemaDismissed)}
+        progress={updateCinemaDemo || updateProgress}
+        previewMode={Boolean(updateCinemaDemo)}
+        onClose={() => {
+          updateDemoTimersRef.current.forEach((id) => window.clearTimeout(id));
+          updateDemoTimersRef.current = [];
+          if (updateCinemaDemo) setUpdateCinemaDemo(null);
+          else setUpdateCinemaDismissed(true);
+        }}
+      />
 
       {/* ==================== PC POWER CONFIRMATION MODAL (SHUTDOWN / RESTART / EXIT LUMA) ==================== */}
       {powerConfirm && (

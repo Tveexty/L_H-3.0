@@ -121,6 +121,78 @@ type WirelessDeviceBattery struct {
 	Connected      bool   `json:"connected"`
 	Transport      string `json:"transport"`
 	Source         string `json:"source"`
+	VendorID       string `json:"vendor_id,omitempty"`
+	ProductID      string `json:"product_id,omitempty"`
+	Manufacturer   string `json:"manufacturer,omitempty"`
+	IsMouse        bool   `json:"is_mouse,omitempty"`
+}
+
+type MouseDPIConfig struct {
+	OK                bool    `json:"ok"`
+	WindowsSpeed      int     `json:"windows_speed"`      // 1..20 (10 = 1.0x)
+	SensorDPI         int     `json:"sensor_dpi"`         // Native hardware DPI (400..25600)
+	EffectiveDPI      int     `json:"effective_dpi"`      // Effective cursor DPI (eDPI)
+	Multiplier        float64 `json:"multiplier"`         // Exact Windows pointer speed factor
+	EnhancePrecision  bool    `json:"enhance_precision"`  // Mouse acceleration on/off
+	ScrollLines       int     `json:"scroll_lines"`       // Wheel scroll lines (1..20)
+	DetectedMouseName string  `json:"detected_mouse_name"`
+	Platform          string  `json:"platform"`
+}
+
+type DeveloperThemeItem struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Author         string `json:"author,omitempty"`
+	Version        string `json:"version,omitempty"`
+	Description    string `json:"description,omitempty"`
+	IsDark         bool   `json:"isDark"`
+	BgGradient     string `json:"bgGradient"`
+	SurfaceRgba    string `json:"surfaceRgba"`
+	SurfaceRgb     string `json:"surfaceRgb,omitempty"`
+	CardRgb        string `json:"cardRgb,omitempty"`
+	BarRgb         string `json:"barRgb,omitempty"`
+	CardHex        string `json:"cardHex"`
+	Accent         string `json:"accent"`
+	AccentHex      string `json:"accentHex"`
+	AccentHoverHex string `json:"accentHoverHex,omitempty"`
+	Custom         bool   `json:"custom"`
+	CreatedAt      string `json:"created_at,omitempty"`
+}
+
+type DeveloperPluginItem struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Version     string   `json:"version"`
+	APIVersion  string   `json:"apiVersion"`
+	Author      string   `json:"author"`
+	Category    string   `json:"category"`
+	Icon        string   `json:"icon"`
+	Description string   `json:"description"`
+	Enabled     bool     `json:"enabled"`
+	File        string   `json:"file"`
+	Hooks       []string `json:"hooks"`
+	Permissions []string `json:"permissions,omitempty"`
+	ActionID    string   `json:"actionId,omitempty"`
+	Script      string   `json:"script,omitempty"`
+	CustomCSS   string   `json:"customCss,omitempty"`
+	CreatedAt   string   `json:"created_at,omitempty"`
+}
+
+type HostsAuditEntry struct {
+	Line       int    `json:"line"`
+	IP         string `json:"ip"`
+	Host       string `json:"host"`
+	Suspicious bool   `json:"suspicious"`
+	Reason     string `json:"reason"`
+}
+
+type HostsAuditResult struct {
+	OK              bool              `json:"ok"`
+	Path            string            `json:"path"`
+	TotalMappings   int               `json:"total_mappings"`
+	SuspiciousCount int               `json:"suspicious_count"`
+	Entries         []HostsAuditEntry `json:"entries"`
+	CheckedAt       string            `json:"checked_at"`
 }
 
 type AudioEndpointDevice struct {

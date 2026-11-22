@@ -1079,8 +1079,35 @@ func (p *platformProbe) GetBluetoothStatus() BluetoothStatus {
 		})
 	}
 
+	// Also merge ALL connected Bluetooth LE & 2.4GHz Radio wireless mice/headsets/keyboards!
+	for _, wb := range p.GetWirelessDeviceBatteries(false) {
+		low := strings.ToLower(strings.TrimSpace(wb.Name))
+		if low == "" || seen[low] {
+			continue
+		}
+		seen[low] = true
+		st.Available = true
+		if wb.Connected {
+			st.Enabled = true
+		}
+		cls := wb.Transport
+		if cls == "" {
+			cls = "2.4GHz Радиоканал"
+		}
+		st.Devices = append(st.Devices, BluetoothDevice{
+			Name:           wb.Name,
+			Status:         "OK",
+			Connected:      wb.Connected,
+			Class:          cls,
+			DeviceType:     wb.DeviceType,
+			BatteryPercent: wb.BatteryPercent,
+			Transport:      cls,
+			InstanceID:     wb.VendorID + ":" + wb.ProductID,
+		})
+	}
+
 	if st.Available && st.AdapterName == "" {
-		st.AdapterName = "Bluetooth Adapter"
+		st.AdapterName = "Bluetooth / 2.4GHz Радио-адаптер"
 		st.Enabled = true
 	}
 	return st
@@ -2277,9 +2304,9 @@ func (p *platformProbe) ControlService(name, action string) error {
 	return err
 }
 
-// GetWirelessDeviceBatteries (LumaCore 1.4): 100% pure Win32 setupapi.dll + hid.dll (~2.5ms, ZERO WMI, ZERO PowerShell!).
-// Scans Bluetooth, Bluetooth LE, and 2.4GHz USB Radio-Channel HID receivers (Logitech, Razer, HyperX, SteelSeries, ASUS, Corsair, Xbox/DualSense),
-// resolving real human device names via DEVPKEY_Device_ContainerId and direct HID Battery Feature Reports!
+// GetWirelessDeviceBatteries (LumaCore 1.5): 100% pure Win32 setupapi.dll + hid.dll (~3ms, ZERO WMI, ZERO PowerShell!).
+// Discovers ALL connected Bluetooth, Bluetooth LE, and 2.4GHz USB Radio-Channel peripherals (including wireless mice,
+// receivers, keyboards, headsets, gamepads) — NEVER hiding a connected device if its dongle doesn't expose OS battery %.
 func (p *platformProbe) GetWirelessDeviceBatteries(forceRefresh bool) []WirelessDeviceBattery {
 	p.mu.RLock()
 	if !forceRefresh && time.Since(p.cachedWirelessT) < 35*time.Second && p.cachedWireless != nil {
@@ -2301,16 +2328,39 @@ func (p *platformProbe) GetWirelessDeviceBatteries(forceRefresh bool) []Wireless
 		{"USB", "2.4GHz Радиоканал"},
 	}
 
-	// Pass 1: Build ContainerID -> real human name map (so 2.4GHz USB dongles & BLE GATT battery children get their exact product name!)
+	skipNoise := []string{
+		"enumerator", "service", "transport", "protocol", "rfcomm", "avctp",
+		"generic attribute", "device information", "root hub", "host controller",
+		"composite device", "usb input device", "hid-compliant consumer",
+		"hid-compliant system", "hid-compliant vendor", "microsoft bluetooth",
+		"bluetooth adapter", "wireless bluetooth", "intel(r) wireless", "realtek bluetooth",
+		"qualcomm", "mediatek bluetooth", "generic bluetooth", "bluetooth radio",
+		"радиомодуль", "перечислитель", "корневой концентратор", "хост-контроллер",
+		"составное usb", "устройство ввода usb",
+	}
+	isNoise := func(s string) bool {
+		low := strings.ToLower(strings.TrimSpace(s))
+		if low == "" || len(low) < 3 {
+			return true
+		}
+		for _, w := range skipNoise {
+			if strings.Contains(low, w) {
+				return true
+			}
+		}
+		return false
+	}
+
 	containerNames := map[string]string{}
-	type battHit struct {
+	type devHit struct {
 		cid       string
 		rawName   string
 		val       int
 		connected bool
 		transport string
+		priority  int
 	}
-	hits := make([]battHit, 0, 12)
+	hits := make([]devHit, 0, 20)
 
 	for _, en := range enumerators {
 		enumPtr, err := syscall.UTF16PtrFromString(en.name)
@@ -2342,61 +2392,109 @@ func (p *platformProbe) GetWirelessDeviceBatteries(forceRefresh bool) []Wireless
 			if rawName == "" {
 				rawName = readSetupDiStringProp(hDev, &devInfo, &devpkeyDeviceDesc)
 			}
-			if cid != "" && !isGenericHIDName(rawName) {
+			if cid != "" && !isGenericHIDName(rawName) && !isNoise(rawName) {
 				cleaned := cleanPeripheralName(rawName)
 				if prev, ok := containerNames[cid]; !ok || len(cleaned) > len(prev) {
 					containerNames[cid] = cleaned
 				}
 			}
 
-			val, ok := readSetupDiBatteryProp(hDev, &devInfo)
-			if !ok || val < 0 || val > 100 {
-				continue
-			}
 			nodeStatus, hasStatus := readSetupDiUint32Prop(hDev, &devInfo, &devpkeyDeviceDevNodeStatus)
 			connected := !hasStatus || (nodeStatus&dnStarted) != 0
-			hits = append(hits, battHit{
-				cid:       cid,
-				rawName:   rawName,
-				val:       val,
-				connected: connected,
-				transport: en.transport,
-			})
+
+			val, hasBatt := readSetupDiBatteryProp(hDev, &devInfo)
+			if hasBatt && val >= 0 && val <= 100 {
+				hits = append(hits, devHit{
+					cid:       cid,
+					rawName:   rawName,
+					val:       val,
+					connected: connected,
+					transport: en.transport,
+					priority:  2,
+				})
+				continue
+			}
+
+			// Also capture connected Bluetooth / BLE / 2.4GHz Wireless devices that don't expose DEVPKEY battery!
+			if !connected || isNoise(rawName) {
+				continue
+			}
+			isBtEnum := en.name == "BTHENUM" || en.name == "BTHLE" || en.name == "BTHLEDEVICE"
+			if isBtEnum || isWirelessMouseOrRadioHint(rawName) {
+				hits = append(hits, devHit{
+					cid:       cid,
+					rawName:   rawName,
+					val:       -1,
+					connected: true,
+					transport: en.transport,
+					priority:  1,
+				})
+			}
 		}
 		_, _, _ = procSetupDiDestroyDeviceInfoList.Call(hDev)
 	}
 
 	seen := map[string]bool{}
-	list := make([]WirelessDeviceBattery, 0, len(hits)+4)
+	idxByKey := map[string]int{}
+	list := make([]WirelessDeviceBattery, 0, len(hits)+8)
 
-	for _, h := range hits {
-		name := cleanPeripheralName(h.rawName)
-		if (isGenericHIDName(name) || name == "") && h.cid != "" {
-			if better, ok := containerNames[h.cid]; ok && better != "" {
-				name = better
+	// Insert battery-bearing hits first (priority 2), then connected wireless devices without battery (priority 1)
+	for _, wantPrio := range []int{2, 1} {
+		for _, h := range hits {
+			if h.priority != wantPrio {
+				continue
 			}
+			name := cleanPeripheralName(h.rawName)
+			if (isGenericHIDName(name) || name == "") && h.cid != "" {
+				if better, ok := containerNames[h.cid]; ok && better != "" {
+					name = better
+				}
+			}
+			if name == "" || isNoise(name) {
+				continue
+			}
+			key := strings.ToLower(name)
+			if existingIdx, ok := idxByKey[key]; ok {
+				if list[existingIdx].BatteryPercent < 0 && h.val >= 0 {
+					list[existingIdx].BatteryPercent = h.val
+				}
+				continue
+			}
+			seen[key] = true
+			idxByKey[key] = len(list)
+			dt := classifyPeripheralType(name)
+			list = append(list, WirelessDeviceBattery{
+				Name:           name,
+				DeviceType:     dt,
+				BatteryPercent: h.val,
+				Connected:      h.connected,
+				Transport:      h.transport,
+				Source:         "Win32 SetupDi PnP",
+				IsMouse:        dt == "mouse",
+			})
 		}
-		if name == "" {
-			continue
-		}
-		key := strings.ToLower(name)
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		list = append(list, WirelessDeviceBattery{
-			Name:           name,
-			DeviceType:     classifyPeripheralType(name),
-			BatteryPercent: h.val,
-			Connected:      h.connected,
-			Transport:      h.transport,
-			Source:         "Win32 SetupDi PnP",
-		})
 	}
 
-	// Pass 2: Direct Win32 HID Battery Strength Feature Reports for 2.4GHz USB Radio Dongles!
-	if hidItems := scanHidRadioChannelBatteries(seen); len(hidItems) > 0 {
-		list = append(list, hidItems...)
+	// Pass 2: Direct Win32 HID Scanner for ALL 2.4GHz Radio Dongles, Wireless Mice, Keyboards, Headsets & Gamepads!
+	if hidItems := scanHidRadioChannelBatteries(map[string]bool{}); len(hidItems) > 0 {
+		for _, item := range hidItems {
+			key := strings.ToLower(item.Name)
+			if existingIdx, ok := idxByKey[key]; ok {
+				if list[existingIdx].BatteryPercent < 0 && item.BatteryPercent >= 0 {
+					list[existingIdx].BatteryPercent = item.BatteryPercent
+					list[existingIdx].Source = item.Source
+				}
+				if list[existingIdx].VendorID == "" {
+					list[existingIdx].VendorID = item.VendorID
+					list[existingIdx].ProductID = item.ProductID
+					list[existingIdx].Manufacturer = item.Manufacturer
+				}
+				continue
+			}
+			seen[key] = true
+			idxByKey[key] = len(list)
+			list = append(list, item)
+		}
 	}
 
 	p.mu.Lock()

@@ -1295,6 +1295,69 @@ func (p *platformProbe) ArrangeTwoHostWindows(leftPid int, rightPid int, taskbar
 	return nil
 }
 
+var (
+	unixMouseMu      sync.Mutex
+	unixMouseCfg     = MouseDPIConfig{
+		OK:                true,
+		WindowsSpeed:      10,
+		SensorDPI:         1600,
+		EffectiveDPI:      1600,
+		Multiplier:        1.0,
+		EnhancePrecision:  false,
+		ScrollLines:       3,
+		DetectedMouseName: "Luma Precision Wireless Mouse",
+		Platform:          "linux",
+	}
+)
+
+var winMouseSpeedCurveUnix = [21]float64{
+	0,
+	0.03125, 0.0625, 0.125, 0.25, 0.375,
+	0.5, 0.625, 0.75, 0.875, 1.0,
+	1.25, 1.5, 1.75, 2.0, 2.25,
+	2.5, 2.75, 3.0, 3.25, 3.5,
+}
+
+func (p *platformProbe) GetMouseDPIConfig() MouseDPIConfig {
+	unixMouseMu.Lock()
+	defer unixMouseMu.Unlock()
+	return unixMouseCfg
+}
+
+func (p *platformProbe) SetMouseDPIConfig(sensorDPI, targetEffectiveDPI, windowsSpeed int, enhancePrecision *bool, scrollLines int) (MouseDPIConfig, error) {
+	unixMouseMu.Lock()
+	defer unixMouseMu.Unlock()
+	if sensorDPI >= 100 && sensorDPI <= 30000 {
+		unixMouseCfg.SensorDPI = sensorDPI
+	}
+	if windowsSpeed >= 1 && windowsSpeed <= 20 {
+		unixMouseCfg.WindowsSpeed = windowsSpeed
+		unixMouseCfg.Multiplier = winMouseSpeedCurveUnix[windowsSpeed]
+		unixMouseCfg.EffectiveDPI = int(math.Round(float64(unixMouseCfg.SensorDPI) * unixMouseCfg.Multiplier))
+	} else if targetEffectiveDPI >= 100 && targetEffectiveDPI <= 30000 {
+		wantMult := float64(targetEffectiveDPI) / float64(unixMouseCfg.SensorDPI)
+		bestSpd := 10
+		bestDiff := 9999.0
+		for s := 1; s <= 20; s++ {
+			d := math.Abs(winMouseSpeedCurveUnix[s] - wantMult)
+			if d < bestDiff {
+				bestDiff = d
+				bestSpd = s
+			}
+		}
+		unixMouseCfg.WindowsSpeed = bestSpd
+		unixMouseCfg.Multiplier = winMouseSpeedCurveUnix[bestSpd]
+		unixMouseCfg.EffectiveDPI = int(math.Round(float64(unixMouseCfg.SensorDPI) * unixMouseCfg.Multiplier))
+	}
+	if enhancePrecision != nil {
+		unixMouseCfg.EnhancePrecision = *enhancePrecision
+	}
+	if scrollLines >= 1 && scrollLines <= 20 {
+		unixMouseCfg.ScrollLines = scrollLines
+	}
+	return unixMouseCfg, nil
+}
+
 
 
 

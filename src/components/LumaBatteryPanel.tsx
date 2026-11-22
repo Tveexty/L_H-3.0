@@ -305,13 +305,13 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
             <Cpu className="w-4 h-4 text-[var(--luma-accent)]" />
             Профиль энергопотребления и экран
           </div>
-          <span className="text-[10px] font-mono text-zinc-500">Windows powercfg + LumaCore 1.4</span>
+          <span className="text-[10px] font-mono text-zinc-500">Windows powercfg + LumaCore 1.5</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           {[
             { id: 'performance' as const, label: 'Производительность', desc: 'Макс. FPS и отклик ЦП', icon: <Zap className="w-4 h-4 text-amber-400" /> },
-            { id: 'balanced' as const, label: 'Сбалансированный', desc: 'Оптимум Luma OS 1.3', icon: <Cpu className="w-4 h-4 text-cyan-400" /> },
+            { id: 'balanced' as const, label: 'Сбалансированный', desc: 'Оптимум Luma OS 1.4', icon: <Cpu className="w-4 h-4 text-cyan-400" /> },
             { id: 'saver' as const, label: 'Энергосбережение', desc: 'Макс. автономность и тишина', icon: <Leaf className="w-4 h-4 text-emerald-400" /> },
           ].map((p) => (
             <button
@@ -628,7 +628,7 @@ const WirelessBatteriesCard: React.FC<{
             Беспроводные и 2.4GHz Радиоканальные устройства ({devices.length})
           </div>
           <div className="text-[11px] text-zinc-500 mt-0.5">
-            Bluetooth / BLE + 2.4GHz USB-донглы (HID Battery Feature Reports) · Закрепите нужное устройство на Панели задач!
+            Bluetooth / BLE + 2.4GHz USB-донглы и беспроводные мыши (LumaCore 1.5 HID Scanner) · Закрепите нужное устройство на Панели задач!
           </div>
         </div>
         <button
@@ -645,12 +645,13 @@ const WirelessBatteriesCard: React.FC<{
 
       {devices.length === 0 ? (
         <div className="text-xs text-zinc-500 py-3 text-center">
-          Беспроводные устройства (Bluetooth или 2.4GHz радиоканал с HID-датчиком заряда) сейчас не обнаружены. Подключите мышь, наушники, клавиатуру или геймпад и нажмите «Опросить».
+          Беспроводные устройства (Bluetooth, BLE или 2.4GHz радиоканал) сейчас не обнаружены. Подключите мышь, наушники, клавиатуру или геймпад и нажмите «Опросить».
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
           {devices.map((dev, idx) => {
-            const pct = Math.max(0, Math.min(100, dev.battery_percent));
+            const hasBat = typeof dev.battery_percent === 'number' && dev.battery_percent >= 0;
+            const pct = hasBat ? Math.max(0, Math.min(100, dev.battery_percent)) : 0;
             const barColor = pct <= 20 ? 'bg-rose-500' : pct <= 45 ? 'bg-amber-400' : 'bg-emerald-500';
             const isPinned = pinnedWirelessNames.includes(dev.name);
             const isRadio = dev.transport.toLowerCase().includes('2.4') || dev.transport.toLowerCase().includes('радио');
@@ -678,20 +679,38 @@ const WirelessBatteriesCard: React.FC<{
                         <span>{typeLabel(dev.device_type)}</span>
                         <span>·</span>
                         <span className={isRadio ? 'text-emerald-400 font-bold' : ''}>{dev.transport}</span>
+                        {dev.vendor_id && (
+                          <span className="opacity-70">
+                            · {dev.vendor_id}
+                            {dev.product_id ? `:${dev.product_id}` : ''}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
-                  <span
-                    className={`text-sm font-mono font-black shrink-0 ${
-                      pct <= 20 ? 'text-rose-400' : pct <= 45 ? 'text-amber-400' : 'text-emerald-400'
-                    }`}
-                  >
-                    {pct}%
-                  </span>
+                  {hasBat ? (
+                    <span
+                      className={`text-sm font-mono font-black shrink-0 ${
+                        pct <= 20 ? 'text-rose-400' : pct <= 45 ? 'text-amber-400' : 'text-emerald-400'
+                      }`}
+                    >
+                      {pct}%
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">
+                      Подключено
+                    </span>
+                  )}
                 </div>
-                <div className="h-1.5 rounded-full bg-black/25 overflow-hidden">
-                  <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
-                </div>
+                {hasBat ? (
+                  <div className="h-1.5 rounded-full bg-black/25 overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                  </div>
+                ) : (
+                  <div className="text-[10px] font-mono text-zinc-500">
+                    Активный канал · драйвер устройства не передаёт % заряда ОС
+                  </div>
+                )}
                 {onTogglePinWireless && (
                   <button
                     onClick={() => onTogglePinWireless(dev)}

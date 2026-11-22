@@ -44,12 +44,14 @@ var (
 	procGetExtendedTcpTable          = modIphlpapi.NewProc("GetExtendedTcpTable")
 	procHidDGetHidGuid               = modHid.NewProc("HidD_GetHidGuid")
 	procHidDGetProductString         = modHid.NewProc("HidD_GetProductString")
+	procHidDGetManufacturerString    = modHid.NewProc("HidD_GetManufacturerString")
 	procHidDGetAttributes            = modHid.NewProc("HidD_GetAttributes")
 	procHidDGetPreparsedData         = modHid.NewProc("HidD_GetPreparsedData")
 	procHidDFreePreparsedData        = modHid.NewProc("HidD_FreePreparsedData")
 	procHidPGetCaps                  = modHid.NewProc("HidP_GetCaps")
 	procHidPGetValueCaps             = modHid.NewProc("HidP_GetValueCaps")
 	procHidDGetFeature               = modHid.NewProc("HidD_GetFeature")
+	procProSystemParametersInfoW     = modUser32.NewProc("SystemParametersInfoW")
 	procSetupDiEnumDeviceInterfaces  = modSetupapi.NewProc("SetupDiEnumDeviceInterfaces")
 	procSetupDiGetDeviceIntfDetailW  = modSetupapi.NewProc("SetupDiGetDeviceInterfaceDetailW")
 	procPdhOpenQueryW                = modPdh.NewProc("PdhOpenQueryW")
@@ -828,31 +830,104 @@ func isGenericHIDName(name string) bool {
 func knownWirelessVendorName(vid uint16) string {
 	switch vid {
 	case 0x046D:
-		return "Logitech Lightspeed"
+		return "Logitech"
 	case 0x1532:
-		return "Razer HyperSpeed"
+		return "Razer"
 	case 0x1038:
-		return "SteelSeries Wireless"
+		return "SteelSeries"
 	case 0x0951, 0x03F0:
-		return "HyperX Wireless"
+		return "HyperX"
 	case 0x1B1C:
-		return "Corsair Slipstream"
+		return "Corsair"
 	case 0x0B05:
-		return "ASUS ROG Wireless"
+		return "ASUS ROG"
 	case 0x045E:
-		return "Xbox Wireless"
+		return "Microsoft / Xbox"
 	case 0x054C:
-		return "DualSense / Sony Wireless"
-	case 0x25A7, 0x3554, 0x1EA7, 0x248A, 0x373B:
+		return "Sony"
+	case 0x05AC:
+		return "Apple"
+	case 0x258A:
+		return "Glorious / Wireless"
+	case 0x3710:
+		return "Pulsar"
+	case 0x3554:
+		return "Lamzu / VGN / ATK"
+	case 0x2FE9:
+		return "VGN / ATK"
+	case 0x373B:
+		return "Attack Shark / 2.4GHz"
+	case 0x25A7:
+		return "2.4GHz Wireless"
+	case 0x1EA7:
+		return "2.4GHz Wireless"
+	case 0x248A:
+		return "Maxxter / 2.4GHz Wireless"
+	case 0x09DA:
+		return "A4Tech / Bloody"
+	case 0x24AE:
+		return "Rapoo"
+	case 0x3434:
+		return "Keychron"
+	case 0x2516:
+		return "Cooler Master"
+	case 0x1E7D, 0x10F5:
+		return "Roccat / Turtle Beach"
+	case 0x3367:
+		return "Endgame Gear"
+	case 0x04A5:
+		return "Zowie / BenQ"
+	case 0x413C:
+		return "Dell"
+	case 0x17EF:
+		return "Lenovo"
+	case 0x2717:
+		return "Xiaomi"
+	case 0x2B89:
+		return "Ugreen"
+	case 0x3199:
+		return "Baseus"
+	case 0x291A:
+		return "Anker / Soundcore"
+	case 0x0ECB:
+		return "JBL / Harman"
+	case 0x05A7:
+		return "Bose"
+	case 0x1395:
+		return "Sennheiser / EPOS"
+	case 0x0B0E:
+		return "Jabra"
+	case 0x145F:
+		return "Trust"
+	case 0x0C45:
+		return "Redragon / Wireless"
+	case 0x1A2C, 0x1915, 0x062A, 0x1BCF, 0x30FA, 0x2588, 0x18F8:
 		return "2.4GHz Wireless"
 	default:
 		return ""
 	}
 }
 
-// scanHidRadioChannelBatteries uses pure Win32 hid.dll + SetupDi device interfaces to probe
-// standard HID Battery Strength (UsagePage 0x06 Usage 0x20 / UsagePage 0x84 Usage 0x66)
-// across 2.4GHz USB radio receivers (Logitech, Razer, HyperX, SteelSeries, ASUS, Corsair, Gamepads) — 0% WMI!
+func isWirelessMouseOrRadioHint(s string) bool {
+	low := strings.ToLower(s)
+	hints := []string{
+		"wireless", "2.4g", "2.4 g", "receiver", "dongle", "lightspeed", "hyperspeed",
+		"slipstream", "unifying", "bolt", "radio", "bluetooth", "ble", "nano",
+		"беспроводн", "радио", "приемник", "приёмник", "air", "pro x", "superlight",
+		"g305", "g703", "g903", "g502", "viper", "deathadder", "basilisk", "orochi",
+		"aerox", "rival", "prime", "harpe", "keris", "gladius", "dragonfly", "atlantis",
+	}
+	for _, h := range hints {
+		if strings.Contains(low, h) {
+			return true
+		}
+	}
+	return false
+}
+
+// scanHidRadioChannelBatteries (LumaCore 1.5): Pure Win32 hid.dll + SetupDi multi-pass scanner.
+// Discovers ALL present Bluetooth, BLE, 2.4GHz USB Radio Receivers, AND active HID mice/keyboards/headsets/gamepads,
+// reading real product & manufacturer strings, VID/PID, and HID Battery Feature Reports — 0% WMI!
 func scanHidRadioChannelBatteries(seen map[string]bool) []WirelessDeviceBattery {
 	var hidGuid windowsGUID
 	if modHid.Load() != nil || procHidDGetHidGuid.Find() != nil {
@@ -871,11 +946,28 @@ func scanHidRadioChannelBatteries(seen map[string]bool) []WirelessDeviceBattery 
 	}
 	defer procSetupDiDestroyDeviceInfoList.Call(hDev)
 
-	var out []WirelessDeviceBattery
+	type aggDevice struct {
+		vid          uint16
+		pid          uint16
+		prodName     string
+		mfgName      string
+		isMouse      bool
+		isKeyboard   bool
+		isGamepad    bool
+		isAudio      bool
+		isBluetooth  bool
+		isRadioHint  bool
+		batteryPct   int
+		source       string
+		hasAnyUsage  bool
+	}
+	byVidPid := map[string]*aggDevice{}
+	order := make([]string, 0, 24)
+
 	var intfData spDeviceInterfaceData
 	intfData.CbSize = uint32(unsafe.Sizeof(intfData))
 
-	for i := uint32(0); i < 160; i++ {
+	for i := uint32(0); i < 280; i++ {
 		r, _, _ := procSetupDiEnumDeviceInterfaces.Call(
 			hDev,
 			0,
@@ -899,7 +991,6 @@ func scanHidRadioChannelBatteries(seen map[string]bool) []WirelessDeviceBattery 
 			continue
 		}
 		detailBuf := make([]byte, reqSize)
-		// On amd64 Windows, SP_DEVICE_INTERFACE_DETAIL_DATA_W.cbSize is 8 (4-byte uint32 + 2-byte WCHAR + 2-byte pad)
 		binary.LittleEndian.PutUint32(detailBuf[:4], 8)
 		r2, _, _ := procSetupDiGetDeviceIntfDetailW.Call(
 			hDev,
@@ -917,8 +1008,8 @@ func scanHidRadioChannelBatteries(seen map[string]bool) []WirelessDeviceBattery 
 		if devPath == "" {
 			continue
 		}
+		lowPath := strings.ToLower(devPath)
 
-		// Open with 0 access (query-only metadata + feature report — never blocks mice/keyboards!)
 		pPtr, err := syscall.UTF16PtrFromString(devPath)
 		if err != nil {
 			continue
@@ -945,18 +1036,63 @@ func scanHidRadioChannelBatteries(seen map[string]bool) []WirelessDeviceBattery 
 		if okP, _, _ := procHidDGetProductString.Call(uintptr(hFile), uintptr(unsafe.Pointer(&prodBuf[0])), uintptr(len(prodBuf)*2)); okP != 0 {
 			prodName = strings.TrimSpace(syscall.UTF16ToString(prodBuf[:]))
 		}
+		var mfgBuf [128]uint16
+		mfgName := ""
+		if procHidDGetManufacturerString.Find() == nil {
+			if okM, _, _ := procHidDGetManufacturerString.Call(uintptr(hFile), uintptr(unsafe.Pointer(&mfgBuf[0])), uintptr(len(mfgBuf)*2)); okM != 0 {
+				mfgName = strings.TrimSpace(syscall.UTF16ToString(mfgBuf[:]))
+			}
+		}
+
+		key := fmt.Sprintf("%04x:%04x", attrs.VendorID, attrs.ProductID)
+		if attrs.VendorID == 0 && attrs.ProductID == 0 {
+			key = lowPath
+		}
+		agg, exists := byVidPid[key]
+		if !exists {
+			agg = &aggDevice{
+				vid:        attrs.VendorID,
+				pid:        attrs.ProductID,
+				batteryPct: -1,
+			}
+			byVidPid[key] = agg
+			order = append(order, key)
+		}
+		if prodName != "" && (agg.prodName == "" || (isGenericHIDName(agg.prodName) && !isGenericHIDName(prodName)) || len(prodName) > len(agg.prodName)) {
+			agg.prodName = prodName
+		}
+		if mfgName != "" && agg.mfgName == "" {
+			agg.mfgName = mfgName
+		}
+		if strings.Contains(lowPath, "bthle") || strings.Contains(lowPath, "bth") || strings.Contains(lowPath, "{00001812") {
+			agg.isBluetooth = true
+		}
+		if isWirelessMouseOrRadioHint(prodName) || isWirelessMouseOrRadioHint(mfgName) {
+			agg.isRadioHint = true
+		}
 
 		var ppd uintptr
 		if okPPD, _, _ := procHidDGetPreparsedData.Call(uintptr(hFile), uintptr(unsafe.Pointer(&ppd))); okPPD != 0 && ppd != 0 {
 			var caps hidCaps
-			if st, _, _ := procHidPGetCaps.Call(ppd, uintptr(unsafe.Pointer(&caps))); st == 0x00110000 { // HIDP_STATUS_SUCCESS
+			if st, _, _ := procHidPGetCaps.Call(ppd, uintptr(unsafe.Pointer(&caps))); st == 0x00110000 {
+				agg.hasAnyUsage = true
+				switch {
+				case caps.UsagePage == 0x0001 && caps.Usage == 0x0002:
+					agg.isMouse = true
+				case caps.UsagePage == 0x0001 && caps.Usage == 0x0006:
+					agg.isKeyboard = true
+				case caps.UsagePage == 0x0001 && (caps.Usage == 0x0004 || caps.Usage == 0x0005):
+					agg.isGamepad = true
+				case caps.UsagePage == 0x000B || (caps.UsagePage == 0x000C && (strings.Contains(strings.ToLower(prodName), "head") || strings.Contains(strings.ToLower(prodName), "audio") || strings.Contains(strings.ToLower(prodName), "ear"))):
+					agg.isAudio = true
+				}
+
 				if caps.NumberFeatureValueCaps > 0 && caps.FeatureReportByteLength > 1 && caps.FeatureReportByteLength <= 128 {
 					vcCount := caps.NumberFeatureValueCaps
 					if vcCount > 32 {
 						vcCount = 32
 					}
 					vcs := make([]hidValueCaps, vcCount)
-					// HidP_Feature = 2
 					if st2, _, _ := procHidPGetValueCaps.Call(2, uintptr(unsafe.Pointer(&vcs[0])), uintptr(unsafe.Pointer(&vcCount)), ppd); st2 == 0x00110000 {
 						for k := uint16(0); k < vcCount; k++ {
 							vc := vcs[k]
@@ -974,30 +1110,8 @@ func scanHidRadioChannelBatteries(seen map[string]bool) []WirelessDeviceBattery 
 									rawVal = int(math.Round(float64(rawVal) * 100.0 / float64(vc.LogicalMax)))
 								}
 								if rawVal >= 0 && rawVal <= 100 {
-									label := cleanPeripheralName(prodName)
-									if isGenericHIDName(label) {
-										if vn := knownWirelessVendorName(attrs.VendorID); vn != "" {
-											label = vn
-										}
-									}
-									if label != "" {
-										key := strings.ToLower(label)
-										if !seen[key] {
-											seen[key] = true
-											tr := "2.4GHz Радиоканал"
-											if strings.Contains(strings.ToLower(devPath), "bth") {
-												tr = "Bluetooth"
-											}
-											out = append(out, WirelessDeviceBattery{
-												Name:           label,
-												DeviceType:     classifyPeripheralType(label),
-												BatteryPercent: rawVal,
-												Connected:      true,
-												Transport:      tr,
-												Source:         "Win32 HID Radio Battery",
-											})
-										}
-									}
+									agg.batteryPct = rawVal
+									agg.source = "Win32 HID Battery"
 								}
 							}
 						}
@@ -1007,6 +1121,113 @@ func scanHidRadioChannelBatteries(seen map[string]bool) []WirelessDeviceBattery 
 			_, _, _ = procHidDFreePreparsedData.Call(ppd)
 		}
 		_ = syscall.CloseHandle(hFile)
+	}
+
+	var out []WirelessDeviceBattery
+	for _, key := range order {
+		agg := byVidPid[key]
+		if agg == nil {
+			continue
+		}
+		knownBrand := knownWirelessVendorName(agg.vid)
+		// Emit EVERY device that has: battery %, Bluetooth transport, 2.4GHz wireless hint,
+		// known wireless peripheral brand, OR is an active HID Mouse / Gamepad!
+		shouldEmit := agg.batteryPct >= 0 || agg.isBluetooth || agg.isRadioHint || agg.isMouse || agg.isGamepad || (knownBrand != "" && (agg.isKeyboard || agg.isAudio))
+		if !shouldEmit {
+			continue
+		}
+		// Skip internal virtual / ACPI / touchscreen / system HID nodes
+		lowProd := strings.ToLower(agg.prodName)
+		if strings.Contains(lowProd, "touchpad") || strings.Contains(lowProd, "touch screen") ||
+			strings.Contains(lowProd, "precision") || strings.Contains(lowProd, "converted portable") ||
+			strings.Contains(lowProd, "gpio") || strings.Contains(lowProd, "i2c") ||
+			strings.Contains(lowProd, "vendor-defined") || strings.Contains(lowProd, "system control") {
+			if agg.batteryPct < 0 && !agg.isBluetooth && !agg.isRadioHint {
+				continue
+			}
+		}
+
+		label := cleanPeripheralName(agg.prodName)
+		if label == "" || isGenericHIDName(label) {
+			prefix := agg.mfgName
+			if prefix == "" {
+				prefix = knownBrand
+			}
+			switch {
+			case agg.isMouse && prefix != "":
+				label = prefix + " Mouse"
+			case agg.isMouse:
+				label = "Wireless / HID Mouse"
+			case agg.isKeyboard && prefix != "":
+				label = prefix + " Keyboard"
+			case agg.isGamepad && prefix != "":
+				label = prefix + " Gamepad"
+			case agg.isAudio && prefix != "":
+				label = prefix + " Headset"
+			case prefix != "":
+				label = prefix
+			default:
+				continue
+			}
+		} else if knownBrand != "" && !strings.Contains(strings.ToLower(label), strings.ToLower(strings.Split(knownBrand, " ")[0])) {
+			// Prefix generic receiver names like "USB Receiver" or "2.4G Receiver" with real vendor name!
+			if strings.Contains(strings.ToLower(label), "receiver") || strings.Contains(strings.ToLower(label), "dongle") || strings.Contains(strings.ToLower(label), "2.4g") {
+				label = knownBrand + " " + label
+			}
+		}
+
+		devType := classifyPeripheralType(label)
+		if devType == "other" {
+			switch {
+			case agg.isMouse:
+				devType = "mouse"
+			case agg.isKeyboard:
+				devType = "keyboard"
+			case agg.isGamepad:
+				devType = "gamepad"
+			case agg.isAudio:
+				devType = "headphones"
+			}
+		}
+
+		transport := "2.4GHz Радиоканал"
+		switch {
+		case agg.isBluetooth:
+			transport = "Bluetooth"
+		case agg.isRadioHint || knownBrand != "":
+			transport = "2.4GHz Радиоканал"
+		default:
+			transport = "USB / 2.4GHz HID"
+		}
+
+		src := agg.source
+		if src == "" {
+			src = "Win32 HID Radio Scanner"
+		}
+		seenKey := strings.ToLower(label)
+		if seen[seenKey] {
+			continue
+		}
+		seen[seenKey] = true
+
+		vidStr := ""
+		pidStr := ""
+		if agg.vid != 0 {
+			vidStr = fmt.Sprintf("%04X", agg.vid)
+			pidStr = fmt.Sprintf("%04X", agg.pid)
+		}
+		out = append(out, WirelessDeviceBattery{
+			Name:           label,
+			DeviceType:     devType,
+			BatteryPercent: agg.batteryPct,
+			Connected:      true,
+			Transport:      transport,
+			Source:         src,
+			VendorID:       vidStr,
+			ProductID:      pidStr,
+			Manufacturer:   agg.mfgName,
+			IsMouse:        agg.isMouse || devType == "mouse",
+		})
 	}
 	return out
 }
@@ -1235,5 +1456,126 @@ func (p *platformProbe) ArrangeTwoHostWindows(leftPid int, rightPid int, taskbar
 		placeHostHwndInZone(h2, "right", rc)
 	}
 	return nil
+}
+
+// ==================== 7. NATIVE WIN32 MOUSE SPEED & EFFECTIVE DPI ENGINE (LumaCore 1.5) ====================
+
+var (
+	winMouseMu        sync.Mutex
+	winSavedSensorDPI = 1600
+	winMouseSpeedCurve = [21]float64{
+		0,
+		0.03125, 0.0625, 0.125, 0.25, 0.375,
+		0.5, 0.625, 0.75, 0.875, 1.0,
+		1.25, 1.5, 1.75, 2.0, 2.25,
+		2.5, 2.75, 3.0, 3.25, 3.5,
+	}
+)
+
+const (
+	spiGetMouse             = 0x0003
+	spiSetMouse             = 0x0004
+	spiGetWheelScrollLines  = 0x0068
+	spiSetWheelScrollLines  = 0x0069
+	spiGetMouseSpeed        = 0x0070
+	spiSetMouseSpeed        = 0x0071
+	spifUpdateIniAndChange  = 0x0003
+)
+
+func (p *platformProbe) detectPrimaryMouseName() string {
+	devs := p.GetWirelessDeviceBatteries(false)
+	for _, d := range devs {
+		if d.IsMouse || d.DeviceType == "mouse" {
+			return d.Name
+		}
+	}
+	return "Системная мышь Windows (HID)"
+}
+
+func (p *platformProbe) GetMouseDPIConfig() MouseDPIConfig {
+	winMouseMu.Lock()
+	sensor := winSavedSensorDPI
+	winMouseMu.Unlock()
+
+	var spd uint32 = 10
+	_, _, _ = procProSystemParametersInfoW.Call(spiGetMouseSpeed, 0, uintptr(unsafe.Pointer(&spd)), 0)
+	if spd < 1 || spd > 20 {
+		spd = 10
+	}
+
+	var mouseParams [3]int32
+	_, _, _ = procProSystemParametersInfoW.Call(spiGetMouse, 0, uintptr(unsafe.Pointer(&mouseParams[0])), 0)
+	enhance := mouseParams[2] != 0
+
+	var scroll uint32 = 3
+	_, _, _ = procProSystemParametersInfoW.Call(spiGetWheelScrollLines, 0, uintptr(unsafe.Pointer(&scroll)), 0)
+	if scroll < 1 || scroll > 20 {
+		scroll = 3
+	}
+
+	mult := winMouseSpeedCurve[spd]
+	return MouseDPIConfig{
+		OK:                true,
+		WindowsSpeed:      int(spd),
+		SensorDPI:         sensor,
+		EffectiveDPI:      int(math.Round(float64(sensor) * mult)),
+		Multiplier:        mult,
+		EnhancePrecision:  enhance,
+		ScrollLines:       int(scroll),
+		DetectedMouseName: p.detectPrimaryMouseName(),
+		Platform:          "windows",
+	}
+}
+
+func (p *platformProbe) SetMouseDPIConfig(sensorDPI, targetEffectiveDPI, windowsSpeed int, enhancePrecision *bool, scrollLines int) (MouseDPIConfig, error) {
+	winMouseMu.Lock()
+	if sensorDPI >= 100 && sensorDPI <= 30000 {
+		winSavedSensorDPI = sensorDPI
+	}
+	sensor := winSavedSensorDPI
+	winMouseMu.Unlock()
+
+	desiredSpd := 0
+	if windowsSpeed >= 1 && windowsSpeed <= 20 {
+		desiredSpd = windowsSpeed
+	} else if targetEffectiveDPI >= 100 && targetEffectiveDPI <= 30000 {
+		wantMult := float64(targetEffectiveDPI) / float64(sensor)
+		bestSpd := 10
+		bestDiff := 9999.0
+		for s := 1; s <= 20; s++ {
+			d := math.Abs(winMouseSpeedCurve[s] - wantMult)
+			if d < bestDiff {
+				bestDiff = d
+				bestSpd = s
+			}
+		}
+		desiredSpd = bestSpd
+	}
+
+	if desiredSpd >= 1 && desiredSpd <= 20 {
+		// SPI_SETMOUSESPEED takes speed value directly as pvParam (integer cast to uintptr)
+		_, _, _ = procProSystemParametersInfoW.Call(spiSetMouseSpeed, 0, uintptr(desiredSpd), spifUpdateIniAndChange)
+	}
+
+	if enhancePrecision != nil {
+		var mouseParams [3]int32
+		_, _, _ = procProSystemParametersInfoW.Call(spiGetMouse, 0, uintptr(unsafe.Pointer(&mouseParams[0])), 0)
+		if *enhancePrecision {
+			mouseParams[0] = 6
+			mouseParams[1] = 10
+			mouseParams[2] = 1
+		} else {
+			mouseParams[0] = 0
+			mouseParams[1] = 0
+			mouseParams[2] = 0
+		}
+		_, _, _ = procProSystemParametersInfoW.Call(spiSetMouse, 0, uintptr(unsafe.Pointer(&mouseParams[0])), spifUpdateIniAndChange)
+	}
+
+	if scrollLines >= 1 && scrollLines <= 20 {
+		_, _, _ = procProSystemParametersInfoW.Call(spiSetWheelScrollLines, uintptr(scrollLines), 0, spifUpdateIniAndChange)
+	}
+
+	return p.GetMouseDPIConfig(), nil
 }
 

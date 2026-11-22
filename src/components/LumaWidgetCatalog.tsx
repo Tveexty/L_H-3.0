@@ -475,9 +475,71 @@ export const DESKTOP_WIDGET_CATALOG: WidgetCatalogDef[] = [
     defaultH: 2,
     defaultVariant: 'crystal_deck',
     defaultShape: 'chamfer',
-    summary: 'Флагманский виджет 1.3: живой статус LumaCore 1.4, LumaShield 1.4 и быстрые действия',
+    summary: 'Флагманский виджет ядра: живой статус LumaCore 1.5, LumaShield 1.5 и быстрые действия',
     variants: [
-      { id: 'crystal_deck', label: 'Кристалл Be-4', desc: 'Изумрудно-золотой HUD ядра 1.4', w: 5, h: 2, shape: 'chamfer', previewKind: 'wide' },
+      { id: 'crystal_deck', label: 'Кристалл Be-4', desc: 'Изумрудно-золотой HUD ядра', w: 5, h: 2, shape: 'chamfer', previewKind: 'wide' },
+    ],
+  },
+  {
+    type: 'luma_weather_week',
+    title: 'Погода на неделю (Арт · 7 дней)',
+    group: 'Основное',
+    category: 'weather',
+    defaultW: 6,
+    defaultH: 3,
+    defaultVariant: 'scenic_week',
+    defaultShape: 'squircle',
+    summary: 'Живые иллюстрации неба, температура сейчас и прогноз Open-Meteo на 7 дней вперёд',
+    variants: [
+      { id: 'scenic_week', label: '7 дней + Картинка неба', desc: 'Художественный фон погоды и неделя', w: 6, h: 3, shape: 'squircle', previewKind: 'wide' },
+      { id: 'scenic_card', label: 'Арт-карточка погоды', desc: 'Крупный живописный пейзаж и прогноз на 3 дня', w: 4, h: 3, shape: 'squircle', previewKind: 'square' },
+      { id: 'week_strip', label: 'Недельная лента', desc: 'Компактная полоса 7 дней 6×2', w: 6, h: 2, shape: 'squircle', previewKind: 'wide' },
+    ],
+  },
+  {
+    type: 'luma_clock_studio',
+    title: 'Часы Студия Pro (Boron)',
+    group: 'Основное',
+    category: 'clock',
+    defaultW: 5,
+    defaultH: 3,
+    defaultVariant: 'swiss_chrono',
+    defaultShape: 'squircle',
+    summary: 'Новые дизайнерские часы 1.4: швейцарский хронограф, стеклянный флип и двойной часовой пояс',
+    variants: [
+      { id: 'swiss_chrono', label: 'Швейцарский хронограф', desc: 'Прецизионный аналоговый циферблат + дата', w: 4, h: 3, shape: 'circle', previewKind: 'circle' },
+      { id: 'glass_flip_pro', label: 'Стеклянный Флип Pro', desc: 'Крупное табло с секундами и прогрессом дня', w: 5, h: 3, shape: 'squircle', previewKind: 'flip' },
+      { id: 'dual_horizon', label: 'Двойной пояс', desc: 'Местное время и UTC / мировая столица', w: 6, h: 2, shape: 'squircle', previewKind: 'wide' },
+    ],
+  },
+  {
+    type: 'luma_battery_boron',
+    title: 'Энергия Boron (ПК + Мыши/BT)',
+    group: 'Система',
+    category: 'battery',
+    defaultW: 5,
+    defaultH: 3,
+    defaultVariant: 'boron_power_hub',
+    defaultShape: 'squircle',
+    summary: 'Заряд ноутбука/ПК + все подключённые беспроводные мыши, клавиатуры и наушники (BT и 2.4GHz)',
+    variants: [
+      { id: 'boron_power_hub', label: 'Хаб питания Boron', desc: 'АКБ ПК + список беспроводных устройств', w: 5, h: 3, shape: 'squircle', previewKind: 'wide' },
+      { id: 'boron_rings', label: 'Кольца энергии', desc: 'Кольцевые шкалы ПК и мыши/гарнитуры', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
+    ],
+  },
+  {
+    type: 'luma_calendar_month',
+    title: 'Календарь и события (Месяц)',
+    group: 'Основное',
+    category: 'clock',
+    defaultW: 5,
+    defaultH: 3,
+    defaultVariant: 'month_grid',
+    defaultShape: 'squircle',
+    summary: 'Интерактивная сетка месяца с вашими событиями из Календаря Luma OS 1.4',
+    variants: [
+      { id: 'month_grid', label: 'Сетка месяца', desc: 'Дни месяца + клик открывает Календарь', w: 5, h: 3, shape: 'squircle', previewKind: 'wide' },
+      { id: 'agenda_today', label: 'Сегодня и события', desc: 'Крупная дата + ближайшие напоминания', w: 4, h: 3, shape: 'squircle', previewKind: 'square' },
     ],
   },
 ];
@@ -489,17 +551,22 @@ export function getWidgetDef(widgetType: string): WidgetCatalogDef {
 function getWidgetFamilyIcon(type: string) {
   switch (type) {
     case 'luma_clock':
+    case 'luma_clock_studio':
     case 'luma_world_clock':
       return <Clock className="w-4 h-4" />;
     case 'luma_battery':
     case 'luma_battery_pro':
+    case 'luma_battery_boron':
+    case 'luma_wireless_hub':
       return <BatteryCharging className="w-4 h-4" />;
     case 'luma_weather':
+    case 'luma_weather_week':
       return <CloudSun className="w-4 h-4" />;
     case 'luma_media':
     case 'luma_lithium_spectrum':
       return <Disc3 className="w-4 h-4" />;
     case 'luma_sys':
+    case 'luma_gpu_vram':
       return <Cpu className="w-4 h-4" />;
     case 'luma_disks':
       return <HardDrive className="w-4 h-4" />;
@@ -508,12 +575,14 @@ function getWidgetFamilyIcon(type: string) {
     case 'luma_pomodoro':
       return <Timer className="w-4 h-4" />;
     case 'luma_calendar':
+    case 'luma_calendar_month':
       return <Calendar className="w-4 h-4" />;
     case 'luma_quick':
       return <Sliders className="w-4 h-4" />;
     case 'luma_utils':
       return <LayoutGrid className="w-4 h-4" />;
     case 'luma_notes':
+    case 'luma_habit_streak':
       return <CheckSquare className="w-4 h-4" />;
     case 'luma_calc':
       return <Calculator className="w-4 h-4" />;
@@ -526,6 +595,7 @@ function getWidgetFamilyIcon(type: string) {
       return <Activity className="w-4 h-4" />;
     case 'luma_rings':
     case 'luma_ai_quick':
+    case 'luma_beryllium_pulse':
       return <Sparkles className="w-4 h-4" />;
     case 'luma_markets':
       return <TrendingUp className="w-4 h-4" />;

@@ -82,7 +82,9 @@ export type { WidgetShape };
 export type DesktopGridCols = 22 | 20;
 export type WallpaperStyle = 'dots' | 'grid' | 'matte';
 export type WallpaperTransitionMode = 'iris' | 'bloom' | 'wipe' | 'morph';
-export type LiveWallpaperId = '' | 'lithium' | 'nebula' | 'solar' | 'beryllium' | 'borealis' | 'cybergrid';
+export type LiveWallpaperId = '' | 'lithium' | 'nebula' | 'solar' | 'beryllium' | 'borealis' | 'cybergrid' | 'boron' | 'cobalt';
+
+export type WidgetBgMode = 'theme' | 'glass' | 'dark' | 'light' | 'accent' | 'transparent' | 'custom';
 
 export type DesktopSystemWinId =
   | 'apps'
@@ -96,6 +98,7 @@ export type DesktopSystemWinId =
   | 'explorer'
   | 'taskmgr'
   | 'calculator'
+  | 'calendar'
   | 'ai'
   | 'utilities'
   | 'security';
@@ -121,6 +124,11 @@ export interface DesktopWidgetInstance {
   h: number;
   shape?: WidgetShape;
   variant?: string;
+  // Luma OS 1.4 Boron: per-widget transparency, background mode, custom color & blur
+  bgMode?: WidgetBgMode;
+  bgOpacity?: number; // 0..100
+  bgCustomColor?: string; // #rrggbb
+  bgBlur?: number; // 0 | 8 | 16 | 24
 }
 
 export interface DesktopShortcut {
@@ -172,6 +180,15 @@ const DEFAULT_SHORTCUTS: DesktopShortcut[] = [
 const DESKTOP_STORAGE_KEY = 'luma_desktop_permanent_v1';
 const LEGACY_DESKTOP_KEYS = ['luma_os_1_0_4_dex_desktop_v1', 'luma_os_1_0_2b_dex_desktop_v1'];
 
+interface WeatherDailyPoint {
+  date: string;
+  dayShort: string;
+  code: number;
+  maxTemp: number;
+  minTemp: number;
+  precipProb: number;
+}
+
 interface WeatherLive {
   city: string;
   country: string;
@@ -182,6 +199,76 @@ interface WeatherLive {
   code: number;
   label: string;
   loading: boolean;
+  daily?: WeatherDailyPoint[];
+}
+
+function parseHexToRgb(hex: string): [number, number, number] {
+  const clean = (hex || '#111827').replace('#', '').trim();
+  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean.padEnd(6, '0').slice(0, 6);
+  const num = parseInt(full, 16);
+  if (Number.isNaN(num)) return [17, 24, 39];
+  return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+}
+
+function computeWidgetSurfaceStyle(
+  w: DesktopWidgetInstance,
+  isDark: boolean,
+  accentHex: string
+): React.CSSProperties {
+  const hasCustom =
+    (w.bgMode && w.bgMode !== 'theme') ||
+    typeof w.bgOpacity === 'number' ||
+    typeof w.bgBlur === 'number';
+  if (!hasCustom) return {};
+
+  const mode: WidgetBgMode = w.bgMode || 'theme';
+  const alpha = Math.max(0, Math.min(100, w.bgOpacity ?? 78)) / 100;
+  const blurPx = w.bgBlur ?? (mode === 'transparent' ? 0 : 14);
+  const style: React.CSSProperties = {
+    backdropFilter: blurPx > 0 ? `blur(${blurPx}px)` : 'none',
+    WebkitBackdropFilter: blurPx > 0 ? `blur(${blurPx}px)` : 'none',
+  };
+
+  if (mode === 'transparent') {
+    style.backgroundColor = 'rgba(0, 0, 0, 0)';
+    style.borderColor = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.14)';
+    style.boxShadow = 'none';
+    return style;
+  }
+  if (mode === 'glass') {
+    style.backgroundColor = isDark
+      ? `rgba(18, 22, 34, ${(alpha * 0.62).toFixed(2)})`
+      : `rgba(255, 255, 255, ${(alpha * 0.68).toFixed(2)})`;
+    return style;
+  }
+  if (mode === 'dark') {
+    style.backgroundColor = `rgba(9, 11, 18, ${alpha.toFixed(2)})`;
+    style.color = '#f4f4f5';
+    style.borderColor = 'rgba(255,255,255,0.14)';
+    return style;
+  }
+  if (mode === 'light') {
+    style.backgroundColor = `rgba(250, 251, 255, ${alpha.toFixed(2)})`;
+    style.color = '#18181b';
+    style.borderColor = 'rgba(24,24,27,0.16)';
+    return style;
+  }
+  if (mode === 'accent') {
+    const [r, g, b] = parseHexToRgb(accentHex || '#6366f1');
+    style.backgroundColor = `rgba(${r}, ${g}, ${b}, ${(alpha * 0.45).toFixed(2)})`;
+    style.borderColor = `rgba(${r}, ${g}, ${b}, 0.55)`;
+    return style;
+  }
+  if (mode === 'custom') {
+    const [r, g, b] = parseHexToRgb(w.bgCustomColor || '#1e1b4b');
+    style.backgroundColor = `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(2)})`;
+    return style;
+  }
+  // mode === 'theme' with custom opacity/blur
+  style.backgroundColor = isDark
+    ? `rgba(15, 18, 26, ${alpha.toFixed(2)})`
+    : `rgba(255, 255, 255, ${alpha.toFixed(2)})`;
+  return style;
 }
 
 function wmoToRu(code: number): { label: string; kind: 'sun' | 'cloud' | 'rain' | 'snow' | 'storm' } {
@@ -288,6 +375,7 @@ export interface LumaDesktopCanvasProps {
 
 export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
   isDark,
+  accentHex,
   themeBgGradient,
   designStyle,
   onSetDesignStyle,
@@ -820,17 +908,64 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
     return () => window.clearInterval(id);
   }, [showSeconds, pomoRunning]);
 
-  // Live Open-Meteo weather
+  // Global widget appearance listener (from Settings -> Оформление -> Виджеты)
+  useEffect(() => {
+    const onGlobalStyle = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as {
+        bgMode?: WidgetBgMode;
+        bgOpacity?: number;
+        bgCustomColor?: string;
+        bgBlur?: number;
+        reset?: boolean;
+      };
+      if (!detail) return;
+      setWidgets((prev) =>
+        prev.map((item) =>
+          detail.reset
+            ? { ...item, bgMode: undefined, bgOpacity: undefined, bgCustomColor: undefined, bgBlur: undefined }
+            : {
+                ...item,
+                ...(detail.bgMode !== undefined ? { bgMode: detail.bgMode } : {}),
+                ...(detail.bgOpacity !== undefined ? { bgOpacity: detail.bgOpacity } : {}),
+                ...(detail.bgCustomColor !== undefined ? { bgCustomColor: detail.bgCustomColor } : {}),
+                ...(detail.bgBlur !== undefined ? { bgBlur: detail.bgBlur } : {}),
+              }
+        )
+      );
+    };
+    window.addEventListener('luma-apply-widget-appearance', onGlobalStyle);
+    return () => window.removeEventListener('luma-apply-widget-appearance', onGlobalStyle);
+  }, []);
+
+  // Live Open-Meteo weather (current + 7-day daily forecast)
   const fetchWeatherForCoords = async (lat: number, lon: number, city: string, country: string) => {
     setWeather((w) => ({ ...w, loading: true, city, country }));
     try {
       const r = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&timezone=auto`
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=7&timezone=auto`
       );
       if (r.ok) {
         const d = await r.json();
         const cur = d.current || {};
         const dec = wmoToRu(Number(cur.weather_code ?? 1));
+        const dailyRaw = d.daily || {};
+        const times: string[] = Array.isArray(dailyRaw.time) ? dailyRaw.time : [];
+        const codes: number[] = Array.isArray(dailyRaw.weather_code) ? dailyRaw.weather_code : [];
+        const maxT: number[] = Array.isArray(dailyRaw.temperature_2m_max) ? dailyRaw.temperature_2m_max : [];
+        const minT: number[] = Array.isArray(dailyRaw.temperature_2m_min) ? dailyRaw.temperature_2m_min : [];
+        const prec: number[] = Array.isArray(dailyRaw.precipitation_probability_max) ? dailyRaw.precipitation_probability_max : [];
+        const dayNames = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+        const daily: WeatherDailyPoint[] = times.slice(0, 7).map((iso, i) => {
+          const dt = new Date(`${iso}T12:00:00`);
+          return {
+            date: iso,
+            dayShort: i === 0 ? 'Сег' : dayNames[dt.getDay()] || iso.slice(8, 10),
+            code: Number(codes[i] ?? cur.weather_code ?? 1),
+            maxTemp: Math.round(Number(maxT[i] ?? cur.temperature_2m ?? 0)),
+            minTemp: Math.round(Number(minT[i] ?? Number(cur.temperature_2m ?? 0) - 4)),
+            precipProb: Math.round(Number(prec[i] ?? 0)),
+          };
+        });
         setWeather({
           city,
           country,
@@ -841,6 +976,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           code: Number(cur.weather_code ?? 1),
           label: dec.label,
           loading: false,
+          daily,
         });
         return;
       }
@@ -2857,7 +2993,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 <div className="flex items-center gap-2 overflow-hidden">
                   {list.map((d, idx) => (
                     <span key={idx} className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 truncate">
-                      {d.name.slice(0, 10)} {d.battery_percent}%
+                      {d.name.slice(0, 10)} {d.battery_percent >= 0 ? `${d.battery_percent}%` : 'ON'}
                     </span>
                   ))}
                 </div>
@@ -2878,16 +3014,25 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
             ) : (
               <div className="grid grid-cols-2 gap-1.5 flex-1 content-center">
                 {list.map((d, idx) => {
-                  const pct = Math.max(0, Math.min(100, d.battery_percent));
+                  const hasBat = typeof d.battery_percent === 'number' && d.battery_percent >= 0;
+                  const pct = hasBat ? Math.max(0, Math.min(100, d.battery_percent)) : 0;
                   return (
                     <div key={`${d.name}_${idx}`} className={`p-1.5 rounded-xl border space-y-1 ${subBtnCls}`}>
                       <div className="flex items-center justify-between gap-1 text-[10px]">
                         <span className="font-semibold truncate">{d.name}</span>
-                        <span className={`font-mono font-bold ${pct <= 20 ? 'text-rose-400' : 'text-emerald-400'}`}>{pct}%</span>
+                        {hasBat ? (
+                          <span className={`font-mono font-bold ${pct <= 20 ? 'text-rose-400' : 'text-emerald-400'}`}>{pct}%</span>
+                        ) : (
+                          <span className="font-mono text-[9px] font-bold text-emerald-400 shrink-0">Подкл.</span>
+                        )}
                       </div>
-                      <div className="h-1 rounded-full bg-black/25 overflow-hidden">
-                        <div className={`h-full rounded-full ${pct <= 20 ? 'bg-rose-500' : 'bg-emerald-400'}`} style={{ width: `${pct}%` }} />
-                      </div>
+                      {hasBat ? (
+                        <div className="h-1 rounded-full bg-black/25 overflow-hidden">
+                          <div className={`h-full rounded-full ${pct <= 20 ? 'bg-rose-500' : 'bg-emerald-400'}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      ) : (
+                        <div className={`text-[9px] font-mono truncate ${mutedCls}`}>{d.transport}</div>
+                      )}
                     </div>
                   );
                 })}
@@ -2977,8 +3122,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         return (
           <div className="h-full flex flex-col justify-between gap-2">
             <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-              <span className="text-emerald-400 font-bold">BERYLLIUM · Be-4</span>
-              <span className="text-amber-300 font-bold">CORE 1.4</span>
+              <span className="text-indigo-400 font-bold">BORON · B-5 HUD</span>
+              <span className="text-amber-300 font-bold">CORE 1.5</span>
             </div>
             <div className="grid grid-cols-3 gap-1.5 text-center font-mono text-[10px]">
               <div className={`py-1 rounded-lg border ${subBtnCls}`}>
@@ -2991,7 +3136,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
               </div>
               <div className={`py-1 rounded-lg border ${subBtnCls}`}>
                 <div className="opacity-60 text-[8px]">SHIELD</div>
-                <div className="font-bold text-emerald-400">1.4</div>
+                <div className="font-bold text-emerald-400">1.5</div>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-1">
@@ -3009,10 +3154,520 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onTriggerEasterEgg?.(); }}
-                className="py-1 rounded-lg bg-gradient-to-r from-emerald-500/85 to-amber-400/85 text-slate-950 text-[9px] font-mono font-black cursor-pointer"
+                className="py-1 rounded-lg bg-gradient-to-r from-indigo-500 to-violet-500 text-white text-[9px] font-mono font-black cursor-pointer"
               >
-                ИГРА Be-4
+                ИГРА B-5
               </button>
+            </div>
+          </div>
+        );
+      }
+
+      /* ==================== 1.4 BORON: 7-DAY ILLUSTRATED WEATHER WIDGET ==================== */
+      case 'luma_weather_week': {
+        const wKind = wmoToRu(weather.code).kind;
+        const isNight = now.getHours() >= 21 || now.getHours() < 6;
+        const skyGradient =
+          wKind === 'storm'
+            ? 'linear-gradient(135deg, #16182c 0%, #27224d 55%, #1e293b 100%)'
+            : wKind === 'rain'
+            ? 'linear-gradient(135deg, #142840 0%, #1e4268 55%, #182b47 100%)'
+            : wKind === 'snow'
+            ? 'linear-gradient(135deg, #1e3a5f 0%, #3b6ea5 55%, #6897c8 100%)'
+            : wKind === 'sun' && !isNight
+            ? 'linear-gradient(135deg, #1d4ed8 0%, #38bdf8 55%, #f59e0b 115%)'
+            : isNight
+            ? 'linear-gradient(135deg, #0b1128 0%, #1e1b4b 55%, #312e81 100%)'
+            : 'linear-gradient(135deg, #1e3a5f 0%, #3b5b84 55%, #475569 100%)';
+
+        const fallbackDays: WeatherDailyPoint[] = ['Сег', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'].map((d, i) => ({
+          date: String(i),
+          dayShort: d,
+          code: i % 3 === 0 ? weather.code : i % 2 === 0 ? 1 : 2,
+          maxTemp: weather.temp + (i % 3) - 1,
+          minTemp: weather.temp - 5 + (i % 2),
+          precipProb: i % 3 === 1 ? 35 : 10,
+        }));
+        const days = weather.daily && weather.daily.length > 0 ? weather.daily.slice(0, 7) : fallbackDays;
+        const maxAll = Math.max(...days.map((d) => d.maxTemp), 1);
+        const minAll = Math.min(...days.map((d) => d.minTemp), 0);
+        const span = Math.max(4, maxAll - minAll);
+
+        if (variant === 'week_strip') {
+          return (
+            <div
+              className="h-full w-full -m-3.5 p-3 text-white flex flex-col justify-between relative overflow-hidden"
+              style={{ width: 'calc(100% + 1.75rem)', height: 'calc(100% + 1.75rem)', background: skyGradient }}
+            >
+              <div className="flex items-center justify-between text-[10px] font-mono relative z-10">
+                <span className="font-bold flex items-center gap-1 truncate">
+                  <MapPin className="w-3 h-3 text-amber-300 shrink-0" />
+                  {weather.city || 'Авто-регион'} · {weather.temp > 0 ? `+${weather.temp}` : weather.temp}° ({weather.label})
+                </span>
+                <span className="opacity-75">7 ДНЕЙ</span>
+              </div>
+              <div className="grid grid-cols-7 gap-1 relative z-10 mt-1">
+                {days.map((d, i) => (
+                  <div key={d.date + i} className="rounded-lg bg-black/25 backdrop-blur-sm px-1 py-1.5 flex flex-col items-center justify-between gap-0.5 text-center border border-white/10">
+                    <span className="text-[9px] font-mono opacity-80">{d.dayShort}</span>
+                    {renderWeatherIcon(d.code, 'w-3.5 h-3.5 text-amber-200')}
+                    <span className="text-[10px] font-mono font-bold">{d.maxTemp > 0 ? `+${d.maxTemp}` : d.maxTemp}°</span>
+                    <span className="text-[8px] font-mono opacity-65">{d.minTemp}°</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div
+            className="h-full w-full -m-3.5 p-3.5 text-white flex flex-col justify-between relative overflow-hidden"
+            style={{ width: 'calc(100% + 1.75rem)', height: 'calc(100% + 1.75rem)', background: skyGradient }}
+          >
+            {/* Illustrated Scenic Sky & Horizon Vector Artwork */}
+            <svg viewBox="0 0 360 170" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 w-full h-full opacity-90">
+              <defs>
+                <radialGradient id="lumaSunOrb" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor={isNight ? '#e0e7ff' : '#fef08a'} stopOpacity="0.95" />
+                  <stop offset="55%" stopColor={isNight ? '#818cf8' : '#fbbf24'} stopOpacity="0.4" />
+                  <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+                </radialGradient>
+                <linearGradient id="lumaHill1" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#0f172a" stopOpacity="0.32" />
+                  <stop offset="100%" stopColor="#020617" stopOpacity="0.72" />
+                </linearGradient>
+              </defs>
+              {/* Celestial Glow */}
+              <circle cx={isNight ? 295 : 290} cy="42" r={wKind === 'sun' ? 56 : 40} fill="url(#lumaSunOrb)" />
+              {isNight ? (
+                <>
+                  <circle cx="295" cy="42" r="14" fill="#eef2ff" opacity="0.9" />
+                  <circle cx="301" cy="39" r="12" fill="#1e1b4b" />
+                  <circle cx="190" cy="24" r="1.3" fill="#fff" opacity="0.85" />
+                  <circle cx="235" cy="18" r="1.1" fill="#fff" opacity="0.7" />
+                  <circle cx="260" cy="52" r="1.4" fill="#fff" opacity="0.65" />
+                </>
+              ) : (
+                <circle cx="290" cy="42" r={wKind === 'sun' ? 18 : 13} fill="#fde047" opacity="0.92" />
+              )}
+              {/* Layered Soft Clouds */}
+              <g fill="#ffffff" opacity={wKind === 'sun' ? 0.22 : 0.34}>
+                <ellipse cx="255" cy="58" rx="44" ry="14" />
+                <ellipse cx="282" cy="52" rx="28" ry="13" />
+                <ellipse cx="226" cy="56" rx="24" ry="10" />
+              </g>
+              {wKind === 'rain' && (
+                <g stroke="#bae6fd" strokeWidth="1.6" strokeLinecap="round" opacity="0.7">
+                  <line x1="230" y1="74" x2="222" y2="96" />
+                  <line x1="252" y1="76" x2="244" y2="98" />
+                  <line x1="274" y1="74" x2="266" y2="96" />
+                  <line x1="296" y1="78" x2="288" y2="100" />
+                </g>
+              )}
+              {wKind === 'snow' && (
+                <g fill="#ffffff" opacity="0.85">
+                  <circle cx="232" cy="82" r="2.2" />
+                  <circle cx="255" cy="92" r="1.8" />
+                  <circle cx="278" cy="79" r="2.5" />
+                  <circle cx="302" cy="94" r="2" />
+                </g>
+              )}
+              {wKind === 'storm' && (
+                <polygon points="262,64 250,88 261,88 252,110 275,81 264,81" fill="#fde047" opacity="0.9" />
+              )}
+              {/* Alpine Silhouette Mountains */}
+              <path d="M0,136 Q65,98 135,126 T275,112 T360,128 L360,170 L0,170 Z" fill="url(#lumaHill1)" />
+            </svg>
+
+            {/* Header: Live Temp + Scenic Condition */}
+            <div className="relative z-10 flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-white/85">
+                  <MapPin className="w-3 h-3 text-amber-300 shrink-0" />
+                  <span className="truncate font-bold">{weather.city || 'Авто-регион'}</span>
+                </div>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="text-3xl font-black tracking-tight leading-none drop-shadow">
+                    {weather.temp > 0 ? `+${weather.temp}` : weather.temp}°
+                  </span>
+                  <div className="text-[10px] leading-tight text-white/85">
+                    <div className="font-bold">{weather.label}</div>
+                    <div className="font-mono text-[9px] opacity-80">
+                      Ощущ. {weather.feelsLike}° · Ветер {weather.wind} км/ч
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRefreshLocation();
+                }}
+                title="Обновить погоду"
+                className="p-1.5 rounded-lg bg-black/25 hover:bg-black/45 border border-white/15 cursor-pointer"
+              >
+                <RefreshCw className={`w-3 h-3 ${weather.loading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+
+            {/* 7-Day (or 3-Day Card) Forecast Strip */}
+            <div className={`relative z-10 grid ${variant === 'scenic_card' ? 'grid-cols-3' : 'grid-cols-7'} gap-1 mt-2`}>
+              {(variant === 'scenic_card' ? days.slice(0, 3) : days).map((d, i) => {
+                const barLeft = Math.max(0, Math.min(80, ((d.minTemp - minAll) / span) * 100));
+                const barW = Math.max(18, Math.min(100 - barLeft, ((d.maxTemp - d.minTemp) / span) * 100));
+                return (
+                  <div
+                    key={d.date + i}
+                    className={`rounded-xl px-1 py-1.5 flex flex-col items-center justify-between gap-1 text-center backdrop-blur-md border ${
+                      i === 0 ? 'bg-white/20 border-white/35' : 'bg-black/25 border-white/10'
+                    }`}
+                  >
+                    <span className="text-[9px] font-mono font-bold leading-none">{d.dayShort}</span>
+                    {renderWeatherIcon(d.code, 'w-3.5 h-3.5 text-amber-200')}
+                    <div className="text-[10px] font-mono font-extrabold leading-none">
+                      {d.maxTemp > 0 ? `+${d.maxTemp}` : d.maxTemp}°
+                    </div>
+                    <div className="w-full h-1 rounded-full bg-white/15 overflow-hidden relative">
+                      <div
+                        className="absolute top-0 bottom-0 rounded-full bg-gradient-to-r from-sky-300 to-amber-300"
+                        style={{ left: `${barLeft}%`, width: `${barW}%` }}
+                      />
+                    </div>
+                    <span className="text-[8px] font-mono text-white/75 leading-none">
+                      {d.minTemp}°{d.precipProb >= 25 ? ` · ${d.precipProb}%` : ''}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
+
+      /* ==================== 1.4 BORON: STUDIO CLOCKS PRO WIDGET ==================== */
+      case 'luma_clock_studio': {
+        const hrs24 = now.getHours();
+        const hh = timeFormat === '12' ? String(hrs24 % 12 || 12).padStart(2, '0') : String(hrs24).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        const secDeg = now.getSeconds() * 6;
+        const minDeg = now.getMinutes() * 6 + now.getSeconds() * 0.1;
+        const hrDeg = (hrs24 % 12) * 30 + now.getMinutes() * 0.5;
+        const dayProgress = Math.round(((hrs24 * 60 + now.getMinutes()) / 1440) * 100);
+
+        if (variant === 'dual_horizon') {
+          const utcTime = now.toLocaleTimeString('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
+          const tokyoTime = now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' });
+          return (
+            <div className="h-full flex items-center justify-between gap-2.5">
+              <div className="flex-1 min-w-0">
+                <div className="text-[9px] font-mono uppercase tracking-[0.16em] text-[var(--luma-accent)] font-bold">МЕСТНОЕ</div>
+                <div className="text-3xl font-mono font-black tracking-tight tabular-nums leading-none mt-0.5">
+                  {hh}:{mm}
+                </div>
+                <div className={`text-[10px] mt-1 truncate ${mutedCls}`}>
+                  {now.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 shrink-0">
+                {[
+                  { tag: 'UTC', val: utcTime },
+                  { tag: 'ТОКИО', val: tokyoTime },
+                ].map((c) => (
+                  <div key={c.tag} className={`px-2.5 py-2 rounded-xl border text-center ${subBtnCls}`}>
+                    <div className={`text-[8px] font-mono uppercase ${mutedCls}`}>{c.tag}</div>
+                    <div className="text-sm font-mono font-bold tabular-nums">{c.val}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        if (variant === 'glass_flip_pro') {
+          return (
+            <div className="h-full flex flex-col justify-between gap-2">
+              <div className="flex items-center justify-between text-[10px] font-mono">
+                <span className="uppercase tracking-[0.16em] text-[var(--luma-accent)] font-bold">STUDIO FLIP PRO</span>
+                <span className={mutedCls}>{now.toLocaleDateString(locale, { weekday: 'short', day: '2-digit', month: 'short' })}</span>
+              </div>
+              <div className="flex items-center justify-center gap-2 flex-1">
+                <div className={`px-3 py-2 rounded-2xl border text-3xl sm:text-4xl font-mono font-black tabular-nums relative ${subBtnCls}`}>
+                  {hh}
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-black/25" />
+                </div>
+                <span className="text-2xl font-mono font-black text-[var(--luma-accent)] animate-pulse">:</span>
+                <div className={`px-3 py-2 rounded-2xl border text-3xl sm:text-4xl font-mono font-black tabular-nums relative ${subBtnCls}`}>
+                  {mm}
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-black/25" />
+                </div>
+                {showSeconds && (
+                  <span className="px-1.5 py-1 rounded-lg bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-mono text-xs font-bold self-end mb-1">
+                    {ss}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex justify-between text-[9px] font-mono opacity-75">
+                  <span>Прогресс дня</span>
+                  <span>{dayProgress}%</span>
+                </div>
+                <div className={`h-1 rounded-full overflow-hidden ${railTrackCls}`}>
+                  <div className="h-full rounded-full bg-[var(--luma-accent)]" style={{ width: `${dayProgress}%` }} />
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // Default: swiss_chrono
+        return (
+          <div className="h-full flex items-center justify-center gap-3">
+            <svg viewBox="0 0 120 120" className="w-28 h-28 max-h-full shrink-0">
+              <circle cx="60" cy="60" r="56" fill="none" stroke="currentColor" strokeOpacity="0.16" strokeWidth="2.2" />
+              <circle cx="60" cy="60" r="51" fill="none" stroke="var(--luma-accent)" strokeOpacity="0.28" strokeWidth="0.8" />
+              {Array.from({ length: 60 }).map((_, i) => {
+                const isMajor = i % 5 === 0;
+                const isQuad = i % 15 === 0;
+                return (
+                  <line
+                    key={i}
+                    x1="60"
+                    y1="8"
+                    x2="60"
+                    y2={isQuad ? '17' : isMajor ? '14' : '11'}
+                    stroke={isQuad ? 'var(--luma-accent)' : 'currentColor'}
+                    strokeOpacity={isMajor ? 0.88 : 0.35}
+                    strokeWidth={isQuad ? '2.4' : isMajor ? '1.6' : '0.8'}
+                    transform={`rotate(${i * 6} 60 60)`}
+                  />
+                );
+              })}
+              {/* Sub-dial date badge */}
+              <rect x="74" y="53" width="22" height="14" rx="4" fill="currentColor" fillOpacity="0.1" />
+              <text x="85" y="63" textAnchor="middle" fontSize="9" fontWeight="800" fill="currentColor" fontFamily="monospace">
+                {String(now.getDate()).padStart(2, '0')}
+              </text>
+              {/* Hands */}
+              <line x1="60" y1="60" x2="60" y2="30" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" transform={`rotate(${hrDeg} 60 60)`} />
+              <line x1="60" y1="60" x2="60" y2="20" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" transform={`rotate(${minDeg} 60 60)`} />
+              <line x1="60" y1="70" x2="60" y2="16" stroke="var(--luma-accent)" strokeWidth="1.3" strokeLinecap="round" transform={`rotate(${secDeg} 60 60)`} />
+              <circle cx="60" cy="60" r="3.4" fill="var(--luma-accent)" />
+            </svg>
+            {w.w >= 4 && w.shape !== 'circle' && (
+              <div className="min-w-0 space-y-1">
+                <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-[var(--luma-accent)] font-bold">CHRONO</div>
+                <div className="text-xl font-mono font-black tabular-nums leading-none">
+                  {hh}:{mm}
+                </div>
+                <div className={`text-[10px] capitalize ${mutedCls}`}>
+                  {now.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      /* ==================== 1.4 BORON: COMBINED BATTERY + WIRELESS MICE HUB ==================== */
+      case 'luma_battery_boron': {
+        const pcPct = liveSystem?.battery_percent ?? batteryMini.percent;
+        const pcChg = liveSystem?.battery_charging ?? batteryMini.charging;
+        const gadgets = wirelessBatteries.slice(0, 3);
+        const radius = 22;
+        const circ = 2 * Math.PI * radius;
+        const dashOffset = circ * (1 - Math.max(4, Math.min(100, pcPct)) / 100);
+
+        if (variant === 'boron_rings') {
+          return (
+            <div className="h-full flex items-center justify-around gap-2">
+              <div className="flex flex-col items-center gap-1">
+                <div className="relative w-14 h-14 flex items-center justify-center">
+                  <svg viewBox="0 0 56 56" className="w-14 h-14 -rotate-90">
+                    <circle cx="28" cy="28" r={radius} fill="none" stroke="currentColor" strokeOpacity="0.15" strokeWidth="4.5" />
+                    <circle cx="28" cy="28" r={radius} fill="none" stroke="#10b981" strokeWidth="4.5" strokeDasharray={circ} strokeDashoffset={dashOffset} strokeLinecap="round" />
+                  </svg>
+                  <span className="absolute text-xs font-mono font-black">{pcPct}%</span>
+                </div>
+                <span className={`text-[9px] font-mono ${mutedCls}`}>{pcChg ? 'Сеть' : 'АКБ ПК'}</span>
+              </div>
+              {gadgets.slice(0, 2).map((g, i) => {
+                const hasBat = g.battery_percent >= 0;
+                const gp = hasBat ? Math.max(4, Math.min(100, g.battery_percent)) : 100;
+                const goff = circ * (1 - gp / 100);
+                return (
+                  <div key={g.name + i} className="flex flex-col items-center gap-1 min-w-0 max-w-[82px]">
+                    <div className="relative w-14 h-14 flex items-center justify-center">
+                      <svg viewBox="0 0 56 56" className="w-14 h-14 -rotate-90">
+                        <circle cx="28" cy="28" r={radius} fill="none" stroke="currentColor" strokeOpacity="0.15" strokeWidth="4.5" />
+                        <circle cx="28" cy="28" r={radius} fill="none" stroke="var(--luma-accent)" strokeWidth="4.5" strokeDasharray={circ} strokeDashoffset={goff} strokeLinecap="round" />
+                      </svg>
+                      <span className="absolute text-[10px] font-mono font-black">{hasBat ? `${g.battery_percent}%` : 'ON'}</span>
+                    </div>
+                    <span className={`text-[9px] font-mono truncate max-w-full ${mutedCls}`}>{g.name}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        }
+
+        return (
+          <div className="h-full flex flex-col justify-between gap-2">
+            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
+              <span className="font-bold text-emerald-400 flex items-center gap-1">
+                <BatteryCharging className="w-3.5 h-3.5" /> ЭНЕРГИЯ BORON
+              </span>
+              <span className={mutedCls}>Здоровье {batteryMini.health}%</span>
+            </div>
+
+            <div className={`p-2 rounded-xl border flex items-center justify-between gap-2 ${subBtnCls}`}>
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold truncate">Основное устройство</div>
+                <div className={`text-[9px] font-mono ${mutedCls}`}>{pcChg ? 'Заряжается · AC' : batteryMini.statusText}</div>
+              </div>
+              <span className="text-base font-mono font-black text-emerald-400">{pcPct}%</span>
+            </div>
+
+            <div className="space-y-1 flex-1 overflow-y-auto">
+              {gadgets.length === 0 ? (
+                <div className={`text-[10px] font-mono text-center py-1 ${mutedCls}`}>
+                  Нет активных BT / 2.4GHz устройств
+                </div>
+              ) : (
+                gadgets.map((g, i) => (
+                  <div key={g.name + i} className="flex items-center justify-between gap-2 text-[10px] px-1">
+                    <span className="truncate font-medium">{g.name}</span>
+                    {g.battery_percent >= 0 ? (
+                      <span className={`font-mono font-bold shrink-0 ${g.battery_percent <= 20 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                        {g.battery_percent}%
+                      </span>
+                    ) : (
+                      <span className="font-mono text-[9px] font-bold text-emerald-400 shrink-0">Подключено</span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      /* ==================== 1.4 BORON: INTERACTIVE CALENDAR MONTH WIDGET ==================== */
+      case 'luma_calendar_month': {
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        const todayD = now.getDate();
+        const daysInMonth = new Date(y, m + 1, 0).getDate();
+        const firstDayIdx = (new Date(y, m, 1).getDay() + 6) % 7;
+        const monthLabel = now.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+        let savedEvents: { id: string; date: string; title: string; time: string; color: string }[] = [];
+        try {
+          const raw = localStorage.getItem('luma_calendar_events_v1');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) savedEvents = parsed;
+          }
+        } catch {
+          /* ignore */
+        }
+        const mmStr = String(m + 1).padStart(2, '0');
+        const todayIso = `${y}-${mmStr}-${String(todayD).padStart(2, '0')}`;
+        const eventDaySet = new Set(savedEvents.filter((e) => e.date.startsWith(`${y}-${mmStr}-`)).map((e) => Number(e.date.slice(8, 10))));
+
+        if (variant === 'agenda_today') {
+          const upcoming = savedEvents.filter((e) => e.date >= todayIso).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3);
+          return (
+            <div className="h-full flex flex-col justify-between gap-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[9px] font-mono uppercase tracking-[0.16em] text-[var(--luma-accent)] font-bold">
+                    {now.toLocaleDateString(locale, { weekday: 'long' })}
+                  </div>
+                  <div className="text-2xl font-black leading-tight">
+                    {todayD} {now.toLocaleDateString(locale, { month: 'short' })}
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenSystemWindow('calendar');
+                  }}
+                  className="px-2 py-1 rounded-lg bg-[var(--luma-accent)] text-white text-[10px] font-bold cursor-pointer"
+                >
+                  Открыть
+                </button>
+              </div>
+              <div className="space-y-1 flex-1 overflow-y-auto">
+                {upcoming.length === 0 ? (
+                  <div className={`text-[10px] ${mutedCls}`}>Нет запланированных событий</div>
+                ) : (
+                  upcoming.map((ev) => (
+                    <div key={ev.id} className={`px-2 py-1 rounded-lg border text-[10px] flex items-center justify-between gap-1 ${subBtnCls}`}>
+                      <span className="truncate font-semibold">{ev.title}</span>
+                      <span className="font-mono text-[9px] opacity-70 shrink-0">{ev.date.slice(5)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        }
+
+        const cells: (number | null)[] = [];
+        for (let i = 0; i < firstDayIdx; i++) cells.push(null);
+        for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+        return (
+          <div className="h-full flex flex-col justify-between gap-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold capitalize truncate">{monthLabel}</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenSystemWindow('calendar');
+                }}
+                className="px-2 py-0.5 rounded-lg bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] text-[9px] font-mono font-bold cursor-pointer"
+              >
+                Календарь ↗
+              </button>
+            </div>
+            <div className="grid grid-cols-7 gap-0.5 text-center text-[8px] font-mono opacity-60">
+              {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((dn) => (
+                <div key={dn}>{dn}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-0.5 flex-1 text-center text-[9px] font-mono">
+              {cells.slice(0, 35).map((dayNum, idx) => {
+                if (!dayNum) return <div key={`e_${idx}`} />;
+                const isToday = dayNum === todayD;
+                const hasEv = eventDaySet.has(dayNum);
+                return (
+                  <button
+                    key={dayNum}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenSystemWindow('calendar');
+                    }}
+                    className={`rounded-md flex flex-col items-center justify-center relative cursor-pointer transition ${
+                      isToday
+                        ? 'bg-[var(--luma-accent)] text-white font-black'
+                        : 'hover:bg-white/10'
+                    }`}
+                  >
+                    <span>{dayNum}</span>
+                    {hasEv && (
+                      <span
+                        className={`w-1 h-1 rounded-full absolute bottom-0.5 ${
+                          isToday ? 'bg-white' : 'bg-amber-400'
+                        }`}
+                      />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         );
@@ -3285,6 +3940,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 gridColumn: `${clampedCol} / span ${Math.min(w.w, gridCols)}`,
                 gridRow: `${clampedRow} / span ${Math.min(w.h, totalRows)}`,
                 zIndex: isResizing ? 28 : isSelected ? 15 : 5,
+                ...computeWidgetSurfaceStyle(w, isDark, accentHex),
               }}
               title={editMode ? `${w.title} (${w.w}×${w.h})` : `${w.title} · Нажмите для настроек виджета`}
               className={`group relative border ${w.shape === 'circle' ? 'p-2.5' : 'p-3.5'} ${shapeCls} luma-card-lift ${cardCls} ${
@@ -5268,10 +5924,13 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         if (!w) return null;
         const def = getWidgetDef(w.widgetType);
         const sysJump: { label: string; run: () => void } | null = (() => {
-          if (w.widgetType === 'luma_clock' || w.widgetType === 'luma_world_clock' || w.widgetType === 'luma_calendar') {
+          if (w.widgetType === 'luma_calendar_month') {
+            return { label: 'Открыть приложение «Календарь»', run: () => onOpenSystemWindow('calendar') };
+          }
+          if (w.widgetType === 'luma_clock' || w.widgetType === 'luma_clock_studio' || w.widgetType === 'luma_world_clock' || w.widgetType === 'luma_calendar') {
             return { label: 'Настройки часов и оформления', run: () => (onOpenSettingsTab ? onOpenSettingsTab('appearance') : onOpenSystemWindow('settings')) };
           }
-          if (w.widgetType === 'luma_battery' || w.widgetType === 'luma_battery_pro' || w.widgetType === 'luma_power' || w.widgetType === 'luma_wireless_hub') {
+          if (w.widgetType === 'luma_battery' || w.widgetType === 'luma_battery_pro' || w.widgetType === 'luma_battery_boron' || w.widgetType === 'luma_power' || w.widgetType === 'luma_wireless_hub') {
             return { label: 'Открыть «Питание и Батарея»', run: () => (onOpenSettingsTab ? onOpenSettingsTab('power_battery') : onOpenSystemWindow('settings')) };
           }
           if (w.widgetType === 'luma_sys' || w.widgetType === 'luma_gpu_vram' || w.widgetType === 'luma_net') {
@@ -5281,7 +5940,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
             return { label: 'Открыть «Память и Файлы»', run: () => (onOpenSettingsTab ? onOpenSettingsTab('storage') : onOpenSystemWindow('explorer')) };
           }
           if (w.widgetType === 'luma_guard') {
-            return { label: 'Открыть LumaShield 1.4', run: () => (onOpenSettingsTab ? onOpenSettingsTab('security') : onOpenSystemWindow('settings')) };
+            return { label: 'Открыть LumaShield 1.5', run: () => (onOpenSettingsTab ? onOpenSettingsTab('security') : onOpenSystemWindow('settings')) };
           }
           if (w.widgetType === 'luma_wellbeing' || w.widgetType === 'luma_screentime') {
             return { label: 'Открыть Трекер сессий 2.0', run: () => onOpenSystemWindow('tracker') };
@@ -5290,10 +5949,24 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
             return { label: 'Открыть Luma AI', run: () => onOpenSystemWindow('ai') };
           }
           if (w.widgetType === 'luma_beryllium_pulse') {
-            return { label: 'Открыть «Ядро UI 1.3 Beryllium»', run: () => (onOpenSettingsTab ? onOpenSettingsTab('kernel_ui') : onOpenSystemWindow('settings')) };
+            return { label: 'Открыть «Ядро UI 1.4 Boron»', run: () => (onOpenSettingsTab ? onOpenSettingsTab('kernel_ui') : onOpenSystemWindow('settings')) };
           }
           return { label: 'Системные настройки Luma OS', run: () => onOpenSystemWindow('settings') };
         })();
+
+        const bgModes: { id: WidgetBgMode; label: string }[] = [
+          { id: 'theme', label: 'Тема' },
+          { id: 'glass', label: 'Стекло' },
+          { id: 'dark', label: 'Тёмный' },
+          { id: 'light', label: 'Светлый' },
+          { id: 'accent', label: 'Акцент' },
+          { id: 'transparent', label: 'Прозрачный' },
+          { id: 'custom', label: 'Свой цвет' },
+        ];
+        const curBgMode: WidgetBgMode = w.bgMode || 'theme';
+        const curOpacity = w.bgOpacity ?? 78;
+        const curBlur = w.bgBlur ?? 14;
+        const curColor = w.bgCustomColor || '#1e1b4b';
 
         return (
           <div
@@ -5302,7 +5975,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           >
             <div
               onClick={(e) => e.stopPropagation()}
-              className={`luma-animate-in w-full max-w-lg border p-5 shadow-2xl space-y-4 ${modalShellCls}`}
+              className={`luma-animate-in w-full max-w-lg max-h-[88vh] overflow-y-auto border p-5 shadow-2xl space-y-4 ${modalShellCls}`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -5348,6 +6021,128 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                   </div>
                 </div>
               )}
+
+              {/* Luma OS 1.4 Boron: Per-Widget Transparency, Background & Blur */}
+              <div className={`p-3.5 rounded-2xl border space-y-3 ${subBtnCls}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--luma-accent)] font-bold">
+                    Фон и прозрачность виджета (1.4 Boron)
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        setWidgets((prev) =>
+                          prev.map((item) => ({
+                            ...item,
+                            bgMode: curBgMode,
+                            bgOpacity: curOpacity,
+                            bgCustomColor: curColor,
+                            bgBlur: curBlur,
+                          }))
+                        );
+                        onPushToast('Виджеты', 'Фон и прозрачность применены ко всем виджетам', 'success');
+                      }}
+                      className="px-2 py-0.5 rounded-md bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] text-[10px] font-bold cursor-pointer"
+                    >
+                      Ко всем
+                    </button>
+                    <button
+                      onClick={() =>
+                        updateWidgetProps(w.id, {
+                          bgMode: undefined,
+                          bgOpacity: undefined,
+                          bgCustomColor: undefined,
+                          bgBlur: undefined,
+                        })
+                      }
+                      className={`px-2 py-0.5 rounded-md border text-[10px] font-semibold cursor-pointer ${subBtnCls}`}
+                    >
+                      Сброс
+                    </button>
+                  </div>
+                </div>
+
+                {/* Background Preset Mode */}
+                <div className="flex flex-wrap gap-1.5">
+                  {bgModes.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() =>
+                        updateWidgetProps(w.id, {
+                          bgMode: m.id,
+                          bgOpacity: m.id === 'transparent' ? 0 : w.bgOpacity ?? 78,
+                          bgBlur: m.id === 'transparent' ? 0 : w.bgBlur ?? 14,
+                        })
+                      }
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold cursor-pointer ${
+                        curBgMode === m.id
+                          ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                          : subBtnCls
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom Color Picker */}
+                {curBgMode === 'custom' && (
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className={mutedCls}>Цвет подложки:</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={curColor}
+                        onChange={(e) => updateWidgetProps(w.id, { bgMode: 'custom', bgCustomColor: e.target.value })}
+                        className="w-8 h-7 rounded border-0 bg-transparent cursor-pointer"
+                      />
+                      <span className="font-mono text-[11px] uppercase">{curColor}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Opacity Slider 0–100% */}
+                <div className="space-y-1 text-xs">
+                  <div className="flex items-center justify-between font-mono text-[11px]">
+                    <span className={mutedCls}>Непрозрачность фона</span>
+                    <span className="font-bold text-[var(--luma-accent)]">{curOpacity}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={2}
+                    value={curOpacity}
+                    onChange={(e) =>
+                      updateWidgetProps(w.id, {
+                        bgMode: curBgMode === 'transparent' && Number(e.target.value) > 0 ? 'glass' : curBgMode,
+                        bgOpacity: Number(e.target.value),
+                      })
+                    }
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Backdrop Blur Selector */}
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className={`text-[11px] font-mono ${mutedCls}`}>Размытие стекла (Blur)</span>
+                  <div className="flex items-center gap-1">
+                    {[0, 8, 16, 24].map((b) => (
+                      <button
+                        key={b}
+                        onClick={() => updateWidgetProps(w.id, { bgBlur: b })}
+                        className={`px-2 py-0.5 rounded-md border text-[10px] font-mono font-bold cursor-pointer ${
+                          curBlur === b
+                            ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                            : subBtnCls
+                        }`}
+                      >
+                        {b}px
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
               {/* Shape Selector */}
               <div className="space-y-1.5">

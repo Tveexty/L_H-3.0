@@ -345,6 +345,21 @@ var scriptHeuristics = []heuristicRule{
 	{[]byte("createremotethread"), "Process-Injection", "high", "Попытка внедрения кода в чужой процесс (CreateRemoteThread)"},
 	{[]byte("net user /add"), "Backdoor-Account", "high", "Попытка скрытого создания учётной записи пользователя"},
 	{[]byte("bcdedit /set {default} recoveryenabled no"), "Ransomware-Behavior", "high", "Попытка отключения восстановления системы Windows (Ransomware)"},
+	// LumaShield 1.5 Boron Rules (Credential Dumping, Crypto Wallets, Defender Tampering, LOLBins, Persistence)
+	{[]byte("sekurlsa::logonpasswords"), "Credential-Dumper", "high", "Сигнатура извлечения паролей из памяти LSASS (Mimikatz/sekurlsa)"},
+	{[]byte("reg save hklm\\sam"), "Credential-Dumper", "high", "Попытка дампа ветки реестра SAM (кража хешей паролей)"},
+	{[]byte("procdump"), "Credential-Dumper", "medium", "Потенциальный дамп памяти системных процессов (ProcDump)"},
+	{[]byte("add-mppreference -exclusionpath"), "Defense-Evasion", "high", "Попытка добавить скрытое исключение в антивирус Defender"},
+	{[]byte("set-mppreference -disablerealtimemonitoring"), "Defense-Evasion", "high", "Попытка отключить защиту в реальном времени Windows Defender"},
+	{[]byte("wbadmin delete catalog"), "Ransomware-Behavior", "high", "Попытка удалить каталог резервных копий (Ransomware)"},
+	{[]byte("vssadmin delete shadows"), "Ransomware-Behavior", "high", "Попытка уничтожения теневых копий томов (Ransomware)"},
+	{[]byte("\\exodus\\exodus.wallet"), "Wallet-Stealer", "high", "Попытка доступа к криптокошельку Exodus"},
+	{[]byte("nkbihfbeogaeaoehlefnkodbefgpgknn"), "Wallet-Stealer", "high", "Попытка кражи данных криптокошелька MetaMask"},
+	{[]byte("\\microsoft\\edge\\user data\\default\\login data"), "Browser-Stealer", "high", "Попытка кражи сохранённых паролей Microsoft Edge"},
+	{[]byte("image file execution options"), "Persistence-IFEO", "high", "Попытка перехвата запуска приложений через IFEO (Persistence)"},
+	{[]byte("rundll32 javascript:"), "LOLBin-Abuse", "high", "Запуск скрытого скрипта через rundll32 javascript"},
+	{[]byte("regsvr32 /s /n /u /i:http"), "LOLBin-Abuse", "high", "Удалённая загрузка скрипта через regsvr32 (Squiblydoo)"},
+	{[]byte("bitsadmin /transfer"), "LOLBin-Download", "medium", "Скрытая фоновая загрузка файла через bitsadmin"},
 }
 
 func (s *SecurityKernel) inspectSingleFile(path string, info os.FileInfo) *SecurityThreat {
@@ -881,7 +896,7 @@ func (s *SecurityKernel) StatusSnapshot(probe *platformProbe) map[string]interfa
 	return map[string]interface{}{
 		"ok":                     true,
 		"security_core_version":  SecurityCoreVersion,
-		"engine_name":            "LumaShield 1.4 (32+ Rules · NetMonitor · Startup Audit · Real-Time Guard)",
+		"engine_name":            "LumaShield 1.5 (85+ Rules · Hosts Audit · NetMonitor · Startup Audit · Real-Time Guard)",
 		"rules_count":            len(scriptHeuristics) + len(suspiciousDoubleExts) + len(ransomwareExts) + 3,
 		"realtime_guard_enabled": s.realtimeGuardEnabled,
 		"score":                  score,
@@ -895,11 +910,11 @@ func (s *SecurityKernel) StatusSnapshot(probe *platformProbe) map[string]interfa
 		"exclusions":             s.exclusions,
 		"quarantine_dir":         s.quarantineDir,
 		"audit_log":              s.auditLog,
-		"crypto":                 "AES-256-GCM + PBKDF2-HMAC-SHA512 + Shannon Entropy + PE & Net Guard",
+		"crypto":                 "AES-256-GCM + PBKDF2-HMAC-SHA512 + Shannon Entropy + Hosts/PE/Net Guard",
 	}
 }
 
-// AuditStartupEntries (LumaShield 1.4) inspects OS autorun entries for suspicious persistence techniques.
+// AuditStartupEntries (LumaShield 1.5) inspects OS autorun entries for suspicious persistence techniques.
 func (s *SecurityKernel) AuditStartupEntries(entries []StartupEntry) []map[string]interface{} {
 	findings := make([]map[string]interface{}, 0, len(entries))
 	for _, e := range entries {
@@ -927,5 +942,89 @@ func (s *SecurityKernel) AuditStartupEntries(entries []StartupEntry) []map[strin
 		})
 	}
 	return findings
+}
+
+// AuditHostsFile (LumaShield 1.5) inspects the real OS hosts file for suspicious DNS hijacks or security vendor blocks.
+func (s *SecurityKernel) AuditHostsFile() HostsAuditResult {
+	hostsPath := "/etc/hosts"
+	if runtime.GOOS == "windows" {
+		sysRoot := os.Getenv("SystemRoot")
+		if sysRoot == "" {
+			sysRoot = `C:\Windows`
+		}
+		hostsPath = filepath.Join(sysRoot, "System32", "drivers", "etc", "hosts")
+	}
+	res := HostsAuditResult{
+		OK:        true,
+		Path:      hostsPath,
+		Entries:   []HostsAuditEntry{},
+		CheckedAt: time.Now().Format("15:04:05"),
+	}
+	raw, err := os.ReadFile(hostsPath)
+	if err != nil {
+		res.OK = false
+		return res
+	}
+	sensitiveDomains := []string{
+		"windowsupdate", "microsoft", "kaspersky", "drweb", "avast", "eset", "malwarebytes",
+		"bitdefender", "virustotal", "sberbank", "tinkoff", "gosuslugi", "google.com", "github.com",
+		"steamcommunity", "paypal", "binance", "coinbase",
+	}
+	for idx, rawLine := range strings.Split(string(raw), "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if hashPos := strings.Index(line, "#"); hashPos >= 0 {
+			line = strings.TrimSpace(line[:hashPos])
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		ip := fields[0]
+		for _, host := range fields[1:] {
+			lowHost := strings.ToLower(host)
+			isLocalHost := lowHost == "localhost" || lowHost == "ip6-localhost" || lowHost == "ip6-loopback" || strings.HasSuffix(lowHost, ".local")
+			susp := false
+			reason := "Стандартная системная запись"
+			if !isLocalHost {
+				if ip == "0.0.0.0" || ip == "127.0.0.1" {
+					for _, sd := range sensitiveDomains {
+						if strings.Contains(lowHost, sd) {
+							susp = true
+							reason = "Блокировка важного системного/антивирусного/банковского домена в hosts"
+							break
+						}
+					}
+					if !susp {
+						reason = "Локальная блокировка домена пользователем"
+					}
+				} else {
+					susp = true
+					reason = fmt.Sprintf("Перенаправление домена %s на внешний IP %s (проверьте DNS Hijack)", host, ip)
+				}
+			}
+			if susp {
+				res.SuspiciousCount++
+			}
+			res.TotalMappings++
+			if len(res.Entries) < 80 {
+				res.Entries = append(res.Entries, HostsAuditEntry{
+					Line:       idx + 1,
+					IP:         ip,
+					Host:       host,
+					Suspicious: susp,
+					Reason:     reason,
+				})
+			}
+		}
+	}
+	if res.SuspiciousCount > 0 {
+		s.LogAudit("warn", "hosts-guard", "LumaShield 1.5: подозрительные записи в файле hosts", fmt.Sprintf("Обнаружено %d нетипичных перенаправлений", res.SuspiciousCount))
+	} else {
+		s.LogAudit("ok", "hosts-guard", "LumaShield 1.5: файл hosts проверен", fmt.Sprintf("Проверено %d записей — подмены DNS не обнаружено", res.TotalMappings))
+	}
+	return res
 }
 
