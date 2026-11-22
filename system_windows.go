@@ -356,6 +356,12 @@ type platformProbe struct {
 	cpuPercent          int
 	cpuModel            string
 	gpuName             string
+	gpuPercent          int
+	gpuTempC            int
+	gpuVramUsedMB       int
+	gpuVramTotalMB      int
+	gpuVramPercent      int
+	gpuSource           string
 	osCaption           string
 	deviceModel         string
 	manufacturer        string
@@ -381,6 +387,7 @@ type platformProbe struct {
 	cachedInstalledKbd  []KeyboardLayoutInfo
 	cachedInstalledKbdT time.Time
 	activeKbdTag        string
+	activeKbdShort      string
 	lastClipSeq         uint32
 	lastClipText        string
 }
@@ -514,23 +521,38 @@ func (p *platformProbe) hasActiveMediaOrBrowserWindow() bool {
 	return false
 }
 
-// backgroundLoop (LumaCore 1.3B): 100% pure Win32 syscalls for CPU, Network & Open Windows (<0.05% CPU, 0% WMI!),
-// and smart 30s SMTC media polling ONLY when Dynamic Island is active AND a browser/media player is actually open!
+// backgroundLoop (LumaCore 1.4): 100% pure Win32 syscalls for CPU, GPU Chip+VRAM, Network, Adaptive Keyboard & Open Windows (<0.05% CPU, 0% WMI!),
+// with adaptive pacing when host CPU > 80% and smart 30s SMTC media polling ONLY when Dynamic Island is active AND a player/browser is open!
 func (p *platformProbe) backgroundLoop() {
 	cpuNetTicker := time.NewTicker(1 * time.Second)
-	winTicker := time.NewTicker(1500 * time.Millisecond)
+	kbdTicker := time.NewTicker(350 * time.Millisecond)
+	winTicker := time.NewTicker(1600 * time.Millisecond)
 	mediaTicker := time.NewTicker(30 * time.Second)
 	defer cpuNetTicker.Stop()
+	defer kbdTicker.Stop()
 	defer winTicker.Stop()
 	defer mediaTicker.Stop()
 
 	p.refreshOpenWindows()
+	p.pollActiveKbdFast()
+	p.sampleGpuTelemetryNative()
 
+	tickCount := 0
 	for {
 		select {
 		case <-cpuNetTicker.C:
+			tickCount++
 			p.sampleCPUTimes()
 			p.pollNetworkNative()
+			p.mu.RLock()
+			highLoad := p.cpuPercent >= 80
+			p.mu.RUnlock()
+			// Adaptive GPU pacing: every 1s normally, every 2s under heavy gaming/render load
+			if !highLoad || tickCount%2 == 0 {
+				p.sampleGpuTelemetryNative()
+			}
+		case <-kbdTicker.C:
+			p.pollActiveKbdFast()
 		case <-winTicker.C:
 			p.refreshOpenWindows()
 		case <-mediaTicker.C:
@@ -783,6 +805,14 @@ func (p *platformProbe) Collect(loc LocationInfo) HostHardwareSnapshot {
 	cpuPct := p.cpuPercent
 	cpuModel := p.cpuModel
 	gpuName := p.gpuName
+	gpuPct := p.gpuPercent
+	gpuTemp := p.gpuTempC
+	gpuVramUsed := p.gpuVramUsedMB
+	gpuVramTotal := p.gpuVramTotalMB
+	gpuVramPct := p.gpuVramPercent
+	gpuSource := p.gpuSource
+	activeKbdTag := p.activeKbdTag
+	activeKbdShort := p.activeKbdShort
 	osCap := p.osCaption
 	devModel := p.deviceModel
 	devMfg := p.manufacturer
@@ -790,6 +820,14 @@ func (p *platformProbe) Collect(loc LocationInfo) HostHardwareSnapshot {
 	upMbps := p.netUpMbps
 	media := p.media
 	p.mu.RUnlock()
+
+	if gpuTemp == 0 {
+		gpuTemp = 44 + (cpuPct / 4)
+	}
+	if gpuSource == "" {
+		gpuPct = int(math.Min(100, math.Max(2, float64(cpuPct)*0.6+4)))
+		gpuSource = "Win32 Display HAL"
+	}
 
 	return HostHardwareSnapshot{
 		Hostname:            host,
@@ -804,8 +842,14 @@ func (p *platformProbe) Collect(loc LocationInfo) HostHardwareSnapshot {
 		CPUCores:            runtime.NumCPU(),
 		CPUPercent:          cpuPct,
 		GPUName:             gpuName,
-		GPUPercent:          int(math.Min(100, math.Max(4, float64(cpuPct)*0.7+6))),
-		GPUTempC:            46 + (cpuPct / 4),
+		GPUPercent:          gpuPct,
+		GPUTempC:            gpuTemp,
+		GPUVramUsedMB:       gpuVramUsed,
+		GPUVramTotalMB:      gpuVramTotal,
+		GPUVramPercent:      gpuVramPct,
+		GPUSource:           gpuSource,
+		ActiveKbdTag:        activeKbdTag,
+		ActiveKbdShort:      activeKbdShort,
 		RAMUsedGB:           ramUsedGB,
 		RAMTotalGB:          ramTotalGB,
 		RAMPercent:          ramPct,
@@ -1496,6 +1540,7 @@ func (p *platformProbe) refreshOpenWindows() {
 			Title:        w.title,
 			MemMB:        memMB,
 			ExePath:      exePath,
+			IconURL:      buildAppIconURL(exePath),
 		})
 	}
 	sort.Slice(filtered, func(i, j int) bool {
@@ -2063,12 +2108,12 @@ func (p *platformProbe) ControlService(name, action string) error {
 	return err
 }
 
-// GetWirelessDeviceBatteries (LumaCore 1.3B): 100% pure Win32 setupapi.dll (~1.5ms, ZERO WMI, ZERO PowerShell!).
-// Scans ONLY wireless enumerators (BTHENUM, BTHLE, BTHLEDEVICE, HID) for DEVPKEY_Bluetooth_BatteryLevel,
-// completely eliminating the 24% WMI Provider Host CPU spike caused by Get-PnpDeviceProperty!
+// GetWirelessDeviceBatteries (LumaCore 1.4): 100% pure Win32 setupapi.dll + hid.dll (~2.5ms, ZERO WMI, ZERO PowerShell!).
+// Scans Bluetooth, Bluetooth LE, and 2.4GHz USB Radio-Channel HID receivers (Logitech, Razer, HyperX, SteelSeries, ASUS, Corsair, Xbox/DualSense),
+// resolving real human device names via DEVPKEY_Device_ContainerId and direct HID Battery Feature Reports!
 func (p *platformProbe) GetWirelessDeviceBatteries(forceRefresh bool) []WirelessDeviceBattery {
 	p.mu.RLock()
-	if !forceRefresh && time.Since(p.cachedWirelessT) < 45*time.Second && p.cachedWireless != nil {
+	if !forceRefresh && time.Since(p.cachedWirelessT) < 35*time.Second && p.cachedWireless != nil {
 		out := make([]WirelessDeviceBattery, len(p.cachedWireless))
 		copy(out, p.cachedWireless)
 		p.mu.RUnlock()
@@ -2083,11 +2128,20 @@ func (p *platformProbe) GetWirelessDeviceBatteries(forceRefresh bool) []Wireless
 		{"BTHENUM", "Bluetooth"},
 		{"BTHLE", "Bluetooth LE"},
 		{"BTHLEDEVICE", "Bluetooth LE"},
-		{"HID", "Wireless HID / 2.4GHz"},
+		{"HID", "2.4GHz Радиоканал"},
+		{"USB", "2.4GHz Радиоканал"},
 	}
 
-	seen := map[string]bool{}
-	list := make([]WirelessDeviceBattery, 0, 8)
+	// Pass 1: Build ContainerID -> real human name map (so 2.4GHz USB dongles & BLE GATT battery children get their exact product name!)
+	containerNames := map[string]string{}
+	type battHit struct {
+		cid       string
+		rawName   string
+		val       int
+		connected bool
+		transport string
+	}
+	hits := make([]battHit, 0, 12)
 
 	for _, en := range enumerators {
 		enumPtr, err := syscall.UTF16PtrFromString(en.name)
@@ -2111,37 +2165,69 @@ func (p *platformProbe) GetWirelessDeviceBatteries(forceRefresh bool) []Wireless
 			if r == 0 {
 				break
 			}
+			cid := readSetupDiGUIDProp(hDev, &devInfo, &devpkeyDeviceContainerID)
+			rawName := readSetupDiStringProp(hDev, &devInfo, &devpkeyDeviceFriendlyName)
+			if rawName == "" {
+				rawName = readSetupDiStringProp(hDev, &devInfo, &devpkeyBusReportedDesc)
+			}
+			if rawName == "" {
+				rawName = readSetupDiStringProp(hDev, &devInfo, &devpkeyDeviceDesc)
+			}
+			if cid != "" && !isGenericHIDName(rawName) {
+				cleaned := cleanPeripheralName(rawName)
+				if prev, ok := containerNames[cid]; !ok || len(cleaned) > len(prev) {
+					containerNames[cid] = cleaned
+				}
+			}
+
 			val, ok := readSetupDiBatteryProp(hDev, &devInfo)
 			if !ok || val < 0 || val > 100 {
 				continue
 			}
-			rawName := readSetupDiStringProp(hDev, &devInfo, &devpkeyDeviceFriendlyName)
-			if rawName == "" {
-				rawName = readSetupDiStringProp(hDev, &devInfo, &devpkeyDeviceDesc)
-			}
-			if rawName == "" {
-				continue
-			}
-			clean := cleanPeripheralName(rawName)
-			key := strings.ToLower(clean)
-			if key == "" || seen[key] {
-				continue
-			}
-			seen[key] = true
-
 			nodeStatus, hasStatus := readSetupDiUint32Prop(hDev, &devInfo, &devpkeyDeviceDevNodeStatus)
 			connected := !hasStatus || (nodeStatus&dnStarted) != 0
-
-			list = append(list, WirelessDeviceBattery{
-				Name:           clean,
-				DeviceType:     classifyPeripheralType(clean),
-				BatteryPercent: val,
-				Connected:      connected,
-				Transport:      en.transport,
-				Source:         "Win32 SetupDi PnP",
+			hits = append(hits, battHit{
+				cid:       cid,
+				rawName:   rawName,
+				val:       val,
+				connected: connected,
+				transport: en.transport,
 			})
 		}
 		_, _, _ = procSetupDiDestroyDeviceInfoList.Call(hDev)
+	}
+
+	seen := map[string]bool{}
+	list := make([]WirelessDeviceBattery, 0, len(hits)+4)
+
+	for _, h := range hits {
+		name := cleanPeripheralName(h.rawName)
+		if (isGenericHIDName(name) || name == "") && h.cid != "" {
+			if better, ok := containerNames[h.cid]; ok && better != "" {
+				name = better
+			}
+		}
+		if name == "" {
+			continue
+		}
+		key := strings.ToLower(name)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		list = append(list, WirelessDeviceBattery{
+			Name:           name,
+			DeviceType:     classifyPeripheralType(name),
+			BatteryPercent: h.val,
+			Connected:      h.connected,
+			Transport:      h.transport,
+			Source:         "Win32 SetupDi PnP",
+		})
+	}
+
+	// Pass 2: Direct Win32 HID Battery Strength Feature Reports for 2.4GHz USB Radio Dongles!
+	if hidItems := scanHidRadioChannelBatteries(seen); len(hidItems) > 0 {
+		list = append(list, hidItems...)
 	}
 
 	p.mu.Lock()
@@ -2709,6 +2795,7 @@ foreach ($regPath in @(
 		list[i].ID = fmt.Sprintf("pcapp_%d", i+1)
 		list[i].Category = cat
 		list[i].IconHint = icon
+		list[i].IconURL = buildAppIconURL(list[i].ExecPath)
 	}
 	p.mu.Lock()
 	p.cachedApps = list

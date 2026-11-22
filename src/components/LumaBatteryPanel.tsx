@@ -4,14 +4,27 @@ import {
   BatteryCharging,
   Clock,
   Cpu,
+  Gamepad2,
+  Headphones,
   HeartPulse,
+  Keyboard,
   Laptop,
+  Leaf,
+  Lock,
   Monitor,
+  Mouse,
+  Pin,
+  PinOff,
+  Power,
+  Radio,
   RefreshCw,
   Repeat,
+  RotateCcw,
+  Sun,
   Zap,
 } from 'lucide-react';
 import { LumaLangCode, tr } from '../i18n/translations';
+import { WirelessBatteryInfo } from '../data/launcherData';
 
 interface BatteryDetails {
   present: boolean;
@@ -53,11 +66,23 @@ interface BatteryReportResponse {
   screen_time_7d: ScreenTimeDay[];
 }
 
-interface LumaBatteryPanelProps {
+export interface LumaBatteryPanelProps {
   isDark: boolean;
   lang: LumaLangCode;
-  activePowerPlan?: string;
+  activePowerPlan?: 'balanced' | 'performance' | 'saver';
   onSelectPowerPlan?: (plan: 'balanced' | 'performance' | 'saver') => void;
+  // Unified Power Settings (merged from PowerSaverPanel into one «Питание и Батарея» tab!)
+  screenBrightness?: number;
+  onChangeScreenBrightness?: (val: number) => void;
+  autoSaverThreshold?: number;
+  onChangeAutoSaverThreshold?: (val: number) => void;
+  reduceEffectsOnSaver?: boolean;
+  onToggleReduceEffectsOnSaver?: () => void;
+  onPowerAction?: (action: 'lock' | 'sleep' | 'reboot' | 'shutdown' | 'recycle_bin') => void;
+  // Wireless & 2.4GHz Radio-Channel Taskbar Pinning
+  pinnedWirelessNames?: string[];
+  onTogglePinWireless?: (dev: WirelessBatteryInfo) => void;
+  onWirelessDevicesLoaded?: (devs: WirelessBatteryInfo[]) => void;
 }
 
 function buildLaptopDemoReport(): BatteryReportResponse {
@@ -133,6 +158,16 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
   lang,
   activePowerPlan = 'balanced',
   onSelectPowerPlan,
+  screenBrightness = 100,
+  onChangeScreenBrightness,
+  autoSaverThreshold = 20,
+  onChangeAutoSaverThreshold,
+  reduceEffectsOnSaver = true,
+  onToggleReduceEffectsOnSaver,
+  onPowerAction,
+  pinnedWirelessNames = [],
+  onTogglePinWireless,
+  onWirelessDevicesLoaded,
 }) => {
   const [report, setReport] = useState<BatteryReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -154,8 +189,8 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
   };
 
   useEffect(() => {
-    loadReport();
-    const id = window.setInterval(loadReport, 30000);
+    void loadReport();
+    const id = window.setInterval(() => void loadReport(), 30000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -170,14 +205,14 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
   const days = activeData?.screen_time_7d || [];
   const todayMin = activeData?.screen_time_today_min || 0;
 
-  // Build SVG polyline & charging highlight areas for 24h discharge/charge graph
   const chartData = useMemo(() => {
-    const pts = history.length >= 2
-      ? history
-      : [
-          { ts: 0, label: 'Старт', percent: details?.percent ?? 100, charging: Boolean(details?.charging) },
-          { ts: 1, label: 'Сейчас', percent: details?.percent ?? 100, charging: Boolean(details?.charging) },
-        ];
+    const pts =
+      history.length >= 2
+        ? history
+        : [
+            { ts: 0, label: 'Старт', percent: details?.percent ?? 100, charging: Boolean(details?.charging) },
+            { ts: 1, label: 'Сейчас', percent: details?.percent ?? 100, charging: Boolean(details?.charging) },
+          ];
     const W = 540;
     const H = 150;
     const padL = 28;
@@ -197,7 +232,6 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
     const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ');
     const areaPath = `${linePath} L ${coords[coords.length - 1].x.toFixed(1)} ${(padT + usableH).toFixed(1)} L ${coords[0].x.toFixed(1)} ${(padT + usableH).toFixed(1)} Z`;
 
-    // Build contiguous charging bands
     const chargeBands: { x1: number; x2: number }[] = [];
     for (let i = 0; i < coords.length - 1; i++) {
       if (coords[i].charging) {
@@ -212,6 +246,10 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
     ? 'bg-white/[0.03] border-white/[0.09] text-zinc-100'
     : 'bg-white border-zinc-200 text-zinc-900 shadow-sm';
 
+  const btnCls = isDark
+    ? 'border-white/15 bg-white/5 hover:bg-white/10 text-zinc-100'
+    : 'border-zinc-300 bg-zinc-50 hover:bg-zinc-100 text-zinc-800';
+
   const maxDayMin = Math.max(60, ...days.map((d) => d.minutes));
 
   return (
@@ -221,10 +259,10 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
         <div>
           <h3 className="text-base font-bold flex items-center gap-2">
             <BatteryCharging className="w-5 h-5 text-emerald-400" />
-            {tr(lang, 'batteryTitle')}
+            Питание и Батарея
           </h3>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Трёхуровневая телеметрия АКБ (Win32 / WMI / BatteryReport XML), циклы, износ и экранное время
+            Единый центр питания: АКБ ноутбука, беспроводные и 2.4GHz устройства, планы энергии, яркость и управление ПК
             {details?.data_source ? ` · ${details.data_source}` : ''}
           </p>
         </div>
@@ -233,11 +271,7 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
             <button
               onClick={() => setDemoMode((v) => !v)}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition ${
-                demoMode
-                  ? 'bg-emerald-500 text-white border-emerald-400'
-                  : isDark
-                  ? 'border-white/15 bg-white/5 hover:bg-white/10'
-                  : 'border-zinc-300 bg-zinc-100 hover:bg-zinc-200'
+                demoMode ? 'bg-emerald-500 text-white border-emerald-400' : btnCls
               }`}
             >
               <Laptop className="w-3.5 h-3.5" />
@@ -245,11 +279,9 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
             </button>
           )}
           <button
-            onClick={loadReport}
+            onClick={() => void loadReport()}
             disabled={loading}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition ${
-              isDark ? 'border-white/15 bg-white/5 hover:bg-white/10' : 'border-zinc-300 bg-white hover:bg-zinc-100'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition ${btnCls}`}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             {tr(lang, 'refresh')}
@@ -257,27 +289,160 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
         </div>
       </div>
 
+      {/* Wireless & 2.4GHz Radio-Channel Peripherals with Taskbar Pinning (Top priority!) */}
+      <WirelessBatteriesCard
+        isDark={isDark}
+        cardCls={cardCls}
+        pinnedWirelessNames={pinnedWirelessNames}
+        onTogglePinWireless={onTogglePinWireless}
+        onWirelessDevicesLoaded={onWirelessDevicesLoaded}
+      />
+
+      {/* Power Profiles + Brightness + Auto-Saver + Quick PC Power Actions */}
+      <div className={`rounded-2xl border p-4 space-y-4 ${cardCls}`}>
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-bold flex items-center gap-2">
+            <Cpu className="w-4 h-4 text-[var(--luma-accent)]" />
+            Профиль энергопотребления и экран
+          </div>
+          <span className="text-[10px] font-mono text-zinc-500">Windows powercfg + LumaCore 1.4</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          {[
+            { id: 'performance' as const, label: 'Производительность', desc: 'Макс. FPS и отклик ЦП', icon: <Zap className="w-4 h-4 text-amber-400" /> },
+            { id: 'balanced' as const, label: 'Сбалансированный', desc: 'Оптимум Luma OS 1.3', icon: <Cpu className="w-4 h-4 text-cyan-400" /> },
+            { id: 'saver' as const, label: 'Энергосбережение', desc: 'Макс. автономность и тишина', icon: <Leaf className="w-4 h-4 text-emerald-400" /> },
+          ].map((p) => (
+            <button
+              key={p.id}
+              onClick={() => onSelectPowerPlan?.(p.id)}
+              className={`p-3 rounded-xl border text-left transition cursor-pointer space-y-1 ${
+                activePowerPlan === p.id
+                  ? 'border-[var(--luma-accent)] bg-[var(--luma-accent)]/15'
+                  : isDark
+                  ? 'border-white/10 hover:bg-white/5'
+                  : 'border-zinc-200 hover:bg-zinc-50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                {p.icon}
+                {activePowerPlan === p.id && (
+                  <span className="px-1.5 py-0.5 rounded bg-[var(--luma-accent)] text-white text-[9px] font-mono font-bold">
+                    АКТИВЕН
+                  </span>
+                )}
+              </div>
+              <div className="text-xs font-bold">{p.label}</div>
+              <div className="text-[10px] text-zinc-500">{p.desc}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* Brightness & Auto-Saver Sliders */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-zinc-500/15 text-xs">
+          {onChangeScreenBrightness && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between font-mono">
+                <span className="inline-flex items-center gap-1.5 font-sans font-semibold">
+                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                  Комфортная яркость оболочки
+                </span>
+                <span>{screenBrightness}%</span>
+              </div>
+              <input
+                type="range"
+                min={55}
+                max={100}
+                value={screenBrightness}
+                onChange={(e) => onChangeScreenBrightness(Number(e.target.value))}
+                className="w-full"
+              />
+            </div>
+          )}
+
+          {onChangeAutoSaverThreshold && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between font-mono">
+                <span className="font-sans font-semibold">Авто-эко при заряде ниже</span>
+                <span>{autoSaverThreshold}%</span>
+              </div>
+              <input
+                type="range"
+                min={10}
+                max={50}
+                step={5}
+                value={autoSaverThreshold}
+                onChange={(e) => onChangeAutoSaverThreshold(Number(e.target.value))}
+                className="w-full"
+              />
+            </div>
+          )}
+        </div>
+
+        {onToggleReduceEffectsOnSaver && (
+          <div
+            onClick={onToggleReduceEffectsOnSaver}
+            className="pt-2 border-t border-zinc-500/15 flex items-center justify-between cursor-pointer text-xs"
+          >
+            <div>
+              <div className="font-semibold">Отключать тяжёлое размытие (Blur) в Энергосбережении</div>
+              <div className="text-[11px] text-zinc-500">Снижает нагрузку на GPU при работе от батареи</div>
+            </div>
+            <span
+              className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
+                reduceEffectsOnSaver
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40'
+                  : 'bg-zinc-500/10 text-zinc-500 border-zinc-500/25'
+              }`}
+            >
+              {reduceEffectsOnSaver ? 'ВКЛ' : 'ВЫКЛ'}
+            </span>
+          </div>
+        )}
+
+        {/* Quick PC Power Actions */}
+        {onPowerAction && (
+          <div className="pt-2 border-t border-zinc-500/15 flex flex-wrap gap-2 text-xs">
+            <button onClick={() => onPowerAction('lock')} className={`px-3 py-1.5 rounded-xl border font-semibold inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}>
+              <Lock className="w-3.5 h-3.5" /> Блокировка
+            </button>
+            <button onClick={() => onPowerAction('sleep')} className={`px-3 py-1.5 rounded-xl border font-semibold inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}>
+              <Power className="w-3.5 h-3.5 text-sky-400" /> Сон
+            </button>
+            <button onClick={() => onPowerAction('reboot')} className={`px-3 py-1.5 rounded-xl border font-semibold inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}>
+              <RotateCcw className="w-3.5 h-3.5 text-amber-400" /> Перезагрузка
+            </button>
+            <button onClick={() => onPowerAction('shutdown')} className="px-3 py-1.5 rounded-xl bg-rose-600/85 hover:bg-rose-600 text-white font-semibold inline-flex items-center gap-1.5 cursor-pointer">
+              <Power className="w-3.5 h-3.5" /> Выключение ПК
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Desktop PC Notice if no physical battery */}
       {!hasBattery && !demoMode && (
-        <div className={`rounded-2xl border p-4 flex items-start gap-3 ${isDark ? 'bg-sky-500/10 border-sky-500/25 text-sky-200' : 'bg-sky-50 border-sky-200 text-sky-900'}`}>
+        <div
+          className={`rounded-2xl border p-4 flex items-start gap-3 ${
+            isDark ? 'bg-sky-500/10 border-sky-500/25 text-sky-200' : 'bg-sky-50 border-sky-200 text-sky-900'
+          }`}
+        >
           <Monitor className="w-5 h-5 shrink-0 mt-0.5 text-sky-400" />
           <div className="text-xs leading-relaxed">
-            <div className="font-bold mb-1">Питание от стационарной сети (АКБ не обнаружена)</div>
+            <div className="font-bold mb-1">Стационарное питание от сети (встроенная АКБ ноутбука не обнаружена)</div>
             <div>{tr(lang, 'batteryDesktopNotice')}</div>
           </div>
         </div>
       )}
 
-      {/* Top KPI Cards */}
+      {/* Top Battery & Screen Time KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className={`rounded-2xl border p-3.5 ${cardCls}`}>
           <div className="flex items-center justify-between text-[11px] text-zinc-500 mb-1">
-            <span>Заряд</span>
+            <span>Заряд ПК</span>
             <Zap className={`w-4 h-4 ${details?.charging ? 'text-emerald-400' : details?.ac_online ? 'text-sky-400' : 'text-amber-400'}`} />
           </div>
-          <div className="text-2xl font-mono font-bold">
-            {hasBattery ? `${details?.percent ?? 100}%` : 'AC'}
-          </div>
+          <div className="text-2xl font-mono font-bold">{hasBattery ? `${details?.percent ?? 100}%` : 'AC'}</div>
           <div className="text-[11px] text-zinc-500 mt-1 truncate">
             {details?.status_text || (details?.charging ? tr(lang, 'batteryCharging') : tr(lang, 'batteryDischarging'))}
           </div>
@@ -294,7 +459,7 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
           <div className="text-[11px] text-zinc-500 mt-1 font-mono truncate">
             {details?.full_charge_capacity_mwh && details?.design_capacity_mwh
               ? `${(details.full_charge_capacity_mwh / 1000).toFixed(1)} / ${(details.design_capacity_mwh / 1000).toFixed(1)} Вт·ч`
-              : `${details?.chemistry || 'Li-Ion'}${details?.manufacturer ? ` · ${details.manufacturer}` : ''}`}
+              : `${details?.chemistry || 'Li-Ion'}`}
           </div>
         </div>
 
@@ -309,8 +474,6 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
           <div className="text-[11px] text-zinc-500 mt-1 truncate">
             {hasBattery && (details?.power_watts ?? 0) > 0
               ? `${details?.power_watts?.toFixed(1)} Вт · ${((details?.voltage_mv ?? 0) / 1000).toFixed(2)} В`
-              : hasBattery && !details?.cycle_supported && (details?.cycle_count ?? 0) === 0
-              ? 'Не передаётся ACPI контроллером'
               : 'Ресурс ~1000 циклов'}
           </div>
         </div>
@@ -323,41 +486,29 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
           <div className="text-2xl font-mono font-bold">{fmtMinutes(todayMin)}</div>
           <div className="text-[11px] text-zinc-500 mt-1">
             {tr(lang, 'batteryToday')}
-            {details?.estimated_minutes ? ` · Осталось ~${fmtMinutes(details.estimated_minutes)}` : ''}
+            {details?.estimated_minutes ? ` · ~${fmtMinutes(details.estimated_minutes)}` : ''}
           </div>
         </div>
       </div>
 
-      {/* 24h Discharge & Charge SVG Curve */}
-      <div className={`rounded-2xl border p-4 ${cardCls}`}>
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2 text-xs font-bold">
-            <Activity className="w-4 h-4 text-emerald-400" />
-            {tr(lang, 'batteryHistory24h')}
+      {/* 24h Discharge/Charge Curve + 7-Day Screen Time */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className={`rounded-2xl border p-4 ${cardCls}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2 text-xs font-bold">
+              <Activity className="w-4 h-4 text-emerald-400" />
+              {tr(lang, 'batteryHistory24h')}
+            </div>
+            <span className="text-[10px] font-mono text-emerald-400">Зелёная зона = зарядка</span>
           </div>
-          <div className="flex items-center gap-3 text-[11px] text-zinc-500">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-emerald-400/35 border border-emerald-400" />
-              На зарядке
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
-              Уровень заряда %
-            </span>
-          </div>
-        </div>
-
-        <div className="w-full overflow-x-auto">
-          <svg viewBox={`0 0 ${chartData.W} ${chartData.H}`} className="w-full h-44">
+          <svg viewBox={`0 0 ${chartData.W} ${chartData.H}`} className="w-full h-36">
             <defs>
               <linearGradient id="lumaBattArea" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
                 <stop offset="100%" stopColor="#10b981" stopOpacity="0.02" />
               </linearGradient>
             </defs>
-
-            {/* Grid lines */}
-            {[100, 75, 50, 25, 0].map((val) => {
+            {[100, 50, 0].map((val) => {
               const y = chartData.padT + ((100 - val) / 100) * chartData.usableH;
               return (
                 <g key={val}>
@@ -369,80 +520,35 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
                     stroke={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}
                     strokeDasharray="3 3"
                   />
-                  <text
-                    x={chartData.padL - 5}
-                    y={y + 3}
-                    textAnchor="end"
-                    fontSize="9"
-                    fill={isDark ? '#71717a' : '#71717a'}
-                    fontFamily="monospace"
-                  >
+                  <text x={chartData.padL - 5} y={y + 3} textAnchor="end" fontSize="9" fill="#71717a" fontFamily="monospace">
                     {val}
                   </text>
                 </g>
               );
             })}
-
-            {/* Green charging highlight zones */}
             {chartData.chargeBands.map((b, i) => (
-              <rect
-                key={i}
-                x={b.x1}
-                y={chartData.padT}
-                width={Math.max(4, b.x2 - b.x1)}
-                height={chartData.usableH}
-                fill="rgba(16, 185, 129, 0.16)"
-              />
+              <rect key={i} x={b.x1} y={chartData.padT} width={Math.max(4, b.x2 - b.x1)} height={chartData.usableH} fill="rgba(16, 185, 129, 0.16)" />
             ))}
-
-            {/* Fill & Stroke */}
             <path d={chartData.areaPath} fill="url(#lumaBattArea)" />
-            <path d={chartData.linePath} fill="none" stroke="#10b981" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-
-            {/* Dots & X-axis labels */}
-            {chartData.coords.map((c, idx) => {
-              const showLabel =
-                chartData.coords.length <= 7 ||
-                idx === 0 ||
-                idx === chartData.coords.length - 1 ||
-                idx % Math.ceil(chartData.coords.length / 6) === 0;
-              return (
-                <g key={idx}>
-                  <circle cx={c.x} cy={c.y} r="3" fill={c.charging ? '#34d399' : '#22d3ee'} />
-                  {showLabel && (
-                    <text
-                      x={c.x}
-                      y={chartData.H - 5}
-                      textAnchor="middle"
-                      fontSize="9"
-                      fill="#71717a"
-                      fontFamily="monospace"
-                    >
-                      {c.label}
-                    </text>
-                  )}
-                </g>
-              );
-            })}
+            <path d={chartData.linePath} fill="none" stroke="#10b981" strokeWidth="2.4" strokeLinecap="round" />
           </svg>
         </div>
-      </div>
 
-      {/* 7-Day Screen-On Time + Power Profile */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <div className={`rounded-2xl border p-4 ${cardCls}`}>
-          <div className="text-xs font-bold mb-3 flex items-center justify-between">
-            <span>{tr(lang, 'batteryScreenTime')} · {tr(lang, 'battery7Days')}</span>
+          <div className="text-xs font-bold mb-2 flex items-center justify-between">
+            <span>
+              {tr(lang, 'batteryScreenTime')} · {tr(lang, 'battery7Days')}
+            </span>
             <span className="font-mono text-[11px] text-zinc-500">
               Среднее: {fmtMinutes(Math.round(days.reduce((a, b) => a + b.minutes, 0) / Math.max(1, days.length)))}
             </span>
           </div>
-          <div className="h-32 flex items-end justify-between gap-2 pt-4">
+          <div className="h-32 flex items-end justify-between gap-2 pt-3">
             {(days.length > 0 ? days : [{ date: 'today', weekday: 'Сегодня', minutes: todayMin }]).map((d) => {
               const pct = Math.max(10, Math.round((d.minutes / maxDayMin) * 100));
               return (
-                <div key={d.date} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
-                  <span className="text-[10px] font-mono text-zinc-500">{Math.round(d.minutes / 60 * 10) / 10}ч</span>
+                <div key={d.date} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                  <span className="text-[10px] font-mono text-zinc-500">{Math.round((d.minutes / 60) * 10) / 10}ч</span>
                   <div className="w-full max-w-[34px] flex-1 flex items-end">
                     <div
                       style={{ height: `${pct}%` }}
@@ -455,56 +561,19 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
             })}
           </div>
         </div>
-
-        <div className={`rounded-2xl border p-4 space-y-3 ${cardCls}`}>
-          <div className="text-xs font-bold flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-[var(--luma-accent)]" />
-            Профиль энергопотребления Windows / Luma
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { id: 'saver' as const, label: 'Эко', desc: 'Макс. автономность' },
-              { id: 'balanced' as const, label: 'Баланс', desc: 'Оптимум Luma' },
-              { id: 'performance' as const, label: 'Турбо', desc: 'Макс. FPS / CPU' },
-            ].map((p) => (
-              <button
-                key={p.id}
-                onClick={() => onSelectPowerPlan?.(p.id)}
-                className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                  activePowerPlan === p.id
-                    ? 'border-[var(--luma-accent)] bg-[var(--luma-accent)]/15'
-                    : isDark
-                    ? 'border-white/10 hover:bg-white/5'
-                    : 'border-zinc-200 hover:bg-zinc-50'
-                }`}
-              >
-                <div className="text-xs font-bold">{p.label}</div>
-                <div className="text-[10px] text-zinc-500 mt-0.5">{p.desc}</div>
-              </button>
-            ))}
-          </div>
-          <div className={`text-[11px] rounded-xl p-2.5 border ${isDark ? 'bg-black/30 border-white/10 text-zinc-400' : 'bg-zinc-50 border-zinc-200 text-zinc-600'}`}>
-            LumaBatteryEngine автоматически записывает точки разряда каждую минуту в постоянное хранилище <span className="font-mono">battery_history.json</span>.
-          </div>
-        </div>
       </div>
-
-      {/* Wireless Peripherals Battery Monitor (Bluetooth / BLE / HID Mice, Keyboards, Headphones, Gamepads) */}
-      <WirelessBatteriesCard isDark={isDark} cardCls={cardCls} />
     </div>
   );
 };
 
-interface WirelessBatRow {
-  name: string;
-  device_type: string;
-  battery_percent: number;
-  connected: boolean;
-  transport: string;
-}
-
-const WirelessBatteriesCard: React.FC<{ isDark: boolean; cardCls: string }> = ({ isDark, cardCls }) => {
-  const [devices, setDevices] = useState<WirelessBatRow[]>([]);
+const WirelessBatteriesCard: React.FC<{
+  isDark: boolean;
+  cardCls: string;
+  pinnedWirelessNames: string[];
+  onTogglePinWireless?: (dev: WirelessBatteryInfo) => void;
+  onWirelessDevicesLoaded?: (devs: WirelessBatteryInfo[]) => void;
+}> = ({ isDark, cardCls, pinnedWirelessNames, onTogglePinWireless, onWirelessDevicesLoaded }) => {
+  const [devices, setDevices] = useState<WirelessBatteryInfo[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadWireless = async (refresh = false) => {
@@ -513,7 +582,9 @@ const WirelessBatteriesCard: React.FC<{ isDark: boolean; cardCls: string }> = ({
       const r = await fetch(`/api/kernel/wireless/batteries${refresh ? '?refresh=1' : ''}`);
       if (r.ok) {
         const d = await r.json();
-        setDevices(Array.isArray(d?.devices) ? d.devices : []);
+        const list = Array.isArray(d?.devices) ? (d.devices as WirelessBatteryInfo[]) : [];
+        setDevices(list);
+        onWirelessDevicesLoaded?.(list);
       }
     } catch {
       // ignore
@@ -526,22 +597,25 @@ const WirelessBatteriesCard: React.FC<{ isDark: boolean; cardCls: string }> = ({
     void loadWireless(false);
   }, []);
 
+  const typeIcon = (t: string) => {
+    switch (t) {
+      case 'mouse': return <Mouse className="w-4 h-4 text-emerald-400" />;
+      case 'keyboard': return <Keyboard className="w-4 h-4 text-cyan-400" />;
+      case 'headphones': return <Headphones className="w-4 h-4 text-violet-400" />;
+      case 'gamepad': return <Gamepad2 className="w-4 h-4 text-amber-400" />;
+      default: return <Radio className="w-4 h-4 text-sky-400" />;
+    }
+  };
+
   const typeLabel = (t: string) => {
     switch (t) {
-      case 'mouse':
-        return 'Мышь';
-      case 'keyboard':
-        return 'Клавиатура';
-      case 'headphones':
-        return 'Наушники / Аудио';
-      case 'gamepad':
-        return 'Геймпад';
-      case 'watch':
-        return 'Часы';
-      case 'phone':
-        return 'Смартфон';
-      default:
-        return 'Беспроводное устройство';
+      case 'mouse': return 'Мышь';
+      case 'keyboard': return 'Клавиатура';
+      case 'headphones': return 'Наушники';
+      case 'gamepad': return 'Геймпад';
+      case 'watch': return 'Часы';
+      case 'phone': return 'Смартфон';
+      default: return 'Беспроводное';
     }
   };
 
@@ -550,11 +624,11 @@ const WirelessBatteriesCard: React.FC<{ isDark: boolean; cardCls: string }> = ({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-xs font-bold flex items-center gap-2">
-            <BatteryCharging className="w-4 h-4 text-emerald-400" />
-            Заряд беспроводных устройств (Мыши, Клавиатуры, Наушники, Геймпады)
+            <Radio className="w-4 h-4 text-emerald-400" />
+            Беспроводные и 2.4GHz Радиоканальные устройства ({devices.length})
           </div>
           <div className="text-[11px] text-zinc-500 mt-0.5">
-            Реальный опрос Bluetooth / BLE / HID датчиков заряда ОС ({devices.length} обнаружено)
+            Bluetooth / BLE + 2.4GHz USB-донглы (HID Battery Feature Reports) · Закрепите нужное устройство на Панели задач!
           </div>
         </div>
         <button
@@ -571,25 +645,40 @@ const WirelessBatteriesCard: React.FC<{ isDark: boolean; cardCls: string }> = ({
 
       {devices.length === 0 ? (
         <div className="text-xs text-zinc-500 py-3 text-center">
-          Беспроводные периферийные устройства с датчиком заряда сейчас не подключены. Как только подключите Bluetooth-наушники, мышь, клавиатуру или геймпад, их процент заряда появится здесь автоматически.
+          Беспроводные устройства (Bluetooth или 2.4GHz радиоканал с HID-датчиком заряда) сейчас не обнаружены. Подключите мышь, наушники, клавиатуру или геймпад и нажмите «Опросить».
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
           {devices.map((dev, idx) => {
             const pct = Math.max(0, Math.min(100, dev.battery_percent));
             const barColor = pct <= 20 ? 'bg-rose-500' : pct <= 45 ? 'bg-amber-400' : 'bg-emerald-500';
+            const isPinned = pinnedWirelessNames.includes(dev.name);
+            const isRadio = dev.transport.toLowerCase().includes('2.4') || dev.transport.toLowerCase().includes('радио');
             return (
               <div
                 key={`${dev.name}_${idx}`}
                 className={`p-3 rounded-xl border space-y-2 ${
-                  isDark ? 'bg-black/25 border-white/10' : 'bg-zinc-50 border-zinc-200'
+                  isPinned
+                    ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                    : isDark
+                    ? 'bg-black/25 border-white/10'
+                    : 'bg-zinc-50 border-zinc-200'
                 }`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold truncate">{dev.name}</div>
-                    <div className="text-[10px] text-zinc-500 font-mono truncate">
-                      {typeLabel(dev.device_type)} · {dev.transport}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isDark ? 'bg-white/10' : 'bg-black/5'}`}>
+                      {typeIcon(dev.device_type)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold truncate" title={dev.name}>
+                        {dev.name}
+                      </div>
+                      <div className="text-[10px] text-zinc-500 font-mono truncate flex items-center gap-1">
+                        <span>{typeLabel(dev.device_type)}</span>
+                        <span>·</span>
+                        <span className={isRadio ? 'text-emerald-400 font-bold' : ''}>{dev.transport}</span>
+                      </div>
                     </div>
                   </div>
                   <span
@@ -603,6 +692,21 @@ const WirelessBatteriesCard: React.FC<{ isDark: boolean; cardCls: string }> = ({
                 <div className="h-1.5 rounded-full bg-black/25 overflow-hidden">
                   <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
                 </div>
+                {onTogglePinWireless && (
+                  <button
+                    onClick={() => onTogglePinWireless(dev)}
+                    className={`w-full py-1 px-2 rounded-lg border text-[10px] font-semibold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
+                      isPinned
+                        ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                        : isDark
+                        ? 'border-white/10 hover:bg-white/10 text-zinc-300'
+                        : 'border-zinc-300 hover:bg-zinc-200 text-zinc-700'
+                    }`}
+                  >
+                    {isPinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
+                    {isPinned ? 'Убрать с панели задач' : 'На панель задач'}
+                  </button>
+                )}
               </div>
             );
           })}

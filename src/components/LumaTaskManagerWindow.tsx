@@ -428,6 +428,11 @@ export const LumaTaskManagerWindow: React.FC<{
   const liveCpu = localSystem ? Math.round(localSystem.cpu_percent) : cpuLoad;
   const liveRam = localSystem ? Math.round(localSystem.ram_percent) : ramLoad;
   const liveGpu = activeSystem?.gpu_percent ?? Math.min(100, Math.round(liveCpu * 0.55 + 6));
+  const liveGpuVramUsedMB = activeSystem?.gpu_vram_used_mb ?? 0;
+  const liveGpuVramTotalMB = activeSystem?.gpu_vram_total_mb ?? 0;
+  const liveGpuVramPct =
+    activeSystem?.gpu_vram_percent ??
+    (liveGpuVramTotalMB > 0 ? Math.min(100, Math.round((liveGpuVramUsedMB / liveGpuVramTotalMB) * 100)) : 0);
   const liveNetTotal = Number(((activeSystem?.net_down_mbps || 0) + (activeSystem?.net_up_mbps || 0)).toFixed(2));
   const disks = activeSystem?.disks || [];
   const mainDiskPct = disks[0]?.percent ?? 0;
@@ -437,12 +442,19 @@ export const LumaTaskManagerWindow: React.FC<{
   const [diskHistory, setDiskHistory] = useState<ChartPoint[]>(() => makeSeedHistory(mainDiskPct));
   const [netHistory, setNetHistory] = useState<ChartPoint[]>(() => makeSeedHistory(0));
   const [gpuHistory, setGpuHistory] = useState<ChartPoint[]>(() => makeSeedHistory(liveSystem?.gpu_percent || 10));
+  const [gpuVramHistory, setGpuVramHistory] = useState<ChartPoint[]>(() =>
+    makeSeedHistory(liveSystem?.gpu_vram_percent || 0)
+  );
 
   const appendSample = useCallback((sys: LiveSystemTelemetry | null, fallbackCpu: number, fallbackRam: number) => {
     const t = formatNowTime();
     const cpuVal = sys ? Math.round(sys.cpu_percent * 10) / 10 : fallbackCpu;
     const ramVal = sys ? Math.round(sys.ram_percent * 10) / 10 : fallbackRam;
     const gpuVal = sys?.gpu_percent ?? Math.min(100, Math.round(cpuVal * 0.55 + 6));
+    const vramUsed = sys?.gpu_vram_used_mb ?? 0;
+    const vramTotal = sys?.gpu_vram_total_mb ?? 0;
+    const vramPct =
+      sys?.gpu_vram_percent ?? (vramTotal > 0 ? Math.min(100, Math.round((vramUsed / vramTotal) * 1000) / 10) : 0);
     const down = sys?.net_down_mbps || 0;
     const up = sys?.net_up_mbps || 0;
     const netVal = Number((down + up).toFixed(2));
@@ -480,6 +492,17 @@ export const LumaTaskManagerWindow: React.FC<{
         value: gpuVal,
         time: t,
         detail: sys?.gpu_temp_c ? `${sys.gpu_temp_c}°C · ${sys.gpu_name || 'GPU'}` : undefined,
+      },
+    ]);
+    setGpuVramHistory((p) => [
+      ...p.slice(-(MAX_HISTORY_POINTS - 1)),
+      {
+        value: vramPct,
+        time: t,
+        detail:
+          vramTotal > 0
+            ? `${(vramUsed / 1024).toFixed(2)} / ${(vramTotal / 1024).toFixed(1)} ГБ (${Math.round(vramUsed)} МБ)`
+            : `${Math.round(vramUsed)} МБ`,
       },
     ]);
   }, []);
@@ -918,7 +941,18 @@ export const LumaTaskManagerWindow: React.FC<{
                       }`}
                     >
                       <div className="px-3 py-2 flex items-center gap-2 min-w-0">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                        {hw.icon_url ? (
+                          <img
+                            src={hw.icon_url}
+                            alt=""
+                            className="w-5 h-5 rounded object-contain shrink-0"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                        )}
                         <div className="min-w-0">
                           <div className="font-semibold truncate">
                             {hw.friendly_name || hw.name}
@@ -1137,7 +1171,10 @@ export const LumaTaskManagerWindow: React.FC<{
                 {
                   id: 'gpu' as const,
                   title: 'Графика GPU',
-                  sub: `${liveGpu}% · ${activeSystem?.gpu_temp_c ?? 46}°C`,
+                  sub:
+                    liveGpuVramTotalMB > 0
+                      ? `Чип ${liveGpu}% · VRAM ${(liveGpuVramUsedMB / 1024).toFixed(1)}/${(liveGpuVramTotalMB / 1024).toFixed(0)} ГБ · ${activeSystem?.gpu_temp_c ?? 46}°C`
+                      : `Чип ${liveGpu}% · ${activeSystem?.gpu_temp_c ?? 46}°C`,
                   data: gpuHistory,
                   max: 100,
                   color: '#f43f5e',
@@ -1175,32 +1212,50 @@ export const LumaTaskManagerWindow: React.FC<{
                       ? 'Накопители и тома'
                       : perfMetric === 'net'
                       ? 'Сетевые интерфейсы'
-                      : 'Графический процессор (GPU)'}
+                      : 'Графический процессор (GPU + VRAM)'}
                   </div>
                   <div className={`text-xs font-mono ${mutedCls}`}>
                     {perfMetric === 'cpu'
                       ? activeSystem?.cpu_model || 'x64 Processor'
                       : perfMetric === 'gpu'
-                      ? activeSystem?.gpu_name || 'GPU'
+                      ? `${activeSystem?.gpu_name || 'GPU'}${activeSystem?.gpu_source ? ` · ${activeSystem.gpu_source}` : ''}`
                       : perfMetric === 'ram'
                       ? `${activeSystem?.ram_total_gb.toFixed(1) || 16} ГБ физической памяти`
                       : activeSystem?.hostname || 'Luma Workstation'}
                   </div>
                 </div>
-                <div className="text-2xl font-mono font-black text-[var(--luma-accent)]">
-                  {perfMetric === 'cpu'
-                    ? `${liveCpu}%`
-                    : perfMetric === 'ram'
-                    ? `${liveRam}%`
-                    : perfMetric === 'disk'
-                    ? `${mainDiskPct}%`
-                    : perfMetric === 'net'
-                    ? `${liveNetTotal.toFixed(1)} Мбит/с`
-                    : `${liveGpu}%`}
+                <div className="text-right">
+                  <div className="text-2xl font-mono font-black text-[var(--luma-accent)]">
+                    {perfMetric === 'cpu'
+                      ? `${liveCpu}%`
+                      : perfMetric === 'ram'
+                      ? `${liveRam}%`
+                      : perfMetric === 'disk'
+                      ? `${mainDiskPct}%`
+                      : perfMetric === 'net'
+                      ? `${liveNetTotal.toFixed(1)} Мбит/с`
+                      : `Чип ${liveGpu}%`}
+                  </div>
+                  {perfMetric === 'gpu' && (
+                    <div className="text-xs font-mono text-emerald-400 font-bold">
+                      VRAM:{' '}
+                      {liveGpuVramTotalMB > 0
+                        ? `${(liveGpuVramUsedMB / 1024).toFixed(2)} / ${(liveGpuVramTotalMB / 1024).toFixed(1)} ГБ (${liveGpuVramPct}%)`
+                        : `${Math.round(liveGpuVramUsedMB)} МБ`}
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className={`rounded-2xl border p-3.5 ${surfaceCls}`}>
+                {perfMetric === 'gpu' && (
+                  <div className="flex items-center justify-between text-xs font-bold mb-2">
+                    <span className="text-rose-400">1. Загрузка графического чипа GPU (%)</span>
+                    <span className="font-mono text-[11px] opacity-80">
+                      Температура: {activeSystem?.gpu_temp_c ?? 46}°C
+                    </span>
+                  </div>
+                )}
                 <InteractivePerfChart
                   points={
                     perfMetric === 'cpu'
@@ -1235,21 +1290,54 @@ export const LumaTaskManagerWindow: React.FC<{
                       ? 'Диск'
                       : perfMetric === 'net'
                       ? 'Сеть'
-                      : 'GPU'
+                      : 'Чип GPU'
                   }
                   isDark={isDark}
                   mutedCls={mutedCls}
                 />
               </div>
 
+              {/* Dedicated GPU VRAM Graph & Memory Breakdown */}
+              {perfMetric === 'gpu' && (
+                <div className={`rounded-2xl border p-3.5 space-y-3 ${surfaceCls}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="font-bold text-emerald-400">2. Выделенная видеопамять GPU (VRAM)</span>
+                    <span className="font-mono text-[11px]">
+                      {liveGpuVramTotalMB > 0
+                        ? `${Math.round(liveGpuVramUsedMB)} МБ / ${Math.round(liveGpuVramTotalMB)} МБ (${(liveGpuVramUsedMB / 1024).toFixed(2)} / ${(liveGpuVramTotalMB / 1024).toFixed(1)} ГБ)`
+                        : `${Math.round(liveGpuVramUsedMB)} МБ занято`}
+                    </span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-amber-400 transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.max(2, liveGpuVramPct))}%` }}
+                    />
+                  </div>
+                  <InteractivePerfChart
+                    points={gpuVramHistory}
+                    max={100}
+                    unit="%"
+                    color="#10b981"
+                    metricLabel="GPU VRAM"
+                    isDark={isDark}
+                    mutedCls={mutedCls}
+                  />
+                </div>
+              )}
+
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                 <div className={`p-3 rounded-xl border ${surfaceCls}`}>
-                  <div className={`text-[10px] ${mutedCls}`}>Логических ядер</div>
-                  <div className="text-base font-bold mt-0.5">{activeSystem?.cpu_cores || '—'}</div>
+                  <div className={`text-[10px] ${mutedCls}`}>{perfMetric === 'gpu' ? 'Температура GPU' : 'Логических ядер'}</div>
+                  <div className="text-base font-bold mt-0.5">
+                    {perfMetric === 'gpu' ? `${activeSystem?.gpu_temp_c ?? 46}°C` : activeSystem?.cpu_cores || '—'}
+                  </div>
                 </div>
                 <div className={`p-3 rounded-xl border ${surfaceCls}`}>
-                  <div className={`text-[10px] ${mutedCls}`}>Процессов</div>
-                  <div className="text-base font-bold mt-0.5">{processes.length}</div>
+                  <div className={`text-[10px] ${mutedCls}`}>{perfMetric === 'gpu' ? 'Источник GPU' : 'Процессов'}</div>
+                  <div className="text-sm font-bold mt-0.5 truncate">
+                    {perfMetric === 'gpu' ? activeSystem?.gpu_source || 'Native' : processes.length}
+                  </div>
                 </div>
                 <div className={`p-3 rounded-xl border ${surfaceCls}`}>
                   <div className={`text-[10px] ${mutedCls}`}>Интервал опроса</div>
@@ -1259,7 +1347,7 @@ export const LumaTaskManagerWindow: React.FC<{
                 </div>
                 <div className={`p-3 rounded-xl border ${surfaceCls}`}>
                   <div className={`text-[10px] ${mutedCls}`}>Ядро</div>
-                  <div className="text-base font-bold mt-0.5 text-[var(--luma-accent)]">LumaCore 1.3</div>
+                  <div className="text-base font-bold mt-0.5 text-[var(--luma-accent)]">LumaCore 1.4</div>
                 </div>
               </div>
 

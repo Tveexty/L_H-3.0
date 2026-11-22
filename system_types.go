@@ -56,6 +56,7 @@ type HostWindowItem struct {
 	Title        string  `json:"title"`
 	MemMB        float64 `json:"mem_mb"`
 	ExePath      string  `json:"exe_path,omitempty"`
+	IconURL      string  `json:"icon_url,omitempty"`
 	IsSelf       bool    `json:"is_self,omitempty"`
 }
 
@@ -152,6 +153,17 @@ type InstalledAppItem struct {
 	Category  string `json:"category"`
 	Source    string `json:"source"` // start_menu | registry | desktop | system
 	IconHint  string `json:"icon_hint"`
+	IconURL   string `json:"icon_url,omitempty"`
+}
+
+type ActiveTcpConnection struct {
+	LocalAddr   string `json:"local_addr"`
+	RemoteAddr  string `json:"remote_addr"`
+	State       string `json:"state"`
+	PID         int    `json:"pid"`
+	ProcessName string `json:"process_name"`
+	Suspicious  bool   `json:"suspicious"`
+	Note        string `json:"note,omitempty"`
 }
 
 type FileStatInfo struct {
@@ -283,6 +295,12 @@ type HostHardwareSnapshot struct {
 	GPUName             string           `json:"gpu_name"`
 	GPUPercent          int              `json:"gpu_percent"`
 	GPUTempC            int              `json:"gpu_temp_c"`
+	GPUVramUsedMB       int              `json:"gpu_vram_used_mb"`
+	GPUVramTotalMB      int              `json:"gpu_vram_total_mb"`
+	GPUVramPercent      int              `json:"gpu_vram_percent"`
+	GPUSource           string           `json:"gpu_source,omitempty"`
+	ActiveKbdTag        string           `json:"active_kbd_tag,omitempty"`
+	ActiveKbdShort      string           `json:"active_kbd_short,omitempty"`
 	RAMUsedGB           float64          `json:"ram_used_gb"`
 	RAMTotalGB          float64          `json:"ram_total_gb"`
 	RAMPercent          int              `json:"ram_percent"`

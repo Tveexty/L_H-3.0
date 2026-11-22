@@ -332,6 +332,19 @@ var scriptHeuristics = []heuristicRule{
 	{[]byte("wbadmin delete catalog"), "Ransomware-Behavior", "high", "Попытка уничтожения резервных копий Windows"},
 	{[]byte("wmic shadowcopy delete"), "Ransomware-Behavior", "high", "Удаление теневых копий через WMIC"},
 	{[]byte("schtasks /create"), "Persistence-Task", "medium", "Создание скрытого задания автозапуска в планировщике"},
+	// LumaShield 1.4 Advanced Rules (AMSI, Crypto Miners, Token/Browser Stealers, UAC Bypass)
+	{[]byte("amsiutils"), "AMSI-Bypass", "high", "Попытка обхода системы защиты скриптов AMSI (AmsiUtils)"},
+	{[]byte("amsiinitfailed"), "AMSI-Bypass", "high", "Попытка патча памяти AMSI (amsiInitFailed)"},
+	{[]byte("stratum+tcp://"), "Crypto-Miner", "high", "Обнаружен скрытый пул майнинга криптовалюты (stratum+tcp)"},
+	{[]byte("xmrig"), "Crypto-Miner", "high", "Сигнатура скрытого криптомайнера (XMRig)"},
+	{[]byte("discord.com/api/webhooks"), "InfoStealer-Webhook", "medium", "Подозрительная отправка данных через Discord Webhook"},
+	{[]byte("\\google\\chrome\\user data\\default\\login data"), "Browser-Stealer", "high", "Попытка кражи сохранённых паролей Google Chrome"},
+	{[]byte("fodhelper.exe"), "UAC-Bypass", "high", "Признак обхода контроля учётных записей (UAC Bypass fodhelper)"},
+	{[]byte("compmgmtlauncher.exe"), "UAC-Bypass", "medium", "Подозрительный паттерн повышения привилегий (UAC Bypass)"},
+	{[]byte("virtualalloc"), "Shellcode-Injection", "medium", "Подозрительное выделение исполняемой памяти (VirtualAlloc)"},
+	{[]byte("createremotethread"), "Process-Injection", "high", "Попытка внедрения кода в чужой процесс (CreateRemoteThread)"},
+	{[]byte("net user /add"), "Backdoor-Account", "high", "Попытка скрытого создания учётной записи пользователя"},
+	{[]byte("bcdedit /set {default} recoveryenabled no"), "Ransomware-Behavior", "high", "Попытка отключения восстановления системы Windows (Ransomware)"},
 }
 
 func (s *SecurityKernel) inspectSingleFile(path string, info os.FileInfo) *SecurityThreat {
@@ -868,7 +881,7 @@ func (s *SecurityKernel) StatusSnapshot(probe *platformProbe) map[string]interfa
 	return map[string]interface{}{
 		"ok":                     true,
 		"security_core_version":  SecurityCoreVersion,
-		"engine_name":            "LumaShield 1.3 (Heuristic + Entropy + Real-Time Guard)",
+		"engine_name":            "LumaShield 1.4 (32+ Rules · NetMonitor · Startup Audit · Real-Time Guard)",
 		"rules_count":            len(scriptHeuristics) + len(suspiciousDoubleExts) + len(ransomwareExts) + 3,
 		"realtime_guard_enabled": s.realtimeGuardEnabled,
 		"score":                  score,
@@ -882,6 +895,37 @@ func (s *SecurityKernel) StatusSnapshot(probe *platformProbe) map[string]interfa
 		"exclusions":             s.exclusions,
 		"quarantine_dir":         s.quarantineDir,
 		"audit_log":              s.auditLog,
-		"crypto":                 "AES-256-GCM + PBKDF2-HMAC-SHA512 + Shannon Entropy + PE Guard",
+		"crypto":                 "AES-256-GCM + PBKDF2-HMAC-SHA512 + Shannon Entropy + PE & Net Guard",
 	}
 }
+
+// AuditStartupEntries (LumaShield 1.4) inspects OS autorun entries for suspicious persistence techniques.
+func (s *SecurityKernel) AuditStartupEntries(entries []StartupEntry) []map[string]interface{} {
+	findings := make([]map[string]interface{}, 0, len(entries))
+	for _, e := range entries {
+		lowCmd := strings.ToLower(e.Command)
+		risk := "safe"
+		reason := "Штатная запись автозагрузки"
+		switch {
+		case strings.Contains(lowCmd, "-encodedcommand") || strings.Contains(lowCmd, "-w hidden") || strings.Contains(lowCmd, "mshta "):
+			risk = "high"
+			reason = "Скрытый или обфусцированный скрипт в автозагрузке"
+		case strings.Contains(lowCmd, "\\temp\\") || strings.Contains(lowCmd, "/tmp/") || strings.HasSuffix(lowCmd, ".vbs") || strings.HasSuffix(lowCmd, ".hta") || strings.HasSuffix(lowCmd, ".bat"):
+			risk = "medium"
+			reason = "Запуск скрипта или файла из временного каталога при старте ОС"
+		case strings.Contains(lowCmd, "powershell") || strings.Contains(lowCmd, "wscript") || strings.Contains(lowCmd, "cscript"):
+			risk = "medium"
+			reason = "Интерпретатор сценариев в автозагрузке — рекомендуется проверить источник"
+		}
+		findings = append(findings, map[string]interface{}{
+			"name":     e.Name,
+			"command":  e.Command,
+			"location": e.Location,
+			"enabled":  e.Enabled,
+			"risk":     risk,
+			"reason":   reason,
+		})
+	}
+	return findings
+}
+

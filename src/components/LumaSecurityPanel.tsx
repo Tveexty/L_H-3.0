@@ -17,7 +17,10 @@ import {
   Plus,
   ShieldOff,
   Sparkles,
+  Network,
+  ListChecks,
 } from 'lucide-react';
+import { ActiveTcpConnectionInfo, StartupAuditFindingInfo } from '../data/launcherData';
 
 export interface SecurityThreatItem {
   id: string;
@@ -99,7 +102,14 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
   const [scanLabel, setScanLabel] = useState('');
   const [customPath, setCustomPath] = useState('');
   const [newExclusion, setNewExclusion] = useState('');
-  const [subTab, setSubTab] = useState<'scanner' | 'quarantine' | 'exclusions' | 'audit'>('scanner');
+  const [subTab, setSubTab] = useState<'scanner' | 'network' | 'startup_audit' | 'quarantine' | 'exclusions' | 'audit'>('scanner');
+
+  // LumaShield 1.4 Network Monitor & Startup Auditor state
+  const [tcpConns, setTcpConns] = useState<ActiveTcpConnectionInfo[]>([]);
+  const [tcpLoading, setTcpLoading] = useState(false);
+  const [tcpOnlySusp, setTcpOnlySusp] = useState(false);
+  const [startupFindings, setStartupFindings] = useState<StartupAuditFindingInfo[]>([]);
+  const [startupLoading, setStartupLoading] = useState(false);
 
   const fetchStatus = async () => {
     try {
@@ -113,9 +123,44 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
     }
   };
 
+  const fetchNetworkMonitor = async () => {
+    setTcpLoading(true);
+    try {
+      const r = await fetch('/api/kernel/security/network');
+      if (r.ok) {
+        const d = await r.json();
+        if (Array.isArray(d?.connections)) setTcpConns(d.connections);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setTcpLoading(false);
+    }
+  };
+
+  const fetchStartupAudit = async () => {
+    setStartupLoading(true);
+    try {
+      const r = await fetch('/api/kernel/security/startup-audit');
+      if (r.ok) {
+        const d = await r.json();
+        if (Array.isArray(d?.findings)) setStartupFindings(d.findings);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setStartupLoading(false);
+    }
+  };
+
   useEffect(() => {
     void fetchStatus();
   }, []);
+
+  useEffect(() => {
+    if (subTab === 'network') void fetchNetworkMonitor();
+    if (subTab === 'startup_audit') void fetchStartupAudit();
+  }, [subTab]);
 
   const toggleRealtimeGuard = async () => {
     const next = !(status?.realtime_guard_enabled ?? true);
@@ -128,13 +173,13 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       if (r.ok) {
         await fetchStatus();
         onPushToast(
-          'LumaShield 1.3 Real-Time Guard',
+          'LumaShield 1.4 Real-Time Guard',
           next ? 'Фоновая защита Загрузок и Рабочего стола включена' : 'Фоновая защита приостановлена',
           next ? 'success' : 'info'
         );
       }
     } catch {
-      onPushToast('LumaShield 1.3', 'Не удалось переключить Real-Time Guard', 'warning');
+      onPushToast('LumaShield 1.4', 'Не удалось переключить Real-Time Guard', 'warning');
     }
   };
 
@@ -144,7 +189,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       mode === 'quick'
         ? 'Быстрая проверка (Загрузки, Рабочий стол, Автозагрузка, PE-маскировка)...'
         : mode === 'deep'
-        ? 'Глубокое сканирование (Энтропия Шеннона, 20+ правил, Документы, Temp, Процессы)...'
+        ? 'Глубокое сканирование (32+ правила LumaShield 1.4, Энтропия Шеннона, AMSI/Стиллеры/Майнеры)...'
         : mode === 'startup'
         ? 'Аудит автозагрузки и скриптов...'
         : mode === 'processes'
@@ -161,14 +206,14 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       await fetchStatus();
       const count = d?.threats?.length ?? 0;
       onPushToast(
-        'LumaShield 1.3',
+        'LumaShield 1.4',
         count > 0
           ? `Обнаружено угроз: ${count} (проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс)`
           : `Угроз не найдено · Проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс`,
         count > 0 ? 'warning' : 'success'
       );
     } catch {
-      onPushToast('LumaShield 1.3', 'Не удалось выполнить сканирование', 'warning');
+      onPushToast('LumaShield 1.4', 'Не удалось выполнить сканирование', 'warning');
     } finally {
       setScanning(false);
       setScanLabel('');
@@ -183,12 +228,12 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       const d = await r.json();
       await fetchStatus();
       onPushToast(
-        'LumaShield 1.3 EICAR-Тест',
+        'LumaShield 1.4 EICAR-Тест',
         `Тестовый файл обнаружен (${d?.threats?.length || 1})! Можно изолировать в карантин.`,
         'warning'
       );
     } catch {
-      onPushToast('LumaShield 1.3', 'Ошибка EICAR-теста', 'warning');
+      onPushToast('LumaShield 1.4', 'Ошибка EICAR-теста', 'warning');
     } finally {
       setScanning(false);
       setScanLabel('');
@@ -209,7 +254,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       });
       const d = await r.json();
       if (d?.ok) {
-        onPushToast('Карантин LumaShield 1.3', `Файл «${t.name}» изолирован`, 'success');
+        onPushToast('Карантин LumaShield 1.4', `Файл «${t.name}» изолирован`, 'success');
         await fetchStatus();
       } else {
         onPushToast('Карантин', d?.error || 'Не удалось изолировать файл', 'warning');
@@ -224,7 +269,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       const r = await fetch('/api/kernel/security/quarantine-all', { method: 'POST' });
       const d = await r.json();
       if (d?.ok) {
-        onPushToast('Карантин LumaShield 1.3', `Изолировано угроз: ${d.quarantined}`, 'success');
+        onPushToast('Карантин LumaShield 1.4', `Изолировано угроз: ${d.quarantined}`, 'success');
         await fetchStatus();
       }
     } catch {
@@ -243,7 +288,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       if (r.ok) {
         if (action === 'add') setNewExclusion('');
         onPushToast(
-          'Белый список LumaShield 1.3',
+          'Белый список LumaShield 1.4',
           action === 'add' ? 'Путь добавлен в исключения' : 'Путь удалён из исключений',
           'info'
         );
@@ -264,7 +309,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       const d = await r.json();
       if (d?.ok) {
         onPushToast(
-          'Карантин LumaShield 1.3',
+          'Карантин LumaShield 1.4',
           action === 'restore' ? 'Файл восстановлен в исходную папку' : 'Файл удалён навсегда',
           'success'
         );
@@ -298,6 +343,8 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
   const exclusions = status?.exclusions ?? [];
   const audit = status?.audit_log ?? [];
   const rtGuard = status?.realtime_guard_enabled ?? true;
+  const suspTcpCount = tcpConns.filter((c) => c.suspicious).length;
+  const visibleTcp = tcpOnlySusp ? tcpConns.filter((c) => c.suspicious) : tcpConns;
 
   return (
     <div className="space-y-4">
@@ -317,9 +364,9 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
             </div>
             <div>
               <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--luma-accent)] font-bold flex flex-wrap items-center gap-1.5">
-                <span>ЯДРО БЕЗОПАСНОСТИ · LUMASHIELD {status?.security_core_version || '1.3'}</span>
+                <span>ЯДРО БЕЗОПАСНОСТИ · LUMASHIELD {status?.security_core_version || '1.4'}</span>
                 <span className="px-1.5 py-0.5 rounded bg-[var(--luma-accent-soft)] text-[9px]">
-                  {status?.rules_count || 55}+ ПРАВИЛ
+                  {status?.rules_count || 68}+ ПРАВИЛ
                 </span>
               </div>
               <div className="text-base font-extrabold flex items-center gap-2">
@@ -336,7 +383,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
                 )}
               </div>
               <div className={`text-[11px] font-mono ${mutedCls}`}>
-                {status?.crypto || 'AES-256-GCM + Shannon Entropy + PE Header Guard + Loopback IPC'}
+                {status?.crypto || 'AES-256-GCM + 32+ Heuristics + TCP Network Monitor + Startup Auditor'}
               </div>
             </div>
           </div>
@@ -345,9 +392,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
             <button
               onClick={() => void toggleRealtimeGuard()}
               className={`px-3 py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition ${
-                rtGuard
-                  ? 'bg-emerald-500/15 border-emerald-500/45 text-emerald-400'
-                  : btnCls
+                rtGuard ? 'bg-emerald-500/15 border-emerald-500/45 text-emerald-400' : btnCls
               }`}
               title="Фоновый контроль Загрузок и Рабочего стола без конфликта с Windows Defender"
             >
@@ -375,11 +420,11 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
             <div className="min-w-0">
-              <div className="font-bold">LumaShield 1.3 + Windows Defender (Без конфликтов)</div>
+              <div className="font-bold">LumaShield 1.4 + Windows Defender (Без конфликтов)</div>
               <div className="text-[11px] opacity-85">
                 {status?.defender?.available
-                  ? `Windows Defender активен (реальное время: ${status.defender.realtime_enabled ? 'ВКЛ' : 'ВЫКЛ'} · базы ${status.defender.signature_version}). LumaShield 1.3 дополняет его эвристикой, PE-контролем и анализом энтропии.`
-                  : 'LumaShield 1.3 работает в безопасном user-space режиме: эвристика Ransomware/Stealer/LOLBins, детектор PE-маскировки, энтропия Шеннона и контроль процессов.'}
+                  ? `Windows Defender активен (реальное время: ${status.defender.realtime_enabled ? 'ВКЛ' : 'ВЫКЛ'} · базы ${status.defender.signature_version}). LumaShield 1.4 добавляет 32+ правил (AMSI/Стиллеры/Майнеры), Сетевой монитор TCP и Аудит автозагрузки.`
+                  : 'LumaShield 1.4 работает в безопасном user-space режиме: 32+ эвристик, PE-маскировка, энтропия Шеннона, живой TCP-монитор и аудит автозагрузки.'}
               </div>
             </div>
           </div>
@@ -397,7 +442,9 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       {/* Sub-Tabs */}
       <div className="flex flex-wrap gap-1.5 text-xs">
         {[
-          { id: 'scanner' as const, label: 'Антивирус 1.3', badge: threats.length || undefined },
+          { id: 'scanner' as const, label: 'Антивирус 1.4', badge: threats.length || undefined },
+          { id: 'network' as const, label: 'Сетевой экран', badge: suspTcpCount || (tcpConns.length || undefined) },
+          { id: 'startup_audit' as const, label: 'Аудит автозагрузки', badge: startupFindings.filter((f) => f.risk !== 'safe').length || undefined },
           { id: 'quarantine' as const, label: 'Карантин', badge: quarantine.length || undefined },
           { id: 'exclusions' as const, label: 'Белый список', badge: exclusions.length || undefined },
           { id: 'audit' as const, label: 'Аудит ядра', badge: audit.length || undefined },
@@ -434,7 +481,6 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
                 disabled={scanning}
                 onClick={() => void runScan('deep')}
                 className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 ${btnCls}`}
-                title="Глубокий анализ: Документы, Temp, Энтропия Шеннона, Автозагрузка и Процессы"
               >
                 <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0" />
                 Глубокая
@@ -459,14 +505,12 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
                 disabled={scanning}
                 onClick={() => void runEicarTest()}
                 className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 ${btnCls}`}
-                title="Создаёт безопасный тестовый файл EICAR и проверяет его обнаружение"
               >
                 <Bug className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                 EICAR-тест
               </button>
             </div>
 
-            {/* Custom Path Scanner */}
             <div className="flex flex-wrap gap-2">
               <input
                 value={customPath}
@@ -509,13 +553,12 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
             )}
           </div>
 
-          {/* Detected Threats List */}
           <div className={`p-4 rounded-2xl border space-y-2.5 ${surfaceCls}`}>
             <div className="text-xs font-bold flex flex-wrap items-center justify-between gap-2">
               <span>Обнаруженные угрозы ({threats.length})</span>
               <div className="flex items-center gap-2">
                 <span className={`text-[10px] font-mono ${mutedCls}`}>
-                  20+ правил · PE-маскировка · Энтропия · Ransomware · EICAR
+                  32+ правил · AMSI · Майнеры · Стиллеры · PE-маскировка · Энтропия
                 </span>
                 {threats.length > 1 && (
                   <button
@@ -557,7 +600,6 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         onClick={() => void manageExclusion('add', t.path)}
-                        title="Доверять файлу (добавить в белый список)"
                         className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer ${btnCls}`}
                       >
                         Доверять
@@ -578,7 +620,145 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         </div>
       )}
 
-      {/* TAB 2: ISOLATED QUARANTINE */}
+      {/* TAB 2: LIVE TCP NETWORK MONITOR (LUMASHIELD 1.4) */}
+      {subTab === 'network' && (
+        <div className={`p-4 rounded-2xl border space-y-3 text-xs ${surfaceCls}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="font-bold flex items-center gap-1.5">
+                <Network className="w-4 h-4 text-emerald-400" />
+                Сетевой монитор TCP в реальном времени ({tcpConns.length})
+              </div>
+              <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
+                Прямое чтение таблицы соединений ОС (Win32 GetExtendedTcpTable / procfs, 0% WMI) с детектором подозрительных портов
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setTcpOnlySusp((v) => !v)}
+                className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold cursor-pointer ${
+                  tcpOnlySusp ? 'bg-rose-500/20 border-rose-500/45 text-rose-300' : btnCls
+                }`}
+              >
+                Подозрительные ({suspTcpCount})
+              </button>
+              <button
+                onClick={() => void fetchNetworkMonitor()}
+                disabled={tcpLoading}
+                className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-mono inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${tcpLoading ? 'animate-spin' : ''}`} />
+                Обновить
+              </button>
+            </div>
+          </div>
+
+          {visibleTcp.length === 0 ? (
+            <div className={`py-6 text-center font-mono ${mutedCls}`}>
+              {tcpLoading ? 'Сканирование сетевых сокетов...' : tcpOnlySusp ? 'Подозрительных TCP-соединений не обнаружено!' : 'Нет активных TCP-соединений'}
+            </div>
+          ) : (
+            <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+              {visibleTcp.map((c, idx) => (
+                <div
+                  key={`${c.local_addr}_${c.remote_addr}_${idx}`}
+                  className={`p-2.5 rounded-xl border flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] ${
+                    c.suspicious ? 'bg-rose-500/15 border-rose-500/40 text-rose-200' : btnCls
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold flex items-center gap-2">
+                      <span className="truncate">{c.process_name}</span>
+                      <span className="text-[10px] opacity-65">PID {c.pid}</span>
+                      {c.suspicious && (
+                        <span className="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[9px] uppercase">РИСК</span>
+                      )}
+                    </div>
+                    <div className="text-[10px] opacity-80 truncate">
+                      {c.local_addr} → {c.remote_addr} {c.note ? `· ${c.note}` : ''}
+                    </div>
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                      c.state === 'ESTABLISHED' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-sky-500/15 text-sky-400'
+                    }`}
+                  >
+                    {c.state}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: STARTUP PERSISTENCE AUDITOR (LUMASHIELD 1.4) */}
+      {subTab === 'startup_audit' && (
+        <div className={`p-4 rounded-2xl border space-y-3 text-xs ${surfaceCls}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="font-bold flex items-center gap-1.5">
+                <ListChecks className="w-4 h-4 text-[var(--luma-accent)]" />
+                Аудит автозагрузки (Startup Persistence Auditor)
+              </div>
+              <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
+                Проверка записей реестра Run и autostart на скрытый запуск PowerShell, скриптов из Temp/AppData и LOLBins
+              </div>
+            </div>
+            <button
+              onClick={() => void fetchStartupAudit()}
+              disabled={startupLoading}
+              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-mono inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${startupLoading ? 'animate-spin' : ''}`} />
+              Проверить
+            </button>
+          </div>
+
+          {startupFindings.length === 0 ? (
+            <div className={`py-6 text-center font-mono ${mutedCls}`}>
+              {startupLoading ? 'Анализ ключей автозагрузки...' : 'Записей автозагрузки не найдено'}
+            </div>
+          ) : (
+            <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+              {startupFindings.map((f, idx) => (
+                <div
+                  key={`${f.name}_${idx}`}
+                  className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 ${
+                    f.risk === 'high'
+                      ? 'bg-rose-500/15 border-rose-500/40'
+                      : f.risk === 'medium'
+                      ? 'bg-amber-500/10 border-amber-500/35'
+                      : btnCls
+                  }`}
+                >
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="font-bold flex items-center gap-2">
+                      <span className="truncate">{f.name}</span>
+                      <span className={`text-[10px] font-mono opacity-65`}>{f.location}</span>
+                    </div>
+                    <div className={`text-[10px] font-mono truncate ${mutedCls}`}>{f.command}</div>
+                    <div className="text-[11px] opacity-85">{f.reason}</div>
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase shrink-0 ${
+                      f.risk === 'high'
+                        ? 'bg-rose-600 text-white'
+                        : f.risk === 'medium'
+                        ? 'bg-amber-500/20 text-amber-300'
+                        : 'bg-emerald-500/20 text-emerald-400'
+                    }`}
+                  >
+                    {f.risk === 'high' ? 'ОПАСНО' : f.risk === 'medium' ? 'ВНИМАНИЕ' : 'БЕЗОПАСНО'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 4: ISOLATED QUARANTINE */}
       {subTab === 'quarantine' && (
         <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
           <div className="flex items-center justify-between text-xs">
@@ -621,11 +801,11 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         </div>
       )}
 
-      {/* TAB 3: WHITELIST EXCLUSIONS */}
+      {/* TAB 5: WHITELIST EXCLUSIONS */}
       {subTab === 'exclusions' && (
         <div className={`p-4 rounded-2xl border space-y-3 text-xs ${surfaceCls}`}>
           <div>
-            <div className="font-bold">Белый список (Исключения LumaShield 1.3)</div>
+            <div className="font-bold">Белый список (Исключения LumaShield 1.4)</div>
             <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
               Доверенные папки и файлы, которые пропускаются сканером и Real-Time Guard
             </div>
@@ -667,13 +847,13 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         </div>
       )}
 
-      {/* TAB 4: SECURITY KERNEL AUDIT LOG */}
+      {/* TAB 6: SECURITY KERNEL AUDIT LOG */}
       {subTab === 'audit' && (
         <div className={`p-4 rounded-2xl border space-y-2.5 ${surfaceCls}`}>
           <div className="flex items-center justify-between text-xs">
             <span className="font-bold flex items-center gap-1.5">
               <Activity className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
-              Журнал ядра безопасности LumaShield 1.3
+              Журнал ядра безопасности LumaShield 1.4
             </span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>{audit.length} событий</span>
           </div>

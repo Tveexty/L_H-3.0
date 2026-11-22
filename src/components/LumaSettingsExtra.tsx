@@ -161,11 +161,11 @@ export const KernelUIPanel: React.FC<{
 
   return (
     <div className="space-y-4">
-      {/* Flagship Sculpted 3D Lithium 1.2.3B Hero Artwork — Click for Orbital Awakening Animation & Mini-Game! */}
+      {/* Flagship Sculpted 3D Beryllium 1.3 Hero Artwork — Click for Beryllium Vanguard Mini-Game! */}
       <LumaHeliumHeroCard
         onTriggerEasterEgg={() => onTriggerEasterEgg?.()}
-        kernelVersion={liveSystem?.kernel_engine_version || '1.3B'}
-        securityVersion="1.3"
+        kernelVersion={liveSystem?.kernel_engine_version || '1.4'}
+        securityVersion="1.4"
       />
 
       {/* Device & Kernel UI Identity Card */}
@@ -173,28 +173,28 @@ export const KernelUIPanel: React.FC<{
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
             <div className="w-12 h-12 rounded-2xl bg-[var(--luma-accent)] text-white flex items-center justify-center font-mono font-black text-xl shrink-0">
-              Li
+              Be
             </div>
             <div className="min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--luma-accent)] font-bold">
-                ЯДРО UI · LUMA LITHIUM
+                ЯДРО UI · LUMA BERYLLIUM
               </div>
               <div className="text-lg font-extrabold tracking-tight truncate">
-                Luma OS 1.2.3B (Lithium)
+                Luma OS 1.3 (Beryllium)
               </div>
               <div className={`text-xs font-mono truncate ${mutedCls}`}>
-                LumaCore {liveSystem?.kernel_engine_version || '1.3B'} · LumaShield 1.3 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
+                LumaCore {liveSystem?.kernel_engine_version || '1.4'} · LumaShield 1.4 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
               </div>
             </div>
           </div>
 
           <a
-            href="/LumaOS_1.2.3B.exe"
-            download="LumaOS_1.2.3B.exe"
+            href="/LumaOS_1.3.exe"
+            download="LumaOS_1.3.exe"
             className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
-            LumaOS_1.2.3B.exe
+            LumaOS_1.3.exe
           </a>
         </div>
 
@@ -248,17 +248,17 @@ export const KernelUIPanel: React.FC<{
           {/* 3. Версия ПО */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия ПО</div>
-            <div className="text-sm font-mono font-bold">1.2.3B (Lithium)</div>
+            <div className="text-sm font-mono font-bold">1.3 (Beryllium)</div>
           </div>
 
-          {/* 4. Версия Ядра (1.3B) */}
+          {/* 4. Версия Ядра (1.4) */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия Ядра</div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-mono font-bold text-[var(--luma-accent)]">
-                {liveSystem?.kernel_engine_version || '1.3B'}
+                {liveSystem?.kernel_engine_version || '1.4'}
               </span>
-              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore 1.3B · Zero-WMI</span>
+              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore 1.4 · Zero-WMI</span>
             </div>
           </div>
         </div>
@@ -268,10 +268,15 @@ export const KernelUIPanel: React.FC<{
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
         {[
           ['Процессор', `${liveSystem?.cpu_model || '—'} (${liveSystem?.cpu_cores || 0} потоков)`],
-          ['Графика (GPU)', liveSystem?.gpu_name || '—'],
+          [
+            'Графика (GPU / VRAM)',
+            liveSystem?.gpu_vram_total_mb
+              ? `${liveSystem?.gpu_name || '—'} · ${(liveSystem.gpu_vram_total_mb / 1024).toFixed(1)} ГБ VRAM`
+              : liveSystem?.gpu_name || '—',
+          ],
           ['Оперативная память', liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ (${liveSystem.ram_percent}%)` : '—'],
           ['Платформа / Архитектура', `${liveSystem?.os_name || 'Luma OS'} · ${liveSystem?.arch || 'amd64'}`],
-          ['Ядро безопасности', 'LumaShield 1.3 · Entropy + PE Guard + Real-Time'],
+          ['Ядро безопасности', 'LumaShield 1.4 · 32+ Rules + TCP Monitor + Audit'],
           ['Шина ядра / StateVault', 'TCP JSON-RPC 2.0 :49215 · Eternal Disk Sync'],
         ].map(([k, v]) => (
           <div key={k} className={`p-3.5 rounded-xl border space-y-1 ${surfaceCls}`}>

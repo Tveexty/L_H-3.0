@@ -63,7 +63,7 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
-import { AppItem, ClockStyleKey, InstalledAppInfo, IslandMediaPlayer, LiveSystemTelemetry } from '../data/launcherData';
+import { AppItem, ClockStyleKey, InstalledAppInfo, IslandMediaPlayer, LiveSystemTelemetry, WirelessBatteryInfo } from '../data/launcherData';
 import { DesignStyle, TaskbarPosition } from './DexWindow';
 import { LumaClockRenderer } from './LumaClockRenderer';
 import {
@@ -82,7 +82,7 @@ export type { WidgetShape };
 export type DesktopGridCols = 22 | 20;
 export type WallpaperStyle = 'dots' | 'grid' | 'matte';
 export type WallpaperTransitionMode = 'iris' | 'bloom' | 'wipe' | 'morph';
-export type LiveWallpaperId = '' | 'lithium' | 'nebula' | 'solar';
+export type LiveWallpaperId = '' | 'lithium' | 'nebula' | 'solar' | 'beryllium' | 'borealis' | 'cybergrid';
 
 export type DesktopSystemWinId =
   | 'apps'
@@ -105,6 +105,7 @@ export interface FolderEntry {
   kind: 'app' | 'file' | 'disk_folder' | 'url' | 'command' | 'note' | 'system';
   label: string;
   icon: string;
+  iconUrl?: string;
   target: string;
   content?: string;
 }
@@ -127,6 +128,7 @@ export interface DesktopShortcut {
   kind: 'system' | 'app' | 'folder' | 'file' | 'disk_folder' | 'url' | 'command' | 'note';
   label: string;
   icon: string;
+  iconUrl?: string;
   target: string;
   content?: string;
   appIds?: string[];
@@ -272,6 +274,9 @@ export interface LumaDesktopCanvasProps {
   aiEnabled?: boolean;
   iconSizePx?: number;
   onActivityPulse?: (title: string, detail?: string, icon?: string) => void;
+  wirelessBatteries?: WirelessBatteryInfo[];
+  onOpenSettingsTab?: (tab: string) => void;
+  onTriggerEasterEgg?: () => void;
 }
 
 export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
@@ -336,10 +341,48 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
   aiEnabled = true,
   iconSizePx = 44,
   onActivityPulse,
+  wirelessBatteries = [],
+  onOpenSettingsTab,
+  onTriggerEasterEgg,
 }) => {
   const totalRows = 10;
   const totalCells = gridCols * totalRows;
   const gridRef = useRef<HTMLDivElement>(null);
+
+  // Instant Widget Settings Modal state (click any desktop widget → jump directly to its settings!)
+  const [activeWidgetSettingsId, setActiveWidgetSettingsId] = useState<string | null>(null);
+
+  // Daily Habit Streak widget state (persisted locally)
+  const [habits, setHabits] = useState<{ id: string; text: string; done: boolean; streak: number }[]>(() => {
+    try {
+      const raw = localStorage.getItem('luma_habits_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      /* ignore */
+    }
+    return [
+      { id: 'h1', text: 'Глубокий фокус 45 мин', done: false, streak: 4 },
+      { id: 'h2', text: 'Разминка и вода', done: true, streak: 7 },
+      { id: 'h3', text: 'Код / Обучение', done: false, streak: 3 },
+    ];
+  });
+
+  const toggleHabit = (id: string) => {
+    setHabits((prev) => {
+      const next = prev.map((h) =>
+        h.id === id ? { ...h, done: !h.done, streak: !h.done ? h.streak + 1 : Math.max(0, h.streak - 1) } : h
+      );
+      try {
+        localStorage.setItem('luma_habits_v1', JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   // Smooth exit animation tracking for deleting widgets & desktop shortcuts
   const [deletingWidgetIds, setDeletingWidgetIds] = useState<Record<string, boolean>>({});
@@ -1073,6 +1116,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         kind: 'file',
         label: app.name,
         icon: app.icon_hint || 'AppWindow',
+        iconUrl: app.icon_url,
         target: app.exec_path,
       }));
       setShortcuts((prev) => [
@@ -1104,6 +1148,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           kind: 'file',
           label: app.name,
           icon: app.icon_hint || 'AppWindow',
+          iconUrl: app.icon_url,
           target: app.exec_path,
           col: cell.col,
           row: cell.row,
@@ -2793,6 +2838,179 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         );
       }
 
+      case 'luma_wireless_hub': {
+        const list = wirelessBatteries.slice(0, variant === 'pill_wireless' ? 3 : 4);
+        if (variant === 'pill_wireless') {
+          return (
+            <div className="h-full flex items-center justify-between gap-2 px-1">
+              <span className="text-[10px] font-mono font-bold text-emerald-400 shrink-0">2.4GHz / BT</span>
+              {list.length === 0 ? (
+                <span className={`text-[10px] truncate ${mutedCls}`}>Нет беспроводных датчиков</span>
+              ) : (
+                <div className="flex items-center gap-2 overflow-hidden">
+                  {list.map((d, idx) => (
+                    <span key={idx} className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 truncate">
+                      {d.name.slice(0, 10)} {d.battery_percent}%
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        }
+        return (
+          <div className="h-full flex flex-col justify-between gap-1.5">
+            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
+              <span className="text-emerald-400 font-bold">БЕСПРОВОДНОЙ ХАБ</span>
+              <span className={mutedCls}>{wirelessBatteries.length} устр.</span>
+            </div>
+            {list.length === 0 ? (
+              <div className={`flex-1 flex items-center justify-center text-[11px] text-center ${mutedCls}`}>
+                Подключите BT / 2.4GHz мышь, наушники или клавиатуру
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5 flex-1 content-center">
+                {list.map((d, idx) => {
+                  const pct = Math.max(0, Math.min(100, d.battery_percent));
+                  return (
+                    <div key={`${d.name}_${idx}`} className={`p-1.5 rounded-xl border space-y-1 ${subBtnCls}`}>
+                      <div className="flex items-center justify-between gap-1 text-[10px]">
+                        <span className="font-semibold truncate">{d.name}</span>
+                        <span className={`font-mono font-bold ${pct <= 20 ? 'text-rose-400' : 'text-emerald-400'}`}>{pct}%</span>
+                      </div>
+                      <div className="h-1 rounded-full bg-black/25 overflow-hidden">
+                        <div className={`h-full rounded-full ${pct <= 20 ? 'bg-rose-500' : 'bg-emerald-400'}`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      case 'luma_gpu_vram': {
+        const gpuPct = liveSystem?.gpu_percent ?? 0;
+        const vramUsed = liveSystem?.gpu_vram_used_mb ?? 0;
+        const vramTot = liveSystem?.gpu_vram_total_mb ?? 0;
+        const vramPct = liveSystem?.gpu_vram_percent ?? (vramTot > 0 ? Math.round((vramUsed / vramTot) * 100) : 0);
+        const tempC = liveSystem?.gpu_temp_c ?? 44;
+        if (variant === 'circle_gpu') {
+          return (
+            <div className="h-full flex flex-col items-center justify-center text-center gap-0.5">
+              <span className="text-[9px] font-mono uppercase text-rose-400 font-bold">GPU</span>
+              <span className="text-2xl font-mono font-black leading-none">{gpuPct}%</span>
+              <span className={`text-[9px] font-mono ${mutedCls}`}>VRAM {vramPct}% · {tempC}°C</span>
+            </div>
+          );
+        }
+        return (
+          <div className="h-full flex flex-col justify-between gap-1.5">
+            <div className="flex items-center justify-between text-[10px] font-mono">
+              <span className="font-bold text-rose-400 truncate max-w-[70%]">{liveSystem?.gpu_name || 'GPU + VRAM'}</span>
+              <span className={mutedCls}>{tempC}°C</span>
+            </div>
+            <div className="space-y-1.5">
+              <div className="space-y-0.5">
+                <div className="flex justify-between text-[10px] font-mono">
+                  <span className={mutedCls}>Чип GPU</span>
+                  <span className="font-bold text-rose-400">{gpuPct}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                  <div className="h-full rounded-full bg-rose-500" style={{ width: `${Math.max(3, gpuPct)}%` }} />
+                </div>
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex justify-between text-[10px] font-mono">
+                  <span className={mutedCls}>VRAM</span>
+                  <span className="font-bold text-emerald-400">
+                    {vramTot > 0 ? `${(vramUsed / 1024).toFixed(1)}/${(vramTot / 1024).toFixed(0)} ГБ (${vramPct}%)` : `${Math.round(vramUsed)} МБ`}
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                  <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(3, vramPct)}%` }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      case 'luma_habit_streak': {
+        const doneCount = habits.filter((h) => h.done).length;
+        return (
+          <div className="h-full flex flex-col justify-between gap-1.5">
+            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.12em]">
+              <span className="font-bold text-amber-400">ПРИВЫЧКИ · STREAK</span>
+              <span className={mutedCls}>{doneCount}/{habits.length}</span>
+            </div>
+            <div className="space-y-1 flex-1 overflow-y-auto pr-0.5">
+              {habits.map((h) => (
+                <button
+                  key={h.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleHabit(h.id);
+                  }}
+                  className={`w-full px-2 py-1.5 rounded-xl border text-left flex items-center justify-between gap-1.5 text-[11px] cursor-pointer transition ${
+                    h.done ? 'bg-emerald-500/15 border-emerald-500/40' : subBtnCls
+                  }`}
+                >
+                  <span className={`truncate ${h.done ? 'line-through opacity-75' : 'font-medium'}`}>{h.text}</span>
+                  <span className="text-[10px] font-mono font-bold text-amber-400 shrink-0">🔥{h.streak}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
+      case 'luma_beryllium_pulse': {
+        return (
+          <div className="h-full flex flex-col justify-between gap-2">
+            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
+              <span className="text-emerald-400 font-bold">BERYLLIUM · Be-4</span>
+              <span className="text-amber-300 font-bold">CORE 1.4</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5 text-center font-mono text-[10px]">
+              <div className={`py-1 rounded-lg border ${subBtnCls}`}>
+                <div className="opacity-60 text-[8px]">CPU</div>
+                <div className="font-bold">{liveSystem?.cpu_percent ?? 0}%</div>
+              </div>
+              <div className={`py-1 rounded-lg border ${subBtnCls}`}>
+                <div className="opacity-60 text-[8px]">GPU</div>
+                <div className="font-bold text-rose-400">{liveSystem?.gpu_percent ?? 0}%</div>
+              </div>
+              <div className={`py-1 rounded-lg border ${subBtnCls}`}>
+                <div className="opacity-60 text-[8px]">SHIELD</div>
+                <div className="font-bold text-emerald-400">1.4</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-1">
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenSystemWindow('taskmgr'); }}
+                className={`py-1 rounded-lg border text-[9px] font-mono font-bold cursor-pointer ${subBtnCls}`}
+              >
+                GPU/CPU
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenSettingsTab ? onOpenSettingsTab('security') : onOpenSystemWindow('settings'); }}
+                className={`py-1 rounded-lg border text-[9px] font-mono font-bold cursor-pointer ${subBtnCls}`}
+              >
+                SHIELD
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onTriggerEasterEgg?.(); }}
+                className="py-1 rounded-lg bg-gradient-to-r from-emerald-500/85 to-amber-400/85 text-slate-950 text-[9px] font-mono font-black cursor-pointer"
+              >
+                ИГРА Be-4
+              </button>
+            </div>
+          </div>
+        );
+      }
+
       case 'luma_utils':
       default: {
         const mods = [
@@ -3036,7 +3254,13 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 setCtxMenu(null);
                 setShortcutCtxMenu(null);
                 setWidgetCtxMenu(null);
-                if (editMode) setSelectedId(w.id);
+                if (editMode) {
+                  setSelectedId(w.id);
+                  return;
+                }
+                const targetEl = e.target as HTMLElement | null;
+                if (targetEl?.closest('button, input, textarea, select, a')) return;
+                setActiveWidgetSettingsId(w.id);
               }}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -3053,10 +3277,11 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 gridRow: `${clampedRow} / span ${Math.min(w.h, totalRows)}`,
                 zIndex: isResizing ? 28 : isSelected ? 15 : 5,
               }}
-              className={`relative border ${w.shape === 'circle' ? 'p-2.5' : 'p-3.5'} ${shapeCls} luma-card-lift ${cardCls} ${
+              title={editMode ? `${w.title} (${w.w}×${w.h})` : `${w.title} · Нажмите для настроек виджета`}
+              className={`group relative border ${w.shape === 'circle' ? 'p-2.5' : 'p-3.5'} ${shapeCls} luma-card-lift ${cardCls} ${
                 deletingWidgetIds[w.id] ? 'luma-delete-widget' : ''
               } ${
-                editMode ? 'cursor-grab active:cursor-grabbing' : ''
+                editMode ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
               } ${
                 isResizing
                   ? 'ring-2 ring-[var(--luma-accent)] shadow-[0_0_0_5px_var(--luma-accent-soft)]'
@@ -3066,6 +3291,20 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
               }`}
             >
               <div className={`w-full h-full overflow-hidden ${shapeCls}`}>{renderWidgetBody(w)}</div>
+
+              {!editMode && !isResizing && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveWidgetSettingsId(w.id);
+                  }}
+                  title="Настройки этого виджета"
+                  className="opacity-0 group-hover:opacity-100 transition-opacity absolute top-1.5 right-1.5 z-20 p-1 rounded-lg bg-black/55 text-white/90 hover:bg-[var(--luma-accent)] cursor-pointer"
+                >
+                  <Settings className="w-3 h-3" />
+                </button>
+              )}
 
               {(editMode || isResizing) && (
                 <div className="absolute top-1.5 right-1.5 z-20 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--luma-accent)] text-white text-[9px] font-mono font-bold shadow">
@@ -3214,7 +3453,18 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                       title={`${entry.label}${entry.target ? `\n${entry.target}` : ''}`}
                       className={`p-1.5 rounded-xl border flex flex-col items-center justify-center gap-0.5 transition cursor-pointer ${subBtnCls} hover:border-[var(--luma-accent)]`}
                     >
-                      {renderShortcutIcon(entry.icon, 'w-3.5 h-3.5 shrink-0')}
+                      {entry.iconUrl ? (
+                        <img
+                          src={entry.iconUrl}
+                          alt=""
+                          className="w-4 h-4 rounded object-contain shrink-0"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        renderShortcutIcon(entry.icon, 'w-3.5 h-3.5 shrink-0')
+                      )}
                       {sh >= 2 && <span className="text-[8px] truncate max-w-full leading-tight">{entry.label}</span>}
                     </button>
                   ))}
@@ -3368,6 +3618,15 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                       </span>
                     ))}
                   </div>
+                ) : sc.iconUrl ? (
+                  <img
+                    src={sc.iconUrl}
+                    alt={sc.label}
+                    className="w-[64%] h-[64%] object-contain rounded"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
                 ) : (
                   renderShortcutIcon(sc.icon, iconSizePx >= 58 ? 'w-6 h-6' : iconSizePx >= 48 ? 'w-5 h-5' : 'w-4 h-4')
                 )}
@@ -4519,7 +4778,18 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                           }}
                           className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer"
                         >
-                          {renderShortcutIcon(entry.icon, 'w-4 h-4 shrink-0 text-[var(--luma-accent)]')}
+                          {entry.iconUrl ? (
+                            <img
+                              src={entry.iconUrl}
+                              alt=""
+                              className="w-5 h-5 rounded object-contain shrink-0"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            renderShortcutIcon(entry.icon, 'w-4 h-4 shrink-0 text-[var(--luma-accent)]')
+                          )}
                           <div className="min-w-0">
                             <div className="text-xs font-semibold truncate">{entry.label}</div>
                             <div className={`text-[9px] font-mono uppercase truncate ${mutedCls}`}>{entry.kind}</div>
@@ -4881,6 +5151,20 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                               >
                                 {sel && <Check className="w-3 h-3" />}
                               </div>
+                              {app.icon_url ? (
+                                <img
+                                  src={app.icon_url}
+                                  alt=""
+                                  className="w-7 h-7 rounded-lg object-contain shrink-0 bg-black/10 p-0.5"
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                  }}
+                                />
+                              ) : (
+                                <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
+                                  <AppWindow className="w-4 h-4 opacity-70" />
+                                </div>
+                              )}
                               <div className="min-w-0 flex-1">
                                 <div className="text-xs font-bold truncate">{app.name}</div>
                                 <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
@@ -4923,6 +5207,192 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           </div>
         </div>
       )}
+
+      {/* ==================== INSTANT WIDGET SETTINGS MODAL (CLICK ANY WIDGET → JUMP TO ITS SETTINGS!) ==================== */}
+      {activeWidgetSettingsId && (() => {
+        const w = widgets.find((item) => item.id === activeWidgetSettingsId);
+        if (!w) return null;
+        const def = getWidgetDef(w.widgetType);
+        const sysJump: { label: string; run: () => void } | null = (() => {
+          if (w.widgetType === 'luma_clock' || w.widgetType === 'luma_world_clock' || w.widgetType === 'luma_calendar') {
+            return { label: 'Настройки часов и оформления', run: () => (onOpenSettingsTab ? onOpenSettingsTab('appearance') : onOpenSystemWindow('settings')) };
+          }
+          if (w.widgetType === 'luma_battery' || w.widgetType === 'luma_battery_pro' || w.widgetType === 'luma_power' || w.widgetType === 'luma_wireless_hub') {
+            return { label: 'Открыть «Питание и Батарея»', run: () => (onOpenSettingsTab ? onOpenSettingsTab('power_battery') : onOpenSystemWindow('settings')) };
+          }
+          if (w.widgetType === 'luma_sys' || w.widgetType === 'luma_gpu_vram' || w.widgetType === 'luma_net') {
+            return { label: 'Открыть Диспетчер задач (GPU / ЦП)', run: () => onOpenSystemWindow('taskmgr') };
+          }
+          if (w.widgetType === 'luma_disks') {
+            return { label: 'Открыть «Память и Файлы»', run: () => (onOpenSettingsTab ? onOpenSettingsTab('storage') : onOpenSystemWindow('explorer')) };
+          }
+          if (w.widgetType === 'luma_guard') {
+            return { label: 'Открыть LumaShield 1.4', run: () => (onOpenSettingsTab ? onOpenSettingsTab('security') : onOpenSystemWindow('settings')) };
+          }
+          if (w.widgetType === 'luma_wellbeing' || w.widgetType === 'luma_screentime') {
+            return { label: 'Открыть Трекер сессий 2.0', run: () => onOpenSystemWindow('tracker') };
+          }
+          if (w.widgetType === 'luma_ai_quick') {
+            return { label: 'Открыть Luma AI', run: () => onOpenSystemWindow('ai') };
+          }
+          if (w.widgetType === 'luma_beryllium_pulse') {
+            return { label: 'Открыть «Ядро UI 1.3 Beryllium»', run: () => (onOpenSettingsTab ? onOpenSettingsTab('kernel_ui') : onOpenSystemWindow('settings')) };
+          }
+          return { label: 'Системные настройки Luma OS', run: () => onOpenSystemWindow('settings') };
+        })();
+
+        return (
+          <div
+            onClick={() => setActiveWidgetSettingsId(null)}
+            className="fixed inset-0 z-[80] bg-black/55 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className={`luma-animate-in w-full max-w-lg border p-5 shadow-2xl space-y-4 ${modalShellCls}`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--luma-accent)] font-bold">
+                    НАСТРОЙКИ ВИДЖЕТА · {w.group.toUpperCase()}
+                  </div>
+                  <div className="text-base font-extrabold mt-0.5">{w.title}</div>
+                  <div className={`text-[11px] mt-0.5 ${mutedCls}`}>{def.summary}</div>
+                </div>
+                <button
+                  onClick={() => setActiveWidgetSettingsId(null)}
+                  className={`p-1.5 rounded-xl border cursor-pointer ${subBtnCls}`}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Widget Variant Switcher */}
+              {def.variants.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Стиль отображения</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {def.variants.map((v) => {
+                      const active = (w.variant || def.defaultVariant) === v.id;
+                      return (
+                        <button
+                          key={v.id}
+                          onClick={() => updateWidgetProps(w.id, { variant: v.id, w: v.w, h: v.h, shape: v.shape })}
+                          className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                            active ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]' : subBtnCls
+                          }`}
+                        >
+                          <div className="text-xs font-bold flex items-center justify-between">
+                            <span>{v.label}</span>
+                            <span className="text-[9px] font-mono opacity-65">
+                              {v.w}×{v.h}
+                            </span>
+                          </div>
+                          <div className={`text-[10px] mt-0.5 ${mutedCls}`}>{v.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Shape Selector */}
+              <div className="space-y-1.5">
+                <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Форма виджета</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {SHAPE_OPTIONS.map((sh) => (
+                    <button
+                      key={sh.id}
+                      onClick={() => updateWidgetProps(w.id, { shape: sh.id })}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold cursor-pointer ${
+                        (w.shape || 'squircle') === sh.id
+                          ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                          : subBtnCls
+                      }`}
+                    >
+                      {sh.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Size W × H Controls */}
+              <div className="grid grid-cols-2 gap-2.5 text-xs">
+                <div className={`p-2.5 rounded-xl border flex items-center justify-between ${subBtnCls}`}>
+                  <span className="font-mono">Ширина: <strong>{w.w}</strong></span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => updateWidgetProps(w.id, { w: Math.max(2, w.w - 1) })}
+                      className="w-6 h-6 rounded-lg bg-white/10 hover:bg-white/20 font-bold cursor-pointer"
+                    >
+                      −
+                    </button>
+                    <button
+                      onClick={() => updateWidgetProps(w.id, { w: Math.min(10, w.w + 1) })}
+                      className="w-6 h-6 rounded-lg bg-white/10 hover:bg-white/20 font-bold cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <div className={`p-2.5 rounded-xl border flex items-center justify-between ${subBtnCls}`}>
+                  <span className="font-mono">Высота: <strong>{w.h}</strong></span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => updateWidgetProps(w.id, { h: Math.max(1, w.h - 1) })}
+                      className="w-6 h-6 rounded-lg bg-white/10 hover:bg-white/20 font-bold cursor-pointer"
+                    >
+                      −
+                    </button>
+                    <button
+                      onClick={() => updateWidgetProps(w.id, { h: Math.min(6, w.h + 1) })}
+                      className="w-6 h-6 rounded-lg bg-white/10 hover:bg-white/20 font-bold cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions Footer */}
+              <div className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+                {sysJump && (
+                  <button
+                    onClick={() => {
+                      setActiveWidgetSettingsId(null);
+                      sysJump.run();
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    {sysJump.label}
+                  </button>
+                )}
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <button
+                    onClick={() => {
+                      setActiveWidgetSettingsId(null);
+                      setResizingTarget({ kind: 'widget', id: w.id });
+                    }}
+                    className={`px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${subBtnCls}`}
+                  >
+                    Растянуть мышью
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveWidgetSettingsId(null);
+                      animatedRemoveWidget(w.id, w.title);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-rose-600/85 hover:bg-rose-600 text-white text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Удалить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 });

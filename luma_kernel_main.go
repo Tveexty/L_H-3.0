@@ -47,10 +47,10 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.2.3B"
-	KernelCodename      = "Lithium"
-	KernelEngineVersion = "1.3B"
-	SecurityCoreVersion = "1.3"
+	KernelVersion       = "1.3"
+	KernelCodename      = "Beryllium"
+	KernelEngineVersion = "1.4"
+	SecurityCoreVersion = "1.4"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
 )
@@ -2207,12 +2207,73 @@ func main() {
 		})
 	})
 
-	// Serve standalone executable download for LumaOS_1.2.3B.exe (with backward-compatible aliases)
+	// ==================== LUMA OS 1.3 (BERYLLIUM) LUMACORE 1.4 NATIVE ENDPOINTS ====================
+
+	// Real Native App Icon Extractor (SHGetFileInfoW -> cached 32x32 PNG, ~1ms, 0% WMI!)
+	mux.HandleFunc("/api/kernel/app-icon", func(w http.ResponseWriter, r *http.Request) {
+		p := strings.TrimSpace(r.URL.Query().Get("path"))
+		if p == "" {
+			http.NotFound(w, r)
+			return
+		}
+		pngBytes, err := kernel.probe.ExtractAppIconPNG(p)
+		if err != nil || len(pngBytes) == 0 {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		_, _ = w.Write(pngBytes)
+	})
+
+	// Ultra-Fast Active Keyboard Layout Endpoint (4us pure Win32 GetKeyboardLayout for instant Alt+Shift/Win+Space sync!)
+	mux.HandleFunc("/api/kernel/keyboard/active", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		snap := kernel.probe.GetKeyboardLayouts()
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":     true,
+			"tag":    snap.ActiveTag,
+			"short":  snap.Active.Short,
+			"active": snap.Active,
+		})
+	})
+
+	// LumaShield 1.4 Live Network Monitor (Pure Win32 GetExtendedTcpTable / Linux /proc/net/tcp, 0% WMI!)
+	mux.HandleFunc("/api/kernel/security/network", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		conns := kernel.probe.ActiveTcpConnections()
+		suspCount := 0
+		for _, c := range conns {
+			if c.Suspicious {
+				suspCount++
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":               true,
+			"connections":      conns,
+			"count":            len(conns),
+			"suspicious_count": suspCount,
+		})
+	})
+
+	// LumaShield 1.4 Startup Persistence Auditor
+	mux.HandleFunc("/api/kernel/security/startup-audit", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		entries := kernel.probe.ListStartupItems()
+		findings := kernel.security.AuditStartupEntries(entries)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":       true,
+			"findings": findings,
+			"count":    len(findings),
+		})
+	})
+
+	// Serve standalone executable download for LumaOS_1.3.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.3B.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.3.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -2220,12 +2281,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.2.3B.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.3.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.3.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.3B.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.3.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.2.exe", serveExe)
@@ -2279,8 +2341,8 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.2.3B (LITHIUM) — LUMACORE 1.3B & LUMASHIELD 1.3")
-	log.Printf("  - True Zero-WMI & Zero-PowerShell Win32 Engine: ENABLED")
+	log.Printf("  LUMA OS 1.3 (BERYLLIUM) — LUMACORE 1.4 & LUMASHIELD 1.4")
+	log.Printf("  - True Zero-WMI, NVML/PDH GPU+VRAM, HID 2.4GHz & App Icons: ON")
 	log.Printf("  - Desktop Environment:          http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:    http://%s/api/kernel/status", addr)

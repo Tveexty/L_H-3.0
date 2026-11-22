@@ -301,7 +301,35 @@
   animation: lumaMeshDrift 20s ease-in-out infinite;
 }
 
-/* ==================== 4 SELECTABLE ANIMATION PRESETS (STANDARD / SPRING / GLIDE / NONE) ==================== */
+.luma-live-wp-beryllium {
+  background: radial-gradient(circle at 22% 24%, rgba(16, 185, 129, 0.44), transparent 48%),
+    radial-gradient(circle at 78% 72%, rgba(34, 211, 238, 0.36), transparent 52%),
+    radial-gradient(circle at 52% 16%, rgba(245, 158, 11, 0.22), transparent 46%),
+    linear-gradient(135deg, #030a0c 0%, #06211f 48%, #041016 100%);
+  background-size: 200% 200%;
+  animation: lumaMeshDrift 18s ease-in-out infinite;
+}
+
+.luma-live-wp-borealis {
+  background: radial-gradient(ellipse 80% 45% at 24% 28%, rgba(52, 211, 153, 0.42), transparent 56%),
+    radial-gradient(ellipse 70% 40% at 75% 65%, rgba(56, 189, 248, 0.35), transparent 56%),
+    radial-gradient(ellipse 65% 45% at 50% 88%, rgba(99, 102, 241, 0.28), transparent 55%),
+    linear-gradient(160deg, #030712 0%, #051c24 55%, #070b18 100%);
+  background-size: 200% 200%;
+  animation: lumaMeshDrift 22s ease-in-out infinite;
+}
+
+.luma-live-wp-cybergrid {
+  background-color: #050911;
+  background-image:
+    radial-gradient(circle at 25% 20%, rgba(16, 185, 129, 0.28), transparent 48%),
+    radial-gradient(circle at 78% 82%, rgba(6, 182, 212, 0.24), transparent 50%),
+    linear-gradient(to right, rgba(52, 211, 153, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(34, 211, 238, 0.07) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 38px 38px, 38px 38px;
+}
+
+/* ==================== 6 SELECTABLE ANIMATION PRESETS (STANDARD / SPRING / GLIDE / SILK / ELASTIC / NONE) ==================== */
 @keyframes lumaFadeUp {
   from {
     opacity: 0;
@@ -341,6 +369,50 @@
   }
 }
 
+@keyframes lumaSilkIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.975);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes lumaElasticIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.86) translateY(14px);
+  }
+  58% {
+    opacity: 1;
+    transform: scale(1.028) translateY(-3px);
+  }
+  82% {
+    transform: scale(0.992) translateY(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes lumaToastSlideRight {
+  0% {
+    opacity: 0;
+    transform: translateX(42px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.luma-toast-right {
+  animation: lumaToastSlideRight 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 .luma-animate-in {
   animation: lumaFadeUp 0.16s cubic-bezier(0.2, 0, 0, 1) forwards;
 }
@@ -351,6 +423,14 @@ html[data-anim="spring"] .luma-animate-in {
 
 html[data-anim="glide"] .luma-animate-in {
   animation: lumaGlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+html[data-anim="silk"] .luma-animate-in {
+  animation: lumaSilkIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+html[data-anim="elastic"] .luma-animate-in {
+  animation: lumaElasticIn 0.36s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 html[data-anim="none"] .luma-animate-in {
@@ -387,6 +467,22 @@ html[data-anim="glide"] .luma-card-lift {
 
 html[data-anim="glide"] .luma-card-lift:hover {
   transform: translateY(-2px);
+}
+
+html[data-anim="silk"] .luma-card-lift {
+  transition: border-color 0.22s ease, background-color 0.22s ease, transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-anim="silk"] .luma-card-lift:hover {
+  transform: translateY(-2px) scale(1.006);
+}
+
+html[data-anim="elastic"] .luma-card-lift {
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+html[data-anim="elastic"] .luma-card-lift:hover {
+  transform: translateY(-4px) scale(1.014);
 }
 
 html[data-anim="none"] *,
@@ -511,7 +607,10 @@ html[data-gpu-shadows="off"] [class*="shadow-"] {
 
 html[data-wp-paused="true"] .luma-live-wp-lithium,
 html[data-wp-paused="true"] .luma-live-wp-nebula,
-html[data-wp-paused="true"] .luma-live-wp-solar {
+html[data-wp-paused="true"] .luma-live-wp-solar,
+html[data-wp-paused="true"] .luma-live-wp-beryllium,
+html[data-wp-paused="true"] .luma-live-wp-borealis,
+html[data-wp-paused="true"] .luma-live-wp-cybergrid {
   animation-play-state: paused !important;
 }
 

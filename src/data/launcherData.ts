@@ -45,6 +45,7 @@ export interface HostWindowInfo {
   title: string;
   mem_mb: number;
   exe_path?: string;
+  icon_url?: string;
   is_self?: boolean;
 }
 
@@ -71,6 +72,7 @@ export interface AppItem {
   package: string;
   category: string;
   icon: string;
+  iconUrl?: string;
   url: string;
   args?: string;
   type: AppType;
@@ -187,6 +189,10 @@ export interface LiveSystemTelemetry {
   cpu_percent: number;
   gpu_name: string;
   gpu_percent: number;
+  gpu_vram_used_mb?: number;
+  gpu_vram_total_mb?: number;
+  gpu_vram_percent?: number;
+  gpu_source?: string;
   gpu_temp_c: number;
   ram_used_gb: number;
   ram_total_gb: number;
@@ -196,6 +202,8 @@ export interface LiveSystemTelemetry {
   battery_charging: boolean;
   net_down_mbps: number;
   net_up_mbps: number;
+  active_kbd_tag?: string;
+  active_kbd_short?: string;
   disks: LiveDiskMetric[];
   media: LiveMediaSession;
   location: LiveLocationInfo;
@@ -1318,6 +1326,25 @@ export interface InstalledAppInfo {
   category: string;
   source: string;
   icon_hint: string;
+  icon_url?: string;
+}
+
+export interface ActiveTcpConnectionInfo {
+  local_addr: string;
+  remote_addr: string;
+  state: string;
+  pid: number;
+  process_name: string;
+  suspicious: boolean;
+  note?: string;
+}
+
+export interface StartupAuditFindingInfo {
+  name: string;
+  command: string;
+  location: string;
+  risk: 'safe' | 'medium' | 'high' | string;
+  reason: string;
 }
 
 export interface RollbackReleaseItem {
@@ -1333,6 +1360,20 @@ export interface RollbackReleaseItem {
 
 // Полная история версий Luma OS и всех предыдущих веток
 export const VERSION_HISTORY: Record<string, string[]> = {
+  '1.3 (Beryllium)': [
+    'ГЛОБАЛЬНЫЙ РЕЛИЗ LUMA OS 1.3 (BERYLLIUM · Be-4) — ЯДРО LUMACORE 1.4, БЕЗОПАСНОСТЬ LUMASHIELD 1.4, ЗАРЯД РАДИОКАНАЛЬНЫХ 2.4GHz УСТРОЙСТВ И ЗАКРЕПЛЕНИЕ НА ПАНЕЛИ ЗАДАЧ, РЕАЛЬНЫЕ ИКОНКИ ПРИЛОЖЕНИЙ ПК, VRAM + ЧИП GPU В ДИСПЕТЧЕРЕ ЗАДАЧ, НОВЫЙ ALT+R ПОИСК, АДАПТИВНАЯ РАСКЛАДКА, ПРАВЫЕ УВЕДОМЛЕНИЯ, ТРЕКЕР СЕССИЙ 2.0 И НОВАЯ ИГРА «BERYLLIUM VANGUARD»',
+    'Заряд всех беспроводных и 2.4GHz радиоканальных устройств + закрепление в Панели задач — нативный сканер HID UsagePage (0x06/0x20, 0x84/0x66) + Bluetooth/BLE/USB ContainerID отображает заряд мышек, наушников, клавиатур и геймпадов (включая донглы 2.4GHz) и позволяет закрепить любое устройство прямо на панели задач',
+    'Объединены настройки «Питание и Батарея» — единый мощный раздел со статусом АКБ ноутбука, графиком разряда, беспроводными устройствами с кнопкой «На панель задач», планами питания, яркостью и действиями выключения/сна/перезагрузки',
+    'Реальные нативные иконки установленных приложений ПК — быстрый Win32-экстрактор SHGetFileInfoW → PNG (0% PowerShell, кэш в RAM) показывает настоящие значки .exe/.lnk в каталоге программ, на рабочем столе, в Alt+R и в открытых окнах панели задач',
+    'Клик по любому виджету на рабочем столе → мгновенный переход к настройкам именно этого виджета (стиль, форма, размер, города, валюты или переход в системные настройки)',
+    'Новый минималистичный Alt+R (Luma Search) — чистое окно поиска, которое мгновенно находит установленные программы ПК, приложения Luma, любые настройки системы, службы Windows и предлагает поиск в Интернете (Google / DuckDuckGo / YouTube), если локально ничего не найдено',
+    'Адаптивная раскладка клавиатуры в реальном времени — при смене языка клавишами Windows (Alt+Shift / Ctrl+Shift / Win+Space) индикатор Luma OS автоматически подстраивается и показывает текущую раскладку за <150 мс (Win32 GetKeyboardLayout, 4 мкс)',
+    'Диспетчер задач с графиками Чипа GPU (%) И Видеопамяти VRAM (МБ/ГБ) — прямой опрос NVIDIA NVML + универсальный Win32 PDH без WMI показывает и загрузку графического чипа, и выделенную видеопамять с интерактивными графиками по наведению',
+    'Ядро LumaCore 1.4 и Безопасность LumaShield 1.4 — расширено до 32+ эвристических правил (AMSI bypass, майнеры, стиллеры, UAC bypass), добавлен живой Сетевой монитор TCP-соединений (GetExtendedTcpTable) и Аудит автозагрузки (Startup Persistence Auditor)',
+    'Умная Панель задач без дублей и лишнего — исправлено дублирование Steam/Chrome между библиотекой и окнами Windows, убрана лишняя кнопка редактора сетки с панели, добавлено ПКМ-меню («Открыть» / «Убрать с панели задач») для CPU/RAM, Буфера обмена и Полноэкранного режима',
+    'Увеличенные уведомления справа + Трекер сессий и лимитов 2.0 — все уведомления теперь крупнее и плавно выезжают справа; трекер отслеживает и приложения Luma, и реальные окна Windows, поддерживает лимиты, Фокус-сессии, 7-дневную аналитику и экспорт CSV',
+    'Новые обои, 4 новых виджета, 2 новые анимации и супер-игра «Beryllium Vanguard · Be-4» — флагманский кристалл Beryllium, 2 арта обоев, 3 живых CSS-обоев, виджеты «Беспроводной Хаб», «GPU + VRAM», «Мировые часы» и «Трекер привычек», анимации Beryllium Silk и Elastic Pop, а также новая roguelite-арена «Beryllium Vanguard» в пасхалке!',
+  ],
   '1.2.3B (Lithium)': [
     'ПАТЧ LUMA OS 1.2.3B (LITHIUM) — ЯДРО LUMACORE 1.3B (TRUE ZERO-WMI ENGINE: WMI PROVIDER HOST 24% → 0%), ПОЛНЫЙ ОТКАЗ ОТ ФОНОВОГО POWERSHELL ПРИ ЗАПУСКЕ, КЭШ COREAUDIO, УМНЫЙ DYNAMIC ISLAND И ВОЗВРАТ ПЛАВНОГО 3D-НАКЛОНА БАННЕРА ЯДРА UI',
     'Устранена главная скрытая причина нагрузки на ЦП — WMI Provider Host (24% → 0%): функции GetWirelessDeviceBatteries, GetBluetoothStatus, ListHardwareDevices, fetchStaticSpecs и GetBatteryDetails полностью переписаны с WMI (Get-PnpDevice / Get-CimInstance) на чистые нативные Win32 API (setupapi.dll, powrprof.dll CallNtPowerInformation, системный реестр Windows). В ядре LumaCore 1.3B теперь 0 вызовов WMI',

@@ -3,42 +3,47 @@ import {
   Activity,
   AppWindow,
   BarChart3,
-  BellOff,
+  BatteryCharging,
+  Bell,
+  Bluetooth,
+  Calculator,
   Code2,
   CornerDownLeft,
   Cpu,
   Disc3,
+  Download,
   FolderOpen,
-  Grid,
+  Globe,
+  HardDrive,
+  Keyboard,
   Lock,
-  Moon,
-  Music,
-  Pause,
-  Play,
+  Monitor,
+  Palette,
   Power,
   Puzzle,
   Rocket,
   Search,
   Settings,
-  SkipBack,
-  SkipForward,
-  Sun,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
   Terminal,
   Trash2,
-  Volume2,
-  VolumeX,
+  Wrench,
   X,
+  Youtube,
 } from 'lucide-react';
-import { AppItem, formatMonthBadge } from '../data/launcherData';
+import { AppItem, InstalledAppInfo } from '../data/launcherData';
 
-export interface SpotlightAction {
+export interface SpotlightResult {
   id: string;
-  group: 'Выполнить' | 'Окна системы' | 'Команды' | 'Приложения';
+  group: 'Приложения' | 'Настройки системы' | 'Службы и утилиты' | 'Поиск в Интернете' | 'Выполнить';
   title: string;
   subtitle: string;
-  shortcut?: string;
+  badge?: string;
   keywords: string;
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
+  iconUrl?: string;
   run: () => void;
 }
 
@@ -54,9 +59,11 @@ interface LumaSpotlightProps {
   mediaPlaying: boolean;
   currentTrack: string;
   onLaunchApp: (app: AppItem) => void;
+  onLaunchInstalledApp?: (app: InstalledAppInfo) => void;
   onOpenWindow: (
-    win: 'apps' | 'tracker' | 'kernel' | 'terminal' | 'settings' | 'plugins' | 'island' | 'spaces' | 'explorer' | 'taskmgr' | 'ai' | 'utilities'
+    win: 'apps' | 'tracker' | 'kernel' | 'terminal' | 'settings' | 'plugins' | 'island' | 'spaces' | 'explorer' | 'taskmgr' | 'ai' | 'utilities' | 'calculator'
   ) => void;
+  onOpenSettingsTab?: (tab: string) => void;
   onRunCommand?: (cmd: string) => void;
   onShowDesktop: () => void;
   onToggleEditDesktop: () => void;
@@ -70,368 +77,529 @@ interface LumaSpotlightProps {
   onPowerAction: (action: 'lock' | 'sleep' | 'recycle_bin') => void;
 }
 
+// Module-level cache so Alt+R opens in 0ms without re-scanning Start Menu every time
+let cachedInstalledApps: InstalledAppInfo[] | null = null;
+let installedAppsPromise: Promise<InstalledAppInfo[]> | null = null;
+
+function loadInstalledAppsOnce(): Promise<InstalledAppInfo[]> {
+  if (cachedInstalledApps) return Promise.resolve(cachedInstalledApps);
+  if (installedAppsPromise) return installedAppsPromise;
+  installedAppsPromise = fetch('/api/kernel/apps/installed')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      const list = Array.isArray(d?.apps) ? (d.apps as InstalledAppInfo[]) : [];
+      cachedInstalledApps = list;
+      return list;
+    })
+    .catch(() => [])
+    .finally(() => {
+      installedAppsPromise = null;
+    });
+  return installedAppsPromise;
+}
+
+function openExternalUrl(url: string) {
+  void fetch('/api/kernel/launch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: `web_${Date.now()}`, name: url, url, target: url, type: 'web' }),
+  }).catch(() => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  });
+}
+
 export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
   open,
   onClose,
   isDark,
   apps,
   iconMap,
-  dynamicIslandEnabled,
-  dndEnabled,
-  isMuted,
-  mediaPlaying,
-  currentTrack,
   onLaunchApp,
+  onLaunchInstalledApp,
   onOpenWindow,
+  onOpenSettingsTab,
   onRunCommand,
-  onShowDesktop,
-  onToggleEditDesktop,
-  onToggleIsland,
-  onToggleDnd,
-  onToggleMute,
-  onTogglePlay,
-  onNextTrack,
-  onPrevTrack,
   onToggleTheme,
   onPowerAction,
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [installedApps, setInstalledApps] = useState<InstalledAppInfo[]>(cachedInstalledApps || []);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) {
-      setQuery('');
-      setSelectedIndex(0);
-      requestAnimationFrame(() => inputRef.current?.focus());
-      const t = window.setTimeout(() => inputRef.current?.focus(), 45);
-      return () => window.clearTimeout(t);
+    if (!open) return;
+    setQuery('');
+    setSelectedIndex(0);
+    requestAnimationFrame(() => inputRef.current?.focus());
+    const t = window.setTimeout(() => inputRef.current?.focus(), 45);
+    if (!cachedInstalledApps) {
+      void loadInstalledAppsOnce().then((list) => setInstalledApps(list));
     }
+    return () => window.clearTimeout(t);
   }, [open]);
 
-  const actions = useMemo<SpotlightAction[]>(() => {
-    const winActions: SpotlightAction[] = [
+  const openSetting = (tab: string) => {
+    if (onOpenSettingsTab) onOpenSettingsTab(tab);
+    else onOpenWindow('settings');
+  };
+
+  const launchNativeTool = (cmd: string, title: string) => {
+    if (onRunCommand) {
+      onRunCommand(cmd);
+    } else {
+      void fetch('/api/kernel/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: `svc_${Date.now()}`, name: title, url: cmd, target: cmd, type: 'native' }),
+      }).catch(() => {});
+    }
+  };
+
+  const catalog = useMemo<SpotlightResult[]>(() => {
+    // 1. Installed PC apps + Luma apps (deduplicated)
+    const seenNames = new Set<string>();
+    const appItems: SpotlightResult[] = [];
+
+    for (const app of apps) {
+      const key = app.name.trim().toLowerCase();
+      seenNames.add(key);
+      const IconComp = iconMap[app.icon] || AppWindow;
+      appItems.push({
+        id: `luma_app_${app.id}`,
+        group: 'Приложения',
+        title: app.name,
+        subtitle: `${app.category} · Приложение Luma`,
+        badge: app.isRunning ? 'АКТИВНО' : undefined,
+        keywords: `${app.name} ${app.category} ${app.package} ${app.detoxGroup || ''}`.toLowerCase(),
+        icon: <IconComp className="w-4 h-4" />,
+        iconUrl: app.iconUrl,
+        run: () => onLaunchApp(app),
+      });
+    }
+
+    for (const pcApp of installedApps) {
+      const key = pcApp.name.trim().toLowerCase();
+      if (seenNames.has(key)) continue;
+      seenNames.add(key);
+      appItems.push({
+        id: `pc_app_${pcApp.id}`,
+        group: 'Приложения',
+        title: pcApp.name,
+        subtitle: `${pcApp.category || 'Программа ПК'}${pcApp.publisher ? ` · ${pcApp.publisher}` : ''}`,
+        badge: 'ПК',
+        keywords: `${pcApp.name} ${pcApp.publisher || ''} ${pcApp.category} ${pcApp.exec_path}`.toLowerCase(),
+        icon: <AppWindow className="w-4 h-4" />,
+        iconUrl: pcApp.icon_url,
+        run: () => {
+          if (onLaunchInstalledApp) {
+            onLaunchInstalledApp(pcApp);
+          } else {
+            launchNativeTool(pcApp.exec_path, pcApp.name);
+          }
+        },
+      });
+    }
+
+    // 2. System Settings
+    const settingsItems: SpotlightResult[] = [
       {
-        id: 'win_explorer',
-        group: 'Окна системы',
-        title: 'Проводник Luma',
-        subtitle: 'Системный файловый менеджер, вкладки и скрытые файлы',
-        shortcut: 'FILES',
-        keywords: 'проводник файлы explorer диски папки скрытые',
+        id: 'set_kernel_ui',
+        group: 'Настройки системы',
+        title: 'Ядро UI и О системе (Luma OS 1.3 Beryllium)',
+        subtitle: 'Имя ПК, характеристики, LumaCore 1.4, пасхалка Beryllium',
+        keywords: 'ядро ui о системе версия модель устройство beryllium 1.3 about',
+        icon: <Cpu className="w-4 h-4" />,
+        run: () => openSetting('kernel_ui'),
+      },
+      {
+        id: 'set_power_battery',
+        group: 'Настройки системы',
+        title: 'Питание и Батарея (АКБ + Беспроводные устройства)',
+        subtitle: 'Заряд ноутбука, беспроводные мышки/наушники 2.4GHz, планы питания, яркость',
+        keywords: 'батарея питание заряд энергосбережение яркость акб мышь наушники 2.4ghz радиоканал battery power',
+        icon: <BatteryCharging className="w-4 h-4" />,
+        run: () => openSetting('power_battery'),
+      },
+      {
+        id: 'set_appearance',
+        group: 'Настройки системы',
+        title: 'Оформление, Темы, Обои и Анимации',
+        subtitle: 'Темы, живые обои, прозрачность, шрифты, анимации Silk/Elastic',
+        keywords: 'темы обои фон цвет прозрачность blur анимации оформление wallpaper theme',
+        icon: <Palette className="w-4 h-4" />,
+        run: () => openSetting('appearance'),
+      },
+      {
+        id: 'set_taskbar',
+        group: 'Настройки системы',
+        title: 'Настройка Панели задач',
+        subtitle: 'Позиция, автоскрытие, размер, порядок приложений, элементы трея',
+        keywords: 'панель задач taskbar автоскрытие трей буфер часы',
+        icon: <SlidersHorizontal className="w-4 h-4" />,
+        run: () => openSetting('taskbar'),
+      },
+      {
+        id: 'set_graphics',
+        group: 'Настройки системы',
+        title: 'Графика, Оптимизация GPU и Масштаб экрана',
+        subtitle: 'Профили GPU, автоадаптация экрана, размер иконок, Турбо-Эко',
+        keywords: 'графика gpu оптимизация масштаб экран иконки dpi эко blur',
+        icon: <Monitor className="w-4 h-4" />,
+        run: () => openSetting('graphics'),
+      },
+      {
+        id: 'set_language',
+        group: 'Настройки системы',
+        title: 'Язык системы и Раскладка клавиатуры (120+ языков)',
+        subtitle: '18 языков интерфейса, адаптивная раскладка клавиатуры',
+        keywords: 'язык клавиатура раскладка перевод english русский язык language keyboard',
+        icon: <Keyboard className="w-4 h-4" />,
+        run: () => openSetting('language'),
+      },
+      {
+        id: 'set_security',
+        group: 'Настройки системы',
+        title: 'Безопасность и Антивирус (LumaShield 1.4)',
+        subtitle: 'Сканер 32+ правил, Сетевой экран TCP, Аудит автозагрузки, Карантин',
+        keywords: 'безопасность антивирус защита сканер карантин lumashield сеть firewall',
+        icon: <ShieldCheck className="w-4 h-4" />,
+        run: () => openSetting('security'),
+      },
+      {
+        id: 'set_bluetooth',
+        group: 'Настройки системы',
+        title: 'Bluetooth и Беспроводные устройства',
+        subtitle: 'Адаптер Bluetooth, подключённые устройства и процент заряда',
+        keywords: 'bluetooth блютуз беспроводные наушники мышь клавиатура',
+        icon: <Bluetooth className="w-4 h-4" />,
+        run: () => openSetting('bluetooth'),
+      },
+      {
+        id: 'set_storage',
+        group: 'Настройки системы',
+        title: 'Память, Диски и Файлы',
+        subtitle: 'Состояние дисков, ОЗУ и быстрый просмотр скрытых файлов',
+        keywords: 'память диски файлы хранилище storage ram',
+        icon: <HardDrive className="w-4 h-4" />,
+        run: () => openSetting('storage'),
+      },
+      {
+        id: 'set_updates',
+        group: 'Настройки системы',
+        title: 'Обновления GitHub OTA и Откат версии',
+        subtitle: 'Проверка новой версии, загрузка EXE и откат на прошлые релизы',
+        keywords: 'обновление версия откат github ota rollback update',
+        icon: <Download className="w-4 h-4" />,
+        run: () => openSetting('updates'),
+      },
+      {
+        id: 'set_notifications',
+        group: 'Настройки системы',
+        title: 'Уведомления и Режим «Не беспокоить»',
+        subtitle: 'Настройка правых уведомлений, DND и синхронизации Windows',
+        keywords: 'уведомления dnd не беспокоить notifications',
+        icon: <Bell className="w-4 h-4" />,
+        run: () => openSetting('notifications'),
+      },
+      {
+        id: 'set_island',
+        group: 'Настройки системы',
+        title: 'Dynamic Island и Мультизадачность',
+        subtitle: 'Верхняя капсула, эквалайзер, режим оболочки Windows Shell',
+        keywords: 'динамический остров island оболочка shell автозапуск',
+        icon: <Disc3 className="w-4 h-4" />,
+        run: () => openSetting('island'),
+      },
+      {
+        id: 'set_theme_toggle',
+        group: 'Настройки системы',
+        title: isDark ? 'Переключить на светлую тему' : 'Переключить на тёмную тему',
+        subtitle: 'Быстрая смена светлого/тёмного режима',
+        keywords: 'светлая темная тема dark light toggle',
+        icon: <Palette className="w-4 h-4" />,
+        run: onToggleTheme,
+      },
+    ];
+
+    // 3. System Services, Luma Modules & Windows Utilities
+    const serviceItems: SpotlightResult[] = [
+      {
+        id: 'svc_taskmgr',
+        group: 'Службы и утилиты',
+        title: 'Диспетчер задач Luma',
+        subtitle: 'Процессы, GPU Чип + VRAM, ЦП/ОЗУ, автозагрузка и службы ОС',
+        badge: 'LUMA',
+        keywords: 'диспетчер задач процессы taskmgr gpu vram cpu ram службы',
+        icon: <Activity className="w-4 h-4" />,
+        run: () => onOpenWindow('taskmgr'),
+      },
+      {
+        id: 'svc_explorer',
+        group: 'Службы и утилиты',
+        title: 'Проводник файлов Luma Pro',
+        subtitle: 'Диски, вкладки, скрытые файлы, редактор кода и предпросмотр',
+        badge: 'LUMA',
+        keywords: 'проводник файлы explorer папки скрытые диски',
         icon: <FolderOpen className="w-4 h-4" />,
         run: () => onOpenWindow('explorer'),
       },
       {
-        id: 'win_taskmgr',
-        group: 'Окна системы',
-        title: 'Диспетчер задач',
-        subtitle: 'Процессы Luma OS, открытые окна ОС и графики ресурсов',
-        shortcut: 'PROC',
-        keywords: 'диспетчер задач процессы taskmgr cpu ram убить процесс',
-        icon: <Cpu className="w-4 h-4" />,
-        run: () => onOpenWindow('taskmgr'),
-      },
-      {
-        id: 'win_ai',
-        group: 'Окна системы',
-        title: 'Luma AI (Gemini / OpenAI / Claude / Ollama)',
-        subtitle: 'Встроенная нейросеть с контекстом системы и терминалом',
-        shortcut: 'AI',
-        keywords: 'ии нейросеть gemini openai chatgpt claude ollama ai ассистент',
-        icon: <Cpu className="w-4 h-4" />,
-        run: () => onOpenWindow('ai'),
-      },
-      {
-        id: 'win_utilities',
-        group: 'Окна системы',
-        title: 'Службы и утилиты системы',
-        subtitle: 'Калькулятор, Блокнот, Службы ОС и 16 утилит Windows',
-        shortcut: 'TOOLS',
-        keywords: 'службы утилиты windows калькулятор блокнот реестр панель управления',
-        icon: <AppWindow className="w-4 h-4" />,
-        run: () => onOpenWindow('utilities'),
-      },
-      {
-        id: 'win_apps',
-        group: 'Окна системы',
-        title: 'Приложения (Библиотека по группам)',
-        subtitle: 'Открыть окно списка, мультивыбора и карточек приложений',
-        shortcut: 'APPS',
-        keywords: 'приложения библиотека окно группы список',
-        icon: <AppWindow className="w-4 h-4" />,
-        run: () => onOpenWindow('apps'),
-      },
-      {
-        id: 'win_terminal',
-        group: 'Окна системы',
-        title: 'Терминал Luma',
-        subtitle: 'Командная строка ядра LumaCore 1.3 (ПО 1.2.3B Lithium)',
-        shortcut: 'CLI',
-        keywords: 'терминал консоль cmd shell cli',
+        id: 'svc_terminal',
+        group: 'Службы и утилиты',
+        title: 'Терминал LumaCore 1.4',
+        subtitle: 'Командная строка, системные команды, сеть и процессы',
+        badge: 'CLI',
+        keywords: 'терминал консоль cmd powershell shell terminal',
         icon: <Terminal className="w-4 h-4" />,
         run: () => onOpenWindow('terminal'),
       },
       {
-        id: 'win_tracker',
-        group: 'Окна системы',
-        title: 'Трекер времени',
-        subtitle: 'Учёт сессий с 00:00 и лимиты',
-        keywords: 'трекер время статистика баланс',
+        id: 'svc_utilities',
+        group: 'Службы и утилиты',
+        title: 'Службы и утилиты Windows (в стиле Luma)',
+        subtitle: 'Диспетчер устройств, Службы ОС, Сеть/Ping, Микшер, Блокнот, Очистка диска',
+        badge: 'TOOLS',
+        keywords: 'службы утилиты windows services устройства сеть ping микшер блокнот очистка',
+        icon: <Wrench className="w-4 h-4" />,
+        run: () => onOpenWindow('utilities'),
+      },
+      {
+        id: 'svc_calculator',
+        group: 'Службы и утилиты',
+        title: 'Калькулятор Luma (4 режима)',
+        subtitle: 'Стандартный, Инженерный, Программист и Конвертер величин',
+        badge: 'APP',
+        keywords: 'калькулятор считать calc calculator конвертер',
+        icon: <Calculator className="w-4 h-4" />,
+        run: () => onOpenWindow('calculator'),
+      },
+      {
+        id: 'svc_tracker',
+        group: 'Службы и утилиты',
+        title: 'Трекер сессий и Лимиты 2.0',
+        subtitle: 'Учёт времени в Luma и окнах Windows, Фокус-сессии и лимиты',
+        badge: 'PRO',
+        keywords: 'трекер сессии лимиты время статистика фокус tracker',
         icon: <BarChart3 className="w-4 h-4" />,
         run: () => onOpenWindow('tracker'),
       },
       {
-        id: 'win_kernel',
-        group: 'Окна системы',
-        title: 'Ядро LumaCore 1.3 & IPC',
-        subtitle: 'Телеметрия, LumaShield 1.3, код ядра и консоль JSON-RPC 2.0',
-        keywords: 'ядро код kernel ipc rpc безопасность',
+        id: 'svc_ai',
+        group: 'Службы и утилиты',
+        title: 'Luma AI (Автономный ИИ + Облако)',
+        subtitle: 'Luma Lang, Luma Code, Gemini, OpenAI, Claude, Ollama',
+        badge: 'AI',
+        keywords: 'ии нейросеть ai ассистент chatgpt gemini claude код',
+        icon: <Sparkles className="w-4 h-4" />,
+        run: () => onOpenWindow('ai'),
+      },
+      {
+        id: 'svc_kernel',
+        group: 'Службы и утилиты',
+        title: 'Монитор ядра LumaCore 1.4 & JSON-RPC',
+        subtitle: 'Внутренний монитор, JSON-RPC консоль и инспектор кода ядра',
+        keywords: 'ядро kernel rpc ipc монитор',
         icon: <Code2 className="w-4 h-4" />,
         run: () => onOpenWindow('kernel'),
       },
       {
-        id: 'win_settings',
-        group: 'Окна системы',
-        title: 'Настройки системы',
-        subtitle: 'Языки, Безопасность и AV, Shell Mode, GitHub OTA, ИИ, темы',
-        shortcut: 'SET',
-        keywords: 'настройки параметры темы часы панель задач',
-        icon: <Settings className="w-4 h-4" />,
-        run: () => onOpenWindow('settings'),
-      },
-      {
-        id: 'win_plugins',
-        group: 'Окна системы',
-        title: 'Расширения и плагины',
-        subtitle: 'Управление модулями Luma API',
-        keywords: 'плагины расширения модули',
+        id: 'svc_plugins',
+        group: 'Службы и утилиты',
+        title: 'Расширения и Plugin API 2.0',
+        subtitle: 'RAM Optimizer, Temp Sweeper, NetPing, Battery Guard и др.',
+        keywords: 'плагины расширения plugins модули',
         icon: <Puzzle className="w-4 h-4" />,
         run: () => onOpenWindow('plugins'),
       },
       {
-        id: 'win_spaces',
-        group: 'Окна системы',
+        id: 'svc_spaces',
+        group: 'Службы и утилиты',
         title: 'Пространства (Luma Spaces)',
-        subtitle: 'Пакетный запуск рабочих профилей',
-        keywords: 'пространства профили spaces workspace',
+        subtitle: 'Быстрое переключение рабочих профилей и наборов приложений',
+        keywords: 'пространства spaces профили workspace',
         icon: <Rocket className="w-4 h-4" />,
         run: () => onOpenWindow('spaces'),
       },
       {
-        id: 'win_desktop',
-        group: 'Окна системы',
-        title: 'Показать рабочий стол',
-        subtitle: 'Свернуть все открытые окна',
-        keywords: 'рабочий стол свернуть desktop',
-        icon: <Grid className="w-4 h-4" />,
-        run: onShowDesktop,
-      },
-    ];
-
-    const sysActions: SpotlightAction[] = [
-      {
-        id: 'cmd_play_pause',
-        group: 'Команды',
-        title: mediaPlaying ? 'Пауза музыки' : 'Воспроизвести музыку',
-        subtitle: currentTrack,
-        keywords: 'музыка пауза play pause',
-        icon: mediaPlaying ? (
-          <Pause className="w-4 h-4 text-[var(--luma-accent)]" />
-        ) : (
-          <Play className="w-4 h-4 text-[var(--luma-accent)]" />
-        ),
-        run: onTogglePlay,
+        id: 'svc_win_services',
+        group: 'Службы и утилиты',
+        title: 'Службы Windows (services.msc)',
+        subtitle: 'Системная консоль служб операционной системы',
+        badge: 'WIN',
+        keywords: 'services.msc службы windows консоль',
+        icon: <Settings className="w-4 h-4" />,
+        run: () => launchNativeTool('services.msc', 'Службы Windows'),
       },
       {
-        id: 'cmd_next_track',
-        group: 'Команды',
-        title: 'Следующий трек',
-        subtitle: 'Переключить трек в системе',
-        keywords: 'следующий трек next skip',
-        icon: <SkipForward className="w-4 h-4" />,
-        run: onNextTrack,
+        id: 'svc_win_devmgmt',
+        group: 'Службы и утилиты',
+        title: 'Диспетчер устройств (devmgmt.msc)',
+        subtitle: 'Оборудование и драйверы Windows',
+        badge: 'WIN',
+        keywords: 'devmgmt.msc диспетчер устройств драйверы оборудование',
+        icon: <Cpu className="w-4 h-4" />,
+        run: () => launchNativeTool('devmgmt.msc', 'Диспетчер устройств'),
       },
       {
-        id: 'cmd_prev_track',
-        group: 'Команды',
-        title: 'Предыдущий трек',
-        subtitle: 'Вернуться к предыдущему треку',
-        keywords: 'предыдущий трек prev',
-        icon: <SkipBack className="w-4 h-4" />,
-        run: onPrevTrack,
+        id: 'svc_win_regedit',
+        group: 'Службы и утилиты',
+        title: 'Редактор реестра (regedit)',
+        subtitle: 'Системный реестр Windows',
+        badge: 'WIN',
+        keywords: 'regedit реестр registry',
+        icon: <Wrench className="w-4 h-4" />,
+        run: () => launchNativeTool('regedit', 'Редактор реестра'),
       },
       {
-        id: 'cmd_edit_grid',
-        group: 'Команды',
-        title: 'Настроить сетку рабочего стола (22×10 / 20×10)',
-        subtitle: 'Включить режим расстановки, форм и размеров виджетов и папок',
-        keywords: 'сетка ячейки редактор стол виджеты форма размер',
-        icon: <Activity className="w-4 h-4" />,
-        run: onToggleEditDesktop,
+        id: 'svc_win_control',
+        group: 'Службы и утилиты',
+        title: 'Панель управления Windows (control)',
+        subtitle: 'Классическая панель управления системой',
+        badge: 'WIN',
+        keywords: 'control панель управления windows',
+        icon: <SlidersHorizontal className="w-4 h-4" />,
+        run: () => launchNativeTool('control', 'Панель управления'),
       },
       {
-        id: 'cmd_toggle_island',
-        group: 'Команды',
-        title: dynamicIslandEnabled ? 'Выключить Luma Island' : 'Включить Luma Island',
-        subtitle: 'Верхняя интерактивная капсула',
-        keywords: 'остров динамический island скрыть',
-        icon: <Disc3 className="w-4 h-4" />,
-        run: onToggleIsland,
+        id: 'svc_win_firewall',
+        group: 'Службы и утилиты',
+        title: 'Брандмауэр Windows (wf.msc)',
+        subtitle: 'Правила входящего и исходящего трафика',
+        badge: 'WIN',
+        keywords: 'firewall брандмауэр wf.msc сеть',
+        icon: <ShieldCheck className="w-4 h-4" />,
+        run: () => launchNativeTool('wf.msc', 'Брандмауэр'),
       },
       {
-        id: 'cmd_toggle_mute',
-        group: 'Команды',
-        title: isMuted ? 'Включить звук' : 'Выключить звук (Mute)',
-        subtitle: 'Системный аудио-выход',
-        keywords: 'звук громкость mute',
-        icon: isMuted ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-[var(--luma-accent)]" />,
-        run: onToggleMute,
-      },
-      {
-        id: 'cmd_toggle_dnd',
-        group: 'Команды',
-        title: dndEnabled ? 'Выключить «Не беспокоить»' : 'Включить «Не беспокоить» (DND)',
-        subtitle: 'Тихий режим уведомлений',
-        keywords: 'dnd не беспокоить тихо',
-        icon: <BellOff className="w-4 h-4" />,
-        run: onToggleDnd,
-      },
-      {
-        id: 'cmd_toggle_theme',
-        group: 'Команды',
-        title: isDark ? 'Переключить на светлую тему (Paper)' : 'Переключить на тёмную тему (Mono)',
-        subtitle: 'Смена оформления рабочего стола',
-        keywords: 'тема светлая темная dark light',
-        icon: isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />,
-        run: onToggleTheme,
-      },
-      {
-        id: 'cmd_lock',
-        group: 'Команды',
-        title: 'Заблокировать экран ПК',
-        subtitle: 'Системная блокировка через ядро',
+        id: 'svc_lock',
+        group: 'Службы и утилиты',
+        title: 'Заблокировать ПК',
+        subtitle: 'Мгновенная блокировка экрана',
         keywords: 'блокировка экран lock',
         icon: <Lock className="w-4 h-4" />,
         run: () => onPowerAction('lock'),
       },
       {
-        id: 'cmd_sleep',
-        group: 'Команды',
+        id: 'svc_sleep',
+        group: 'Службы и утилиты',
         title: 'Спящий режим ПК',
         subtitle: 'Перевести компьютер в сон',
-        keywords: 'сон sleep питание',
+        keywords: 'сон sleep выключить питание',
         icon: <Power className="w-4 h-4" />,
         run: () => onPowerAction('sleep'),
       },
       {
-        id: 'cmd_recycle',
-        group: 'Команды',
-        title: 'Открыть Корзину',
-        subtitle: 'Системная корзина',
-        keywords: 'корзина recycle',
+        id: 'svc_recycle',
+        group: 'Службы и утилиты',
+        title: 'Корзина Windows',
+        subtitle: 'Открыть системную корзину',
+        keywords: 'корзина recycle bin удалить',
         icon: <Trash2 className="w-4 h-4" />,
         run: () => onPowerAction('recycle_bin'),
       },
     ];
 
-    const appActions: SpotlightAction[] = apps.map((app) => {
-      const IconComp = iconMap[app.icon] || Music;
-      return {
-        id: `app_${app.id}`,
-        group: 'Приложения',
-        title: app.name,
-        subtitle: `${app.category} · ${formatMonthBadge(app.monthMinutes, app.elapsedSeconds, app.isRunning)}`,
-        shortcut: app.isRunning ? 'LIVE' : undefined,
-        keywords: `${app.name} ${app.category} ${app.detoxGroup || ''} ${app.package} ${app.type}`.toLowerCase(),
-        icon: <IconComp className="w-4 h-4" />,
-        run: () => onLaunchApp(app),
-      };
-    });
+    return [...appItems, ...settingsItems, ...serviceItems];
+  }, [apps, installedApps, iconMap, isDark]);
 
-    return [...winActions, ...sysActions, ...appActions];
-  }, [
-    apps,
-    iconMap,
-    dynamicIslandEnabled,
-    dndEnabled,
-    isMuted,
-    mediaPlaying,
-    currentTrack,
-    isDark,
-    onLaunchApp,
-    onOpenWindow,
-    onShowDesktop,
-    onToggleEditDesktop,
-    onToggleIsland,
-    onToggleDnd,
-    onToggleMute,
-    onTogglePlay,
-    onNextTrack,
-    onPrevTrack,
-    onToggleTheme,
-    onPowerAction,
-  ]);
-
-  const filtered = useMemo(() => {
+  const results = useMemo<SpotlightResult[]>(() => {
     const raw = query.trim();
     const q = raw.toLowerCase();
-    if (!q) return actions.slice(0, 18);
-    const matches = actions
-      .filter(
-        (a) =>
-          a.title.toLowerCase().includes(q) ||
-          a.subtitle.toLowerCase().includes(q) ||
-          a.keywords.toLowerCase().includes(q)
-      )
-      .slice(0, 20);
+    if (!q) return [];
 
-    // Direct Run command / URL / path execution (like Windows Run Alt+R)
-    const runItem: SpotlightAction = {
-      id: `direct_run_${q}`,
-      group: 'Выполнить',
-      title: `Выполнить: ${raw}`,
-      subtitle:
-        /^https?:\/\//i.test(raw) || raw.includes('.')
-          ? 'Открыть адрес, файл или выполнить команду в Терминале Luma'
-          : 'Запустить в Терминале Luma или открыть системный путь',
-      shortcut: 'RUN',
-      keywords: q,
-      icon: <Terminal className="w-4 h-4 text-[var(--luma-accent)]" />,
-      run: () => {
-        if (q === 'explorer' || q === 'files' || q === 'проводник') {
-          onOpenWindow('explorer');
-          return;
-        }
-        if (q === 'taskmgr' || q === 'tasks' || q === 'диспетчер') {
-          onOpenWindow('taskmgr');
-          return;
-        }
-        if (q === 'settings' || q === 'настройки') {
-          onOpenWindow('settings');
-          return;
-        }
-        if (q === 'cmd' || q === 'terminal' || q === 'term') {
-          onOpenWindow('terminal');
-          return;
-        }
-        if (onRunCommand) {
-          onRunCommand(raw);
-        } else {
-          onOpenWindow('terminal');
-        }
+    // Rank: startsWith title > includes title > includes keywords/subtitle
+    const scored = catalog
+      .map((item) => {
+        const t = item.title.toLowerCase();
+        const k = item.keywords;
+        const sub = item.subtitle.toLowerCase();
+        let score = 0;
+        if (t === q) score = 100;
+        else if (t.startsWith(q)) score = 80;
+        else if (t.includes(q)) score = 60;
+        else if (k.includes(q)) score = 40;
+        else if (sub.includes(q)) score = 25;
+        return { item, score };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 18)
+      .map((x) => x.item);
+
+    const out: SpotlightResult[] = [...scored];
+
+    // Direct URL or file path / terminal command
+    const isUrl = /^https?:\/\//i.test(raw) || (/^[a-z0-9-]+\.[a-z]{2,}(\/.*)?$/i.test(raw) && !raw.includes(' '));
+    const isPathOrCmd = raw.includes('\\') || raw.includes(':/') || raw.endsWith('.exe') || raw.endsWith('.msc');
+    if (isUrl) {
+      const fullUrl = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      out.unshift({
+        id: `open_url_${q}`,
+        group: 'Выполнить',
+        title: `Открыть сайт: ${fullUrl}`,
+        subtitle: 'Открыть адрес в браузере по умолчанию',
+        badge: 'URL',
+        keywords: q,
+        icon: <Globe className="w-4 h-4 text-sky-400" />,
+        run: () => openExternalUrl(fullUrl),
+      });
+    } else if (isPathOrCmd) {
+      out.unshift({
+        id: `run_cmd_${q}`,
+        group: 'Выполнить',
+        title: `Выполнить: ${raw}`,
+        subtitle: 'Запустить команду или открыть путь в системе',
+        badge: 'RUN',
+        keywords: q,
+        icon: <Terminal className="w-4 h-4 text-[var(--luma-accent)]" />,
+        run: () => launchNativeTool(raw, raw),
+      });
+    }
+
+    // Web Search fallback — highlighted FIRST if nothing matched locally, otherwise cleanly available at bottom!
+    const encoded = encodeURIComponent(raw);
+    const webItems: SpotlightResult[] = [
+      {
+        id: `web_google_${q}`,
+        group: 'Поиск в Интернете',
+        title: `Искать «${raw}» в Google`,
+        subtitle:
+          scored.length === 0
+            ? 'Локально ничего не найдено — мгновенный поиск в Интернете'
+            : 'Открыть результаты поиска в Google',
+        badge: 'WEB',
+        keywords: q,
+        icon: <Globe className="w-4 h-4 text-emerald-400" />,
+        run: () => openExternalUrl(`https://www.google.com/search?q=${encoded}`),
       },
-    };
+      {
+        id: `web_ddg_${q}`,
+        group: 'Поиск в Интернете',
+        title: `Искать «${raw}» в DuckDuckGo`,
+        subtitle: 'Приватный поиск в Интернете',
+        badge: 'WEB',
+        keywords: q,
+        icon: <Search className="w-4 h-4 text-amber-400" />,
+        run: () => openExternalUrl(`https://duckduckgo.com/?q=${encoded}`),
+      },
+      {
+        id: `web_yt_${q}`,
+        group: 'Поиск в Интернете',
+        title: `Найти «${raw}» на YouTube`,
+        subtitle: 'Поиск видео и руководств',
+        badge: 'YT',
+        keywords: q,
+        icon: <Youtube className="w-4 h-4 text-rose-400" />,
+        run: () => openExternalUrl(`https://www.youtube.com/results?search_query=${encoded}`),
+      },
+    ];
 
-    const looksLikeDirect =
-      raw.includes(' ') ||
-      raw.includes('\\') ||
-      raw.includes('/') ||
-      raw.includes(':') ||
-      /^https?:\/\//i.test(raw) ||
-      matches.length === 0;
-
-    return looksLikeDirect ? [runItem, ...matches] : [...matches, runItem];
-  }, [actions, query, onOpenWindow, onRunCommand]);
+    if (scored.length === 0) {
+      return [...out, ...webItems];
+    }
+    return [...out, webItems[0]];
+  }, [catalog, query]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -440,124 +608,190 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setSelectedIndex((i) => (filtered.length ? (i + 1) % filtered.length : 0));
+        setSelectedIndex((i) => (results.length ? (i + 1) % results.length : 0));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setSelectedIndex((i) => (filtered.length ? (i - 1 + filtered.length) % filtered.length : 0));
-      } else if (e.key === 'Enter' && filtered[selectedIndex]) {
+        setSelectedIndex((i) => (results.length ? (i - 1 + results.length) % results.length : 0));
+      } else if (e.key === 'Enter' && results[selectedIndex]) {
         e.preventDefault();
-        filtered[selectedIndex].run();
+        const act = results[selectedIndex];
         onClose();
+        act.run();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, filtered, selectedIndex, onClose]);
+  }, [open, results, selectedIndex, onClose]);
 
   if (!open) return null;
 
-  const groups: SpotlightAction['group'][] = ['Выполнить', 'Окна системы', 'Команды', 'Приложения'];
+  const groupedOrder: SpotlightResult['group'][] = [
+    'Выполнить',
+    'Приложения',
+    'Настройки системы',
+    'Службы и утилиты',
+    'Поиск в Интернете',
+  ];
+
+  // Build flat index map matching rendered group order
+  const orderedFlat: SpotlightResult[] = [];
+  const sections: { group: SpotlightResult['group']; items: { item: SpotlightResult; flatIdx: number }[] }[] = [];
+  for (const grp of groupedOrder) {
+    const itemsInGrp = results.filter((r) => r.group === grp);
+    if (itemsInGrp.length > 0) {
+      sections.push({
+        group: grp,
+        items: itemsInGrp.map((item) => {
+          const flatIdx = orderedFlat.length;
+          orderedFlat.push(item);
+          return { item, flatIdx };
+        }),
+      });
+    }
+  }
 
   return (
     <div
-      onClick={onClose}
-      className="fixed inset-0 z-[80] flex items-start justify-center pt-[11vh] bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[110] flex items-start justify-center pt-[13vh] px-4 bg-black/45 backdrop-blur-sm"
+      onMouseDown={onClose}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
-        className={`luma-animate-in w-full max-w-xl rounded-2xl border overflow-hidden ${
-          isDark ? 'dex-window-dark text-zinc-100' : 'dex-window-light text-zinc-900'
+        onMouseDown={(e) => e.stopPropagation()}
+        className={`w-full max-w-[620px] rounded-2xl border shadow-2xl overflow-hidden luma-animate-in ${
+          isDark
+            ? 'bg-[#101218]/96 border-white/15 text-zinc-100'
+            : 'bg-white/96 border-zinc-900/15 text-zinc-900'
         }`}
       >
-        <div className={`flex items-center gap-3 px-4 py-3.5 border-b ${isDark ? 'border-white/10' : 'border-zinc-200'}`}>
-          <Search className="w-4 h-4 text-[var(--luma-accent)] shrink-0" />
+        {/* Clean Minimal Search Bar */}
+        <div className="flex items-center gap-3 px-4 py-3.5">
+          <Search className="w-5 h-5 text-[var(--luma-accent)] shrink-0" />
           <input
             ref={inputRef}
-            type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Выполнить команду, путь (C:\...), URL или найти приложение..."
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-500"
+            placeholder="Поиск приложений, настроек, служб или в Интернете..."
+            className="flex-1 bg-transparent text-[15px] font-medium outline-none placeholder:opacity-50"
+            autoComplete="off"
+            spellCheck={false}
           />
           {query && (
-            <button onClick={() => setQuery('')} className="p-1 text-zinc-500 hover:text-current cursor-pointer">
-              <X className="w-3.5 h-3.5" />
+            <button
+              onClick={() => setQuery('')}
+              className="p-1 rounded-lg opacity-60 hover:opacity-100 cursor-pointer"
+              title="Очистить"
+            >
+              <X className="w-4 h-4" />
             </button>
           )}
-          <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono text-zinc-500 border border-zinc-500/30">ESC</kbd>
+          <kbd
+            className={`px-2 py-0.5 rounded-md border text-[10px] font-mono opacity-65 shrink-0 ${
+              isDark ? 'border-white/15 bg-white/5' : 'border-zinc-300 bg-zinc-100'
+            }`}
+          >
+            Alt+R
+          </kbd>
         </div>
 
-        <div className="max-h-[55vh] overflow-y-auto p-2 space-y-2.5">
-          {filtered.length === 0 ? (
-            <div className="py-10 text-center text-xs font-mono text-zinc-500">Ничего не найдено</div>
-          ) : (
-            groups.map((grp) => {
-              const items = filtered.filter((f) => f.group === grp);
-              if (items.length === 0) return null;
-              return (
-                <div key={grp} className="space-y-0.5">
-                  <div className="px-2.5 pt-1 text-[10px] font-mono uppercase tracking-[0.14em] text-zinc-500">{grp}</div>
-                  {items.map((item) => {
-                    const globalIdx = filtered.indexOf(item);
-                    const active = globalIdx === selectedIndex;
+        {/* Empty state: ultra-clean minimal subtle footer only */}
+        {!query.trim() ? (
+          <div
+            className={`px-4 py-2 border-t flex items-center justify-between text-[11px] font-mono ${
+              isDark ? 'border-white/[0.07] bg-white/[0.02] text-zinc-400' : 'border-zinc-900/[0.07] bg-black/[0.02] text-zinc-500'
+            }`}
+          >
+            <span>Приложения ПК · Настройки · Службы ОС · Поиск в Интернете</span>
+            <span>ESC — закрыть</span>
+          </div>
+        ) : (
+          <>
+            {/* Live Filtered Results */}
+            <div
+              className={`max-h-[58vh] overflow-y-auto border-t p-2 space-y-2.5 ${
+                isDark ? 'border-white/[0.08]' : 'border-zinc-900/[0.08]'
+              }`}
+            >
+              {sections.map((sec) => (
+                <div key={sec.group} className="space-y-1">
+                  <div className="px-2.5 py-0.5 text-[10px] font-mono font-bold uppercase tracking-[0.14em] opacity-55">
+                    {sec.group}
+                  </div>
+                  {sec.items.map(({ item, flatIdx }) => {
+                    const active = flatIdx === selectedIndex;
                     return (
                       <button
                         key={item.id}
-                        onMouseEnter={() => setSelectedIndex(globalIdx)}
+                        onMouseEnter={() => setSelectedIndex(flatIdx)}
                         onClick={() => {
-                          item.run();
                           onClose();
+                          item.run();
                         }}
-                        className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-left transition cursor-pointer ${
+                        className={`w-full px-3 py-2.5 rounded-xl flex items-center gap-3 text-left transition cursor-pointer ${
                           active
-                            ? isDark
-                              ? 'bg-white/[0.1] text-white'
-                              : 'bg-zinc-200/90 text-zinc-950'
-                            : 'hover:bg-white/[0.04]'
+                            ? 'bg-[var(--luma-accent)] text-white shadow-sm'
+                            : isDark
+                            ? 'hover:bg-white/[0.06]'
+                            : 'hover:bg-black/[0.04]'
                         }`}
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className={`shrink-0 ${active ? 'text-[var(--luma-accent)]' : 'text-zinc-400'}`}>{item.icon}</span>
-                          <div className="min-w-0">
-                            <div className="text-xs font-semibold truncate">{item.title}</div>
-                            <div className="text-[11px] text-zinc-500 truncate">{item.subtitle}</div>
+                        <div
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 overflow-hidden ${
+                            active ? 'bg-white/20 text-white' : isDark ? 'bg-white/[0.07]' : 'bg-black/[0.06]'
+                          }`}
+                        >
+                          {item.iconUrl ? (
+                            <img
+                              src={item.iconUrl}
+                              alt=""
+                              className="w-5 h-5 object-contain"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            item.icon
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[13px] font-semibold truncate">{item.title}</div>
+                          <div className={`text-[11px] truncate ${active ? 'text-white/80' : 'opacity-60'}`}>
+                            {item.subtitle}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {item.shortcut && (
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
-                                item.shortcut === 'LIVE' || item.shortcut === 'RUN'
-                                  ? 'bg-[var(--luma-accent)] text-white'
-                                  : isDark
-                                  ? 'bg-white/10 text-zinc-400'
-                                  : 'bg-zinc-200 text-zinc-600'
-                              }`}
-                            >
-                              {item.shortcut}
-                            </span>
-                          )}
-                          {active && <CornerDownLeft className="w-3.5 h-3.5 text-[var(--luma-accent)]" />}
-                        </div>
+                        {item.badge && (
+                          <span
+                            className={`px-1.5 py-0.5 rounded-md text-[9px] font-mono font-bold uppercase shrink-0 ${
+                              active ? 'bg-white/20 text-white' : isDark ? 'bg-white/10 text-zinc-300' : 'bg-black/10 text-zinc-700'
+                            }`}
+                          >
+                            {item.badge}
+                          </span>
+                        )}
+                        {active && <CornerDownLeft className="w-3.5 h-3.5 shrink-0 opacity-85" />}
                       </button>
                     );
                   })}
                 </div>
-              );
-            })
-          )}
-        </div>
+              ))}
+            </div>
 
-        <div
-          className={`flex items-center justify-between px-4 py-2 border-t text-[10px] font-mono text-zinc-500 ${
-            isDark ? 'border-white/[0.08]' : 'border-zinc-200'
-          }`}
-        >
-          <span>LUMA RUN & SPOTLIGHT 1.2.3B (LITHIUM) · ↑↓ · ENTER</span>
-          <span>ALT + R</span>
-        </div>
+            <div
+              className={`px-4 py-2 border-t flex items-center justify-between text-[10px] font-mono ${
+                isDark ? 'border-white/[0.07] bg-white/[0.02] text-zinc-400' : 'border-zinc-900/[0.07] bg-black/[0.02] text-zinc-500'
+              }`}
+            >
+              <span>↑↓ выбор · Enter — открыть</span>
+              <span>Найдено: {orderedFlat.length}</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

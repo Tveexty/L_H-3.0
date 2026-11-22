@@ -531,6 +531,7 @@ func ListRollbackReleases(repoURL string) []RollbackReleaseEntry {
 	baseRaw := fmt.Sprintf("https://github.com/%s/%s/raw/main", owner, repo)
 
 	curated := []RollbackReleaseEntry{
+		{Version: "1.3", Tag: "v1.3", Title: "Luma OS 1.3 (Beryllium)", DownloadURL: baseRaw + "/LumaOS_1.3.exe", Summary: "Ядро LumaCore 1.4 + LumaShield 1.4, GPU Чип + VRAM в Диспетчере, заряд 2.4GHz радио-гаджетов и закрепление на панели, реальные иконки ПК, умный Alt+R поиск, адаптивная раскладка, трекер сессий 2.0, игра Beryllium Vanguard"},
 		{Version: "1.2.3B", Tag: "v1.2.3B", Title: "Luma OS 1.2.3B (Lithium)", DownloadURL: baseRaw + "/LumaOS_1.2.3B.exe", Summary: "Ядро LumaCore 1.3B (True Zero-WMI Engine: WMI Provider Host 24% → 0%), кэш CoreAudio, умный SMTC, восстановлен 3D-наклон баннера Ядро UI"},
 		{Version: "1.2.3", Tag: "v1.2.3", Title: "Luma OS 1.2.3 (Lithium)", DownloadURL: baseRaw + "/LumaOS_1.2.3.exe", Summary: "Ядро LumaCore 1.3 (Zero-PowerShell Win32, -85% ЦП/ГПУ), живой Диспетчер задач с графиками при наведении, автоскрытие панели, фикс баннера Ядро UI, упрощённая мини-игра"},
 		{Version: "1.2.2", Tag: "v1.2.2", Title: "Luma OS 1.2.2 (Lithium)", DownloadURL: baseRaw + "/LumaOS_1.2.2.exe", Summary: "Раскладки мира, Audio I/O, батареи BT, LumaShield 1.3, ИИ объём, Dynamic Island 2.0, откат версий"},
@@ -576,7 +577,7 @@ func ListRollbackReleases(repoURL string) []RollbackReleaseEntry {
 						}
 						existing, ok := byVer[ver]
 						if !ok {
-							order = append([]string{ver}, order...)
+							order = append(order, ver)
 							existing = RollbackReleaseEntry{
 								Version: ver,
 								Tag:     rel.TagName,
@@ -616,6 +617,14 @@ func ListRollbackReleases(repoURL string) []RollbackReleaseEntry {
 		entry.IsCurrent = strings.EqualFold(entry.Version, KernelVersion)
 		entry.LocalBackup = findLocalVersionBinary(entry.Version) != ""
 		out = append(out, entry)
+	}
+	// Sort descending by semantic version (1.3 -> 1.2.3B -> 1.2.3 -> ... -> 1.0.0)
+	for i := 0; i < len(out); i++ {
+		for j := i + 1; j < len(out); j++ {
+			if compareSemver(out[j].Version, out[i].Version) > 0 {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
 	}
 	return out
 }

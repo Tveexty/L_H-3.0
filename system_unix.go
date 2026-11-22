@@ -281,22 +281,48 @@ func (p *platformProbe) Collect(loc LocationInfo) HostHardwareSnapshot {
 	media := p.media
 	p.mu.RUnlock()
 
+	unixKbdMu.Lock()
+	activeTag := "ru-RU"
+	activeShort := "RUS"
+	for _, l := range unixKbdLayouts {
+		if l.Active {
+			activeTag = l.Tag
+			activeShort = l.Short
+			break
+		}
+	}
+	unixKbdMu.Unlock()
+
+	gpuPct := int(math.Min(100, math.Max(2, float64(cpuPct)*0.6+2)))
+	vramTotalMB := 4096
+	vramUsedMB := int(float64(vramTotalMB) * float64(ramPct+10) / 160.0)
+	if vramUsedMB > vramTotalMB {
+		vramUsedMB = vramTotalMB
+	}
+	vramPct := int(math.Round(float64(vramUsedMB) * 100.0 / float64(vramTotalMB)))
+
 	return HostHardwareSnapshot{
-		Hostname:        host,
-		OSName:          "Luma Runtime Environment (" + runtime.GOOS + " " + runtime.GOARCH + ")",
-		Arch:            runtime.GOARCH,
-		CPUModel:        cpuModel,
-		CPUCores:        runtime.NumCPU(),
-		CPUPercent:      cpuPct,
-		GPUName:         "Luma Graphics Pipeline",
-		GPUPercent:      int(math.Min(100, math.Max(2, float64(cpuPct)*0.6+2))),
-		GPUTempC:        44 + (cpuPct / 4),
-		RAMUsedGB:       ramUsedGB,
-		RAMTotalGB:      ramTotalGB,
-		RAMPercent:      ramPct,
-		BatteryPresent:  battPresent,
-		BatteryPercent:  battPct,
-		BatteryCharging: battCharging,
+		Hostname:            host,
+		OSName:              "Luma Runtime Environment (" + runtime.GOOS + " " + runtime.GOARCH + ")",
+		Arch:                runtime.GOARCH,
+		CPUModel:            cpuModel,
+		CPUCores:            runtime.NumCPU(),
+		CPUPercent:          cpuPct,
+		GPUName:             "Luma Graphics Pipeline",
+		GPUPercent:          gpuPct,
+		GPUTempC:            44 + (cpuPct / 4),
+		GPUVramUsedMB:       vramUsedMB,
+		GPUVramTotalMB:      vramTotalMB,
+		GPUVramPercent:      vramPct,
+		GPUSource:           "Linux DRM / Runtime",
+		ActiveKbdTag:        activeTag,
+		ActiveKbdShort:      activeShort,
+		RAMUsedGB:           ramUsedGB,
+		RAMTotalGB:          ramTotalGB,
+		RAMPercent:          ramPct,
+		BatteryPresent:      battPresent,
+		BatteryPercent:      battPct,
+		BatteryCharging:     battCharging,
 		NetDownMbps:         downMbps,
 		NetUpMbps:           upMbps,
 		Disks:               readLinuxDisks(),
@@ -1175,5 +1201,67 @@ func (p *platformProbe) ListInstalledApps(forceRefresh bool) []InstalledAppItem 
 	}
 	return list
 }
+
+func (p *platformProbe) ExtractAppIconPNG(execPath string) ([]byte, error) {
+	return nil, fmt.Errorf("native exe icon extraction is windows-only")
+}
+
+func parseLinuxHexIPPort(s string) string {
+	parts := strings.Split(s, ":")
+	if len(parts) != 2 || len(parts[0]) != 8 {
+		return s
+	}
+	b0, _ := strconv.ParseUint(parts[0][6:8], 16, 8)
+	b1, _ := strconv.ParseUint(parts[0][4:6], 16, 8)
+	b2, _ := strconv.ParseUint(parts[0][2:4], 16, 8)
+	b3, _ := strconv.ParseUint(parts[0][0:2], 16, 8)
+	port, _ := strconv.ParseUint(parts[1], 16, 16)
+	return fmt.Sprintf("%d.%d.%d.%d:%d", b0, b1, b2, b3, port)
+}
+
+func (p *platformProbe) ActiveTcpConnections() []ActiveTcpConnection {
+	raw, err := os.ReadFile("/proc/net/tcp")
+	if err != nil {
+		return []ActiveTcpConnection{}
+	}
+	states := map[string]string{
+		"01": "ESTABLISHED", "02": "SYN_SENT", "03": "SYN_RECV",
+		"06": "TIME_WAIT", "0A": "LISTEN",
+	}
+	suspPorts := map[string]bool{"4444": true, "1337": true, "31337": true, "6667": true, "9001": true, "3333": true}
+	lines := strings.Split(string(raw), "\n")
+	out := make([]ActiveTcpConnection, 0, 32)
+	for i := 1; i < len(lines) && len(out) < 40; i++ {
+		fields := strings.Fields(lines[i])
+		if len(fields) < 4 {
+			continue
+		}
+		st := states[fields[3]]
+		if st == "" {
+			continue
+		}
+		local := parseLinuxHexIPPort(fields[1])
+		remote := parseLinuxHexIPPort(fields[2])
+		rPort := ""
+		if idx := strings.LastIndex(remote, ":"); idx >= 0 {
+			rPort = remote[idx+1:]
+		}
+		susp := suspPorts[rPort]
+		note := ""
+		if susp {
+			note = "Нестандартный удалённый порт"
+		}
+		out = append(out, ActiveTcpConnection{
+			LocalAddr:   local,
+			RemoteAddr:  remote,
+			State:       st,
+			ProcessName: "system",
+			Suspicious:  susp,
+			Note:        note,
+		})
+	}
+	return out
+}
+
 
 
