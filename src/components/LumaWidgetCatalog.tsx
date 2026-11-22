@@ -542,6 +542,35 @@ export const DESKTOP_WIDGET_CATALOG: WidgetCatalogDef[] = [
       { id: 'agenda_today', label: 'Сегодня и события', desc: 'Крупная дата + ближайшие напоминания', w: 4, h: 3, shape: 'squircle', previewKind: 'square' },
     ],
   },
+  {
+    type: 'luma_power_ecosystem',
+    title: 'Заряд ПК и всей периферии (1.5)',
+    group: 'Система',
+    category: 'battery',
+    defaultW: 6,
+    defaultH: 3,
+    defaultVariant: 'carbon_ecosystem',
+    defaultShape: 'squircle',
+    summary: 'Единый монитор заряда ПК/ноутбука, мышек (IO, Ajazz, Ardor), клавиатур, наушников и геймпадов',
+    variants: [
+      { id: 'carbon_ecosystem', label: 'Экосистема Carbon', desc: 'Главное устройство + плитки всей периферии', w: 6, h: 3, shape: 'squircle', previewKind: 'wide' },
+      { id: 'carbon_compact', label: 'Компактный стек', desc: 'Узкая панель заряда ПК и мыши/гарнитуры', w: 4, h: 2, shape: 'squircle', previewKind: 'wide' },
+    ],
+  },
+  {
+    type: 'luma_custom_widget',
+    title: 'Свой виджет (Фото + JS)',
+    group: 'Инструменты',
+    category: 'tools',
+    defaultW: 4,
+    defaultH: 2,
+    defaultVariant: 'custom_studio',
+    defaultShape: 'squircle',
+    summary: 'Создайте уникальный виджет со своей картинкой и JS-скриптом данных системы',
+    variants: [
+      { id: 'custom_studio', label: 'Конструктор Carbon', desc: 'Открывает редактор фото и JS-кода виджета', w: 4, h: 2, shape: 'squircle', previewKind: 'wide' },
+    ],
+  },
 ];
 
 export function getWidgetDef(widgetType: string): WidgetCatalogDef {
@@ -557,8 +586,11 @@ function getWidgetFamilyIcon(type: string) {
     case 'luma_battery':
     case 'luma_battery_pro':
     case 'luma_battery_boron':
+    case 'luma_power_ecosystem':
     case 'luma_wireless_hub':
       return <BatteryCharging className="w-4 h-4" />;
+    case 'luma_custom_widget':
+      return <Sparkles className="w-4 h-4" />;
     case 'luma_weather':
     case 'luma_weather_week':
       return <CloudSun className="w-4 h-4" />;
@@ -848,8 +880,9 @@ export const LumaWidgetGalleryModal: React.FC<{
   subBtnCls: string;
   mutedCls: string;
   onSelectVariant: (def: WidgetCatalogDef, variant: WidgetVariantDef) => void;
+  onCreateCustomWidget?: () => void;
   onClose: () => void;
-}> = ({ col, row, isDark, modalShellCls, subBtnCls, mutedCls, onSelectVariant, onClose }) => {
+}> = ({ col, row, isDark, modalShellCls, subBtnCls, mutedCls, onSelectVariant, onCreateCustomWidget, onClose }) => {
   const [category, setCategory] = useState<WidgetCategoryId>('all');
   const [search, setSearch] = useState('');
   const [selectedType, setSelectedType] = useState<string>('luma_clock');
@@ -895,9 +928,23 @@ export const LumaWidgetGalleryModal: React.FC<{
               Ячейка [{col}, {row}] · Выберите виджет слева и стиль/форму справа · После добавления ПКМ меняет размер и форму
             </p>
           </div>
-          <button onClick={onClose} className={`p-1.5 rounded-lg border cursor-pointer ${subBtnCls}`}>
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onCreateCustomWidget && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onCreateCustomWidget();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Создать свой виджет
+              </button>
+            )}
+            <button onClick={onClose} className={`p-1.5 rounded-lg border cursor-pointer ${subBtnCls}`}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Category Pills + Search Bar */}

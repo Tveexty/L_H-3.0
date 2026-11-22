@@ -76,13 +76,25 @@ import {
   WidgetShape,
   WidgetVariantDef,
 } from './LumaWidgetCatalog';
+import { CustomUserWidgetSpec, evalCustomWidgetScript } from './LumaCustomWidgetBuilder';
 
 export { DESKTOP_WIDGET_CATALOG };
 export type { WidgetShape };
 export type DesktopGridCols = 22 | 20;
 export type WallpaperStyle = 'dots' | 'grid' | 'matte';
 export type WallpaperTransitionMode = 'iris' | 'bloom' | 'wipe' | 'morph';
-export type LiveWallpaperId = '' | 'lithium' | 'nebula' | 'solar' | 'beryllium' | 'borealis' | 'cybergrid' | 'boron' | 'cobalt';
+export type LiveWallpaperId =
+  | ''
+  | 'lithium'
+  | 'nebula'
+  | 'solar'
+  | 'beryllium'
+  | 'borealis'
+  | 'cybergrid'
+  | 'boron'
+  | 'cobalt'
+  | 'carbon'
+  | 'obsidian-gold';
 
 export type WidgetBgMode = 'theme' | 'glass' | 'dark' | 'light' | 'accent' | 'transparent' | 'custom';
 
@@ -101,7 +113,11 @@ export type DesktopSystemWinId =
   | 'calendar'
   | 'ai'
   | 'utilities'
-  | 'security';
+  | 'security'
+  | 'trash'
+  | 'scenarios'
+  | 'code_studio'
+  | 'cut_studio';
 
 export interface FolderEntry {
   id: string;
@@ -129,6 +145,8 @@ export interface DesktopWidgetInstance {
   bgOpacity?: number; // 0..100
   bgCustomColor?: string; // #rrggbb
   bgBlur?: number; // 0 | 8 | 16 | 24
+  // Luma OS 1.5 Carbon: custom user widget specification (image + JS script)
+  customSpec?: CustomUserWidgetSpec;
 }
 
 export interface DesktopShortcut {
@@ -371,6 +389,11 @@ export interface LumaDesktopCanvasProps {
   wirelessBatteries?: WirelessBatteryInfo[];
   onOpenSettingsTab?: (tab: string) => void;
   onTriggerEasterEgg?: () => void;
+  deleteAnimStyle?: 'harmony7' | 'shrink' | 'evaporate';
+  topBarOffsetPx?: number;
+  onOpenCustomWidgetBuilder?: (editWidgetId?: string, spec?: CustomUserWidgetSpec) => void;
+  pendingCustomWidget?: { seq: number; editWidgetId?: string; spec: CustomUserWidgetSpec } | null;
+  onConsumePendingCustomWidget?: () => void;
 }
 
 export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
@@ -439,6 +462,11 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
   wirelessBatteries = [],
   onOpenSettingsTab,
   onTriggerEasterEgg,
+  deleteAnimStyle = 'harmony7',
+  topBarOffsetPx = 0,
+  onOpenCustomWidgetBuilder,
+  pendingCustomWidget = null,
+  onConsumePendingCustomWidget,
 }) => {
   const totalRows = 10;
   const totalCells = gridCols * totalRows;
@@ -1309,7 +1337,50 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
     setSelectedInstalled([]);
   };
 
+  const lastCustomSeqRef = useRef<number>(0);
+  useEffect(() => {
+    if (!pendingCustomWidget || pendingCustomWidget.seq === lastCustomSeqRef.current) return;
+    lastCustomSeqRef.current = pendingCustomWidget.seq;
+    const { spec, editWidgetId } = pendingCustomWidget;
+    const gw = Math.max(2, Math.min(8, spec.w * 2));
+    const gh = Math.max(1, Math.min(5, spec.h + 1));
+    if (editWidgetId) {
+      setWidgets((prev) =>
+        prev.map((w) =>
+          w.id === editWidgetId
+            ? { ...w, title: spec.title, w: gw, h: gh, customSpec: spec }
+            : w
+        )
+      );
+      onPushToast('Свой виджет обновлён', `Виджет «${spec.title}» сохранён`, 'success');
+    } else {
+      setWidgets((prev) => [
+        ...prev,
+        {
+          id: `w_custom_${Date.now()}`,
+          widgetType: 'luma_custom_widget',
+          title: spec.title,
+          group: 'Инструменты',
+          col: 9,
+          row: 1,
+          w: gw,
+          h: gh,
+          shape: 'squircle',
+          variant: 'custom_studio',
+          customSpec: spec,
+        },
+      ]);
+      onPushToast('Рабочий стол', `Добавлен свой виджет «${spec.title}»`, 'success');
+    }
+    onConsumePendingCustomWidget?.();
+  }, [pendingCustomWidget, onConsumePendingCustomWidget, onPushToast]);
+
   const addWidgetVariantAt = (def: WidgetCatalogDef, variant: WidgetVariantDef, col: number, row: number) => {
+    if (def.type === 'luma_custom_widget' && onOpenCustomWidgetBuilder) {
+      setPickerModal(null);
+      onOpenCustomWidgetBuilder();
+      return;
+    }
     const id = `w_${def.type}_${Date.now()}`;
     const c = Math.max(1, Math.min(gridCols - variant.w + 1, col));
     const r = Math.max(1, Math.min(totalRows - variant.h + 1, row));
@@ -2821,6 +2892,203 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         );
       }
 
+      case 'luma_power_ecosystem': {
+        const hasBatt = batteryMini.present || Boolean(liveSystem?.battery_present);
+        const battPct = hasBatt ? (liveSystem?.battery_present ? liveSystem.battery_percent : batteryMini.percent) : 100;
+        const charging = hasBatt ? (batteryMini.charging || Boolean(liveSystem?.battery_charging)) : false;
+        const devs = Array.isArray(wirelessBatteries) ? wirelessBatteries : [];
+        return (
+          <div className="h-full flex flex-col justify-between gap-2 overflow-hidden">
+            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] shrink-0">
+              <span className="inline-flex items-center gap-1 text-cyan-400 font-bold">
+                <BatteryCharging className="w-3.5 h-3.5" />
+                ЭНЕРГИЯ СИСТЕМЫ И ПЕРИФЕРИИ
+              </span>
+              <span className={mutedCls}>{devs.length + 1} устр.</span>
+            </div>
+
+            {/* Main Device Card */}
+            <div className={`px-2.5 py-2 rounded-xl border flex items-center justify-between gap-2 shrink-0 ${subBtnCls}`}>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold truncate">
+                    {hasBatt ? 'Основное устройство (АКБ)' : 'ПК (Питание от сети AC)'}
+                  </div>
+                  <div className={`text-[9px] font-mono ${mutedCls}`}>
+                    {hasBatt ? (charging ? 'Заряжается' : `Здоровье ${batteryMini.health}%`) : 'Стационарный 220V'}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <div className={`w-14 h-1.5 rounded-full overflow-hidden ${railTrackCls}`}>
+                  <div
+                    style={{ width: `${Math.min(100, battPct)}%` }}
+                    className={`h-full rounded-full ${battPct <= 20 ? 'bg-rose-500' : 'bg-emerald-400'}`}
+                  />
+                </div>
+                <span className="text-xs font-mono font-black tabular-nums">{hasBatt ? `${battPct}%` : 'AC'}</span>
+              </div>
+            </div>
+
+            {/* Connected Wireless Peripherals */}
+            <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1.5 content-start">
+              {devs.length === 0 ? (
+                <div className={`col-span-full text-[10px] font-mono py-2 text-center ${mutedCls}`}>
+                  Подключите мышь (IO / Ajazz / Ardor), клавиатуру или наушники по BT / 2.4GHz
+                </div>
+              ) : (
+                devs.slice(0, 6).map((d, i) => {
+                  const pct = d.battery_percent;
+                  const typeLabel =
+                    d.device_type === 'mouse'
+                      ? '🖱 Мышь'
+                      : d.device_type === 'keyboard'
+                      ? '⌨ Клав.'
+                      : d.device_type === 'headphones'
+                      ? '🎧 Аудио'
+                      : d.device_type === 'gamepad'
+                      ? '🎮 Геймпад'
+                      : '📡 BT/2.4G';
+                  return (
+                    <div key={`${d.name}_${i}`} className={`px-2 py-1.5 rounded-xl border flex flex-col gap-1 ${subBtnCls}`}>
+                      <div className="flex items-center justify-between gap-1 text-[10px]">
+                        <span className="font-semibold truncate">{d.name}</span>
+                        <span
+                          className={`font-mono font-bold shrink-0 ${
+                            pct >= 0
+                              ? pct <= 20
+                                ? 'text-rose-400'
+                                : 'text-emerald-400'
+                              : 'text-cyan-400'
+                          }`}
+                        >
+                          {pct >= 0 ? `${pct}%` : 'Подкл.'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className={`text-[9px] truncate ${mutedCls}`}>
+                          {typeLabel} · {d.transport || '2.4G'}
+                        </span>
+                        {pct >= 0 && (
+                          <div className={`w-10 h-1 rounded-full overflow-hidden shrink-0 ${railTrackCls}`}>
+                            <div
+                              style={{ width: `${Math.min(100, pct)}%` }}
+                              className={`h-full rounded-full ${pct <= 20 ? 'bg-rose-500' : 'bg-cyan-400'}`}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      case 'luma_custom_widget': {
+        const spec = w.customSpec;
+        const hhmm = now.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+        const out = spec
+          ? evalCustomWidgetScript(spec.scriptCode, {
+              telemetry: {
+                cpu_percent: liveSystem?.cpu_percent,
+                ram_percent: liveSystem?.ram_percent,
+                ram_used_gb: liveSystem?.ram_used_gb,
+                ram_total_gb: liveSystem?.ram_total_gb,
+                gpu_percent: liveSystem?.gpu_percent,
+                gpu_temp_c: liveSystem?.gpu_temp_c,
+                battery_pct: liveSystem?.battery_percent,
+                battery_charging: liveSystem?.battery_charging,
+              },
+              wireless: wirelessBatteries.map((d) => ({
+                name: d.name,
+                battery_percent: d.battery_percent,
+                device_type: d.device_type,
+                transport: d.transport,
+              })),
+              time: {
+                hhmm,
+                seconds: String(now.getSeconds()).padStart(2, '0'),
+                dateStr: now.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' }),
+                hour: now.getHours(),
+              },
+              weather: { temp: weather.temp, desc: weather.label, city: weather.city },
+            })
+          : { headline: w.title, value: 'Carbon Studio', subtitle: 'Нажмите ✎ чтобы настроить скрипт и фото' };
+        const accent = spec?.accentColor || accentHex || '#22d3ee';
+        return (
+          <div className="relative h-full w-full -m-3.5 p-3.5 overflow-hidden text-white flex flex-col justify-between">
+            {spec?.bgImage && (
+              <img
+                src={spec.bgImage}
+                alt=""
+                className="pointer-events-none absolute inset-0 w-full h-full object-cover"
+                style={{
+                  opacity: (spec.bgOpacity ?? 75) / 100,
+                  filter: spec.bgBlur ? `blur(${spec.bgBlur * 0.35}px)` : undefined,
+                }}
+              />
+            )}
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-black/55 via-black/35 to-black/70" />
+            <div className="relative z-10 flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider opacity-85 truncate">
+                {out.headline || w.title}
+              </span>
+              <div className="flex items-center gap-1 shrink-0">
+                {out.badge && (
+                  <span
+                    className="text-[9px] font-mono px-1.5 py-0.5 rounded-full font-bold"
+                    style={{ backgroundColor: `${accent}33`, color: accent, border: `1px solid ${accent}55` }}
+                  >
+                    {out.badge}
+                  </span>
+                )}
+                {onOpenCustomWidgetBuilder && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenCustomWidgetBuilder(w.id, spec);
+                    }}
+                    title="Редактировать фото и JS-скрипт виджета"
+                    className="p-1 rounded-lg bg-black/45 hover:bg-black/75 text-white/80 hover:text-white cursor-pointer"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="relative z-10 my-auto">
+              <div className="text-xl sm:text-2xl font-black tracking-tight leading-none truncate">
+                {out.error ? 'Ошибка JS' : out.value || '—'}
+              </div>
+              <div className="text-[10px] text-white/75 mt-1 truncate">
+                {out.error || out.subtitle || ''}
+              </div>
+            </div>
+            {typeof out.progress === 'number' && (
+              <div className="relative z-10 w-full h-1.5 rounded-full bg-white/15 overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${out.progress}%`, backgroundColor: accent }} />
+              </div>
+            )}
+            {out.rows && out.rows.length > 0 && (
+              <div className="relative z-10 pt-1 border-t border-white/15 space-y-0.5">
+                {out.rows.slice(0, 3).map((r, i) => (
+                  <div key={i} className="flex items-center justify-between text-[10px]">
+                    <span className="text-white/70 truncate">{r.label}</span>
+                    <span className="font-mono font-bold" style={{ color: accent }}>
+                      {r.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      }
+
       case 'luma_ai_quick': {
         if (!aiEnabled) {
           return (
@@ -3706,7 +3974,9 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
   };
 
   const dynamicGridPadStyle: React.CSSProperties =
-    taskbarPosition === 'top'
+    topBarOffsetPx > 0
+      ? { padding: '12px', paddingTop: `${topBarOffsetPx + 10}px`, paddingBottom: `${taskbarSizePx + 14}px` }
+      : taskbarPosition === 'top'
       ? { padding: '12px', paddingTop: `${taskbarSizePx + 14}px` }
       : taskbarPosition === 'left'
       ? { padding: '12px', paddingLeft: `${taskbarSizePx + 14}px` }
@@ -3944,7 +4214,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
               }}
               title={editMode ? `${w.title} (${w.w}×${w.h})` : `${w.title} · Нажмите для настроек виджета`}
               className={`group relative border ${w.shape === 'circle' ? 'p-2.5' : 'p-3.5'} ${shapeCls} luma-card-lift ${cardCls} ${
-                deletingWidgetIds[w.id] ? 'luma-delete-widget' : ''
+                deletingWidgetIds[w.id] ? (deleteAnimStyle === 'harmony7' ? 'luma-delete-harmony7' : 'luma-delete-widget') : ''
               } ${
                 editMode ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
               } ${
@@ -4087,7 +4357,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                   zIndex: isResizing ? 28 : 8,
                 }}
                 className={`relative border p-2.5 flex flex-col justify-between gap-1.5 ${folderShapeCls} ${cardCls} cursor-pointer transition ${
-                  deletingShortcutIds[sc.id] ? 'luma-delete-app' : ''
+                  deletingShortcutIds[sc.id] ? (deleteAnimStyle === 'harmony7' ? 'luma-delete-harmony7' : 'luma-delete-app') : ''
                 } ${
                   isDropTarget || isResizing
                     ? 'ring-2 ring-[var(--luma-accent)] shadow-[0_0_0_5px_var(--luma-accent-soft)]'
@@ -4253,7 +4523,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                   : sc.label
               }
               className={`group relative flex flex-col items-center justify-center gap-1 rounded-2xl p-1 transition cursor-pointer ${
-                deletingShortcutIds[sc.id] ? 'luma-delete-app' : ''
+                deletingShortcutIds[sc.id] ? (deleteAnimStyle === 'harmony7' ? 'luma-delete-harmony7' : 'luma-delete-app') : ''
               } ${
                 isDark ? 'hover:bg-white/[0.07] text-zinc-200' : 'hover:bg-zinc-900/[0.07] text-zinc-900'
               } ${
@@ -4970,9 +5240,24 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
               <span>Стиль оболочки</span>
             </span>
             <span className="text-[10px] font-mono uppercase text-[var(--luma-accent)]">
-              {designStyle === 'nothing' ? 'Nothing' : 'Pixelbook'}
+              {designStyle === 'nothing' ? 'Классический' : 'Модерн'}
             </span>
           </button>
+
+          {onOpenCustomWidgetBuilder && (
+            <button
+              onClick={() => {
+                setCtxMenu(null);
+                onOpenCustomWidgetBuilder();
+              }}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
+                isDark ? 'hover:bg-white/10 text-cyan-300' : 'hover:bg-zinc-900/10 text-cyan-700'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Создать свой виджет (Фото + JS)</span>
+            </button>
+          )}
 
           <div className={`my-1 border-t ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`} />
 
@@ -5028,6 +5313,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           subBtnCls={subBtnCls}
           mutedCls={mutedCls}
           onSelectVariant={(def, variant) => addWidgetVariantAt(def, variant, pickerModal.col, pickerModal.row)}
+          onCreateCustomWidget={onOpenCustomWidgetBuilder ? () => onOpenCustomWidgetBuilder() : undefined}
           onClose={() => setPickerModal(null)}
         />
       )}

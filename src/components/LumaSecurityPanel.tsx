@@ -290,7 +290,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       });
       const d = await r.json();
       if (d?.ok) {
-        onPushToast('Карантин LumaShield 1.4', `Файл «${t.name}» изолирован`, 'success');
+        onPushToast('Карантин LumaShield 1.6', `Файл «${t.name}» изолирован`, 'success');
         await fetchStatus();
       } else {
         onPushToast('Карантин', d?.error || 'Не удалось изолировать файл', 'warning');
@@ -305,7 +305,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       const r = await fetch('/api/kernel/security/quarantine-all', { method: 'POST' });
       const d = await r.json();
       if (d?.ok) {
-        onPushToast('Карантин LumaShield 1.4', `Изолировано угроз: ${d.quarantined}`, 'success');
+        onPushToast('Карантин LumaShield 1.6', `Изолировано угроз: ${d.quarantined}`, 'success');
         await fetchStatus();
       }
     } catch {
@@ -324,7 +324,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       if (r.ok) {
         if (action === 'add') setNewExclusion('');
         onPushToast(
-          'Белый список LumaShield 1.4',
+          'Белый список LumaShield 1.6',
           action === 'add' ? 'Путь добавлен в исключения' : 'Путь удалён из исключений',
           'info'
         );
@@ -345,7 +345,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       const d = await r.json();
       if (d?.ok) {
         onPushToast(
-          'Карантин LumaShield 1.4',
+          'Карантин LumaShield 1.6',
           action === 'restore' ? 'Файл восстановлен в исходную папку' : 'Файл удалён навсегда',
           'success'
         );
@@ -929,7 +929,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       {subTab === 'exclusions' && (
         <div className={`p-4 rounded-2xl border space-y-3 text-xs ${surfaceCls}`}>
           <div>
-            <div className="font-bold">Белый список (Исключения LumaShield 1.4)</div>
+            <div className="font-bold">Белый список (Исключения LumaShield 1.6)</div>
             <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
               Доверенные папки и файлы, которые пропускаются сканером и Real-Time Guard
             </div>
@@ -977,7 +977,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
           <div className="flex items-center justify-between text-xs">
             <span className="font-bold flex items-center gap-1.5">
               <Activity className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
-              Журнал ядра безопасности LumaShield 1.4
+              Журнал ядра безопасности LumaShield 1.6
             </span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>{audit.length} событий</span>
           </div>

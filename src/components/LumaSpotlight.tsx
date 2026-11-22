@@ -63,9 +63,30 @@ interface LumaSpotlightProps {
   onLaunchApp: (app: AppItem) => void;
   onLaunchInstalledApp?: (app: InstalledAppInfo) => void;
   onOpenWindow: (
-    win: 'apps' | 'tracker' | 'kernel' | 'terminal' | 'settings' | 'plugins' | 'island' | 'spaces' | 'explorer' | 'taskmgr' | 'ai' | 'utilities' | 'calculator' | 'calendar'
+    win:
+      | 'apps'
+      | 'tracker'
+      | 'kernel'
+      | 'terminal'
+      | 'settings'
+      | 'plugins'
+      | 'island'
+      | 'spaces'
+      | 'explorer'
+      | 'taskmgr'
+      | 'ai'
+      | 'utilities'
+      | 'calculator'
+      | 'calendar'
+      | 'trash'
+      | 'scenarios'
+      | 'code_studio'
+      | 'cut_studio'
   ) => void;
   onOpenSettingsTab?: (tab: string) => void;
+  onOpenVault?: () => void;
+  onOpenControlHub?: () => void;
+  onOpenCustomWidgetBuilder?: () => void;
   onRunCommand?: (cmd: string) => void;
   onShowDesktop: () => void;
   onToggleEditDesktop: () => void;
@@ -120,6 +141,9 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
   onLaunchInstalledApp,
   onOpenWindow,
   onOpenSettingsTab,
+  onOpenVault,
+  onOpenControlHub,
+  onOpenCustomWidgetBuilder,
   onRunCommand,
   onToggleTheme,
   onPowerAction,
@@ -208,9 +232,9 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'set_kernel_ui',
         group: 'Настройки системы',
-        title: 'Ядро UI и О системе (Luma OS 1.4 Boron)',
-        subtitle: 'Имя ПК, характеристики, LumaCore 1.5, LumaShield 1.5, пасхалка',
-        keywords: 'ядро ui о системе версия модель устройство boron 1.4 about',
+        title: 'Ядро UI и О системе (Luma OS 1.5 Carbon)',
+        subtitle: 'Имя ПК, характеристики, LumaCore 1.6, LumaShield 1.6, пасхалка',
+        keywords: 'ядро ui о системе версия модель устройство carbon 1.5 about',
         icon: <Cpu className="w-4 h-4" />,
         run: () => openSetting('kernel_ui'),
       },
@@ -218,8 +242,8 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'set_mouse_dpi',
         group: 'Настройки системы',
         title: 'Мышь, Скорость указателя и DPI (eDPI)',
-        subtitle: 'Регулировка DPI, скорость курсора Windows 1–20, Raw Input, тест-площадка',
-        keywords: 'мышь скорость dpi edpi сенсор курсор чувствительность mouse sensitivity raw input',
+        subtitle: 'Регулировка DPI, скорость курсора Windows 1–20, Raw Input, IO/Ajazz/Ardor',
+        keywords: 'мышь скорость dpi edpi сенсор курсор чувствительность mouse sensitivity raw input io ajazz ardor',
         icon: <MousePointer2 className="w-4 h-4" />,
         run: () => openSetting('mouse_dpi'),
       },
@@ -227,7 +251,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'set_power_battery',
         group: 'Настройки системы',
         title: 'Питание и Батарея (АКБ + Беспроводные устройства)',
-        subtitle: 'Заряд ноутбука, беспроводные мышки/наушники BT & 2.4GHz, планы питания, яркость',
+        subtitle: 'Заряд ноутбука, беспроводные мышки IO/Ajazz/Ardor BT & 2.4GHz, планы питания',
         keywords: 'батарея питание заряд энергосбережение яркость акб мышь наушники 2.4ghz радиоканал battery power',
         icon: <BatteryCharging className="w-4 h-4" />,
         run: () => openSetting('power_battery'),
@@ -235,18 +259,18 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'set_appearance',
         group: 'Настройки системы',
-        title: 'Оформление, Темы, Обои и Прозрачность виджетов',
-        subtitle: 'Темы, 4 новых арта Boron 1.4, живые обои, прозрачность виджетов, анимации',
-        keywords: 'темы обои фон цвет прозрачность blur анимации оформление виджеты wallpaper theme boron',
+        title: 'Оформление, Обои Carbon 1.5, 3 точки и Анимации HarmonyOS 7',
+        subtitle: 'Стили Классический/Модерн, 3 новых арта Carbon, кнопки окна 3 точки, анимации',
+        keywords: 'темы обои фон цвет прозрачность blur анимации оформление виджеты wallpaper theme carbon harmonyos 3 точки',
         icon: <Palette className="w-4 h-4" />,
         run: () => openSetting('appearance'),
       },
       {
         id: 'set_taskbar',
         group: 'Настройки системы',
-        title: 'Настройка Панели задач',
-        subtitle: 'Позиция, автоскрытие, размер, порядок приложений, элементы трея',
-        keywords: 'панель задач taskbar автоскрытие трей буфер часы',
+        title: 'Настройка Панели задач (Двойная панель + Прямой запуск)',
+        subtitle: '2 панели задач (верх: утилиты, низ: окна), автоскрытие, прямой запуск приложений',
+        keywords: 'панель задач taskbar двойная панель автоскрытие трей прямой запуск',
         icon: <SlidersHorizontal className="w-4 h-4" />,
         run: () => openSetting('taskbar'),
       },
@@ -271,7 +295,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'set_security',
         group: 'Настройки системы',
-        title: 'Безопасность и Антивирус (LumaShield 1.5)',
+        title: 'Безопасность и Антивирус (LumaShield 1.6)',
         subtitle: 'Сканер 85+ правил, Аудит файла Hosts (DNS), TCP-монитор, Карантин',
         keywords: 'безопасность антивирус защита сканер карантин lumashield сеть firewall hosts dns',
         icon: <ShieldCheck className="w-4 h-4" />,
@@ -281,8 +305,8 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'set_bluetooth',
         group: 'Настройки системы',
         title: 'Bluetooth и Беспроводные устройства (BT + 2.4GHz)',
-        subtitle: 'Адаптер Bluetooth, беспроводные мыши/гарнитуры и процент заряда',
-        keywords: 'bluetooth блютуз беспроводные наушники мышь клавиатура 2.4ghz радиоканал',
+        subtitle: 'Адаптер Bluetooth, беспроводные мыши IO/Ajazz/Ardor и процент заряда',
+        keywords: 'bluetooth блютуз беспроводные наушники мышь клавиатура 2.4ghz радиоканал io ajazz ardor',
         icon: <Bluetooth className="w-4 h-4" />,
         run: () => openSetting('bluetooth'),
       },
@@ -298,7 +322,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'set_updates',
         group: 'Настройки системы',
-        title: 'Обновления GitHub OTA, Анимация Boron и Откат версии',
+        title: 'Обновления GitHub OTA и Откат версии',
         subtitle: 'Проверка новой версии, киноанимация обновления и откат на прошлые релизы',
         keywords: 'обновление версия откат github ota rollback update анимация',
         icon: <Download className="w-4 h-4" />,
@@ -308,15 +332,15 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'set_notifications',
         group: 'Настройки системы',
         title: 'Уведомления и Режим «Не беспокоить»',
-        subtitle: 'Настройка правых уведомлений, DND и синхронизации Windows',
-        keywords: 'уведомления dnd не беспокоить notifications',
+        subtitle: 'Настройка правых уведомлений, Telegram, DND и синхронизации Windows',
+        keywords: 'уведомления dnd не беспокоить notifications telegram',
         icon: <Bell className="w-4 h-4" />,
         run: () => openSetting('notifications'),
       },
       {
         id: 'set_island',
         group: 'Настройки системы',
-        title: 'Dynamic Island и Мультизадачность',
+        title: 'Dynamic Island и Режим оболочки',
         subtitle: 'Верхняя капсула, выбор плееров, режим оболочки Windows Shell',
         keywords: 'динамический остров island оболочка shell автозапуск',
         icon: <Disc3 className="w-4 h-4" />,
@@ -335,13 +359,95 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
 
     // 3. System Services, Luma Modules & Windows Utilities
     const serviceItems: SpotlightResult[] = [
+      ...(onOpenControlHub
+        ? [
+            {
+              id: 'svc_carbon_hub',
+              group: 'Службы и утилиты' as const,
+              title: 'Панель управления Carbon + Центр уведомлений (Tab)',
+              subtitle: 'Редактируемая панель 1/4×1/2, Скриншот, Запись экрана, Telegram и Функции ОС',
+              badge: 'TAB',
+              keywords: 'панель управления tab уведомления telegram скриншот запись экрана control hub carbon',
+              icon: <SlidersHorizontal className="w-4 h-4" />,
+              run: () => onOpenControlHub(),
+            },
+          ]
+        : []),
+      ...(onOpenVault
+        ? [
+            {
+              id: 'svc_private_vault',
+              group: 'Службы и утилиты' as const,
+              title: 'Суперконфиденциальность (Приватный рабочий стол AES-256)',
+              subtitle: 'Изолированный зашифрованный стол, скрытые файлы, пароль или без пароля',
+              badge: 'AES-256',
+              keywords: 'суперконфиденциальность приватный сейф скрытый рабочий стол vault secret privacy',
+              icon: <Lock className="w-4 h-4" />,
+              run: () => onOpenVault(),
+            },
+          ]
+        : []),
+      {
+        id: 'svc_code_studio',
+        group: 'Службы и утилиты',
+        title: 'Luma Code Studio (Редактор кода · VS Code)',
+        subtitle: 'Файловое дерево ПК, вкладки, подсветка, HTML-превью и встроенный терминал',
+        badge: 'IDE',
+        keywords: 'код редактор vscode code studio ide программирование js python go html',
+        icon: <Code2 className="w-4 h-4" />,
+        run: () => onOpenWindow('code_studio'),
+      },
+      {
+        id: 'svc_cut_studio',
+        group: 'Службы и утилиты',
+        title: 'Luma Cut Studio (Видеоредактор · CapCut)',
+        subtitle: 'Таймлайн, нарезка, 10 LUT фильтров, титры, переходы и экспорт .webm',
+        badge: 'VIDEO',
+        keywords: 'видео видеоредактор монтаж capcut cut studio экспорт фильтры титры',
+        icon: <Sparkles className="w-4 h-4" />,
+        run: () => onOpenWindow('cut_studio'),
+      },
+      {
+        id: 'svc_scenarios',
+        group: 'Службы и утилиты',
+        title: 'Сценарии автоматизации (Если → То)',
+        subtitle: 'Автоматические действия при запуске программ, зарядке, времени и темах',
+        badge: 'AUTO',
+        keywords: 'сценарии автоматизация правила если то триггер scenarios automation',
+        icon: <Rocket className="w-4 h-4" />,
+        run: () => onOpenWindow('scenarios'),
+      },
+      {
+        id: 'svc_trash',
+        group: 'Службы и утилиты',
+        title: 'Корзина Luma OS',
+        subtitle: 'Удалённые файлы с восстановлением и полной очисткой Корзины ОС',
+        badge: '1.5',
+        keywords: 'корзина удаленные файлы очистить восстановить trash recycle bin',
+        icon: <Trash2 className="w-4 h-4" />,
+        run: () => onOpenWindow('trash'),
+      },
+      ...(onOpenCustomWidgetBuilder
+        ? [
+            {
+              id: 'svc_custom_widget',
+              group: 'Службы и утилиты' as const,
+              title: 'Конструктор своих виджетов (Фото + JS скрипт)',
+              subtitle: 'Создать собственный виджет для рабочего стола со своей картинкой и кодом',
+              badge: 'STUDIO',
+              keywords: 'конструктор виджет свой виджет скрипт фото custom widget builder',
+              icon: <Sparkles className="w-4 h-4" />,
+              run: () => onOpenCustomWidgetBuilder(),
+            },
+          ]
+        : []),
       {
         id: 'svc_calendar',
         group: 'Службы и утилиты',
-        title: 'Календарь Luma OS (События и напоминания)',
-        subtitle: 'Месячная сетка, цветные теги, планировщик событий и расписание',
-        badge: 'NEW',
-        keywords: 'календарь дата события напоминания расписание месяц calendar events',
+        title: 'Календарь Luma OS 1.5 (Месяц / Неделя / Повестка / Pomodoro)',
+        subtitle: 'Повторяющиеся события, приоритеты, фокус-таймер и экспорт/импорт .ics',
+        badge: 'PRO',
+        keywords: 'календарь дата события напоминания расписание месяц неделя pomodoro ics calendar',
         icon: <Calendar className="w-4 h-4" />,
         run: () => onOpenWindow('calendar'),
       },

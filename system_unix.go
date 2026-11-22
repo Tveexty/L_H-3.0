@@ -1358,6 +1358,44 @@ func (p *platformProbe) SetMouseDPIConfig(sensorDPI, targetEffectiveDPI, windows
 	return unixMouseCfg, nil
 }
 
+func (p *platformProbe) CaptureScreenNative() (CaptureMediaFile, error) {
+	dir := getLumaCapturesDir("screenshot")
+	name := fmt.Sprintf("luma_shot_%s.png", time.Now().Format("20060102_150405"))
+	full := filepath.Join(dir, name)
+	// Try standard Linux screenshot utilities if present
+	for _, cmdSpec := range [][]string{
+		{"grim", full},
+		{"scrot", "-q", "85", full},
+		{"import", "-window", "root", full},
+	} {
+		if _, err := exec.LookPath(cmdSpec[0]); err == nil {
+			if err := exec.Command(cmdSpec[0], cmdSpec[1:]...).Run(); err == nil {
+				if st, err := os.Stat(full); err == nil {
+					return CaptureMediaFile{
+						Name:      name,
+						Path:      full,
+						Kind:      "screenshot",
+						SizeBytes: st.Size(),
+						CreatedAt: time.Now().Format("2006-01-02 15:04:05"),
+					}, nil
+				}
+			}
+		}
+	}
+	return CaptureMediaFile{}, fmt.Errorf("use_browser_capture")
+}
+
+func (p *platformProbe) EmptyOSRecycleBinNative() error {
+	home, _ := os.UserHomeDir()
+	trashDir := filepath.Join(home, ".local", "share", "Trash")
+	_ = os.RemoveAll(filepath.Join(trashDir, "files"))
+	_ = os.RemoveAll(filepath.Join(trashDir, "info"))
+	_ = os.MkdirAll(filepath.Join(trashDir, "files"), 0755)
+	_ = os.MkdirAll(filepath.Join(trashDir, "info"), 0755)
+	return nil
+}
+
+
 
 
 

@@ -47,10 +47,10 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.4"
-	KernelCodename      = "Boron"
-	KernelEngineVersion = "1.5"
-	SecurityCoreVersion = "1.5"
+	KernelVersion       = "1.5"
+	KernelCodename      = "Carbon"
+	KernelEngineVersion = "1.6"
+	SecurityCoreVersion = "1.6"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
 )
@@ -2474,12 +2474,238 @@ func main() {
 		}
 	})
 
-	// Serve standalone executable download for LumaOS_1.4.exe (with backward-compatible aliases)
+	// ==================== LUMA OS 1.5 CARBON: TRASH, SUPER-CONFIDENTIALITY VAULT & COMPACT CAPTURE ====================
+	trashStore := newLumaTrashStore()
+	privateVault := newLumaPrivateVault()
+
+	mux.HandleFunc("/api/kernel/trash", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodPost {
+			var req struct {
+				Action  string `json:"action"` // move | restore | delete | empty | demo
+				Path    string `json:"path"`
+				ID      string `json:"id"`
+				Name    string `json:"name"`
+				Content string `json:"content"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			switch req.Action {
+			case "move":
+				item, err := trashStore.MoveToTrash(req.Path)
+				if err != nil {
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+					return
+				}
+				items, total := trashStore.List()
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "item": item, "items": items, "total_bytes": total})
+			case "demo":
+				item, err := trashStore.CreateDemoItem(req.Name, req.Content)
+				if err != nil {
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+					return
+				}
+				items, total := trashStore.List()
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "item": item, "items": items, "total_bytes": total})
+			case "restore":
+				restoredTo, err := trashStore.Restore(req.ID)
+				if err != nil {
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+					return
+				}
+				items, total := trashStore.List()
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "restored_path": restoredTo, "items": items, "total_bytes": total})
+			case "delete":
+				if err := trashStore.DeletePermanent(req.ID); err != nil {
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+					return
+				}
+				items, total := trashStore.List()
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "items": items, "total_bytes": total})
+			case "empty":
+				removed := trashStore.Empty()
+				_ = kernel.probe.EmptyOSRecycleBinNative()
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "removed": removed, "items": []TrashItemMeta{}, "total_bytes": 0})
+			default:
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "неизвестное действие корзины"})
+			}
+			return
+		}
+		items, total := trashStore.List()
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":          true,
+			"count":       len(items),
+			"total_bytes": total,
+			"trash_dir":   trashStore.baseDir,
+			"items":       items,
+		})
+	})
+
+	mux.HandleFunc("/api/kernel/vault/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(privateVault.Status())
+	})
+
+	mux.HandleFunc("/api/kernel/vault/auth", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Action          string `json:"action"` // configure | unlock | lock
+			RequirePassword bool   `json:"require_password"`
+			Password        string `json:"password"`
+			AutoLockMin     int    `json:"auto_lock_min"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		switch req.Action {
+		case "configure":
+			if err := privateVault.Configure(req.RequirePassword, req.Password, req.AutoLockMin); err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+		case "unlock":
+			if err := privateVault.Unlock(req.Password); err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+		case "lock":
+			privateVault.Lock()
+		}
+		_ = json.NewEncoder(w).Encode(privateVault.Status())
+	})
+
+	mux.HandleFunc("/api/kernel/vault/items", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodPost {
+			var req struct {
+				Action         string `json:"action"` // add | read | delete
+				ID             string `json:"id"`
+				Kind           string `json:"kind"`
+				Name           string `json:"name"`
+				Target         string `json:"target"`
+				Content        string `json:"content"`
+				Base64Data     string `json:"base64_data"`
+				DiskPath       string `json:"disk_path"`
+				RemoveOriginal bool   `json:"remove_original"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			switch req.Action {
+			case "read":
+				it, plain, err := privateVault.ReadItem(req.ID)
+				if err != nil {
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"ok":      true,
+					"item":    it,
+					"content": string(plain),
+					"size":    len(plain),
+				})
+			case "delete":
+				if err := privateVault.DeleteItem(req.ID); err != nil {
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+					return
+				}
+				_ = json.NewEncoder(w).Encode(privateVault.Status())
+			default:
+				it, err := privateVault.AddItem(req.Kind, req.Name, req.Target, req.Content, req.Base64Data, req.DiskPath, req.RemoveOriginal)
+				if err != nil {
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+					return
+				}
+				st := privateVault.Status()
+				st["item"] = it
+				_ = json.NewEncoder(w).Encode(st)
+			}
+			return
+		}
+		_ = json.NewEncoder(w).Encode(privateVault.Status())
+	})
+
+	mux.HandleFunc("/api/kernel/capture/screenshot", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodPost {
+			var req struct {
+				Base64Data string `json:"base64_data"`
+				Ext        string `json:"ext"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			if req.Base64Data != "" {
+				saved, err := saveBase64Capture("screenshot", req.Ext, req.Base64Data)
+				if err != nil {
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "file": saved, "captures": listLumaCaptures()})
+				return
+			}
+		}
+		file, err := kernel.probe.CaptureScreenNative()
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":           false,
+				"use_fallback": true,
+				"error":        err.Error(),
+				"dir":          getLumaCapturesDir("screenshot"),
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "file": file, "captures": listLumaCaptures()})
+	})
+
+	mux.HandleFunc("/api/kernel/capture/save-recording", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Base64Data string `json:"base64_data"`
+			Ext        string `json:"ext"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 128*1024*1024)).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		saved, err := saveBase64Capture("recording", req.Ext, req.Base64Data)
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "file": saved, "captures": listLumaCaptures()})
+	})
+
+	mux.HandleFunc("/api/kernel/capture/list", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":             true,
+			"screenshots_dir": getLumaCapturesDir("screenshot"),
+			"recordings_dir":  getLumaCapturesDir("recording"),
+			"captures":       listLumaCaptures(),
+		})
+	})
+
+	// Serve standalone executable download for LumaOS_1.5.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.4.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -2487,12 +2713,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.4.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.5.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.4.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.3.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.3.exe", serveExe)
@@ -2549,8 +2776,8 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.4 (BORON · B-5) — LUMACORE 1.5 & LUMASHIELD 1.5")
-	log.Printf("  - Wireless HID Mice, DPI Service, SDK v3.0, Hosts Guard: ON")
+	log.Printf("  LUMA OS 1.5 (CARBON · C-6) — LUMACORE 1.6 & LUMASHIELD 1.6")
+	log.Printf("  - Carbon Control Hub, Private Vault, Trash, IO/Ajazz/Ardor: ON")
 	log.Printf("  - Desktop Environment:          http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:    http://%s/api/kernel/status", addr)

@@ -2335,6 +2335,10 @@ func (p *platformProbe) GetWirelessDeviceBatteries(forceRefresh bool) []Wireless
 		"hid-compliant system", "hid-compliant vendor", "microsoft bluetooth",
 		"bluetooth adapter", "wireless bluetooth", "intel(r) wireless", "realtek bluetooth",
 		"qualcomm", "mediatek bluetooth", "generic bluetooth", "bluetooth radio",
+		"mu-mimo", "wi-fi", "wifi", "wlan", "802.11", "tp-link", "d-link", "netgear",
+		"network adapter", "wireless usb adapter", "wireless lan", "ethernet", "gigabit",
+		"usb-ac", "usb-ax", "ax200", "ax210", "be200", "modem", "mobile broadband",
+		"сетевой адаптер", "беспроводной сетевой",
 		"радиомодуль", "перечислитель", "корневой концентратор", "хост-контроллер",
 		"составное usb", "устройство ввода usb",
 	}

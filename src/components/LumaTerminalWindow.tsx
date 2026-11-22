@@ -87,7 +87,7 @@ function createTab(idx: number): TermTab {
     cwd: '~',
     history: [],
     lines: [
-      { id: 1, kind: 'accent', text: 'LUMA OS 1.4 (BORON · B-5) · LUMACORE 1.5 PRO TERMINAL  [IPC 127.0.0.1:49215]' },
+      { id: 1, kind: 'accent', text: 'LUMA OS 1.5 (CARBON · C-6) · LUMACORE 1.6 PRO TERMINAL  [IPC 127.0.0.1:49215]' },
       { id: 2, kind: 'out', text: 'Команды: help, neofetch, top, kill, explorer, taskmgr, ls, find, mkdir, touch, cat, theme, anim, sh <cmd>.' },
     ],
   };
@@ -248,12 +248,12 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         [
           `  ██╗     ██╗   ██╗███╗   ███╗ █████╗      luma@${hostName}`,
           `  ██║     ██║   ██║████╗ ████║██╔══██╗     ──────────────────────────`,
-          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.4 Boron (${os})`,
-          `  ██║     ██║   ██║██║╚██╔╝██║██╔══██║     STYLE   : ${designStyle.toUpperCase()} · TASKBAR ${taskbarPosition.toUpperCase()}`,
+          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.5 Carbon (${os})`,
+          `  ██║     ██║   ██║██║╚██╔╝██║██╔══██║     STYLE   : ${designStyle === 'nothing' ? 'КЛАССИЧЕСКИЙ' : 'МОДЕРН'} · TASKBAR ${taskbarPosition.toUpperCase()}`,
           `  ███████╗╚██████╔╝██║ ╚═╝ ██║██║  ██║     CPU     : ${cpu}`,
           `  ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝     GPU     : ${gpu}`,
           `                                           RAM     : ${ram}`,
-          `  KERNEL : LumaCore 1.5 · Shield 1.5       REGION  : ${loc}`,
+          `  KERNEL : LumaCore 1.6 · Shield 1.6       REGION  : ${loc}`,
         ].join('\n'),
         'accent'
       );

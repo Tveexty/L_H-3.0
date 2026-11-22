@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"math"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -25,8 +27,12 @@ var (
 	modHid                           = syscall.NewLazyDLL("hid.dll")
 	modPdh                           = syscall.NewLazyDLL("pdh.dll")
 	procSHGetFileInfoW               = modShell32.NewProc("SHGetFileInfoW")
+	procSHEmptyRecycleBinW           = modShell32.NewProc("SHEmptyRecycleBinW")
 	procGetIconInfo                  = modUser32.NewProc("GetIconInfo")
 	procDestroyIcon                  = modUser32.NewProc("DestroyIcon")
+	procProGetDC                     = modUser32.NewProc("GetDC")
+	procProReleaseDC                 = modUser32.NewProc("ReleaseDC")
+	procProGetSystemMetrics          = modUser32.NewProc("GetSystemMetrics")
 	procProGetGUIThreadInfo          = modUser32.NewProc("GetGUIThreadInfo")
 	procProAllowSetFg                = modUser32.NewProc("AllowSetForegroundWindow")
 	procProSetFg                     = modUser32.NewProc("SetForegroundWindow")
@@ -37,6 +43,9 @@ var (
 	procProIsWindowVisible           = modUser32.NewProc("IsWindowVisible")
 	procProGetWindowTextLenW         = modUser32.NewProc("GetWindowTextLengthW")
 	procCreateCompatibleDC           = modGdi32.NewProc("CreateCompatibleDC")
+	procCreateCompatibleBitmap       = modGdi32.NewProc("CreateCompatibleBitmap")
+	procSelectObject                 = modGdi32.NewProc("SelectObject")
+	procBitBlt                       = modGdi32.NewProc("BitBlt")
 	procDeleteDC                     = modGdi32.NewProc("DeleteDC")
 	procGetDIBits                    = modGdi32.NewProc("GetDIBits")
 	procDeleteObject                 = modGdi32.NewProc("DeleteObject")
@@ -51,6 +60,9 @@ var (
 	procHidPGetCaps                  = modHid.NewProc("HidP_GetCaps")
 	procHidPGetValueCaps             = modHid.NewProc("HidP_GetValueCaps")
 	procHidDGetFeature               = modHid.NewProc("HidD_GetFeature")
+	procHidDSetFeature               = modHid.NewProc("HidD_SetFeature")
+	procHidDSetOutputReport          = modHid.NewProc("HidD_SetOutputReport")
+	procHidDGetInputReport           = modHid.NewProc("HidD_GetInputReport")
 	procProSystemParametersInfoW     = modUser32.NewProc("SystemParametersInfoW")
 	procSetupDiEnumDeviceInterfaces  = modSetupapi.NewProc("SetupDiEnumDeviceInterfaces")
 	procSetupDiGetDeviceIntfDetailW  = modSetupapi.NewProc("SetupDiGetDeviceInterfaceDetailW")
@@ -851,22 +863,26 @@ func knownWirelessVendorName(vid uint16) string {
 		return "Glorious / Wireless"
 	case 0x3710:
 		return "Pulsar"
+	case 0x3151:
+		return "Ajazz"
+	case 0x1D57:
+		return "Attack Shark / Compx"
 	case 0x3554:
-		return "Lamzu / VGN / ATK"
+		return "IO / Ajazz / Ardor / Compx"
+	case 0x25A7:
+		return "Ardor / Redragon / Compx 2.4GHz"
 	case 0x2FE9:
 		return "VGN / ATK"
 	case 0x373B:
 		return "Attack Shark / 2.4GHz"
-	case 0x25A7:
-		return "2.4GHz Wireless"
 	case 0x1EA7:
 		return "2.4GHz Wireless"
 	case 0x248A:
 		return "Maxxter / 2.4GHz Wireless"
 	case 0x09DA:
 		return "A4Tech / Bloody"
-	case 0x24AE:
-		return "Rapoo"
+	case 0x320F:
+		return "ATK / Ardor / Wireless"
 	case 0x3434:
 		return "Keychron"
 	case 0x2516:
@@ -900,7 +916,7 @@ func knownWirelessVendorName(vid uint16) string {
 	case 0x145F:
 		return "Trust"
 	case 0x0C45:
-		return "Redragon / Wireless"
+		return "Ajazz / Redragon / Wireless"
 	case 0x1A2C, 0x1915, 0x062A, 0x1BCF, 0x30FA, 0x2588, 0x18F8:
 		return "2.4GHz Wireless"
 	default:
@@ -916,6 +932,9 @@ func isWirelessMouseOrRadioHint(s string) bool {
 		"беспроводн", "радио", "приемник", "приёмник", "air", "pro x", "superlight",
 		"g305", "g703", "g903", "g502", "viper", "deathadder", "basilisk", "orochi",
 		"aerox", "rival", "prime", "harpe", "keris", "gladius", "dragonfly", "atlantis",
+		"io nova", "nova se", "red square", "rsq-", "ajazz", "aj139", "aj159", "aj179",
+		"aj199", "aj339", "aj380", "ak820", "ak980", "ardor", "edge air", "rukh",
+		"phantom", "essence", "ultralight", "fury", "attack shark", "darmoshark", "vxe",
 	}
 	for _, h := range hints {
 		if strings.Contains(low, h) {
@@ -925,9 +944,169 @@ func isWirelessMouseOrRadioHint(s string) bool {
 	return false
 }
 
-// scanHidRadioChannelBatteries (LumaCore 1.5): Pure Win32 hid.dll + SetupDi multi-pass scanner.
+func isVendorBatteryMouseCandidate(vid uint16, name string) bool {
+	switch vid {
+	case 0x25A7, 0x3554, 0x3151, 0x1D57, 0x0C45, 0x248A, 0x1EA7, 0x320F, 0x373B, 0x2FE9, 0x258A, 0x3710, 0x1915:
+		return true
+	}
+	low := strings.ToLower(name)
+	for _, kw := range []string{"io nova", "nova", "ajazz", "aj1", "aj3", "ardor", "rukh", "edge air", "phantom", "red square", "rsq", "attack shark", "compx", "vxe", "vgn", "atk", "redragon"} {
+		if strings.Contains(low, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// probeVendorMouseBattery (LumaCore 1.6 Carbon): Native Win32 HID vendor battery query engine
+// for IO (Nova SE / Red Square), ARDOR GAMING (Edge Air Ultra / Rukh / Phantom / Prime),
+// AJAZZ (AJ139 / AJ159 / AJ179 / AJ199 / AK820 / AK980), Compx CX52850 / JM03, VXE / ATK / Attack Shark.
+// Uses shared non-exclusive handles (FILE_SHARE_READ | FILE_SHARE_WRITE) so official vendor tools never conflict!
+func probeVendorMouseBattery(devPath string, vid uint16, name string, caps hidCaps) (int, string) {
+	if caps.UsagePage < 0xFF00 {
+		return -1, ""
+	}
+	if !isVendorBatteryMouseCandidate(vid, name) {
+		return -1, ""
+	}
+	pPtr, err := syscall.UTF16PtrFromString(devPath)
+	if err != nil {
+		return -1, ""
+	}
+	hRW, err := syscall.CreateFile(
+		pPtr,
+		syscall.GENERIC_READ|syscall.GENERIC_WRITE,
+		syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE,
+		nil,
+		syscall.OPEN_EXISTING,
+		0,
+		0,
+	)
+	if err != nil || hRW == syscall.InvalidHandle {
+		return -1, ""
+	}
+	defer syscall.CloseHandle(hRW)
+
+	// Protocol A: Compx / JM03 / CX52850 17-byte Report 0x08 cmd 0x04 (IO Nova SE, ARDOR GAMING, Redragon, VXE, Attack Shark)
+	parseCompxResp := func(resp []byte) int {
+		if len(resp) < 8 {
+			return -1
+		}
+		if (resp[0] == 0x08 || resp[0] == 0x09) && resp[1] == 0x04 && resp[2] == 0x00 {
+			raw := int(resp[6])
+			if raw == 0 && resp[5] > 0 && resp[5] <= 100 {
+				raw = int(resp[5])
+			}
+			if raw >= 1 && raw <= 10 && resp[7] <= 1 {
+				// Some older Compx firmwares (e.g. 0..10 steps) report 1..10; modern CX52850 reports 1..100 directly.
+				// Distinguish by checking if value is clearly <= 10 while status length == 1 or voltage byte == 0.
+				if resp[5] == 0x01 && resp[8] == 0x00 && resp[9] == 0x00 {
+					return raw * 10
+				}
+			}
+			if raw >= 1 && raw <= 100 {
+				return raw
+			}
+		}
+		return -1
+	}
+
+	if caps.FeatureReportByteLength == 17 || caps.OutputReportByteLength == 17 || caps.InputReportByteLength == 17 {
+		// Build 17-byte Compx GetBattery command: [08] [04] [00] [00] [00] [00] [00..00] [0x55 - sum]
+		for _, chk := range []byte{0x49, 0x4D, 0x51} {
+			req := make([]byte, 17)
+			req[0] = 0x08
+			req[1] = 0x04
+			req[16] = chk
+
+			// Try Feature Report path (Ardor Edge Air Ultra, IO Nova SE, Compx Feature)
+			if caps.FeatureReportByteLength >= 17 && procHidDSetFeature.Find() == nil {
+				if okS, _, _ := procHidDSetFeature.Call(uintptr(hRW), uintptr(unsafe.Pointer(&req[0])), uintptr(len(req))); okS != 0 {
+					time.Sleep(24 * time.Millisecond)
+					for _, rid := range []byte{0x09, 0x08} {
+						resp := make([]byte, caps.FeatureReportByteLength)
+						resp[0] = rid
+						if okG, _, _ := procHidDGetFeature.Call(uintptr(hRW), uintptr(unsafe.Pointer(&resp[0])), uintptr(len(resp))); okG != 0 {
+							if pct := parseCompxResp(resp); pct >= 0 {
+								return pct, "Compx/IO/Ardor HID Feature"
+							}
+						}
+					}
+				}
+			}
+
+			// Try Output Report + Input Report path (Ardor Rukh, Redragon CX52850, VXE)
+			if caps.OutputReportByteLength >= 17 && procHidDSetOutputReport.Find() == nil && procHidDGetInputReport.Find() == nil {
+				if okO, _, _ := procHidDSetOutputReport.Call(uintptr(hRW), uintptr(unsafe.Pointer(&req[0])), uintptr(len(req))); okO != 0 {
+					time.Sleep(24 * time.Millisecond)
+					for _, rid := range []byte{0x08, 0x09} {
+						resp := make([]byte, caps.InputReportByteLength)
+						if len(resp) >= 17 {
+							resp[0] = rid
+							if okI, _, _ := procHidDGetInputReport.Call(uintptr(hRW), uintptr(unsafe.Pointer(&resp[0])), uintptr(len(resp))); okI != 0 {
+								if pct := parseCompxResp(resp); pct >= 0 {
+									return pct, "Compx/IO/Ardor HID Output"
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Protocol B: AJAZZ AJ-Series 2.4G / 8K (0xF7 status poll -> GET_FEATURE Report 0x05, charge at byte 3)
+	if caps.FeatureReportByteLength >= 9 && caps.FeatureReportByteLength <= 65 && procHidDSetFeature.Find() == nil {
+		flen := int(caps.FeatureReportByteLength)
+		if flen < 65 && (vid == 0x3151 || vid == 0x3554 || strings.Contains(strings.ToLower(name), "ajazz")) {
+			flen = int(caps.FeatureReportByteLength)
+		}
+		wake := make([]byte, flen)
+		wake[0] = 0x00
+		wake[1] = 0xF7
+		if okW, _, _ := procHidDSetFeature.Call(uintptr(hRW), uintptr(unsafe.Pointer(&wake[0])), uintptr(len(wake))); okW != 0 {
+			time.Sleep(32 * time.Millisecond)
+			resp := make([]byte, flen)
+			resp[0] = 0x05
+			if okR, _, _ := procHidDGetFeature.Call(uintptr(hRW), uintptr(unsafe.Pointer(&resp[0])), uintptr(len(resp))); okR != 0 {
+				if len(resp) >= 5 && resp[0] == 0x05 && resp[1] == 0x00 && resp[3] >= 1 && resp[3] <= 100 {
+					return int(resp[3]), "Ajazz 2.4G HID Telemetry"
+				}
+			}
+		}
+
+		// Protocol C: AJAZZ 65-byte Feature query 0x20 sub 0x01 (resp[1] == 0x20, resp[4] == charge%)
+		if flen >= 64 {
+			q20 := make([]byte, flen)
+			q20[0] = 0x00
+			q20[1] = 0x20
+			q20[2] = 0x01
+			if okQ, _, _ := procHidDSetFeature.Call(uintptr(hRW), uintptr(unsafe.Pointer(&q20[0])), uintptr(len(q20))); okQ != 0 {
+				time.Sleep(25 * time.Millisecond)
+				resp := make([]byte, flen)
+				resp[0] = 0x00
+				if okR, _, _ := procHidDGetFeature.Call(uintptr(hRW), uintptr(unsafe.Pointer(&resp[0])), uintptr(len(resp))); okR != 0 {
+					if resp[1] == 0x20 {
+						chg := int(resp[4])
+						if chg == 0xFF {
+							return 100, "Ajazz HID 0x20"
+						}
+						if chg >= 1 && chg <= 100 {
+							return chg, "Ajazz HID 0x20"
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return -1, ""
+}
+
+// scanHidRadioChannelBatteries (LumaCore 1.6 Carbon): Pure Win32 hid.dll + SetupDi multi-pass scanner.
 // Discovers ALL present Bluetooth, BLE, 2.4GHz USB Radio Receivers, AND active HID mice/keyboards/headsets/gamepads,
-// reading real product & manufacturer strings, VID/PID, and HID Battery Feature Reports — 0% WMI!
+// reading real product & manufacturer strings, VID/PID, standard HID Battery Feature Reports,
+// AND vendor-specific battery protocols for IO (Nova SE), Ajazz, Ardor Gaming, Compx, VXE/ATK/Attack Shark — 0% WMI!
 func scanHidRadioChannelBatteries(seen map[string]bool) []WirelessDeviceBattery {
 	var hidGuid windowsGUID
 	if modHid.Load() != nil || procHidDGetHidGuid.Find() != nil {
@@ -1115,6 +1294,14 @@ func scanHidRadioChannelBatteries(seen map[string]bool) []WirelessDeviceBattery 
 								}
 							}
 						}
+					}
+				}
+
+				// LumaCore 1.6: Vendor-specific battery query for IO (Nova SE), Ajazz, Ardor Gaming, Compx CX52850 / JM03!
+				if agg.batteryPct < 0 && caps.UsagePage >= 0xFF00 {
+					if vPct, vSrc := probeVendorMouseBattery(devPath, attrs.VendorID, agg.prodName+" "+agg.mfgName, caps); vPct >= 0 {
+						agg.batteryPct = vPct
+						agg.source = vSrc
 					}
 				}
 			}
@@ -1579,3 +1766,110 @@ func (p *platformProbe) SetMouseDPIConfig(sensorDPI, targetEffectiveDPI, windows
 	return p.GetMouseDPIConfig(), nil
 }
 
+// ==================== 8. NATIVE WIN32 COMPACT SCREENSHOT & OS RECYCLE BIN (LUMA OS 1.5 CARBON) ====================
+
+const (
+	smCxScreenWin      = 0
+	smCyScreenWin      = 1
+	gdiSrcCopy         = 0x00CC0020
+	sherbNoConfirm     = 0x00000001
+	sherbNoProgressUI  = 0x00000002
+	sherbNoSound       = 0x00000004
+)
+
+// CaptureScreenNative captures the primary Windows display via GDI32 BitBlt and encodes
+// an ultra-compact high-clarity JPEG (quality 82, ~110-180 KB) saved directly to ~/Pictures/LumaCaptures/.
+func (p *platformProbe) CaptureScreenNative() (CaptureMediaFile, error) {
+	wRaw, _, _ := procProGetSystemMetrics.Call(smCxScreenWin)
+	hRaw, _, _ := procProGetSystemMetrics.Call(smCyScreenWin)
+	w, h := int(wRaw), int(hRaw)
+	if w <= 0 || h <= 0 || w > 7680 || h > 4320 {
+		return CaptureMediaFile{}, fmt.Errorf("invalid screen metrics %dx%d", w, h)
+	}
+
+	hdcScreen, _, _ := procProGetDC.Call(0)
+	if hdcScreen == 0 {
+		return CaptureMediaFile{}, fmt.Errorf("GetDC(0) failed")
+	}
+	defer procProReleaseDC.Call(0, hdcScreen)
+
+	hdcMem, _, _ := procCreateCompatibleDC.Call(hdcScreen)
+	if hdcMem == 0 {
+		return CaptureMediaFile{}, fmt.Errorf("CreateCompatibleDC failed")
+	}
+	defer procDeleteDC.Call(hdcMem)
+
+	hBmp, _, _ := procCreateCompatibleBitmap.Call(hdcScreen, uintptr(w), uintptr(h))
+	if hBmp == 0 {
+		return CaptureMediaFile{}, fmt.Errorf("CreateCompatibleBitmap failed")
+	}
+	defer procDeleteObject.Call(hBmp)
+
+	oldObj, _, _ := procSelectObject.Call(hdcMem, hBmp)
+	defer procSelectObject.Call(hdcMem, oldObj)
+
+	okBlt, _, _ := procBitBlt.Call(
+		hdcMem, 0, 0, uintptr(w), uintptr(h),
+		hdcScreen, 0, 0, gdiSrcCopy,
+	)
+	if okBlt == 0 {
+		return CaptureMediaFile{}, fmt.Errorf("BitBlt failed")
+	}
+
+	var bih bitmapInfoHeader
+	bih.BiSize = uint32(unsafe.Sizeof(bih))
+	bih.BiWidth = int32(w)
+	bih.BiHeight = -int32(h) // top-down DIB
+	bih.BiPlanes = 1
+	bih.BiBitCount = 32
+	bih.BiCompression = biRGB
+
+	pixels := make([]byte, w*h*4)
+	lines, _, _ := procGetDIBits.Call(
+		hdcMem,
+		hBmp,
+		0,
+		uintptr(h),
+		uintptr(unsafe.Pointer(&pixels[0])),
+		uintptr(unsafe.Pointer(&bih)),
+		dibRGBColors,
+	)
+	if lines == 0 {
+		return CaptureMediaFile{}, fmt.Errorf("GetDIBits screen capture failed")
+	}
+
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for i := 0; i < len(pixels); i += 4 {
+		img.Pix[i] = pixels[i+2]   // R
+		img.Pix[i+1] = pixels[i+1] // G
+		img.Pix[i+2] = pixels[i]   // B
+		img.Pix[i+3] = 255         // A
+	}
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 82}); err != nil {
+		return CaptureMediaFile{}, err
+	}
+
+	dir := getLumaCapturesDir("screenshot")
+	name := fmt.Sprintf("luma_shot_%s.jpg", time.Now().Format("20060102_150405"))
+	full := filepath.Join(dir, name)
+	if err := os.WriteFile(full, buf.Bytes(), 0644); err != nil {
+		return CaptureMediaFile{}, err
+	}
+	return CaptureMediaFile{
+		Name:      name,
+		Path:      full,
+		Kind:      "screenshot",
+		SizeBytes: int64(buf.Len()),
+		CreatedAt: time.Now().Format("2006-01-02 15:04:05"),
+	}, nil
+}
+
+// EmptyOSRecycleBinNative empties the Windows system Recycle Bin silently via SHEmptyRecycleBinW.
+func (p *platformProbe) EmptyOSRecycleBinNative() error {
+	if procSHEmptyRecycleBinW.Find() == nil {
+		_, _, _ = procSHEmptyRecycleBinW.Call(0, 0, sherbNoConfirm|sherbNoProgressUI|sherbNoSound)
+	}
+	return nil
+}

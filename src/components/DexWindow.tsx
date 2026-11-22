@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Columns2, Maximize2, Minimize2, Minus, X } from 'lucide-react';
+import { Columns2, Maximize2, Minimize2, Minus, MoreHorizontal, X } from 'lucide-react';
 
 export type TaskbarPosition = 'bottom' | 'left' | 'right' | 'top';
 export type DesignStyle = 'nothing' | 'pixelbook';
+export type WindowControlsStyle = 'classic' | 'dots3' | 'menu3';
 
 export type SnapZone =
   | 'left'
@@ -27,8 +28,10 @@ export interface DexWindowProps {
   icon: React.ReactNode;
   isDark: boolean;
   designStyle?: DesignStyle;
+  windowControlsStyle?: WindowControlsStyle;
   taskbarPosition?: TaskbarPosition;
   taskbarSizePx?: number;
+  topBarOffsetPx?: number;
   zIndex: number;
   initialWidth?: number;
   initialHeight?: number;
@@ -58,8 +61,10 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
   icon,
   isDark,
   designStyle = 'nothing',
+  windowControlsStyle = 'classic',
   taskbarPosition = 'bottom',
   taskbarSizePx = 56,
+  topBarOffsetPx = 0,
   zIndex,
   initialWidth = 980,
   initialHeight = 640,
@@ -78,7 +83,12 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
 
   const getInsets = () => {
     const bar = taskbarSizePx <= 0 ? 0 : Math.max(44, Math.min(84, taskbarSizePx));
-    const padTop = taskbarPosition === 'top' && bar > 0 ? bar + 6 : 8;
+    const padTop =
+      topBarOffsetPx > 0
+        ? topBarOffsetPx + 6
+        : taskbarPosition === 'top' && bar > 0
+        ? bar + 6
+        : 8;
     const padBottom = taskbarPosition === 'bottom' && bar > 0 ? bar + 8 : 8;
     const padLeft = taskbarPosition === 'left' && bar > 0 ? bar + 12 : 8;
     const padRight = taskbarPosition === 'right' && bar > 0 ? bar + 12 : 8;
@@ -176,6 +186,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
   });
 
   const [snapMenuOpen, setSnapMenuOpen] = useState(false);
+  const [dotsMenuOpen, setDotsMenuOpen] = useState(false);
   const [snapPreviewZone, setSnapPreviewZone] = useState<SnapZone | null>(null);
   const snapPreviewRef = useRef<SnapZone | null>(null);
   const snapSeqRef = useRef<number>(0);
@@ -428,6 +439,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                setDotsMenuOpen(false);
                 setSnapMenuOpen((v) => !v);
               }}
               title="Макеты привязки окон (Snap Layouts)"
@@ -442,31 +454,133 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
               <Columns2 className="w-3.5 h-3.5" />
             </button>
 
-            <button
-              onClick={onMinimize}
-              title="Свернуть"
-              className={`w-7 h-7 ${isPixel ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
-                isDark ? 'text-zinc-400 hover:bg-white/10 hover:text-white' : 'text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900'
-              }`}
-            >
-              <Minus className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => setMaximized((m) => !m)}
-              title={maximized ? 'Восстановить' : 'Развернуть'}
-              className={`w-7 h-7 ${isPixel ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
-                isDark ? 'text-zinc-400 hover:bg-white/10 hover:text-white' : 'text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900'
-              }`}
-            >
-              {maximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            </button>
-            <button
-              onClick={onClose}
-              title="Закрыть"
-              className={`w-7 h-7 ${isPixel ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center text-zinc-400 hover:bg-[var(--luma-accent)] hover:text-white transition cursor-pointer`}
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+            {windowControlsStyle === 'dots3' ? (
+              <div className="flex items-center gap-1.5 pl-1.5 pr-0.5 group/dots">
+                <button
+                  onClick={onMinimize}
+                  title="Свернуть"
+                  className="w-3.5 h-3.5 rounded-full bg-amber-400 hover:bg-amber-300 border border-amber-500/50 flex items-center justify-center transition transform hover:scale-110 cursor-pointer shadow-sm"
+                >
+                  <Minus className="w-2 h-2 text-amber-950 opacity-0 group-hover/dots:opacity-100 transition-opacity stroke-[3]" />
+                </button>
+                <button
+                  onClick={() => setMaximized((m) => !m)}
+                  title={maximized ? 'Восстановить' : 'Развернуть'}
+                  className="w-3.5 h-3.5 rounded-full bg-emerald-400 hover:bg-emerald-300 border border-emerald-500/50 flex items-center justify-center transition transform hover:scale-110 cursor-pointer shadow-sm"
+                >
+                  {maximized ? (
+                    <Minimize2 className="w-2 h-2 text-emerald-950 opacity-0 group-hover/dots:opacity-100 transition-opacity stroke-[3]" />
+                  ) : (
+                    <Maximize2 className="w-2 h-2 text-emerald-950 opacity-0 group-hover/dots:opacity-100 transition-opacity stroke-[3]" />
+                  )}
+                </button>
+                <button
+                  onClick={onClose}
+                  title="Закрыть"
+                  className="w-3.5 h-3.5 rounded-full bg-rose-500 hover:bg-rose-400 border border-rose-600/50 flex items-center justify-center transition transform hover:scale-110 cursor-pointer shadow-sm"
+                >
+                  <X className="w-2 h-2 text-rose-950 opacity-0 group-hover/dots:opacity-100 transition-opacity stroke-[3]" />
+                </button>
+              </div>
+            ) : windowControlsStyle === 'menu3' ? (
+              <div className="relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSnapMenuOpen(false);
+                    setDotsMenuOpen((v) => !v);
+                  }}
+                  title="Управление окном (3 точки)"
+                  className={`w-7 h-7 ${isPixel ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
+                    dotsMenuOpen
+                      ? 'bg-[var(--luma-accent)] text-white'
+                      : isDark
+                      ? 'text-zinc-300 hover:bg-white/12 hover:text-white'
+                      : 'text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
+                  }`}
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </button>
+                {dotsMenuOpen && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className={`absolute right-0 top-9 z-50 w-44 p-1.5 rounded-2xl border shadow-2xl backdrop-blur-xl space-y-0.5 ${
+                      isDark
+                        ? 'bg-zinc-950/95 border-white/15 text-zinc-100'
+                        : 'bg-white/95 border-zinc-300 text-zinc-900'
+                    }`}
+                  >
+                    <button
+                      onClick={() => {
+                        setDotsMenuOpen(false);
+                        onMinimize();
+                      }}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-2 transition cursor-pointer ${
+                        isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-100'
+                      }`}
+                    >
+                      <Minus className="w-3.5 h-3.5 text-amber-400" />
+                      Свернуть
+                    </button>
+                    <button
+                      onClick={() => {
+                        setDotsMenuOpen(false);
+                        setMaximized((m) => !m);
+                      }}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-2 transition cursor-pointer ${
+                        isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-100'
+                      }`}
+                    >
+                      {maximized ? (
+                        <Minimize2 className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (
+                        <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
+                      )}
+                      {maximized ? 'Восстановить' : 'Развернуть'}
+                    </button>
+                    <div className={`my-1 h-px ${isDark ? 'bg-white/10' : 'bg-zinc-200'}`} />
+                    <button
+                      onClick={() => {
+                        setDotsMenuOpen(false);
+                        onClose();
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs text-rose-400 hover:bg-rose-500/15 flex items-center gap-2 transition cursor-pointer font-semibold"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      Закрыть окно
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={onMinimize}
+                  title="Свернуть"
+                  className={`w-7 h-7 ${isPixel ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
+                    isDark ? 'text-zinc-400 hover:bg-white/10 hover:text-white' : 'text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900'
+                  }`}
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setMaximized((m) => !m)}
+                  title={maximized ? 'Восстановить' : 'Развернуть'}
+                  className={`w-7 h-7 ${isPixel ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
+                    isDark ? 'text-zinc-400 hover:bg-white/10 hover:text-white' : 'text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900'
+                  }`}
+                >
+                  {maximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  onClick={onClose}
+                  title="Закрыть"
+                  className={`w-7 h-7 ${isPixel ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center text-zinc-400 hover:bg-[var(--luma-accent)] hover:text-white transition cursor-pointer`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
 
             {/* Floating Snap Layout Grid Popover */}
             {snapMenuOpen && (
