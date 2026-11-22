@@ -742,21 +742,24 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
                         }`}
                       >
                         <div
-                          className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 overflow-hidden ${
+                          className={`relative w-8 h-8 rounded-xl flex items-center justify-center shrink-0 overflow-hidden ${
                             active ? 'bg-white/20 text-white' : isDark ? 'bg-white/[0.07]' : 'bg-black/[0.06]'
                           }`}
                         >
-                          {item.iconUrl ? (
+                          <span className="flex items-center justify-center">{item.icon}</span>
+                          {item.iconUrl && (
                             <img
                               src={item.iconUrl}
                               alt=""
-                              className="w-5 h-5 object-contain"
+                              className="absolute inset-0 m-auto w-5 h-5 object-contain rounded-[3px]"
+                              onLoad={(e) => {
+                                const prev = e.currentTarget.previousElementSibling as HTMLElement | null;
+                                if (prev) prev.style.opacity = '0';
+                              }}
                               onError={(e) => {
                                 (e.currentTarget as HTMLImageElement).style.display = 'none';
                               }}
                             />
-                          ) : (
-                            item.icon
                           )}
                         </div>
                         <div className="min-w-0 flex-1">

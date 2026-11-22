@@ -47,7 +47,7 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.3"
+	KernelVersion       = "1.3.1"
 	KernelCodename      = "Beryllium"
 	KernelEngineVersion = "1.4"
 	SecurityCoreVersion = "1.4"
@@ -761,6 +761,47 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "action": payload.Action, "media": media})
 	})
 
+	// Multi-Player OS Media Sessions Enumeration & Per-Player Targeted Control (Dynamic Island)
+	mux.HandleFunc("/api/kernel/media/sessions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		media := kernel.probe.RefreshMediaSessions()
+		sessions := media.Sessions
+		if sessions == nil {
+			sessions = []MediaSessionItem{}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":       true,
+			"media":    media,
+			"sessions": sessions,
+			"count":    len(sessions),
+		})
+	})
+	mux.HandleFunc("/api/kernel/media/session-control", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			SourceApp string `json:"source_app"`
+			Action    string `json:"action"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		media, err := kernel.probe.ControlMediaSession(payload.SourceApp, payload.Action)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		sessions := media.Sessions
+		if sessions == nil {
+			sessions = []MediaSessionItem{}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":         true,
+			"source_app": payload.SourceApp,
+			"action":     payload.Action,
+			"media":      media,
+			"sessions":   sessions,
+		})
+	})
+
 	// Real OS Audio Volume & Mute Control API
 	mux.HandleFunc("/api/kernel/audio", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -922,6 +963,38 @@ func main() {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "pid": payload.PID})
+	})
+
+	// Host Window Snap & Side-by-Side Split Layout API
+	mux.HandleFunc("/api/kernel/windows/snap", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			PID        int    `json:"pid"`
+			Zone       string `json:"zone"`
+			TaskbarPos string `json:"taskbar_pos"`
+			TaskbarPx  int    `json:"taskbar_px"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		if err := kernel.probe.SnapHostWindow(payload.PID, payload.Zone, payload.TaskbarPos, payload.TaskbarPx); err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "pid": payload.PID, "zone": payload.Zone})
+	})
+	mux.HandleFunc("/api/kernel/windows/split", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var payload struct {
+			LeftPID    int    `json:"left_pid"`
+			RightPID   int    `json:"right_pid"`
+			TaskbarPos string `json:"taskbar_pos"`
+			TaskbarPx  int    `json:"taskbar_px"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		if err := kernel.probe.ArrangeTwoHostWindows(payload.LeftPID, payload.RightPID, payload.TaskbarPos, payload.TaskbarPx); err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "left_pid": payload.LeftPID, "right_pid": payload.RightPID})
 	})
 
 	// Real Top Host Processes (for Task Manager & Terminal `top` / `ps`)
@@ -2207,11 +2280,14 @@ func main() {
 		})
 	})
 
-	// ==================== LUMA OS 1.3 (BERYLLIUM) LUMACORE 1.4 NATIVE ENDPOINTS ====================
+	// ==================== LUMA OS 1.3.1 (BERYLLIUM) LUMACORE 1.4 NATIVE ENDPOINTS ====================
 
 	// Real Native App Icon Extractor (SHGetFileInfoW -> cached 32x32 PNG, ~1ms, 0% WMI!)
 	mux.HandleFunc("/api/kernel/app-icon", func(w http.ResponseWriter, r *http.Request) {
 		p := strings.TrimSpace(r.URL.Query().Get("path"))
+		if p == "" {
+			p = strings.TrimSpace(r.URL.Query().Get("name"))
+		}
 		if p == "" {
 			http.NotFound(w, r)
 			return
@@ -2268,12 +2344,12 @@ func main() {
 		})
 	})
 
-	// Serve standalone executable download for LumaOS_1.3.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.3.1.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.3.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.3.1.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -2281,12 +2357,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.3.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.3.1.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.3.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.3.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.3B.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.2.3.exe", serveExe)
@@ -2341,8 +2418,8 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.3 (BERYLLIUM) — LUMACORE 1.4 & LUMASHIELD 1.4")
-	log.Printf("  - True Zero-WMI, NVML/PDH GPU+VRAM, HID 2.4GHz & App Icons: ON")
+	log.Printf("  LUMA OS 1.3.1 (BERYLLIUM) — LUMACORE 1.4 & LUMASHIELD 1.4")
+	log.Printf("  - Instant Alt+Shift, Native App Icons, Multi-Player Island: ON")
 	log.Printf("  - Desktop Environment:          http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:    http://%s/api/kernel/status", addr)

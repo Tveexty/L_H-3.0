@@ -525,7 +525,7 @@ func (p *platformProbe) hasActiveMediaOrBrowserWindow() bool {
 // with adaptive pacing when host CPU > 80% and smart 30s SMTC media polling ONLY when Dynamic Island is active AND a player/browser is open!
 func (p *platformProbe) backgroundLoop() {
 	cpuNetTicker := time.NewTicker(1 * time.Second)
-	kbdTicker := time.NewTicker(350 * time.Millisecond)
+	kbdTicker := time.NewTicker(120 * time.Millisecond)
 	winTicker := time.NewTicker(1600 * time.Millisecond)
 	mediaTicker := time.NewTicker(30 * time.Second)
 	defer cpuNetTicker.Stop()
@@ -656,11 +656,64 @@ func (p *platformProbe) pollNetworkNative() {
 	p.prevNetStamp = now
 }
 
-// pollMediaAndNetwork queries ONLY WinRT SMTC media session at low frequency (12s) or on-demand media clicks.
+func cleanMediaPlayerDisplayName(raw string) string {
+	clean := strings.TrimSpace(raw)
+	if idx := strings.LastIndex(clean, "!"); idx >= 0 {
+		clean = clean[:idx]
+	}
+	if idx := strings.LastIndex(clean, "\\"); idx >= 0 {
+		clean = clean[idx+1:]
+	}
+	clean = strings.TrimSuffix(clean, ".exe")
+	clean = strings.TrimSuffix(clean, ".EXE")
+	low := strings.ToLower(clean)
+	switch {
+	case strings.Contains(low, "chrome"):
+		return "Google Chrome"
+	case strings.Contains(low, "msedge") || strings.Contains(low, "edge"):
+		return "Microsoft Edge"
+	case strings.Contains(low, "firefox"):
+		return "Mozilla Firefox"
+	case strings.Contains(low, "opera"):
+		return "Opera"
+	case strings.Contains(low, "brave"):
+		return "Brave"
+	case strings.Contains(low, "yandex"):
+		return "Яндекс"
+	case strings.Contains(low, "spotify"):
+		return "Spotify"
+	case strings.Contains(low, "vlc"):
+		return "VLC Media Player"
+	case strings.Contains(low, "telegram"):
+		return "Telegram"
+	case strings.Contains(low, "discord"):
+		return "Discord"
+	case strings.Contains(low, "aimp"):
+		return "AIMP"
+	case strings.Contains(low, "foobar"):
+		return "foobar2000"
+	case strings.Contains(low, "musicbee"):
+		return "MusicBee"
+	case strings.Contains(low, "potplayer"):
+		return "PotPlayer"
+	case strings.Contains(low, "mpv"):
+		return "MPV Player"
+	case strings.Contains(low, "zune") || strings.Contains(low, "mediaplayer"):
+		return "Media Player"
+	case strings.Contains(low, "vk"):
+		return "VK Музыка"
+	}
+	if clean == "" {
+		return "Плеер ОС"
+	}
+	return clean
+}
+
+// pollMediaAndNetwork queries WinRT SMTC for ALL active media sessions across every player/browser on the device.
 func (p *platformProbe) pollMediaAndNetwork() {
 	script := `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$res = @{ title = ""; artist = ""; app = ""; playing = $false; hasMedia = $false }
+$res = @{ title = ""; artist = ""; app = ""; playing = $false; hasMedia = $false; sessions = @() }
 try {
   Add-Type -AssemblyName System.Runtime.WindowsRuntime | Out-Null
   $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation` + "`" + `1' })[0]
@@ -671,24 +724,47 @@ try {
     $netTask.Result
   }
   $mgrType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType=WindowsRuntime]
+  $propsType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties, Windows.Media.Control, ContentType=WindowsRuntime]
   $mgr = Await ($mgrType::RequestAsync()) ($mgrType)
   if ($mgr) {
-    $session = $mgr.GetCurrentSession()
-    if ($session) {
-      $pb = $session.GetPlaybackInfo()
-      $propsType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties, Windows.Media.Control, ContentType=WindowsRuntime]
-      $props = Await ($session.TryGetMediaPropertiesAsync()) ($propsType)
-      if ($props) {
-        $res.title = [string]$props.Title
-        $res.artist = [string]$props.Artist
-        $res.app = [string]$session.SourceAppUserModelId
-        $res.playing = ($pb.PlaybackStatus.ToString() -eq 'Playing')
-        $res.hasMedia = ($res.title -ne '' -or $res.artist -ne '')
-      }
+    $cur = $mgr.GetCurrentSession()
+    $curId = ""
+    if ($cur) { $curId = [string]$cur.SourceAppUserModelId }
+    $all = $mgr.GetSessions()
+    $list = @()
+    foreach ($s in $all) {
+      try {
+        $pb = $s.GetPlaybackInfo()
+        $props = Await ($s.TryGetMediaPropertiesAsync()) ($propsType)
+        $src = [string]$s.SourceAppUserModelId
+        $t = ""
+        $a = ""
+        if ($props) {
+          $t = [string]$props.Title
+          $a = [string]$props.Artist
+        }
+        $pl = ($pb -and $pb.PlaybackStatus.ToString() -eq 'Playing')
+        $isCur = ($curId -ne '' -and $src -eq $curId)
+        $list += [PSCustomObject]@{
+          source_app = $src
+          title = $t
+          artist = $a
+          playing = $pl
+          is_current = $isCur
+        }
+        if ($isCur -or (-not $res.hasMedia -and ($t -ne '' -or $a -ne ''))) {
+          $res.title = $t
+          $res.artist = $a
+          $res.app = $src
+          $res.playing = $pl
+          $res.hasMedia = ($t -ne '' -or $a -ne '' -or $pl)
+        }
+      } catch {}
     }
+    $res.sessions = $list
   }
 } catch {}
-$res | ConvertTo-Json -Compress
+$res | ConvertTo-Json -Depth 4 -Compress
 `
 	out, err := runHiddenPowerShell(script)
 	if err != nil || out == "" {
@@ -700,28 +776,57 @@ $res | ConvertTo-Json -Compress
 		App      string `json:"app"`
 		Playing  bool   `json:"playing"`
 		HasMedia bool   `json:"hasMedia"`
+		Sessions []struct {
+			SourceApp string `json:"source_app"`
+			Title     string `json:"title"`
+			Artist    string `json:"artist"`
+			Playing   bool   `json:"playing"`
+			IsCurrent bool   `json:"is_current"`
+		} `json:"sessions"`
 	}
 	if json.Unmarshal([]byte(out), &data) != nil {
 		return
 	}
 
-	cleanApp := data.App
-	if idx := strings.LastIndex(cleanApp, "!"); idx >= 0 {
-		cleanApp = cleanApp[:idx]
+	sessions := make([]MediaSessionItem, 0, len(data.Sessions))
+	for i, s := range data.Sessions {
+		disp := cleanMediaPlayerDisplayName(s.SourceApp)
+		title := strings.TrimSpace(s.Title)
+		artist := strings.TrimSpace(s.Artist)
+		if title == "" && artist == "" && !s.Playing {
+			title = disp
+		}
+		sessions = append(sessions, MediaSessionItem{
+			ID:          fmt.Sprintf("smtc_%d", i+1),
+			SourceApp:   strings.TrimSpace(s.SourceApp),
+			DisplayName: disp,
+			Title:       title,
+			Artist:      artist,
+			IsPlaying:   s.Playing,
+			IsCurrent:   s.IsCurrent,
+		})
 	}
-	if idx := strings.LastIndex(cleanApp, "\\"); idx >= 0 {
-		cleanApp = cleanApp[idx+1:]
+
+	cleanApp := cleanMediaPlayerDisplayName(data.App)
+	if len(sessions) > 0 && !data.HasMedia {
+		data.HasMedia = true
+		if data.Title == "" {
+			data.Title = sessions[0].Title
+			data.Artist = sessions[0].Artist
+			cleanApp = sessions[0].DisplayName
+			data.Playing = sessions[0].IsPlaying
+		}
 	}
-	cleanApp = strings.TrimSuffix(cleanApp, ".exe")
 
 	p.mu.Lock()
 	p.media = MediaSessionInfo{
-		Available: data.HasMedia,
+		Available: data.HasMedia || len(sessions) > 0,
 		IsPlaying: data.Playing,
 		Title:     strings.TrimSpace(data.Title),
 		Artist:    strings.TrimSpace(data.Artist),
 		SourceApp: strings.TrimSpace(cleanApp),
 		UpdatedAt: time.Now().Unix(),
+		Sessions:  sessions,
 	}
 	p.mu.Unlock()
 }
@@ -1050,6 +1155,70 @@ func (p *platformProbe) ControlMedia(action string) (MediaSessionInfo, error) {
 		time.Sleep(350 * time.Millisecond)
 		p.pollMediaAndNetwork()
 	}()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.media, nil
+}
+
+// RefreshMediaSessions refreshes and returns ALL active Windows SMTC media players on demand (when Dynamic Island opens).
+func (p *platformProbe) RefreshMediaSessions() MediaSessionInfo {
+	p.pollMediaAndNetwork()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.media
+}
+
+// ControlMediaSession sends play/pause/play_pause/next/prev directly to a specific open Windows media player via WinRT SMTC!
+func (p *platformProbe) ControlMediaSession(sourceApp, action string) (MediaSessionInfo, error) {
+	act := strings.ToLower(strings.TrimSpace(action))
+	method := ""
+	switch act {
+	case "play":
+		method = "TryPlayAsync"
+	case "pause":
+		method = "TryPauseAsync"
+	case "play_pause", "toggle":
+		method = "TryTogglePlayPauseAsync"
+	case "next":
+		method = "TrySkipNextAsync"
+	case "prev", "previous":
+		method = "TrySkipPreviousAsync"
+	default:
+		return p.media, fmt.Errorf("unknown media action: %s", action)
+	}
+	target := strings.ReplaceAll(strings.TrimSpace(sourceApp), "'", "''")
+	if target == "" {
+		return p.ControlMedia(act)
+	}
+
+	script := fmt.Sprintf(`
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  Add-Type -AssemblyName System.Runtime.WindowsRuntime | Out-Null
+  $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`+"`"+`1' })[0]
+  Function Await($WinRtTask, $ResultType) {
+    $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+    $netTask = $asTask.Invoke($null, @($WinRtTask))
+    $netTask.Wait(1500) | Out-Null
+    $netTask.Result
+  }
+  $mgrType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType=WindowsRuntime]
+  $mgr = Await ($mgrType::RequestAsync()) ($mgrType)
+  if ($mgr) {
+    $want = '%s'.ToLower()
+    foreach ($s in $mgr.GetSessions()) {
+      $id = ([string]$s.SourceAppUserModelId).ToLower()
+      if ($id -eq $want -or $id.Contains($want) -or $want.Contains($id)) {
+        Await ($s.%s()) ([bool]) | Out-Null
+        break
+      }
+    }
+  }
+} catch {}
+`, target, method)
+	_, _ = runHiddenPowerShell(script)
+	time.Sleep(180 * time.Millisecond)
+	p.pollMediaAndNetwork()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.media, nil
@@ -2790,6 +2959,50 @@ foreach ($regPath in @(
 	if list == nil {
 		list = []InstalledAppItem{}
 	}
+	seenExec := map[string]bool{}
+	seenName := map[string]bool{}
+	for _, it := range list {
+		seenName[strings.ToLower(strings.TrimSpace(it.Name))] = true
+		seenExec[strings.ToLower(strings.TrimSpace(it.ExecPath))] = true
+	}
+
+	// Ensure core preinstalled Windows applications ALWAYS appear with their native Windows OS icons
+	preinstalled := []struct {
+		name      string
+		exec      string
+		publisher string
+	}{
+		{"Microsoft Edge", "msedge.exe", "Microsoft"},
+		{"Проводник Windows", "explorer.exe", "Microsoft Windows"},
+		{"Калькулятор Windows", "calc.exe", "Microsoft Windows"},
+		{"Блокнот (Notepad)", "notepad.exe", "Microsoft Windows"},
+		{"Paint", "mspaint.exe", "Microsoft Windows"},
+		{"Командная строка (CMD)", "cmd.exe", "Microsoft Windows"},
+		{"Windows PowerShell", "powershell.exe", "Microsoft Windows"},
+		{"Диспетчер задач Windows", "taskmgr.exe", "Microsoft Windows"},
+		{"Ножницы (Snipping Tool)", "SnippingTool.exe", "Microsoft Windows"},
+		{"Панель управления", "control.exe", "Microsoft Windows"},
+	}
+	for _, pre := range preinstalled {
+		resolved := resolveAppIconFilePath(pre.exec)
+		if resolved == "" {
+			continue
+		}
+		lk := strings.ToLower(pre.name)
+		le := strings.ToLower(resolved)
+		if seenName[lk] || seenExec[le] {
+			continue
+		}
+		seenName[lk] = true
+		seenExec[le] = true
+		list = append(list, InstalledAppItem{
+			Name:      pre.name,
+			ExecPath:  resolved,
+			Publisher: pre.publisher,
+			Source:    "preinstalled",
+		})
+	}
+
 	for i := range list {
 		cat, icon := classifyInstalledAppCategory(list[i].Name, list[i].Publisher)
 		list[i].ID = fmt.Sprintf("pcapp_%d", i+1)

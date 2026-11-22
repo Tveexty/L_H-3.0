@@ -195,7 +195,13 @@ function wmoToRu(code: number): { label: string; kind: 'sun' | 'cloud' | 'rain' 
 }
 
 function resolveFolderEntries(sc: DesktopShortcut, apps: AppItem[]): FolderEntry[] {
-  if (Array.isArray(sc.folderItems)) return sc.folderItems;
+  if (Array.isArray(sc.folderItems)) {
+    return sc.folderItems.map((fe) => {
+      if (fe.iconUrl || fe.kind !== 'app') return fe;
+      const found = apps.find((a) => a.id === fe.target);
+      return found?.iconUrl ? { ...fe, iconUrl: found.iconUrl } : fe;
+    });
+  }
   if (Array.isArray(sc.appIds) && sc.appIds.length > 0) {
     return sc.appIds
       .map((id) => apps.find((a) => a.id === id))
@@ -205,6 +211,7 @@ function resolveFolderEntries(sc: DesktopShortcut, apps: AppItem[]): FolderEntry
         kind: 'app' as const,
         label: app.name,
         icon: app.icon,
+        iconUrl: app.iconUrl,
         target: app.id,
       }));
   }
@@ -3048,6 +3055,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
       ? { padding: '12px', paddingTop: `${taskbarSizePx + 14}px` }
       : taskbarPosition === 'left'
       ? { padding: '12px', paddingLeft: `${taskbarSizePx + 14}px` }
+      : taskbarPosition === 'right'
+      ? { padding: '12px', paddingRight: `${taskbarSizePx + 14}px` }
       : { padding: '12px', paddingBottom: `${taskbarSizePx + 14}px` };
 
   const modalShellCls = isPixel
@@ -3610,26 +3619,71 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                     : 'bg-white/75 border-zinc-900/[0.15] group-hover:border-[var(--luma-accent-border)] text-zinc-900 shadow-xs'
                 }`}
               >
-                {isFolder && folderEntries.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-[2px] p-1.5">
-                    {folderEntries.slice(0, 4).map((fe) => (
-                      <span key={fe.id} className="flex items-center justify-center opacity-85">
-                        {renderShortcutIcon(fe.icon, iconSizePx >= 54 ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5')}
+                {(() => {
+                  const resolvedIconUrl =
+                    sc.iconUrl ||
+                    (sc.kind === 'app'
+                      ? apps.find((a) => a.id === sc.target)?.iconUrl
+                      : sc.kind === 'system'
+                      ? ({
+                          explorer: '/api/kernel/app-icon?name=explorer',
+                          taskmgr: '/api/kernel/app-icon?name=taskmgr',
+                          terminal: '/api/kernel/app-icon?name=cmd',
+                          calculator: '/api/kernel/app-icon?name=calc',
+                        } as Record<string, string>)[sc.target]
+                      : undefined);
+                  const fallbackIcon = renderShortcutIcon(
+                    sc.icon,
+                    iconSizePx >= 58 ? 'w-6 h-6' : iconSizePx >= 48 ? 'w-5 h-5' : 'w-4 h-4'
+                  );
+                  if (isFolder && folderEntries.length > 0) {
+                    return (
+                      <div className="grid grid-cols-2 gap-[2px] p-1.5">
+                        {folderEntries.slice(0, 4).map((fe) => (
+                          <span key={fe.id} className="relative flex items-center justify-center opacity-90">
+                            <span className="flex items-center justify-center">
+                              {renderShortcutIcon(fe.icon, iconSizePx >= 54 ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5')}
+                            </span>
+                            {fe.iconUrl && (
+                              <img
+                                src={fe.iconUrl}
+                                alt={fe.label}
+                                className="absolute inset-0 m-auto w-3.5 h-3.5 object-contain rounded-[2px]"
+                                onLoad={(e) => {
+                                  const prev = e.currentTarget.previousElementSibling as HTMLElement | null;
+                                  if (prev) prev.style.opacity = '0';
+                                }}
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  }
+                  if (resolvedIconUrl) {
+                    return (
+                      <span className="relative flex items-center justify-center w-full h-full">
+                        <span className="flex items-center justify-center">{fallbackIcon}</span>
+                        <img
+                          src={resolvedIconUrl}
+                          alt={sc.label}
+                          className="absolute inset-0 m-auto w-[68%] h-[68%] object-contain rounded"
+                          onLoad={(e) => {
+                            const prev = e.currentTarget.previousElementSibling as HTMLElement | null;
+                            if (prev) prev.style.opacity = '0';
+                          }}
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
                       </span>
-                    ))}
-                  </div>
-                ) : sc.iconUrl ? (
-                  <img
-                    src={sc.iconUrl}
-                    alt={sc.label}
-                    className="w-[64%] h-[64%] object-contain rounded"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  renderShortcutIcon(sc.icon, iconSizePx >= 58 ? 'w-6 h-6' : iconSizePx >= 48 ? 'w-5 h-5' : 'w-4 h-4')
-                )}
+                    );
+                  }
+                  return fallbackIcon;
+                })()}
                 {badge && (
                   <span className="absolute -bottom-1 -right-1 px-1 py-[1px] rounded text-[7px] font-mono font-bold bg-[var(--luma-accent)] text-white leading-none">
                     {badge}
@@ -4229,7 +4283,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
 
           <button
             onClick={() => {
-              const order: TaskbarPosition[] = ['bottom', 'left', 'top'];
+              const order: TaskbarPosition[] = ['bottom', 'left', 'right', 'top'];
               onSetTaskbarPosition(order[(order.indexOf(taskbarPosition) + 1) % order.length]);
               setCtxMenu(null);
             }}
@@ -4242,7 +4296,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
               <span>Панель задач</span>
             </span>
             <span className="text-[10px] font-mono uppercase">
-              {taskbarPosition === 'bottom' ? 'Снизу' : taskbarPosition === 'left' ? 'Слева' : 'Сверху'}
+              {taskbarPosition === 'bottom' ? 'Снизу' : taskbarPosition === 'left' ? 'Слева' : taskbarPosition === 'right' ? 'Справа' : 'Сверху'}
             </span>
           </button>
 

@@ -156,6 +156,16 @@ export interface LiveDiskMetric {
   percent: number;
 }
 
+export interface LiveMediaSessionItem {
+  id: string;
+  source_app: string;
+  display_name: string;
+  title: string;
+  artist: string;
+  is_playing: boolean;
+  is_current: boolean;
+}
+
 export interface LiveMediaSession {
   available: boolean;
   is_playing: boolean;
@@ -163,6 +173,7 @@ export interface LiveMediaSession {
   artist: string;
   source_app: string;
   updated_at: number;
+  sessions?: LiveMediaSessionItem[];
 }
 
 export interface LiveLocationInfo {
@@ -476,6 +487,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'steam',
     category: 'Games',
     icon: 'Gamepad2',
+    iconUrl: '/api/kernel/app-icon?name=steam',
     url: 'steam://',
     type: 'app',
     installed: true,
@@ -494,6 +506,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'chrome',
     category: 'Browser',
     icon: 'Globe',
+    iconUrl: '/api/kernel/app-icon?name=chrome',
     url: 'https://google.com',
     type: 'web',
     installed: true,
@@ -512,6 +525,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'telegram',
     category: 'Social',
     icon: 'MessageSquare',
+    iconUrl: '/api/kernel/app-icon?name=telegram',
     url: 'tg://',
     type: 'app',
     installed: true,
@@ -584,6 +598,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'vlc',
     category: 'Media',
     icon: 'Film',
+    iconUrl: '/api/kernel/app-icon?name=vlc',
     url: 'vlc://',
     type: 'app',
     installed: true,
@@ -638,6 +653,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'firefox',
     category: 'Browser',
     icon: 'Compass',
+    iconUrl: '/api/kernel/app-icon?name=firefox',
     url: 'https://mozilla.org',
     type: 'web',
     installed: true,
@@ -656,6 +672,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'calc',
     category: 'System',
     icon: 'Calculator',
+    iconUrl: '/api/kernel/app-icon?name=calc',
     url: 'calc',
     type: 'system',
     installed: true,
@@ -674,6 +691,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'explorer',
     category: 'System',
     icon: 'FolderOpen',
+    iconUrl: '/api/kernel/app-icon?name=explorer',
     url: 'explorer',
     type: 'system',
     installed: true,
@@ -692,6 +710,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'taskmgr',
     category: 'System',
     icon: 'Activity',
+    iconUrl: '/api/kernel/app-icon?name=taskmgr',
     url: 'taskmgr',
     type: 'system',
     installed: true,
@@ -710,6 +729,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'cmd',
     category: 'System',
     icon: 'Terminal',
+    iconUrl: '/api/kernel/app-icon?name=cmd',
     url: 'cmd',
     type: 'system',
     installed: true,
@@ -728,6 +748,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'winword',
     category: 'Office',
     icon: 'FileText',
+    iconUrl: '/api/kernel/app-icon?name=winword',
     url: 'winword',
     type: 'app',
     installed: true,
@@ -764,6 +785,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'discord',
     category: 'Social',
     icon: 'MessageSquare',
+    iconUrl: '/api/kernel/app-icon?name=discord',
     url: 'https://discord.com/app',
     type: 'app',
     installed: true,
@@ -782,6 +804,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'code',
     category: 'Development',
     icon: 'Terminal',
+    iconUrl: '/api/kernel/app-icon?name=code',
     url: 'vscode://',
     type: 'app',
     installed: true,
@@ -800,6 +823,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'github',
     category: 'Development',
     icon: 'Globe',
+    iconUrl: '/api/kernel/app-icon?name=github',
     url: 'https://github.com/Tveexty/L_H-3.0',
     type: 'web',
     installed: true,
@@ -818,6 +842,7 @@ export const INITIAL_APPS: AppItem[] = [
     package: 'notion',
     category: 'Office',
     icon: 'FileText',
+    iconUrl: '/api/kernel/app-icon?name=notion',
     url: 'https://notion.so',
     type: 'web',
     installed: true,
@@ -828,6 +853,82 @@ export const INITIAL_APPS: AppItem[] = [
     elapsedSeconds: 0,
     dailyLimitMinutes: 300,
     detoxGroup: 'Работа',
+    isRunning: false,
+  },
+  {
+    id: 'msedge',
+    name: 'Microsoft Edge',
+    package: 'msedge',
+    category: 'Browser',
+    icon: 'Globe',
+    iconUrl: '/api/kernel/app-icon?name=msedge',
+    url: 'msedge',
+    type: 'system',
+    installed: true,
+    favorite: false,
+    monthMinutes: 0,
+    weekMinutes: 0,
+    todayMinutes: 0,
+    elapsedSeconds: 0,
+    dailyLimitMinutes: 240,
+    detoxGroup: 'Браузеры',
+    isRunning: false,
+  },
+  {
+    id: 'notepad',
+    name: 'Блокнот',
+    package: 'notepad',
+    category: 'System',
+    icon: 'FileText',
+    iconUrl: '/api/kernel/app-icon?name=notepad',
+    url: 'notepad',
+    type: 'system',
+    installed: true,
+    favorite: false,
+    monthMinutes: 0,
+    weekMinutes: 0,
+    todayMinutes: 0,
+    elapsedSeconds: 0,
+    dailyLimitMinutes: 300,
+    detoxGroup: 'Система',
+    isRunning: false,
+  },
+  {
+    id: 'mspaint',
+    name: 'Paint',
+    package: 'mspaint',
+    category: 'System',
+    icon: 'Image',
+    iconUrl: '/api/kernel/app-icon?name=mspaint',
+    url: 'mspaint',
+    type: 'system',
+    installed: true,
+    favorite: false,
+    monthMinutes: 0,
+    weekMinutes: 0,
+    todayMinutes: 0,
+    elapsedSeconds: 0,
+    dailyLimitMinutes: 300,
+    detoxGroup: 'Система',
+    isRunning: false,
+  },
+  {
+    id: 'powershell',
+    name: 'PowerShell',
+    package: 'powershell',
+    category: 'System',
+    icon: 'Terminal',
+    iconUrl: '/api/kernel/app-icon?name=powershell',
+    url: 'powershell',
+    type: 'system',
+    installed: true,
+    favorite: false,
+    monthMinutes: 0,
+    weekMinutes: 0,
+    todayMinutes: 0,
+    elapsedSeconds: 0,
+    dailyLimitMinutes: 300,
+    detoxGroup: 'Система',
     isRunning: false,
   },
 ];
@@ -1360,6 +1461,15 @@ export interface RollbackReleaseItem {
 
 // Полная история версий Luma OS и всех предыдущих веток
 export const VERSION_HISTORY: Record<string, string[]> = {
+  '1.3.1 (Beryllium)': [
+    'ПАТЧ LUMA OS 1.3.1 (BERYLLIUM · Be-4) — МГНОВЕННАЯ РЕАКЦИЯ ALT+SHIFT НА ПАНЕЛИ ЗАДАЧ, РОДНЫЕ ИКОНКИ ВСЕХ ПРЕДУСТАНОВЛЕННЫХ ПРИЛОЖЕНИЙ, ПОЛНАЯ ГАЛЕРЕЯ ВСЕХ ОБОЕВ (БЕЗ УДАЛЕНИЯ СТАРЫХ), ВЫБОР ПЛЕЕРОВ В DYNAMIC ISLAND, ПАНЕЛЬ ЗАДАЧ СПРАВА И УНИКАЛЬНЫЙ СТУДИЙНЫЙ 3D-АРТ BERYLLIUM',
+    'Мгновенная реакция раскладки клавиатуры на Alt+Shift / Ctrl+Shift / Win+Space — Win32-перехватчик (40 мс) + прямой push-сигнал в WebView2 + мгновенный отклик панели задач (0 мс задержки) без лишней нагрузки на ЦП',
+    'Родные нативные иконки всех предустановленных и установленных приложений — SHGetFileInfoW с полной поддержкой прозрачности и авто-поиском через App Paths и System32 отображает настоящие значки Chrome, Steam, Telegram, Edge, Калькулятора, Блокнота, Проводника, Paint, PowerShell и всех программ на устройстве',
+    'Полная накопительная галерея обоев — возвращены все любимые обои прошлых версий (Dark Glass Waves, Midnight Peaks, Emerald Forest, Helium 1.1, Lithium 1.2, Obsidian Silk) вместе с новыми артами и 6 живыми обоями: с каждым обновлением выбор только растёт',
+    'Мультиплеерный Dynamic Island — если на устройстве открыто несколько плееров (например, Chrome, Spotify, VLC, Telegram), Dynamic Island показывает их полный список и позволяет отдельно включать, ставить на паузу, переключать треки или выбирать основной плеер',
+    'Расположение панели задач справа — добавлена 4-я позиция «Справа» (Снизу / Слева / Справа / Сверху) с полной поддержкой автоскрытия, масштабирования ширины, отступов окон и резервирования рабочей области Windows Shell',
+    'Новый уникальный студийный 3D-арт Beryllium (Be-4) — переработанный минималистичный 3D-рендер титаново-бериллиевой оптической призмы в чистом студийном стиле с мягким 3D-наклоном при наведении',
+  ],
   '1.3 (Beryllium)': [
     'ГЛОБАЛЬНЫЙ РЕЛИЗ LUMA OS 1.3 (BERYLLIUM · Be-4) — ЯДРО LUMACORE 1.4, БЕЗОПАСНОСТЬ LUMASHIELD 1.4, ЗАРЯД РАДИОКАНАЛЬНЫХ 2.4GHz УСТРОЙСТВ И ЗАКРЕПЛЕНИЕ НА ПАНЕЛИ ЗАДАЧ, РЕАЛЬНЫЕ ИКОНКИ ПРИЛОЖЕНИЙ ПК, VRAM + ЧИП GPU В ДИСПЕТЧЕРЕ ЗАДАЧ, НОВЫЙ ALT+R ПОИСК, АДАПТИВНАЯ РАСКЛАДКА, ПРАВЫЕ УВЕДОМЛЕНИЯ, ТРЕКЕР СЕССИЙ 2.0 И НОВАЯ ИГРА «BERYLLIUM VANGUARD»',
     'Заряд всех беспроводных и 2.4GHz радиоканальных устройств + закрепление в Панели задач — нативный сканер HID UsagePage (0x06/0x20, 0x84/0x66) + Bluetooth/BLE/USB ContainerID отображает заряд мышек, наушников, клавиатур и геймпадов (включая донглы 2.4GHz) и позволяет закрепить любое устройство прямо на панели задач',

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Columns2, Maximize2, Minimize2, Minus, X } from 'lucide-react';
 
-export type TaskbarPosition = 'bottom' | 'left' | 'top';
+export type TaskbarPosition = 'bottom' | 'left' | 'right' | 'top';
 export type DesignStyle = 'nothing' | 'pixelbook';
 
 export type SnapZone =
@@ -81,7 +81,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
     const padTop = taskbarPosition === 'top' && bar > 0 ? bar + 6 : 8;
     const padBottom = taskbarPosition === 'bottom' && bar > 0 ? bar + 8 : 8;
     const padLeft = taskbarPosition === 'left' && bar > 0 ? bar + 12 : 8;
-    const padRight = 8;
+    const padRight = taskbarPosition === 'right' && bar > 0 ? bar + 12 : 8;
     return { padTop, padBottom, padLeft, padRight };
   };
 

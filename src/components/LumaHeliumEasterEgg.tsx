@@ -92,7 +92,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
       >
         <img
           src={berylliumHeroImg}
-          alt="Luma OS 1.3 Beryllium"
+          alt="Luma OS 1.3.1 Beryllium"
           loading="eager"
           decoding="sync"
           draggable={false}
@@ -108,21 +108,21 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
         />
 
         <div
-          className="pointer-events-none absolute inset-0 transition-opacity duration-200 opacity-70 group-hover:opacity-100"
+          className="pointer-events-none absolute inset-0 transition-opacity duration-200 opacity-65 group-hover:opacity-100"
           style={{
-            background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.24) 0%, rgba(16,185,129,0.20) 28%, rgba(245,158,11,0.08) 46%, transparent 64%)`,
+            background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.22) 0%, rgba(16,185,129,0.18) 28%, rgba(45,212,191,0.08) 46%, transparent 64%)`,
           }}
         />
 
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#031215]/32 via-transparent to-[#02080d]/68" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#020a0c]/30 via-[#02080a]/12 to-[#02080b]/70" />
 
         <div className="relative z-10 flex items-center justify-between px-5 pt-4">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/40 border border-emerald-300/25 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/45 border border-emerald-300/25 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
             LUMACORE {kernelVersion} · SHIELD {securityVersion}
           </span>
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/40 border border-amber-300/25 text-[10px] font-mono text-amber-100 group-hover:bg-white/20 transition">
-            <Sparkles className="w-3 h-3 text-amber-300" />
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/45 border border-emerald-300/25 text-[10px] font-mono text-emerald-100 group-hover:bg-white/20 transition">
+            <Sparkles className="w-3 h-3 text-emerald-300" />
             Beryllium Vanguard
           </span>
         </div>
@@ -137,21 +137,21 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
           <div
             className="text-5xl sm:text-6xl font-black tracking-tight leading-none select-none transition-transform duration-300 group-hover:scale-105"
             style={{
-              backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #a7f3d0 50%, #fbbf24 100%)',
+              backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #d1fae5 55%, #5eead4 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
-              filter: 'drop-shadow(0 6px 22px rgba(16, 185, 129, 0.58))',
+              filter: 'drop-shadow(0 6px 24px rgba(16, 185, 129, 0.45))',
             }}
           >
-            1.3
+            1.3.1
           </div>
-          <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)]">
+          <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)]">
             LumaOS
           </div>
           <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-emerald-100/95">
             <span>BERYLLIUM</span>
             <span className="opacity-50">·</span>
-            <span className="text-amber-200">Be-4</span>
+            <span className="text-teal-200">Be-4</span>
           </div>
         </div>
 

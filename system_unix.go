@@ -1263,5 +1263,38 @@ func (p *platformProbe) ActiveTcpConnections() []ActiveTcpConnection {
 	return out
 }
 
+func (p *platformProbe) RefreshMediaSessions() MediaSessionInfo {
+	p.mu.RLock()
+	cur := p.media
+	p.mu.RUnlock()
+	if len(cur.Sessions) == 0 && cur.Available {
+		cur.Sessions = []MediaSessionItem{
+			{
+				ID:          cur.SourceApp,
+				SourceApp:   cur.SourceApp,
+				DisplayName: cur.SourceApp,
+				Title:       cur.Title,
+				Artist:      cur.Artist,
+				IsPlaying:   cur.IsPlaying,
+				IsCurrent:   true,
+			},
+		}
+	}
+	return cur
+}
+
+func (p *platformProbe) ControlMediaSession(sourceApp string, action string) (MediaSessionInfo, error) {
+	return p.ControlMedia(action)
+}
+
+func (p *platformProbe) SnapHostWindow(pid int, zone string, taskbarPos string, taskbarPx int) error {
+	return nil
+}
+
+func (p *platformProbe) ArrangeTwoHostWindows(leftPid int, rightPid int, taskbarPos string, taskbarPx int) error {
+	return nil
+}
+
+
 
 

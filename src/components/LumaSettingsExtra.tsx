@@ -180,7 +180,7 @@ export const KernelUIPanel: React.FC<{
                 ЯДРО UI · LUMA BERYLLIUM
               </div>
               <div className="text-lg font-extrabold tracking-tight truncate">
-                Luma OS 1.3 (Beryllium)
+                Luma OS 1.3.1 (Beryllium)
               </div>
               <div className={`text-xs font-mono truncate ${mutedCls}`}>
                 LumaCore {liveSystem?.kernel_engine_version || '1.4'} · LumaShield 1.4 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
@@ -189,12 +189,12 @@ export const KernelUIPanel: React.FC<{
           </div>
 
           <a
-            href="/LumaOS_1.3.exe"
-            download="LumaOS_1.3.exe"
+            href="/LumaOS_1.3.1.exe"
+            download="LumaOS_1.3.1.exe"
             className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
-            LumaOS_1.3.exe
+            LumaOS_1.3.1.exe
           </a>
         </div>
 
@@ -248,7 +248,7 @@ export const KernelUIPanel: React.FC<{
           {/* 3. Версия ПО */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия ПО</div>
-            <div className="text-sm font-mono font-bold">1.3 (Beryllium)</div>
+            <div className="text-sm font-mono font-bold">1.3.1 (Beryllium)</div>
           </div>
 
           {/* 4. Версия Ядра (1.4) */}
@@ -1191,9 +1191,25 @@ export const SettingsAppsListPanel: React.FC<{
                       width: `${Math.min(52, Math.max(32, Math.round(iconSizePx * 0.78)))}px`,
                       height: `${Math.min(52, Math.max(32, Math.round(iconSizePx * 0.78)))}px`,
                     }}
-                    className={`rounded-xl border flex items-center justify-center shrink-0 transition-all ${btnCls}`}
+                    className={`relative rounded-xl border flex items-center justify-center shrink-0 transition-all overflow-hidden ${btnCls}`}
                   >
-                    {renderAppIcon(app.icon, iconSizePx >= 56 ? 'w-5 h-5' : 'w-4 h-4')}
+                    <span className="flex items-center justify-center">
+                      {renderAppIcon(app.icon, iconSizePx >= 56 ? 'w-5 h-5' : 'w-4 h-4')}
+                    </span>
+                    {app.iconUrl && (
+                      <img
+                        src={app.iconUrl}
+                        alt={app.name}
+                        className="absolute inset-0 m-auto w-[68%] h-[68%] object-contain rounded"
+                        onLoad={(e) => {
+                          const prev = e.currentTarget.previousElementSibling as HTMLElement | null;
+                          if (prev) prev.style.opacity = '0';
+                        }}
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    )}
                   </div>
                   <div className="min-w-0">
                     <div className="font-semibold truncate flex items-center gap-1.5">

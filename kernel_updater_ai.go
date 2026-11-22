@@ -531,6 +531,7 @@ func ListRollbackReleases(repoURL string) []RollbackReleaseEntry {
 	baseRaw := fmt.Sprintf("https://github.com/%s/%s/raw/main", owner, repo)
 
 	curated := []RollbackReleaseEntry{
+		{Version: "1.3.1", Tag: "v1.3.1", Title: "Luma OS 1.3.1 (Beryllium)", DownloadURL: baseRaw + "/LumaOS_1.3.1.exe", Summary: "Мгновенная реакция Alt+Shift на панели задач, родные иконки всех предустановленных приложений ОС, возвращена полная галерея обоев, выбор плееров в Dynamic Island, панель задач справа, уникальный студийный 3D-арт Beryllium"},
 		{Version: "1.3", Tag: "v1.3", Title: "Luma OS 1.3 (Beryllium)", DownloadURL: baseRaw + "/LumaOS_1.3.exe", Summary: "Ядро LumaCore 1.4 + LumaShield 1.4, GPU Чип + VRAM в Диспетчере, заряд 2.4GHz радио-гаджетов и закрепление на панели, реальные иконки ПК, умный Alt+R поиск, адаптивная раскладка, трекер сессий 2.0, игра Beryllium Vanguard"},
 		{Version: "1.2.3B", Tag: "v1.2.3B", Title: "Luma OS 1.2.3B (Lithium)", DownloadURL: baseRaw + "/LumaOS_1.2.3B.exe", Summary: "Ядро LumaCore 1.3B (True Zero-WMI Engine: WMI Provider Host 24% → 0%), кэш CoreAudio, умный SMTC, восстановлен 3D-наклон баннера Ядро UI"},
 		{Version: "1.2.3", Tag: "v1.2.3", Title: "Luma OS 1.2.3 (Lithium)", DownloadURL: baseRaw + "/LumaOS_1.2.3.exe", Summary: "Ядро LumaCore 1.3 (Zero-PowerShell Win32, -85% ЦП/ГПУ), живой Диспетчер задач с графиками при наведении, автоскрытие панели, фикс баннера Ядро UI, упрощённая мини-игра"},

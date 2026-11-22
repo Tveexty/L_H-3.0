@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -26,6 +27,15 @@ var (
 	procSHGetFileInfoW               = modShell32.NewProc("SHGetFileInfoW")
 	procGetIconInfo                  = modUser32.NewProc("GetIconInfo")
 	procDestroyIcon                  = modUser32.NewProc("DestroyIcon")
+	procProGetGUIThreadInfo          = modUser32.NewProc("GetGUIThreadInfo")
+	procProAllowSetFg                = modUser32.NewProc("AllowSetForegroundWindow")
+	procProSetFg                     = modUser32.NewProc("SetForegroundWindow")
+	procProBringToTop                = modUser32.NewProc("BringWindowToTop")
+	procProShowWindow                = modUser32.NewProc("ShowWindow")
+	procProSetWindowPos              = modUser32.NewProc("SetWindowPos")
+	procProEnumWindows               = modUser32.NewProc("EnumWindows")
+	procProIsWindowVisible           = modUser32.NewProc("IsWindowVisible")
+	procProGetWindowTextLenW         = modUser32.NewProc("GetWindowTextLengthW")
 	procCreateCompatibleDC           = modGdi32.NewProc("CreateCompatibleDC")
 	procDeleteDC                     = modGdi32.NewProc("DeleteDC")
 	procGetDIBits                    = modGdi32.NewProc("GetDIBits")
@@ -338,18 +348,50 @@ func (p *platformProbe) sampleGpuTelemetryNative() {
 
 // ==================== 2. REAL-TIME ADAPTIVE KEYBOARD LAYOUT MONITOR (4 MICROSECONDS, 0% CPU!) ====================
 
-func (p *platformProbe) pollActiveKbdFast() {
-	hwnd, _, _ := procGetForegroundWindow.Call()
+type winGuiThreadInfo struct {
+	CbSize        uint32
+	Flags         uint32
+	HwndActive    uintptr
+	HwndFocus     uintptr
+	HwndCapture   uintptr
+	HwndMenuOwner uintptr
+	HwndMoveSize  uintptr
+	HwndCaret     uintptr
+	RcCaret       winRect
+}
+
+func readActiveWin32KeyboardFast() (string, string) {
 	var tid uintptr
-	if hwnd != 0 {
-		tid, _, _ = procGetWindowThreadProcessId.Call(hwnd, 0)
+	var gti winGuiThreadInfo
+	gti.CbSize = uint32(unsafe.Sizeof(gti))
+	if r, _, _ := procProGetGUIThreadInfo.Call(0, uintptr(unsafe.Pointer(&gti))); r != 0 {
+		target := gti.HwndFocus
+		if target == 0 {
+			target = gti.HwndActive
+		}
+		if target != 0 {
+			tid, _, _ = procGetWindowThreadProcessId.Call(target, 0)
+		}
+	}
+	if tid == 0 {
+		hwnd, _, _ := procGetForegroundWindow.Call()
+		if hwnd != 0 {
+			tid, _, _ = procGetWindowThreadProcessId.Call(hwnd, 0)
+		}
 	}
 	hkl, _, _ := procGetKeyboardLayout.Call(tid)
 	tag := winTagFromHKL(hkl)
 	if tag == "" {
+		return "", ""
+	}
+	return tag, keyboardShortCode(tag)
+}
+
+func (p *platformProbe) pollActiveKbdFast() {
+	tag, short := readActiveWin32KeyboardFast()
+	if tag == "" {
 		return
 	}
-	short := keyboardShortCode(tag)
 	p.mu.Lock()
 	p.activeKbdTag = tag
 	p.activeKbdShort = short
@@ -411,13 +453,132 @@ func buildAppIconURL(execPath string) string {
 	return "/api/kernel/app-icon?path=" + url.QueryEscape(clean)
 }
 
-// ExtractAppIconPNG extracts the crisp 32x32 native Windows icon of any .exe/.lnk as PNG (~1ms, cached in RAM!).
-func (p *platformProbe) ExtractAppIconPNG(execPath string) ([]byte, error) {
-	clean := strings.TrimSpace(strings.Trim(execPath, `"`))
+func expandWinEnvVars(s string) string {
+	repls := []string{
+		"%SystemRoot%", os.Getenv("SystemRoot"),
+		"%SYSTEMROOT%", os.Getenv("SystemRoot"),
+		"%windir%", os.Getenv("WINDIR"),
+		"%WINDIR%", os.Getenv("WINDIR"),
+		"%ProgramFiles%", os.Getenv("ProgramFiles"),
+		"%ProgramFiles(x86)%", os.Getenv("ProgramFiles(x86)"),
+		"%LocalAppData%", os.Getenv("LOCALAPPDATA"),
+		"%LOCALAPPDATA%", os.Getenv("LOCALAPPDATA"),
+		"%AppData%", os.Getenv("APPDATA"),
+		"%APPDATA%", os.Getenv("APPDATA"),
+	}
+	out := s
+	for i := 0; i < len(repls); i += 2 {
+		if repls[i+1] != "" && strings.Contains(out, repls[i]) {
+			out = strings.ReplaceAll(out, repls[i], repls[i+1])
+		}
+	}
+	return out
+}
+
+func resolveAppIconFilePath(raw string) string {
+	clean := strings.TrimSpace(strings.Trim(raw, `"`))
 	if clean == "" {
+		return ""
+	}
+	// Strip ",0" or ",-101" resource index suffixes from DisplayIcon registry values
+	if comma := strings.LastIndex(clean, ","); comma > 2 {
+		clean = strings.TrimSpace(strings.Trim(clean[:comma], `"`))
+	}
+	clean = expandWinEnvVars(clean)
+	if _, err := os.Stat(clean); err == nil {
+		return clean
+	}
+
+	// Normalize bare app aliases / names to real Windows executables
+	lower := strings.ToLower(strings.TrimSuffix(filepath.Base(clean), ".exe"))
+	aliasMap := map[string][]string{
+		"chrome":       {"chrome.exe", `Google\Chrome\Application\chrome.exe`},
+		"google chrome": {"chrome.exe", `Google\Chrome\Application\chrome.exe`},
+		"edge":         {"msedge.exe", `Microsoft\Edge\Application\msedge.exe`},
+		"msedge":       {"msedge.exe", `Microsoft\Edge\Application\msedge.exe`},
+		"firefox":      {"firefox.exe", `Mozilla Firefox\firefox.exe`},
+		"steam":        {"steam.exe", `Steam\steam.exe`},
+		"telegram":     {"Telegram.exe", `Telegram Desktop\Telegram.exe`},
+		"discord":      {"Discord.exe", `Discord\Update.exe`},
+		"vlc":          {"vlc.exe", `VideoLAN\VLC\vlc.exe`},
+		"code":         {"Code.exe", `Programs\Microsoft VS Code\Code.exe`, `Microsoft VS Code\Code.exe`},
+		"vscode":       {"Code.exe", `Programs\Microsoft VS Code\Code.exe`, `Microsoft VS Code\Code.exe`},
+		"spotify":      {"Spotify.exe", `Spotify\Spotify.exe`},
+		"calc":         {"calc.exe"},
+		"калькулятор":  {"calc.exe"},
+		"notepad":      {"notepad.exe"},
+		"блокнот":      {"notepad.exe"},
+		"mspaint":      {"mspaint.exe"},
+		"paint":        {"mspaint.exe"},
+		"explorer":     {"explorer.exe"},
+		"проводник":    {"explorer.exe"},
+		"cmd":          {"cmd.exe"},
+		"powershell":   {"powershell.exe"},
+		"taskmgr":      {"Taskmgr.exe"},
+		"regedit":      {"regedit.exe"},
+		"snippingtool": {"SnippingTool.exe"},
+		"obs":          {"obs64.exe", `obs-studio\bin\64bit\obs64.exe`},
+	}
+
+	candidates := []string{}
+	if list, ok := aliasMap[lower]; ok {
+		candidates = append(candidates, list...)
+	} else {
+		exeName := clean
+		if !strings.HasSuffix(strings.ToLower(exeName), ".exe") && !strings.ContainsAny(exeName, `\/`) {
+			exeName += ".exe"
+		}
+		candidates = append(candidates, exeName)
+	}
+
+	sysRoot := os.Getenv("SystemRoot")
+	if sysRoot == "" {
+		sysRoot = `C:\Windows`
+	}
+	roots := []string{
+		filepath.Join(sysRoot, "System32"),
+		sysRoot,
+		os.Getenv("ProgramFiles"),
+		os.Getenv("ProgramFiles(x86)"),
+		os.Getenv("LOCALAPPDATA"),
+		os.Getenv("APPDATA"),
+	}
+
+	for _, cand := range candidates {
+		if !strings.ContainsAny(cand, `\/`) {
+			if p, err := exec.LookPath(cand); err == nil {
+				return p
+			}
+			// Check Windows Registry App Paths (pure Win32 Advapi32, 0% WMI!)
+			for _, hive := range []syscall.Handle{syscall.HKEY_LOCAL_MACHINE, syscall.HKEY_CURRENT_USER} {
+				if p := readWinRegString(hive, `SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\`+cand, ""); p != "" {
+					p = expandWinEnvVars(strings.Trim(strings.TrimSpace(p), `"`))
+					if _, err := os.Stat(p); err == nil {
+						return p
+					}
+				}
+			}
+		}
+		for _, r := range roots {
+			if r == "" {
+				continue
+			}
+			full := filepath.Join(r, cand)
+			if _, err := os.Stat(full); err == nil {
+				return full
+			}
+		}
+	}
+	return ""
+}
+
+// ExtractAppIconPNG extracts the crisp 32x32 native Windows icon of any .exe/.lnk/preinstalled app as PNG (~1ms, cached in RAM!).
+func (p *platformProbe) ExtractAppIconPNG(execPath string) ([]byte, error) {
+	rawClean := strings.TrimSpace(strings.Trim(execPath, `"`))
+	if rawClean == "" {
 		return nil, fmt.Errorf("empty path")
 	}
-	cacheKey := strings.ToLower(clean)
+	cacheKey := strings.ToLower(rawClean)
 	iconCacheMu.RLock()
 	if cached, ok := iconCache[cacheKey]; ok {
 		iconCacheMu.RUnlock()
@@ -425,8 +586,9 @@ func (p *platformProbe) ExtractAppIconPNG(execPath string) ([]byte, error) {
 	}
 	iconCacheMu.RUnlock()
 
-	if _, err := os.Stat(clean); err != nil {
-		return nil, err
+	clean := resolveAppIconFilePath(rawClean)
+	if clean == "" {
+		return nil, fmt.Errorf("icon file not found for %s", rawClean)
 	}
 	pathPtr, err := syscall.UTF16PtrFromString(clean)
 	if err != nil {
@@ -495,7 +657,6 @@ func (p *platformProbe) ExtractAppIconPNG(execPath string) ([]byte, error) {
 		return nil, fmt.Errorf("GetDIBits failed")
 	}
 
-	// Check if icon has non-zero alpha channel (legacy 24-bit icons have all alpha=0)
 	hasAlpha := false
 	for i := 3; i < len(pixels); i += 4 {
 		if pixels[i] != 0 {
@@ -504,13 +665,35 @@ func (p *platformProbe) ExtractAppIconPNG(execPath string) ([]byte, error) {
 		}
 	}
 
+	// If legacy icon has no alpha channel, extract transparency cleanly from HbmMask!
+	var maskPixels []byte
+	if !hasAlpha && ii.HbmMask != 0 {
+		maskPixels = make([]byte, w*h*4)
+		_, _, _ = procGetDIBits.Call(
+			hdc,
+			ii.HbmMask,
+			0,
+			uintptr(h),
+			uintptr(unsafe.Pointer(&maskPixels[0])),
+			uintptr(unsafe.Pointer(&bih)),
+			dibRGBColors,
+		)
+	}
+
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			off := (y*w + x) * 4
 			b, g, rr, a := pixels[off], pixels[off+1], pixels[off+2], pixels[off+3]
 			if !hasAlpha {
-				if rr != 0 || g != 0 || b != 0 {
+				if len(maskPixels) == len(pixels) {
+					// In Win32 icon mask, white (255) = transparent, black (0) = opaque
+					if maskPixels[off] == 0 {
+						a = 255
+					} else {
+						a = 0
+					}
+				} else if rr != 0 || g != 0 || b != 0 {
 					a = 255
 				}
 			}
@@ -528,8 +711,7 @@ func (p *platformProbe) ExtractAppIconPNG(execPath string) ([]byte, error) {
 	data := out.Bytes()
 
 	iconCacheMu.Lock()
-	if len(iconCache) >= 256 {
-		// Evict cache cleanly to keep RAM tiny (<1MB)
+	if len(iconCache) >= 320 {
 		iconCache = map[string][]byte{}
 	}
 	iconCache[cacheKey] = data
@@ -916,3 +1098,142 @@ func (p *platformProbe) ActiveTcpConnections() []ActiveTcpConnection {
 	}
 	return out
 }
+
+// ==================== 6. WIN32 HOST WINDOW SNAP & SIDE-BY-SIDE DUAL-WINDOW WORKSPACE ====================
+
+var (
+	findHwndMu     sync.Mutex
+	findTargetPID  uint32
+	foundTargetWnd uintptr
+	findHwndCb     = syscall.NewCallback(func(hwnd uintptr, lparam uintptr) uintptr {
+		vis, _, _ := procProIsWindowVisible.Call(hwnd)
+		if vis == 0 {
+			return 1
+		}
+		var pid uint32
+		_, _, _ = procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+		if pid != findTargetPID {
+			return 1
+		}
+		tLen, _, _ := procProGetWindowTextLenW.Call(hwnd)
+		if tLen == 0 {
+			return 1
+		}
+		foundTargetWnd = hwnd
+		return 0
+	})
+)
+
+func findMainHwndForPID(pid int) uintptr {
+	findHwndMu.Lock()
+	defer findHwndMu.Unlock()
+	findTargetPID = uint32(pid)
+	foundTargetWnd = 0
+	_, _, _ = procProEnumWindows.Call(findHwndCb, 0)
+	return foundTargetWnd
+}
+
+func computeUsableScreenWorkRect(hwnd uintptr, taskbarPos string, taskbarPx int) winRect {
+	var rc winRect
+	if hwnd != 0 {
+		hMon, _, _ := procMonitorFromWindow.Call(hwnd, monitorDefaultToNear)
+		var mi monitorInfo
+		mi.CbSize = uint32(unsafe.Sizeof(mi))
+		if r, _, _ := procGetMonitorInfoW.Call(hMon, uintptr(unsafe.Pointer(&mi))); r != 0 {
+			rc = mi.RcMonitor
+		}
+	}
+	if rc.Right-rc.Left <= 0 || rc.Bottom-rc.Top <= 0 {
+		scrW, _, _ := procGetSystemMetrics.Call(smCXScreen)
+		scrH, _, _ := procGetSystemMetrics.Call(smCYScreen)
+		rc = winRect{Left: 0, Top: 0, Right: int32(scrW), Bottom: int32(scrH)}
+	}
+	bar := int32(taskbarPx)
+	if bar < 0 {
+		bar = 0
+	}
+	if bar > 110 {
+		bar = 110
+	}
+	if bar > 0 {
+		switch strings.ToLower(taskbarPos) {
+		case "top":
+			rc.Top += bar
+		case "left":
+			rc.Left += bar
+		case "right":
+			rc.Right -= bar
+		default:
+			rc.Bottom -= bar
+		}
+	}
+	return rc
+}
+
+func placeHostHwndInZone(hwnd uintptr, zone string, rc winRect) {
+	const swRestore = 9
+	const swpShowWindow = 0x0040
+	_, _, _ = procProShowWindow.Call(hwnd, swRestore)
+	w := rc.Right - rc.Left
+	h := rc.Bottom - rc.Top
+	halfW := w / 2
+	halfH := h / 2
+
+	x, y, ww, hh := rc.Left, rc.Top, w, h
+	switch strings.ToLower(zone) {
+	case "left":
+		x, y, ww, hh = rc.Left, rc.Top, halfW, h
+	case "right":
+		x, y, ww, hh = rc.Left+halfW, rc.Top, w-halfW, h
+	case "top":
+		x, y, ww, hh = rc.Left, rc.Top, w, halfH
+	case "bottom":
+		x, y, ww, hh = rc.Left, rc.Top+halfH, w, h-halfH
+	case "tl":
+		x, y, ww, hh = rc.Left, rc.Top, halfW, halfH
+	case "tr":
+		x, y, ww, hh = rc.Left+halfW, rc.Top, w-halfW, halfH
+	case "bl":
+		x, y, ww, hh = rc.Left, rc.Top+halfH, halfW, h-halfH
+	case "br":
+		x, y, ww, hh = rc.Left+halfW, rc.Top+halfH, w-halfW, h-halfH
+	}
+	_, _, _ = procProAllowSetFg.Call(^uintptr(0))
+	_, _, _ = procProSetWindowPos.Call(hwnd, 0, uintptr(x), uintptr(y), uintptr(ww), uintptr(hh), swpShowWindow)
+	_, _, _ = procProBringToTop.Call(hwnd)
+	_, _, _ = procProSetFg.Call(hwnd)
+}
+
+func (p *platformProbe) SnapHostWindow(pid int, zone string, taskbarPos string, taskbarPx int) error {
+	if pid <= 0 {
+		return fmt.Errorf("invalid pid")
+	}
+	hwnd := findMainHwndForPID(pid)
+	if hwnd == 0 {
+		return fmt.Errorf("window not found for pid %d", pid)
+	}
+	rc := computeUsableScreenWorkRect(hwnd, taskbarPos, taskbarPx)
+	placeHostHwndInZone(hwnd, zone, rc)
+	return nil
+}
+
+func (p *platformProbe) ArrangeTwoHostWindows(leftPid int, rightPid int, taskbarPos string, taskbarPx int) error {
+	h1 := findMainHwndForPID(leftPid)
+	h2 := findMainHwndForPID(rightPid)
+	if h1 == 0 && h2 == 0 {
+		return fmt.Errorf("target windows not found")
+	}
+	ref := h1
+	if ref == 0 {
+		ref = h2
+	}
+	rc := computeUsableScreenWorkRect(ref, taskbarPos, taskbarPx)
+	if h1 != 0 {
+		placeHostHwndInZone(h1, "left", rc)
+	}
+	if h2 != 0 {
+		placeHostHwndInZone(h2, "right", rc)
+	}
+	return nil
+}
+

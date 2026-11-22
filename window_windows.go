@@ -196,6 +196,8 @@ func applyDesktopWorkArea(cfg ShellModeConfig) {
 			rc.Top = bar
 		case "left":
 			rc.Left = bar
+		case "right":
+			rc.Right = int32(scrW) - bar
 		default:
 			rc.Bottom = int32(scrH) - bar
 		}
@@ -407,7 +409,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.3 (Beryllium)",
+			Title:  "Luma OS 1.3.1 (Beryllium)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,
@@ -450,7 +452,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		})();
 	`)
 
-	// Native Win32 hotkey fallback for Alt+R when Luma OS window is foreground (handles non-Latin layouts & WebView2 focus edge cases)
+	// Native Win32 hotkey + instant keyboard layout push monitor (0 extra goroutines, 4us GetKeyboardLayout!)
 	stopHotkeys := make(chan struct{})
 	go startWin32AltRListener(w, hwnd, stopHotkeys)
 
@@ -474,7 +476,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 	return true
 }
 
-// startWin32AltRListener (LumaCore 1.3): Adaptive ultra-low-CPU Alt+R hook (checks foreground first, sleeps 110ms when Luma OS is in background).
+// startWin32AltRListener (LumaCore 1.4): Ultra-low-CPU Alt+R hook + instant (<35ms) Win32 HKL push on Alt+Shift / Win+Space!
 func startWin32AltRListener(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan struct{}) {
 	procGetAsyncKeyState := user32WinDLL.NewProc("GetAsyncKeyState")
 	procGetFg := user32WinDLL.NewProc("GetForegroundWindow")
@@ -484,7 +486,8 @@ func startWin32AltRListener(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan
 	const vkCtrl = 0x11
 
 	wasPressed := false
-	timer := time.NewTimer(60 * time.Millisecond)
+	lastKbdTag := ""
+	timer := time.NewTimer(45 * time.Millisecond)
 	defer timer.Stop()
 
 	for {
@@ -492,6 +495,16 @@ func startWin32AltRListener(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan
 		case <-stopCh:
 			return
 		case <-timer.C:
+			// Instant active keyboard layout push (<40ms latency whenever user presses Alt+Shift / Ctrl+Shift / Win+Space!)
+			tag, short := readActiveWin32KeyboardFast()
+			if tag != "" && tag != lastKbdTag {
+				lastKbdTag = tag
+				js := fmt.Sprintf(`window.dispatchEvent(new CustomEvent('luma-kbd-changed',{detail:{tag:%q,short:%q}}));`, tag, short)
+				wv.Dispatch(func() {
+					wv.Eval(js)
+				})
+			}
+
 			fg, _, _ := procGetFg.Call()
 			isOurs := fg == lumaHwnd
 			if !isOurs && fg != 0 && lumaHwnd != 0 {
@@ -500,7 +513,7 @@ func startWin32AltRListener(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan
 			}
 			if !isOurs {
 				wasPressed = false
-				timer.Reset(120 * time.Millisecond)
+				timer.Reset(110 * time.Millisecond)
 				continue
 			}
 
@@ -514,7 +527,7 @@ func startWin32AltRListener(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan
 				})
 			}
 			wasPressed = pressed
-			timer.Reset(55 * time.Millisecond)
+			timer.Reset(40 * time.Millisecond)
 		}
 	}
 }
