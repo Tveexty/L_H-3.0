@@ -33,11 +33,13 @@ type TrashItemMeta struct {
 }
 
 type LumaTrashStore struct {
-	mu       sync.Mutex
-	baseDir  string
-	filesDir string
-	metaPath string
-	items    []TrashItemMeta
+	mu            sync.Mutex
+	baseDir       string
+	filesDir      string
+	metaPath      string
+	cfgPath       string
+	autoCleanDays int
+	items         []TrashItemMeta
 }
 
 func newLumaTrashStore() *LumaTrashStore {
@@ -52,10 +54,32 @@ func newLumaTrashStore() *LumaTrashStore {
 		baseDir:  base,
 		filesDir: filesDir,
 		metaPath: filepath.Join(base, "index.json"),
+		cfgPath:  filepath.Join(base, "config.json"),
 		items:    []TrashItemMeta{},
 	}
+	st.loadConfigLocked()
 	st.loadLocked()
 	return st
+}
+
+func (t *LumaTrashStore) loadConfigLocked() {
+	raw, err := os.ReadFile(t.cfgPath)
+	if err != nil {
+		return
+	}
+	var cfg struct {
+		AutoCleanDays int `json:"auto_clean_days"`
+	}
+	if json.Unmarshal(raw, &cfg) == nil {
+		t.autoCleanDays = cfg.AutoCleanDays
+	}
+}
+
+func (t *LumaTrashStore) saveConfigLocked() {
+	raw, err := json.MarshalIndent(map[string]int{"auto_clean_days": t.autoCleanDays}, "", "  ")
+	if err == nil {
+		_ = os.WriteFile(t.cfgPath, raw, 0644)
+	}
 }
 
 func (t *LumaTrashStore) loadLocked() {
@@ -311,6 +335,168 @@ func (t *LumaTrashStore) Empty() int {
 	t.items = []TrashItemMeta{}
 	t.saveLocked()
 	return n
+}
+
+func (t *LumaTrashStore) GetAutoCleanDays() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.autoCleanDays
+}
+
+func (t *LumaTrashStore) SetAutoCleanDays(days int) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if days < 0 {
+		days = 0
+	}
+	if days > 365 {
+		days = 365
+	}
+	t.autoCleanDays = days
+	t.saveConfigLocked()
+	if days > 0 {
+		cutoff := time.Now().AddDate(0, 0, -days)
+		kept := make([]TrashItemMeta, 0, len(t.items))
+		for _, it := range t.items {
+			if ts, err := time.ParseInLocation("2006-01-02 15:04:05", it.DeletedAt, time.Local); err == nil && ts.Before(cutoff) {
+				_ = os.RemoveAll(filepath.Join(t.filesDir, it.StoredName))
+				continue
+			}
+			kept = append(kept, it)
+		}
+		t.items = kept
+		t.saveLocked()
+	}
+	return t.autoCleanDays
+}
+
+func (t *LumaTrashStore) PreviewItem(id string) (map[string]interface{}, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, it := range t.items {
+		if it.ID == id {
+			p := filepath.Join(t.filesDir, it.StoredName)
+			if it.IsDir {
+				entries, _ := os.ReadDir(p)
+				names := make([]string, 0, len(entries))
+				for i, e := range entries {
+					if i >= 40 {
+						break
+					}
+					names = append(names, e.Name())
+				}
+				return map[string]interface{}{
+					"ok":      true,
+					"item":    it,
+					"is_dir":  true,
+					"entries": names,
+					"preview": fmt.Sprintf("Папка (%d объектов):\n%s", len(entries), strings.Join(names, "\n")),
+				}, nil
+			}
+			f, err := os.Open(p)
+			if err != nil {
+				return nil, err
+			}
+			defer f.Close()
+			buf := make([]byte, 16*1024)
+			n, _ := f.Read(buf)
+			chunk := buf[:n]
+			ext := strings.ToLower(filepath.Ext(it.Name))
+			if ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" || ext == ".gif" {
+				if it.SizeBytes <= 4*1024*1024 {
+					if all, err2 := os.ReadFile(p); err2 == nil {
+						return map[string]interface{}{
+							"ok":        true,
+							"item":      it,
+							"is_image":  true,
+							"image_src": "data:" + guessImageMime(it.Name) + ";base64," + base64.StdEncoding.EncodeToString(all),
+						}, nil
+					}
+				}
+			}
+			// Check binary null bytes
+			isBinary := false
+			for _, b := range chunk {
+				if b == 0 {
+					isBinary = true
+					break
+				}
+			}
+			if isBinary {
+				return map[string]interface{}{
+					"ok":        true,
+					"item":      it,
+					"is_binary": true,
+					"preview":   fmt.Sprintf("Бинарный файл (%s · %d байт). Можно безопасно восстановить в %s.", strings.ToUpper(strings.TrimPrefix(ext, ".")), it.SizeBytes, it.OriginalPath),
+				}, nil
+			}
+			return map[string]interface{}{
+				"ok":        true,
+				"item":      it,
+				"truncated": int64(n) < it.SizeBytes,
+				"preview":   string(chunk),
+			}, nil
+		}
+	}
+	return nil, errors.New("объект не найден в корзине")
+}
+
+func (t *LumaTrashStore) BulkRestore(ids []string) (int, []string) {
+	restored := 0
+	var paths []string
+	for _, id := range ids {
+		if p, err := t.Restore(id); err == nil {
+			restored++
+			paths = append(paths, p)
+		}
+	}
+	return restored, paths
+}
+
+func (t *LumaTrashStore) BulkDelete(ids []string) int {
+	deleted := 0
+	for _, id := range ids {
+		if err := t.DeletePermanent(id); err == nil {
+			deleted++
+		}
+	}
+	return deleted
+}
+
+func (t *LumaTrashStore) UploadToTrash(name, base64Data string) (TrashItemMeta, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if idx := strings.Index(base64Data, ","); idx > 0 {
+		base64Data = base64Data[idx+1:]
+	}
+	raw, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return TrashItemMeta{}, errors.New("некорректные данные файла")
+	}
+	baseName := filepath.Base(strings.TrimSpace(name))
+	if baseName == "" || baseName == "." {
+		baseName = "dropped_file.bin"
+	}
+	home, _ := os.UserHomeDir()
+	id := fmt.Sprintf("tr_%d", time.Now().UnixNano())
+	storedName := id + "_" + baseName
+	dst := filepath.Join(t.filesDir, storedName)
+	if err := os.WriteFile(dst, raw, 0644); err != nil {
+		return TrashItemMeta{}, err
+	}
+	item := TrashItemMeta{
+		ID:           id,
+		Name:         baseName,
+		OriginalPath: filepath.Join(home, "Desktop", baseName),
+		StoredName:   storedName,
+		IsDir:        false,
+		SizeBytes:    int64(len(raw)),
+		DeletedAt:    time.Now().Format("2006-01-02 15:04:05"),
+		Source:       "luma",
+	}
+	t.items = append([]TrashItemMeta{item}, t.items...)
+	t.saveLocked()
+	return item, nil
 }
 
 // ==================== 2. LUMA OS 1.5 CARBON: SUPER-CONFIDENTIALITY AES-256-GCM PRIVATE VAULT ====================

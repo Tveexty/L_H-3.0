@@ -26,6 +26,7 @@ export interface LumaCalendarEvent {
   title: string;
   note?: string;
   color: string;
+  category?: 'work' | 'personal' | 'meeting' | 'deadline' | 'health';
   done?: boolean;
   repeat?: 'none' | 'daily' | 'weekly' | 'monthly';
   priority?: 'normal' | 'important' | 'urgent';
@@ -38,6 +39,14 @@ interface LumaCalendarWindowProps {
 }
 
 const STORAGE_KEY = 'luma_calendar_events_v1';
+
+const CATEGORY_META: Record<string, { label: string; color: string }> = {
+  work: { label: 'Работа', color: '#06b6d4' },
+  meeting: { label: 'Встреча', color: '#6366f1' },
+  personal: { label: 'Личное', color: '#10b981' },
+  deadline: { label: 'Дедлайн', color: '#f43f5e' },
+  health: { label: 'Здоровье', color: '#f59e0b' },
+};
 
 const MONTHS_RU = [
   'Январь',
@@ -92,12 +101,15 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
     const today = useMemo(() => new Date(), []);
     const todayKey = useMemo(() => toYmd(today), [today]);
 
-    const [viewMode, setViewMode] = useState<'month' | 'week' | 'agenda'>('month');
+    const [viewMode, setViewMode] = useState<'day' | 'month' | 'week' | 'agenda'>('month');
     const [viewYear, setViewYear] = useState<number>(today.getFullYear());
     const [viewMonth, setViewMonth] = useState<number>(today.getMonth());
     const [selectedDate, setSelectedDate] = useState<string>(todayKey);
     const [nowClock, setNowClock] = useState<Date>(() => new Date());
     const [searchQuery, setSearchQuery] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState<string>('all');
+    const [quickAdd, setQuickAdd] = useState('');
+    const notifiedKeysRef = React.useRef<Set<string>>(new Set());
 
     // Built-in Pomodoro Focus Timer
     const [pomoSec, setPomoSec] = useState(25 * 60);
@@ -119,9 +131,10 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
           id: 'ev_welcome_carbon',
           date: todayKey,
           time: '10:00',
-          title: 'Luma OS 1.5 (Carbon · C-6)',
-          note: 'Панель управления Tab, Сценарии, Code/Cut Studio, Приватный сейф',
+          title: 'Luma OS 1.5.1 (Carbon · C-6)',
+          note: 'Luma Office Studio, LumaShield 2.0, AI 2.0, 4K обои и живые уведомления',
           color: '#06b6d4',
+          category: 'work',
           done: false,
           repeat: 'none',
           priority: 'important',
@@ -133,6 +146,7 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
     const [newTime, setNewTime] = useState('12:00');
     const [newNote, setNewNote] = useState('');
     const [newColor, setNewColor] = useState('#06b6d4');
+    const [newCategory, setNewCategory] = useState<'work' | 'personal' | 'meeting' | 'deadline' | 'health'>('work');
     const [newRepeat, setNewRepeat] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none');
     const [newPriority, setNewPriority] = useState<'normal' | 'important' | 'urgent'>('normal');
 
@@ -148,6 +162,22 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
       const id = window.setInterval(() => setNowClock(new Date()), 1000);
       return () => window.clearInterval(id);
     }, []);
+
+    // Live On-Time Reminder Trigger (notifies via Dynamic Island & Notification Center!)
+    useEffect(() => {
+      const curDate = toYmd(nowClock);
+      const curHM = `${String(nowClock.getHours()).padStart(2, '0')}:${String(nowClock.getMinutes()).padStart(2, '0')}`;
+      for (const ev of events) {
+        if (ev.done) continue;
+        if (eventOccursOnDate(ev, curDate) && ev.time === curHM) {
+          const fireKey = `${ev.id}_${curDate}_${curHM}`;
+          if (!notifiedKeysRef.current.has(fireKey)) {
+            notifiedKeysRef.current.add(fireKey);
+            onNotify?.(`Напоминание · ${ev.time}`, ev.title + (ev.note ? ` — ${ev.note}` : ''), 'info');
+          }
+        }
+      }
+    }, [nowClock, events, onNotify]);
 
     // Pomodoro countdown
     useEffect(() => {
@@ -169,16 +199,43 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
       return () => window.clearInterval(id);
     }, [pomoRunning, pomoMode, onNotify]);
 
+    const handleQuickAddSubmit = () => {
+      const raw = quickAdd.trim();
+      if (!raw) return;
+      const timeM = /^(\d{1,2}:\d{2})\s+(.+)$/.exec(raw);
+      const parsedTime = timeM ? timeM[1].padStart(5, '0') : newTime;
+      const parsedTitle = timeM ? timeM[2].trim() : raw;
+      const ev: LumaCalendarEvent = {
+        id: `ev_${Date.now()}`,
+        date: selectedDate,
+        time: parsedTime,
+        title: parsedTitle,
+        color: CATEGORY_META[newCategory]?.color || newColor,
+        category: newCategory,
+        done: false,
+        repeat: 'none',
+        priority: 'normal',
+      };
+      setEvents((prev) => [...prev, ev]);
+      setQuickAdd('');
+      onNotify?.('Календарь Luma', `Добавлено: ${parsedTime} · ${parsedTitle}`, 'success');
+    };
+
     const filteredEvents = useMemo(() => {
       const q = searchQuery.trim().toLowerCase();
-      if (!q) return events;
-      return events.filter(
-        (ev) =>
-          ev.title.toLowerCase().includes(q) ||
-          (ev.note || '').toLowerCase().includes(q) ||
-          ev.date.includes(q)
-      );
-    }, [events, searchQuery]);
+      return events.filter((ev) => {
+        if (categoryFilter !== 'all' && (ev.category || 'work') !== categoryFilter) return false;
+        if (q && !ev.title.toLowerCase().includes(q) && !(ev.note || '').toLowerCase().includes(q) && !ev.date.includes(q)) return false;
+        return true;
+      });
+    }, [events, searchQuery, categoryFilter]);
+
+    const monthProgress = useMemo(() => {
+      const prefix = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
+      const inMonth = events.filter((e) => e.date.startsWith(prefix));
+      const doneCnt = inMonth.filter((e) => e.done).length;
+      return { total: inMonth.length, done: doneCnt, pct: inMonth.length ? Math.round((doneCnt / inMonth.length) * 100) : 0 };
+    }, [events, viewYear, viewMonth]);
 
     const calendarCells = useMemo(() => {
       const firstOfMonth = new Date(viewYear, viewMonth, 1);
@@ -279,11 +336,12 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
         done: false,
         repeat: newRepeat,
         priority: newPriority,
+        category: newCategory,
       };
       setEvents((prev) => [...prev, item]);
       setNewTitle('');
       setNewNote('');
-      onNotify?.('Календарь Luma 1.5', `Событие «${title}» добавлено на ${selectedDate}`, 'success');
+      onNotify?.('Календарь Luma 1.5.1', `Событие «${title}» добавлено на ${selectedDate}`, 'success');
     };
 
     const toggleDone = (id: string) => {
@@ -403,6 +461,7 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
               <div className={`p-0.5 rounded-xl border flex items-center ${isDark ? 'bg-black/30 border-white/10' : 'bg-zinc-100 border-zinc-200'}`}>
                 {(
                   [
+                    ['day', 'День'],
                     ['month', 'Месяц'],
                     ['week', 'Неделя'],
                     ['agenda', 'Повестка'],
@@ -435,14 +494,29 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
             </div>
           </div>
 
-          {/* Search & ICS Export/Import Row */}
+          {/* Quick-Add Natural Input + Search + Category Filter + Monthly Progress */}
           <div className="flex flex-wrap items-center gap-2">
-            <div className={`flex-1 min-w-[160px] flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border ${btnCls}`}>
+            <div className={`flex-1 min-w-[200px] flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border ${btnCls}`}>
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <input
+                value={quickAdd}
+                onChange={(e) => setQuickAdd(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleQuickAddSubmit()}
+                placeholder="Быстро добавить: «15:30 Встреча с командой» → Enter"
+                className="flex-1 bg-transparent text-xs outline-none"
+              />
+              {quickAdd.trim() && (
+                <button onClick={handleQuickAddSubmit} className="px-2 py-0.5 rounded-lg bg-[var(--luma-accent)] text-white text-[10px] font-bold cursor-pointer">
+                  +
+                </button>
+              )}
+            </div>
+            <div className={`w-44 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border ${btnCls}`}>
               <Search className="w-3.5 h-3.5 opacity-60" />
               <input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Поиск событий и заметок..."
+                placeholder="Поиск..."
                 className="flex-1 bg-transparent text-xs outline-none"
               />
             </div>
@@ -461,6 +535,78 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
               <input type="file" accept=".ics" onChange={handleImportICS} className="hidden" />
             </label>
           </div>
+
+          {/* Category Filter Chips + Monthly Progress */}
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[10px]">
+            <div className="flex flex-wrap items-center gap-1">
+              <button
+                onClick={() => setCategoryFilter('all')}
+                className={`px-2 py-0.5 rounded-lg font-semibold cursor-pointer ${categoryFilter === 'all' ? 'bg-[var(--luma-accent)] text-white' : btnCls}`}
+              >
+                Все категории
+              </button>
+              {Object.entries(CATEGORY_META).map(([k, meta]) => (
+                <button
+                  key={k}
+                  onClick={() => {
+                    setCategoryFilter(k);
+                    setNewCategory(k as any);
+                  }}
+                  className={`px-2 py-0.5 rounded-lg font-semibold flex items-center gap-1 cursor-pointer ${categoryFilter === k ? 'bg-white/15 text-white border border-white/25' : btnCls}`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: meta.color }} />
+                  {meta.label}
+                </button>
+              ))}
+            </div>
+            <div className={`font-mono text-[10px] ${mutedCls}`}>
+              Месяц: <strong className="text-emerald-400">{monthProgress.done}/{monthProgress.total}</strong> ({monthProgress.pct}%)
+            </div>
+          </div>
+
+          {/* DAY HOURLY TIMELINE VIEW (07:00 - 23:00) */}
+          {viewMode === 'day' && (
+            <div className="flex-1 overflow-y-auto space-y-1 min-h-[280px] pr-1">
+              {Array.from({ length: 17 }, (_, i) => i + 7).map((hour) => {
+                const hh = String(hour).padStart(2, '0');
+                const hourEvents = selectedEvents.filter((ev) => ev.time.startsWith(`${hh}:`));
+                const isNowHour = selectedDate === todayKey && nowClock.getHours() === hour;
+                return (
+                  <div
+                    key={hour}
+                    onClick={() => setNewTime(`${hh}:00`)}
+                    className={`flex items-stretch gap-2.5 p-1.5 rounded-xl border transition cursor-pointer ${
+                      isNowHour
+                        ? 'border-cyan-400/50 bg-cyan-500/10'
+                        : isDark
+                        ? 'border-white/[0.06] hover:bg-white/[0.04]'
+                        : 'border-zinc-200 hover:bg-zinc-100/70'
+                    }`}
+                  >
+                    <div className={`w-12 text-right font-mono text-[11px] font-bold shrink-0 pt-0.5 ${isNowHour ? 'text-cyan-400' : mutedCls}`}>
+                      {hh}:00
+                    </div>
+                    <div className="flex-1 min-h-[26px] flex flex-wrap gap-1.5 items-center">
+                      {hourEvents.length === 0 ? (
+                        <span className="text-[10px] opacity-25">+ Нажмите, чтобы назначить на {hh}:00</span>
+                      ) : (
+                        hourEvents.map((ev) => (
+                          <div
+                            key={ev.id}
+                            className="px-2.5 py-1 rounded-lg text-xs font-semibold border-l-2 flex items-center gap-2"
+                            style={{ borderColor: ev.color, backgroundColor: `${ev.color}25` }}
+                          >
+                            <span className="font-mono text-[10px] opacity-80">{ev.time}</span>
+                            <span className={ev.done ? 'line-through opacity-50' : ''}>{ev.title}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* MONTH VIEW */}
           {viewMode === 'month' && (
@@ -686,7 +832,18 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
                 placeholder="Заметка (необязательно)"
                 className={`w-full px-2.5 py-1.5 rounded-xl border text-xs outline-none ${btnCls}`}
               />
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-3 gap-1.5">
+                <select
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value as 'work' | 'personal' | 'meeting' | 'deadline' | 'health')}
+                  className={`px-2 py-1.5 rounded-xl border text-[11px] outline-none ${isDark ? 'bg-[#151822] border-white/10 text-white' : 'bg-white border-zinc-200'}`}
+                >
+                  <option value="work">Работа</option>
+                  <option value="meeting">Встреча</option>
+                  <option value="deadline">Дедлайн</option>
+                  <option value="personal">Личное</option>
+                  <option value="health">Здоровье</option>
+                </select>
                 <select
                   value={newRepeat}
                   onChange={(e) => setNewRepeat(e.target.value as LumaCalendarEvent['repeat'] & string)}

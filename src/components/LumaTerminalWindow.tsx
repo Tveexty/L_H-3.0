@@ -74,6 +74,24 @@ const BUILTIN_COMMANDS = [
   'fullscreen',
   'rpc',
   'ping',
+  'ip',
+  'net',
+  'tcp',
+  'battery',
+  'wireless',
+  'scan',
+  'hosts',
+  'trash',
+  'dpi',
+  'uptime',
+  'uuid',
+  'hash',
+  'base64',
+  'hex',
+  'date',
+  'matrix',
+  'gc',
+  'notify',
   'sh',
   'lock',
   'sleep',
@@ -87,8 +105,8 @@ function createTab(idx: number): TermTab {
     cwd: '~',
     history: [],
     lines: [
-      { id: 1, kind: 'accent', text: 'LUMA OS 1.5 (CARBON · C-6) · LUMACORE 1.6 PRO TERMINAL  [IPC 127.0.0.1:49215]' },
-      { id: 2, kind: 'out', text: 'Команды: help, neofetch, top, kill, explorer, taskmgr, ls, find, mkdir, touch, cat, theme, anim, sh <cmd>.' },
+      { id: 1, kind: 'accent', text: 'LUMA OS 1.5.1 (CARBON · C-6) · LUMACORE 1.6.1 · LUMASHIELD 2.0 TERMINAL [IPC :49215]' },
+      { id: 2, kind: 'out', text: 'Команды: help, neofetch, sys, top, ip, tcp, battery, wireless, scan, hosts, trash, dpi, uuid, hash, base64, gc, matrix, sh <cmd>.' },
     ],
   };
 }
@@ -213,25 +231,32 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
       appendToTab(
         tid,
         [
-          'LUMA PRO TERMINAL — СПРАВОЧНИК КОМАНД:',
-          '  neofetch               — паспорт системы, железо и стиль оболочки',
-          '  sys / disks / loc      — CPU, GPU, RAM, тома дисков, авто-регион',
-          '  top | ps               — реальные процессы хоста (PID, CPU%, RAM)',
-          '  ls [path]              — список файлов каталога на ПК (по умолч. ~)',
-          '  cat <path>             — просмотр содержимого файла на ПК',
-          '  open <path|url>        — открыть файл, папку или URL в системе',
-          '  weather                — актуальная погода по региону хоста',
-          '  clip [set <текст>]     — чтение или запись системного буфера обмена',
-          '  calc <выражение>       — быстрый расчёт (например: calc 1024*16)',
-          '  media [next|prev|play] — управление системной музыкой',
-          '  vol <0-100> | mute     — системная громкость и звук',
-          '  island                 — переключить Luma Island',
-          '  theme <dark|light|nothing|pixelbook> — переключить тему/дизайн',
-          '  taskbar <bottom|left|top>            — положение панели задач',
-          '  fullscreen             — переключить полноэкранный режим',
-          '  ping | rpc <method>    — JSON-RPC 2.0 вызов к ядру (порт 49215)',
-          '  sh <команда>           — выполнить любую команду ОС (PowerShell/bash)',
-          '  lock | sleep | clear   — питание и очистка вкладки',
+          'LUMA PRO TERMINAL 1.5.1 — СПРАВОЧНИК КОМАНД (50+):',
+          '  ── СИСТЕМА И ЖЕЛЕЗО ────────────────────────────────────────────────',
+          '  neofetch               — паспорт системы, железо и версии ядер',
+          '  sys / disks / loc      — CPU, GPU, RAM, диски, авто-регион',
+          '  top | ps | kill <pid>  — процессы хоста и завершение по PID',
+          '  battery / wireless     — заряд батареи ПК, мышек IO/Ajazz/Ardor и BT',
+          '  dpi [400..6400]        — текущая скорость/DPI мыши или установка',
+          '  uptime | date | gc     — аптайм ядра, точная дата/время, очистка памяти GC',
+          '  ── СЕТЬ И БЕЗОПАСНОСТЬ (LUMASHIELD 2.0) ───────────────────────────',
+          '  ip | net               — сетевые интерфейсы, IPv4, MAC, скорость',
+          '  tcp                    — активные TCP-соединения и подозрительные порты',
+          '  scan [quick|deep|proc] — запуск антивируса LumaShield 2.0 (175+ правил)',
+          '  hosts                  — аудит целостности файла hosts (DNS Hijack)',
+          '  ── ФАЙЛЫ, КОРЗИНА И УТИЛИТЫ ───────────────────────────────────────',
+          '  ls / find / mkdir / touch / cat / open — работа с ФС на ПК',
+          '  trash [empty]          — список объектов Корзины Luma OS или очистка',
+          '  uuid                   — генерация криптостойкого UUID v4',
+          '  hash <текст>           — вычисление SHA-256 хеша текста',
+          '  base64 <enc|dec> <txt> — кодирование / декодирование Base64',
+          '  hex <число>            — перевод числа в HEX и BIN',
+          '  calc <выражение>       — быстрый математический расчёт',
+          '  weather | clip | matrix — погода, буфер обмена, пасхалка Матрицы',
+          '  notify <текст>         — отправить тест-уведомление (эффект резины Острова)',
+          '  ── ОБОЛОЧКА И ОС ──────────────────────────────────────────────────',
+          '  media / vol / mute / island / theme / anim / taskbar / fullscreen',
+          '  ping | rpc <method> | sh <команда> | lock | sleep | clear',
         ].join('\n')
       );
       return;
@@ -248,12 +273,12 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         [
           `  ██╗     ██╗   ██╗███╗   ███╗ █████╗      luma@${hostName}`,
           `  ██║     ██║   ██║████╗ ████║██╔══██╗     ──────────────────────────`,
-          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.5 Carbon (${os})`,
+          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.5.1 Carbon (${os})`,
           `  ██║     ██║   ██║██║╚██╔╝██║██╔══██║     STYLE   : ${designStyle === 'nothing' ? 'КЛАССИЧЕСКИЙ' : 'МОДЕРН'} · TASKBAR ${taskbarPosition.toUpperCase()}`,
           `  ███████╗╚██████╔╝██║ ╚═╝ ██║██║  ██║     CPU     : ${cpu}`,
           `  ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝     GPU     : ${gpu}`,
           `                                           RAM     : ${ram}`,
-          `  KERNEL : LumaCore 1.6 · Shield 1.6       REGION  : ${loc}`,
+          `  KERNEL : LumaCore 1.6.1 · Shield 2.0     REGION  : ${loc}`,
         ].join('\n'),
         'accent'
       );
@@ -582,6 +607,192 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
       return;
     }
 
+    // ==================== LUMA OS 1.5.1 BUILT-IN PRO COMMANDS (+20) ====================
+    if (head === 'ip' || head === 'net') {
+      setBusy(true);
+      try {
+        const r = await fetch('/api/kernel/network/adapters');
+        const d = await r.json();
+        const list = Array.isArray(d.adapters) ? d.adapters : [];
+        if (list.length === 0) appendToTab(tid, 'Сетевые адаптеры не найдены.');
+        else {
+          appendToTab(tid, list.map((a: any) => `${a.up ? '●' : '○'} ${String(a.name).padEnd(22)} IPv4: ${String(a.ipv4 || '—').padEnd(16)} MAC: ${a.mac || '—'}`).join('\n'));
+        }
+      } catch { appendToTab(tid, 'Ошибка запроса сетевых интерфейсов', 'err'); } finally { setBusy(false); }
+      return;
+    }
+
+    if (head === 'tcp') {
+      setBusy(true);
+      try {
+        const r = await fetch('/api/kernel/security/network');
+        const d = await r.json();
+        const conns = Array.isArray(d.connections) ? d.connections.slice(0, 20) : [];
+        appendToTab(tid, conns.length ? conns.map((c: any) => `${c.suspicious ? '⚠ ' : '  '}${String(c.process_name || 'proc').padEnd(16)} ${c.local_addr} -> ${c.remote_addr} [${c.state}]`).join('\n') : 'Активных TCP-соединений нет.');
+      } catch { appendToTab(tid, 'Ошибка чтения TCP-таблицы', 'err'); } finally { setBusy(false); }
+      return;
+    }
+
+    if (head === 'battery') {
+      setBusy(true);
+      try {
+        const r = await fetch('/api/kernel/battery/analytics');
+        const d = await r.json();
+        const hw = d.hardware || {};
+        appendToTab(tid, [
+          `БАТАРЕЯ: ${hw.present ? `${hw.percent}% (${hw.charging ? 'Зарядка' : 'От батареи'})` : 'Стационарный ПК (от сети)'}`,
+          `ЗДОРОВЬЕ: ${hw.health_percent || 100}% · ЦИКЛЫ: ${hw.cycle_count ?? 0} · МОЩНОСТЬ: ${(hw.power_watts || 0).toFixed(1)} Вт`,
+        ].join('\n'), 'accent');
+      } catch { appendToTab(tid, 'Ошибка чтения батареи', 'err'); } finally { setBusy(false); }
+      return;
+    }
+
+    if (head === 'wireless') {
+      setBusy(true);
+      try {
+        const r = await fetch('/api/kernel/wireless/batteries?refresh=1');
+        const d = await r.json();
+        const devs = Array.isArray(d.devices) ? d.devices : [];
+        appendToTab(tid, devs.length ? devs.map((x: any) => `• ${x.name} [${x.device_type} · ${x.transport || 'BT/2.4GHz'}] — ${x.battery_percent >= 0 ? `${x.battery_percent}%` : 'Подкл.'}`).join('\n') : 'Беспроводные гаджеты не обнаружены.');
+      } catch { appendToTab(tid, 'Ошибка сканера беспроводных устройств', 'err'); } finally { setBusy(false); }
+      return;
+    }
+
+    if (head === 'scan') {
+      const scanMode = arg === 'deep' ? 'deep' : arg === 'proc' || arg === 'processes' ? 'processes' : 'quick';
+      setBusy(true);
+      appendToTab(tid, `LumaShield 2.0: запуск сканирования (${scanMode})...`, 'accent');
+      try {
+        const r = await fetch('/api/kernel/security/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: scanMode }),
+        });
+        const d = await r.json();
+        const thr = Array.isArray(d.threats) ? d.threats : [];
+        appendToTab(tid, `Проверено объектов: ${d.files_scanned} за ${d.elapsed_ms} мс · Угроз: ${thr.length}`, thr.length > 0 ? 'err' : 'accent');
+        if (thr.length > 0) appendToTab(tid, thr.map((t: any) => `  [${t.severity}] ${t.name} (${t.category}) — ${t.reason}`).join('\n'), 'err');
+      } catch { appendToTab(tid, 'Ошибка LumaShield 2.0', 'err'); } finally { setBusy(false); }
+      return;
+    }
+
+    if (head === 'hosts') {
+      setBusy(true);
+      try {
+        const r = await fetch('/api/kernel/security/hosts-audit');
+        const d = await r.json();
+        appendToTab(tid, `HOSTS (${d.path}): записей ${d.total_mappings}, подозрительных ${d.suspicious_count}`, d.suspicious_count > 0 ? 'err' : 'accent');
+      } catch { appendToTab(tid, 'Ошибка аудита hosts', 'err'); } finally { setBusy(false); }
+      return;
+    }
+
+    if (head === 'trash') {
+      setBusy(true);
+      try {
+        if (arg === 'empty') {
+          const r = await fetch('/api/kernel/trash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'empty' }) });
+          const d = await r.json();
+          appendToTab(tid, `Корзина очищена. Удалено объектов: ${d.removed ?? 0}`, 'accent');
+        } else {
+          const r = await fetch('/api/kernel/trash');
+          const d = await r.json();
+          const list = Array.isArray(d.items) ? d.items : [];
+          appendToTab(tid, list.length ? list.map((x: any) => `• ${x.name} (${(x.size_bytes / 1024).toFixed(1)} КБ) — ${x.deleted_at}`).join('\n') : 'Корзина Luma OS пуста.');
+        }
+      } catch { appendToTab(tid, 'Ошибка чтения Корзины', 'err'); } finally { setBusy(false); }
+      return;
+    }
+
+    if (head === 'dpi') {
+      setBusy(true);
+      try {
+        const val = parseInt(arg, 10);
+        if (Number.isFinite(val) && val >= 200 && val <= 16000) {
+          const r = await fetch('/api/kernel/mouse/dpi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ effective_dpi: val }) });
+          const d = await r.json();
+          appendToTab(tid, `DPI обновлён: ${d.effective_dpi} eDPI (скорость Windows: ${d.windows_speed}/20)`, 'accent');
+        } else {
+          const r = await fetch('/api/kernel/mouse/dpi');
+          const d = await r.json();
+          appendToTab(tid, `Мышь: ${d.detected_mouse_name || 'System Mouse'} · Sensor ${d.sensor_dpi} DPI · Effective ${d.effective_dpi} eDPI (Win ${d.windows_speed}/20)`);
+        }
+      } catch { appendToTab(tid, 'Ошибка службы DPI', 'err'); } finally { setBusy(false); }
+      return;
+    }
+
+    if (head === 'uptime' || head === 'gc') {
+      setBusy(true);
+      try {
+        const r = await fetch(`/api/kernel/diagnostics${head === 'gc' ? '?gc=1' : ''}`);
+        const d = await r.json();
+        const mins = Math.floor((d.uptime_sec || 0) / 60);
+        appendToTab(tid, `LumaCore ${d.kernel_version} · Uptime: ${mins}м ${(d.uptime_sec || 0) % 60}с · Heap: ${d.heap_alloc_mb} МБ · Goroutines: ${d.goroutines}${d.gc_trimmed ? ' · GC выполнен ✓' : ''}`, 'accent');
+      } catch { appendToTab(tid, 'Ошибка диагностики ядра', 'err'); } finally { setBusy(false); }
+      return;
+    }
+
+    if (head === 'uuid') {
+      const id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      appendToTab(tid, id, 'accent');
+      return;
+    }
+
+    if (head === 'hash') {
+      if (!rest) { appendToTab(tid, 'Использование: hash <текст>', 'err'); return; }
+      try {
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rest));
+        const hex = Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+        appendToTab(tid, `SHA-256: ${hex}`, 'accent');
+      } catch { appendToTab(tid, 'Crypto API недоступно', 'err'); }
+      return;
+    }
+
+    if (head === 'base64') {
+      const sub = parts[1]?.toLowerCase();
+      const body = cmd.split(/\s+/).slice(2).join(' ');
+      if (!body || (sub !== 'enc' && sub !== 'dec')) {
+        appendToTab(tid, 'Использование: base64 enc <текст>  |  base64 dec <base64>', 'err');
+        return;
+      }
+      try {
+        const res = sub === 'enc' ? btoa(unescape(encodeURIComponent(body))) : decodeURIComponent(escape(atob(body)));
+        appendToTab(tid, res, 'accent');
+      } catch { appendToTab(tid, 'Ошибка Base64', 'err'); }
+      return;
+    }
+
+    if (head === 'hex') {
+      const n = parseInt(arg, 10);
+      if (!Number.isFinite(n)) { appendToTab(tid, 'Использование: hex <целое число>', 'err'); return; }
+      appendToTab(tid, `DEC: ${n}  |  HEX: 0x${n.toString(16).toUpperCase()}  |  BIN: 0b${n.toString(2)}`, 'accent');
+      return;
+    }
+
+    if (head === 'date') {
+      const now = new Date();
+      appendToTab(tid, `${now.toLocaleString('ru-RU')} (ISO: ${now.toISOString()})`, 'accent');
+      return;
+    }
+
+    if (head === 'matrix') {
+      const rows = Array.from({ length: 6 }, () =>
+        Array.from({ length: 44 }, () => '01アイウエオカキクケコLUMA'[Math.floor(Math.random() * 17)]).join('')
+      );
+      appendToTab(tid, rows.join('\n'), 'accent');
+      return;
+    }
+
+    if (head === 'notify') {
+      const text = rest || 'Тестовое уведомление из Luma Terminal 1.5.1!';
+      await fetch('/api/kernel/notifications/os', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'test', app: 'Telegram', title: 'Luma Terminal', body: text, level: 'info' }),
+      }).catch(() => {});
+      appendToTab(tid, `Уведомление отправлено в Dynamic Island и Центр уведомлений: «${text}»`, 'accent');
+      return;
+    }
+
     // Real Host OS Shell execution (`sh <cmd>` or direct fallback!)
     const shellCmd = head === 'sh' ? rest : cmd;
     if (!shellCmd) {
@@ -659,7 +870,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
     if (match) setInput(match + ' ');
   };
 
-  const quickChips = ['neofetch', 'top', 'ls ~', 'explorer', 'taskmgr', 'sys', 'weather', 'ping'];
+  const quickChips = ['neofetch', 'sys', 'wireless', 'scan', 'ip', 'tcp', 'hosts', 'trash', 'dpi', 'uuid', 'gc'];
   const hostName = liveSystem?.hostname || 'host';
   const fontCls = fontSize === 'sm' ? 'text-[11px]' : fontSize === 'lg' ? 'text-[14px]' : 'text-xs';
   const visibleLines = (activeTab?.lines || []).filter(

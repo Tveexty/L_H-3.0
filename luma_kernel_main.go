@@ -17,6 +17,7 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"embed"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -47,10 +48,10 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.5"
+	KernelVersion       = "1.5.1"
 	KernelCodename      = "Carbon"
-	KernelEngineVersion = "1.6"
-	SecurityCoreVersion = "1.6"
+	KernelEngineVersion = "1.6.1"
+	SecurityCoreVersion = "2.0"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
 )
@@ -2474,21 +2475,176 @@ func main() {
 		}
 	})
 
-	// ==================== LUMA OS 1.5 CARBON: TRASH, SUPER-CONFIDENTIALITY VAULT & COMPACT CAPTURE ====================
+	// ==================== LUMA OS 1.5 / 1.5.1 CARBON: TRASH PRO, PRIVATE VAULT, OFFICE STUDIO, NOTIFICATIONS & LUMASHIELD 2.0 ====================
 	trashStore := newLumaTrashStore()
 	privateVault := newLumaPrivateVault()
+	osNotifBridge := NewOSNotificationBridge(kernel.probe)
+
+	// 1. Real Telegram & Messenger OS Notification Bridge (/api/kernel/notifications/os)
+	mux.HandleFunc("/api/kernel/notifications/os", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodPost {
+			var req struct {
+				Action string `json:"action"` // test | clear
+				App    string `json:"app"`
+				Title  string `json:"title"`
+				Body   string `json:"body"`
+				Level  string `json:"level"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			switch req.Action {
+			case "clear":
+				osNotifBridge.Clear()
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "notifications": []OSNotificationItem{}})
+			default:
+				item := osNotifBridge.PushManual(req.App, req.Title, req.Body, req.Level)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "notification": item, "notifications": osNotifBridge.List(0)})
+			}
+			return
+		}
+		var sinceTs int64
+		if raw := r.URL.Query().Get("since"); raw != "" {
+			sinceTs, _ = strconv.ParseInt(raw, 10, 64)
+		}
+		list := osNotifBridge.List(sinceTs)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":            true,
+			"count":         len(list),
+			"sources":       osNotifBridge.Sources(),
+			"notifications": list,
+		})
+	})
+
+	// 2. Native Office Studio Import & Export API (.pptx / .docx / .xlsx / .odp / .odt / .ods / .csv / .md / .html / .rtf / .txt / .json)
+	mux.HandleFunc("/api/kernel/office/import", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			FileName   string `json:"file_name"`
+			Base64Data string `json:"base64_data"`
+			DiskPath   string `json:"disk_path"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 48*1024*1024)).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(OfficeImportResponse{OK: false, Error: "Ошибка чтения запроса: " + err.Error()})
+			return
+		}
+		var raw []byte
+		var err error
+		name := req.FileName
+		if strings.TrimSpace(req.DiskPath) != "" {
+			realPath := expandUserPath(req.DiskPath)
+			raw, err = os.ReadFile(realPath)
+			if err != nil {
+				_ = json.NewEncoder(w).Encode(OfficeImportResponse{OK: false, Error: "Не удалось открыть файл: " + err.Error()})
+				return
+			}
+			if name == "" {
+				name = filepath.Base(realPath)
+			}
+		} else {
+			b64 := req.Base64Data
+			if idx := strings.Index(b64, ","); idx > 0 {
+				b64 = b64[idx+1:]
+			}
+			raw, err = base64.StdEncoding.DecodeString(b64)
+			if err != nil {
+				_ = json.NewEncoder(w).Encode(OfficeImportResponse{OK: false, Error: "Некорректные данные файла"})
+				return
+			}
+		}
+		_ = json.NewEncoder(w).Encode(ImportOfficeDocument(name, raw))
+	})
+
+	mux.HandleFunc("/api/kernel/office/export", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req OfficeExportRequest
+		if err := json.NewDecoder(io.LimitReader(r.Body, 48*1024*1024)).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(OfficeExportResponse{OK: false, Error: err.Error()})
+			return
+		}
+		resp := ExportOfficeDocument(req)
+		if resp.OK && strings.TrimSpace(req.SaveToDisk) != "" {
+			target := expandUserPath(req.SaveToDisk)
+			if st, err := os.Stat(target); err == nil && st.IsDir() {
+				target = filepath.Join(target, resp.FileName)
+			}
+			if raw, err := base64.StdEncoding.DecodeString(resp.Base64Data); err == nil {
+				_ = os.MkdirAll(filepath.Dir(target), 0755)
+				if err := os.WriteFile(target, raw, 0644); err == nil {
+					resp.SavedPath = target
+				}
+			}
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	// 3. LumaShield 2.0 Single-File Inspector & Unified Audit Report
+	mux.HandleFunc("/api/kernel/security/scan-file", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			FileName   string `json:"file_name"`
+			Base64Data string `json:"base64_data"`
+			Path       string `json:"path"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 32*1024*1024)).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		if strings.TrimSpace(req.Path) != "" {
+			realPath := expandUserPath(req.Path)
+			raw, err := os.ReadFile(realPath)
+			if err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(kernel.security.InspectUploadedFile(filepath.Base(realPath), raw))
+			return
+		}
+		b64 := req.Base64Data
+		if idx := strings.Index(b64, ","); idx > 0 {
+			b64 = b64[idx+1:]
+		}
+		raw, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Некорректные данные файла"})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(kernel.security.InspectUploadedFile(req.FileName, raw))
+	})
+
+	mux.HandleFunc("/api/kernel/security/report", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(kernel.security.GenerateAuditReport(kernel.probe))
+	})
 
 	mux.HandleFunc("/api/kernel/trash", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if r.Method == http.MethodPost {
 			var req struct {
-				Action  string `json:"action"` // move | restore | delete | empty | demo
-				Path    string `json:"path"`
-				ID      string `json:"id"`
-				Name    string `json:"name"`
-				Content string `json:"content"`
+				Action        string   `json:"action"` // move | restore | delete | empty | demo | preview | bulk_restore | bulk_delete | auto_clean | upload
+				Path          string   `json:"path"`
+				ID            string   `json:"id"`
+				IDs           []string `json:"ids"`
+				Name          string   `json:"name"`
+				Content       string   `json:"content"`
+				Base64Data    string   `json:"base64_data"`
+				AutoCleanDays int      `json:"auto_clean_days"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			if err := json.NewDecoder(io.LimitReader(r.Body, 32*1024*1024)).Decode(&req); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
 				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
 				return
@@ -2501,7 +2657,15 @@ func main() {
 					return
 				}
 				items, total := trashStore.List()
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "item": item, "items": items, "total_bytes": total})
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "item": item, "items": items, "total_bytes": total, "auto_clean_days": trashStore.GetAutoCleanDays()})
+			case "upload":
+				item, err := trashStore.UploadToTrash(req.Name, req.Base64Data)
+				if err != nil {
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+					return
+				}
+				items, total := trashStore.List()
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "item": item, "items": items, "total_bytes": total, "auto_clean_days": trashStore.GetAutoCleanDays()})
 			case "demo":
 				item, err := trashStore.CreateDemoItem(req.Name, req.Content)
 				if err != nil {
@@ -2509,7 +2673,14 @@ func main() {
 					return
 				}
 				items, total := trashStore.List()
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "item": item, "items": items, "total_bytes": total})
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "item": item, "items": items, "total_bytes": total, "auto_clean_days": trashStore.GetAutoCleanDays()})
+			case "preview":
+				prev, err := trashStore.PreviewItem(req.ID)
+				if err != nil {
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+					return
+				}
+				_ = json.NewEncoder(w).Encode(prev)
 			case "restore":
 				restoredTo, err := trashStore.Restore(req.ID)
 				if err != nil {
@@ -2517,18 +2688,30 @@ func main() {
 					return
 				}
 				items, total := trashStore.List()
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "restored_path": restoredTo, "items": items, "total_bytes": total})
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "restored_path": restoredTo, "items": items, "total_bytes": total, "auto_clean_days": trashStore.GetAutoCleanDays()})
+			case "bulk_restore":
+				cnt, paths := trashStore.BulkRestore(req.IDs)
+				items, total := trashStore.List()
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "restored_count": cnt, "restored_paths": paths, "items": items, "total_bytes": total, "auto_clean_days": trashStore.GetAutoCleanDays()})
 			case "delete":
 				if err := trashStore.DeletePermanent(req.ID); err != nil {
 					_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
 					return
 				}
 				items, total := trashStore.List()
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "items": items, "total_bytes": total})
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "items": items, "total_bytes": total, "auto_clean_days": trashStore.GetAutoCleanDays()})
+			case "bulk_delete":
+				cnt := trashStore.BulkDelete(req.IDs)
+				items, total := trashStore.List()
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "deleted_count": cnt, "items": items, "total_bytes": total, "auto_clean_days": trashStore.GetAutoCleanDays()})
+			case "auto_clean":
+				days := trashStore.SetAutoCleanDays(req.AutoCleanDays)
+				items, total := trashStore.List()
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "auto_clean_days": days, "items": items, "total_bytes": total})
 			case "empty":
 				removed := trashStore.Empty()
 				_ = kernel.probe.EmptyOSRecycleBinNative()
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "removed": removed, "items": []TrashItemMeta{}, "total_bytes": 0})
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "removed": removed, "items": []TrashItemMeta{}, "total_bytes": 0, "auto_clean_days": trashStore.GetAutoCleanDays()})
 			default:
 				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "неизвестное действие корзины"})
 			}
@@ -2536,11 +2719,12 @@ func main() {
 		}
 		items, total := trashStore.List()
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"ok":          true,
-			"count":       len(items),
-			"total_bytes": total,
-			"trash_dir":   trashStore.baseDir,
-			"items":       items,
+			"ok":              true,
+			"count":           len(items),
+			"total_bytes":     total,
+			"auto_clean_days": trashStore.GetAutoCleanDays(),
+			"trash_dir":       trashStore.baseDir,
+			"items":           items,
 		})
 	})
 
@@ -2693,19 +2877,19 @@ func main() {
 	mux.HandleFunc("/api/kernel/capture/list", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"ok":             true,
+			"ok":              true,
 			"screenshots_dir": getLumaCapturesDir("screenshot"),
 			"recordings_dir":  getLumaCapturesDir("recording"),
-			"captures":       listLumaCaptures(),
+			"captures":        listLumaCaptures(),
 		})
 	})
 
-	// Serve standalone executable download for LumaOS_1.5.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.5.1.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.1.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -2713,12 +2897,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.1.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.5.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.4.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.3.1.exe", serveExe)
@@ -2776,8 +2961,8 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.5 (CARBON · C-6) — LUMACORE 1.6 & LUMASHIELD 1.6")
-	log.Printf("  - Carbon Control Hub, Private Vault, Trash, IO/Ajazz/Ardor: ON")
+	log.Printf("  LUMA OS 1.5.1 (CARBON · C-6) — LUMACORE 1.6.1 & LUMASHIELD 2.0")
+	log.Printf("  - Office Studio, TG/OS Notif Bridge, AI 2.0, 4K Carbon UI: ON")
 	log.Printf("  - Desktop Environment:          http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:    http://%s/api/kernel/status", addr)

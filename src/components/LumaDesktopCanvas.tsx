@@ -77,6 +77,7 @@ import {
   WidgetVariantDef,
 } from './LumaWidgetCatalog';
 import { CustomUserWidgetSpec, evalCustomWidgetScript } from './LumaCustomWidgetBuilder';
+import { SmartContextMenu } from './SmartContextMenu';
 
 export { DESKTOP_WIDGET_CATALOG };
 export type { WidgetShape };
@@ -117,7 +118,8 @@ export type DesktopSystemWinId =
   | 'trash'
   | 'scenarios'
   | 'code_studio'
-  | 'cut_studio';
+  | 'cut_studio'
+  | 'office';
 
 export interface FolderEntry {
   id: string;
@@ -733,8 +735,10 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
     { id: 'n2', text: 'Настроить виджеты и папки', done: false },
   ]);
   const [noteInput, setNoteInput] = useState('');
+  const [pomoDuration, setPomoDuration] = useState(25 * 60);
   const [pomoSec, setPomoSec] = useState(25 * 60);
   const [pomoRunning, setPomoRunning] = useState(false);
+  const [pomoStopwatch, setPomoStopwatch] = useState(false);
   const [calcExpr, setCalcExpr] = useState('');
   const [calcRes, setCalcRes] = useState('0');
   const [weather, setWeather] = useState<WeatherLive>({
@@ -749,14 +753,14 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
     loading: true,
   });
 
-  const pomoRunningRef = useRef(pomoRunning);
-  pomoRunningRef.current = pomoRunning;
+  const pomoStopwatchRef = useRef(pomoStopwatch);
+  pomoStopwatchRef.current = pomoStopwatch;
   const fetchedCityRef = useRef<string>('');
   const diskHydratedRef = useRef(false);
 
-  // New 1.2.1 Widget interactive states (Mini AI + Exact Battery/ScreenTime Analytics)
+  // New 1.5.1 Widget interactive states (Mini AI 2.0 + Exact Battery/ScreenTime Analytics)
   const [miniAiInput, setMiniAiInput] = useState('');
-  const [miniAiAnswer, setMiniAiAnswer] = useState('Готов помочь без API (Luma Lang 1.2 + Code 1.2)');
+  const [miniAiAnswer, setMiniAiAnswer] = useState('Готов помочь офлайн (Luma Lang 2.0 + Code 2.0)');
   const [miniAiBusy, setMiniAiBusy] = useState(false);
   const [batteryMini, setBatteryMini] = useState<{
     present: boolean;
@@ -898,43 +902,48 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider: 'luma_local',
-          model: 'luma-nano-1.2',
+          model: 'luma-hybrid-2.0',
           include_context: true,
           messages: [{ role: 'user', content: q }],
         }),
       });
       const d = await r.json();
-      setMiniAiAnswer(d?.reply || 'Нет ответа от LumaNano 1.2');
+      setMiniAiAnswer(d?.reply || 'Нет ответа от Luma AI 2.0');
       setMiniAiInput('');
     } catch {
-      setMiniAiAnswer('Ошибка связи с LumaNano 1.2');
+      setMiniAiAnswer('Ошибка связи с Luma AI 2.0');
     } finally {
       setMiniAiBusy(false);
     }
   };
 
-  // Adaptive low-CPU clock tick: 1s ONLY when showSeconds or Pomodoro is active; otherwise 15s (zero re-renders when hidden!)
+  // Adaptive low-CPU clock tick: 1s ONLY when showSeconds is active; otherwise 15s (zero re-renders when hidden!)
   useEffect(() => {
     const tickMs = showSeconds ? 1000 : 15000;
     const id = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       setNow(new Date());
-      if (pomoRunningRef.current && showSeconds) {
-        setPomoSec((s) => (s > 0 ? s - 1 : 0));
-      }
     }, tickMs);
     return () => window.clearInterval(id);
   }, [showSeconds]);
 
-  // Dedicated lightweight Pomodoro 1s tick only when showSeconds is false AND Pomodoro is running
+  // Dedicated precise 1s Timer / Stopwatch tick whenever running (works reliably regardless of showSeconds!)
   useEffect(() => {
-    if (showSeconds || !pomoRunning) return;
+    if (!pomoRunning) return;
     const id = window.setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      setPomoSec((s) => (s > 0 ? s - 1 : 0));
+      setPomoSec((s) => {
+        if (pomoStopwatchRef.current) return s + 1;
+        if (s <= 1) {
+          setPomoRunning(false);
+          onPushToast('Таймер Luma', 'Время фокуса вышло!', 'success');
+          return 0;
+        }
+        return s - 1;
+      });
     }, 1000);
     return () => window.clearInterval(id);
-  }, [showSeconds, pomoRunning]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pomoRunning]);
 
   // Global widget appearance listener (from Settings -> Оформление -> Виджеты)
   useEffect(() => {
@@ -2505,65 +2514,107 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         );
 
       case 'luma_pomodoro': {
-        const mm = String(Math.floor(pomoSec / 60)).padStart(2, '0');
+        const hrs = Math.floor(pomoSec / 3600);
+        const mm = String(Math.floor((pomoSec % 3600) / 60)).padStart(2, '0');
         const ss = String(pomoSec % 60).padStart(2, '0');
+        const pct = pomoStopwatch
+          ? (pomoSec % 60) / 60
+          : pomoDuration > 0
+          ? Math.max(0, Math.min(1, pomoSec / pomoDuration))
+          : 0;
+
         if (variant === 'circle_dial' || isCircle) {
-          const pct = pomoSec / (25 * 60);
-          const circ = 2 * Math.PI * 38;
+          const circ = 2 * Math.PI * 40;
           return (
-            <div className="h-full flex items-center justify-center relative">
-              <svg viewBox="0 0 100 100" className="w-full h-full max-w-[140px] max-h-[140px] -rotate-90">
-                <circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" strokeOpacity="0.14" strokeWidth="6" />
+            <div className="h-full w-full flex items-center justify-center relative overflow-hidden p-1">
+              <svg viewBox="0 0 100 100" className="w-full h-full max-w-[148px] max-h-[148px] -rotate-90">
+                <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" strokeOpacity="0.14" strokeWidth="5.5" />
                 <circle
                   cx="50"
                   cy="50"
-                  r="38"
+                  r="40"
                   fill="none"
                   stroke="var(--luma-accent)"
-                  strokeWidth="6"
+                  strokeWidth="5.5"
                   strokeDasharray={circ}
                   strokeDashoffset={circ * (1 - pct)}
                   strokeLinecap="round"
+                  className="transition-[stroke-dashoffset] duration-300"
                 />
               </svg>
-              <div className="absolute flex flex-col items-center gap-1 font-mono">
-                <span className="text-lg font-black tabular-nums leading-none">
-                  {mm}:{ss}
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPomoRunning((v) => !v);
-                  }}
-                  className="px-2 py-0.5 rounded-full bg-[var(--luma-accent)] text-white text-[9px] font-bold cursor-pointer"
-                >
-                  {pomoRunning ? 'СТОП' : 'СТАРТ'}
-                </button>
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 font-mono px-2">
+                <div className="flex items-baseline justify-center whitespace-nowrap tabular-nums leading-none">
+                  {hrs > 0 && <span className="text-[11px] font-bold opacity-70 mr-0.5">{hrs}:</span>}
+                  <span className="text-[17px] font-black tracking-tight">{mm}</span>
+                  <span className={`text-[15px] font-black mx-[1px] ${pomoRunning ? 'animate-pulse text-[var(--luma-accent)]' : 'opacity-60'}`}>:</span>
+                  <span className="text-[17px] font-black tracking-tight text-[var(--luma-accent)]">{ss}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPomoRunning((v) => !v);
+                    }}
+                    className="px-2 py-0.5 rounded-full bg-[var(--luma-accent)] text-white text-[9px] font-bold cursor-pointer"
+                  >
+                    {pomoRunning ? 'СТОП' : 'СТАРТ'}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPomoRunning(false);
+                      setPomoSec(pomoStopwatch ? 0 : pomoDuration);
+                    }}
+                    title="Сброс"
+                    className={`p-0.5 rounded-full border cursor-pointer ${subBtnCls}`}
+                  >
+                    <RotateCcw className="w-2.5 h-2.5" />
+                  </button>
+                </div>
               </div>
             </div>
           );
         }
 
+        const presets = [5, 15, 25, 45];
         return (
-          <div className="h-full flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-              <span className={`inline-flex items-center gap-1 ${mutedCls}`}>
-                <Timer className="w-3 h-3" />
-                ФОКУС
+          <div className="h-full w-full flex flex-col justify-between gap-1 min-w-0 overflow-hidden">
+            <div className="flex items-center justify-between gap-1 text-[9px] font-mono uppercase tracking-[0.12em]">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const nextSw = !pomoStopwatch;
+                  setPomoStopwatch(nextSw);
+                  setPomoRunning(false);
+                  setPomoSec(nextSw ? 0 : pomoDuration);
+                }}
+                title="Переключить: Таймер / Секундомер"
+                className={`inline-flex items-center gap-1 cursor-pointer hover:text-[var(--luma-accent)] transition ${mutedCls}`}
+              >
+                <Timer className="w-3 h-3 text-[var(--luma-accent)] shrink-0" />
+                <span className="truncate">{pomoStopwatch ? 'СЕКУНДОМЕР' : 'ТАЙМЕР'}</span>
+              </button>
+              <span className={`shrink-0 font-bold ${pomoRunning ? 'text-[var(--luma-accent)]' : mutedCls}`}>
+                {pomoRunning ? '● ИДЁТ' : 'ПАУЗА'}
               </span>
-              <span className={pomoRunning ? 'text-[var(--luma-accent)]' : mutedCls}>{pomoRunning ? 'ИДЁТ' : 'ПАУЗА'}</span>
             </div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-3xl font-mono font-bold tabular-nums">
-                {mm}:{ss}
-              </span>
-              <div className="flex gap-1">
+
+            {/* Crisp non-clipping MM:SS readout with explicit seconds emphasis */}
+            <div className="flex items-center justify-between gap-2 min-w-0">
+              <div className="flex items-baseline whitespace-nowrap font-mono font-black tabular-nums leading-none shrink-0" style={{ fontSize: 'clamp(1.25rem, 2.1vw, 1.85rem)' }}>
+                {hrs > 0 && <span className="opacity-70 text-[0.65em] mr-0.5">{hrs}:</span>}
+                <span>{mm}</span>
+                <span className={`mx-[1px] ${pomoRunning ? 'animate-pulse text-[var(--luma-accent)]' : 'opacity-50'}`}>:</span>
+                <span className="text-[var(--luma-accent)]">{ss}</span>
+                <span className={`ml-1 text-[9px] font-mono uppercase font-semibold ${mutedCls}`}>сек</span>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setPomoRunning((v) => !v);
                   }}
-                  className="px-2.5 py-1.5 rounded-lg bg-[var(--luma-accent)] text-white text-[10px] font-mono font-bold cursor-pointer"
+                  className="px-2 py-1 rounded-lg bg-[var(--luma-accent)] text-white text-[10px] font-mono font-bold cursor-pointer hover:opacity-90 transition"
                 >
                   {pomoRunning ? 'СТОП' : 'СТАРТ'}
                 </button>
@@ -2571,13 +2622,51 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                   onClick={(e) => {
                     e.stopPropagation();
                     setPomoRunning(false);
-                    setPomoSec(25 * 60);
+                    setPomoSec(pomoStopwatch ? 0 : pomoDuration);
                   }}
-                  className={`p-1.5 rounded-lg border cursor-pointer ${subBtnCls}`}
+                  title="Сброс"
+                  className={`p-1 rounded-lg border cursor-pointer ${subBtnCls}`}
                 >
                   <RotateCcw className="w-3 h-3" />
                 </button>
               </div>
+            </div>
+
+            {/* Progress bar + quick duration presets */}
+            <div className="space-y-1">
+              <div className={`w-full h-1 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-zinc-900/10'}`}>
+                <div
+                  className="h-full rounded-full bg-[var(--luma-accent)] transition-all duration-300"
+                  style={{ width: `${Math.round(pct * 100)}%` }}
+                />
+              </div>
+              {!pomoStopwatch && (
+                <div className="flex items-center gap-1">
+                  {presets.map((m) => {
+                    const active = pomoDuration === m * 60;
+                    return (
+                      <button
+                        key={m}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPomoRunning(false);
+                          setPomoDuration(m * 60);
+                          setPomoSec(m * 60);
+                        }}
+                        className={`flex-1 py-0.5 rounded-md text-[9px] font-mono font-bold transition cursor-pointer ${
+                          active
+                            ? 'bg-[var(--luma-accent)] text-white'
+                            : isDark
+                            ? 'bg-white/8 text-zinc-300 hover:bg-white/15'
+                            : 'bg-zinc-900/8 text-zinc-700 hover:bg-zinc-900/15'
+                        }`}
+                      >
+                        {m}м
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         );
@@ -4636,10 +4725,12 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
 
       {/* WIDGET RIGHT-CLICK CONTEXT MENU (HUAWEI HARMONYOS RESIZE & SHAPE!) */}
       {widgetCtxMenu && (
-        <div
+        <SmartContextMenu
+          x={widgetCtxMenu.x}
+          y={widgetCtxMenu.y}
+          zIndex={65}
           onClick={(e) => e.stopPropagation()}
-          style={{ left: widgetCtxMenu.x, top: widgetCtxMenu.y }}
-          className={`luma-animate-in fixed z-50 w-56 border p-1.5 shadow-2xl text-xs ${modalShellCls}`}
+          className={`luma-animate-in w-56 border p-1.5 shadow-2xl text-xs ${modalShellCls}`}
         >
           <div className={`px-2.5 py-1.5 border-b font-bold truncate flex items-center justify-between ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
             <span className="truncate">{widgetCtxMenu.w.title}</span>
@@ -4696,15 +4787,17 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
             <Trash2 className="w-3.5 h-3.5" />
             <span>Удалить виджет</span>
           </button>
-        </div>
+        </SmartContextMenu>
       )}
 
       {/* SHORTCUT & FOLDER RIGHT-CLICK CONTEXT MENU */}
       {shortcutCtxMenu && (
-        <div
+        <SmartContextMenu
+          x={shortcutCtxMenu.x}
+          y={shortcutCtxMenu.y}
+          zIndex={65}
           onClick={(e) => e.stopPropagation()}
-          style={{ left: shortcutCtxMenu.x, top: shortcutCtxMenu.y }}
-          className={`luma-animate-in fixed z-50 w-56 border p-1.5 shadow-2xl text-xs ${modalShellCls}`}
+          className={`luma-animate-in w-56 border p-1.5 shadow-2xl text-xs ${modalShellCls}`}
         >
           <div className={`px-2.5 py-1.5 border-b font-bold truncate ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
             {shortcutCtxMenu.sc.label}
@@ -4797,7 +4890,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
             <Trash2 className="w-3.5 h-3.5" />
             <span>Удалить со стола</span>
           </button>
-        </div>
+        </SmartContextMenu>
       )}
 
       {/* HUAWEI HARMONYOS FLOATING RESIZE, SHAPE & VARIANT CONTROL BAR */}
@@ -5068,10 +5161,12 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
 
       {/* NATIVE DEX DESKTOP RIGHT-CLICK CONTEXT MENU */}
       {ctxMenu && (
-        <div
+        <SmartContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          zIndex={65}
           onClick={(e) => e.stopPropagation()}
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
-          className={`luma-animate-in fixed z-50 w-64 border p-1.5 shadow-2xl text-xs ${modalShellCls}`}
+          className={`luma-animate-in w-64 border p-1.5 shadow-2xl text-xs ${modalShellCls}`}
         >
           <div className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>
             Ячейка [{ctxMenu.col}, {ctxMenu.row}] · {gridCols}×{totalRows}
@@ -5129,6 +5224,19 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           ))}
 
           <div className={`my-1 border-t ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`} />
+
+          <button
+            onClick={() => {
+              onOpenSystemWindow('office');
+              setCtxMenu(null);
+            }}
+            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
+              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5 text-sky-400" />
+            <span>Luma Office Studio (Docs / Sheets / Slides)</span>
+          </button>
 
           <button
             onClick={() => {
@@ -5300,7 +5408,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
             <Settings className={`w-3.5 h-3.5 ${mutedCls}`} />
             <span>Настройки системы</span>
           </button>
-        </div>
+        </SmartContextMenu>
       )}
 
       {/* REDESIGNED 2-COLUMN WIDGET GALLERY MODAL */}

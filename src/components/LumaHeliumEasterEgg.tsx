@@ -31,8 +31,8 @@ interface HeroCardProps {
  */
 export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
   onTriggerEasterEgg,
-  kernelVersion = '1.6',
-  securityVersion = '1.6',
+  kernelVersion = '1.6.1',
+  securityVersion = '2.0',
 }) => {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [tilt, setTilt] = useState({ rx: 0, ry: 0, gx: 50, gy: 38, hovering: false });
@@ -92,7 +92,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
       >
         <img
           src={carbonHeroImg}
-          alt="Luma OS 1.5 Carbon"
+          alt="Luma OS 1.5.1 Carbon 4K"
           loading="eager"
           decoding="sync"
           draggable={false}
@@ -123,7 +123,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
           </span>
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 border border-emerald-300/30 text-[10px] font-mono text-cyan-100 group-hover:bg-white/20 transition">
             <Sparkles className="w-3 h-3 text-cyan-300" />
-            Carbon · Studio 1.5
+            Carbon · 4K Studio
           </span>
         </div>
 
@@ -143,7 +143,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
               filter: 'drop-shadow(0 6px 26px rgba(34, 211, 238, 0.52))',
             }}
           >
-            1.5
+            1.5.1
           </div>
           <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">
             LumaOS

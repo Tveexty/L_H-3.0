@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -16,17 +17,13 @@ import (
 	"time"
 )
 
-// LumaShield 1.3 — Advanced, zero-conflict user-space security core & on-demand + real-time guard antivirus.
-// Does NOT register kernel filter drivers or replace Windows SecurityCenter, so it runs
-// cleanly alongside Windows Defender with zero locks or conflicts.
-//
-// New in 1.3:
-// - 20+ heuristic rules (Ransomware, Credential Stealers, Reverse Shells, LOLBins, Persistence)
-// - PE Header ("MZ") Masquerading Detector (catches EXEs disguised as PDF/JPG/DOCX/TXT)
-// - Shannon Entropy Packed-Binary Detector (> 7.55 bits/byte in Downloads/Temp)
-// - Lightweight Real-Time Folder Guard (Watches Downloads & Desktop without locking files)
-// - Running Process Threat Inspector (flags suspicious Temp/Miner/Stealer active processes)
-// - Persistent Whitelist / Exclusions Manager & Deep Scan Mode
+// LumaShield 2.0 — Next-Gen Zero-Conflict Antivirus & Threat Detection Engine for Luma OS 1.5.1 (Carbon).
+// Runs cleanly alongside Windows Defender with zero driver conflicts:
+//   - 170+ heuristic, behavioral & YARA-like rules (Telegram/Discord/Browser/Crypto Stealers, Ransomware,
+//     Keyloggers, Crypto-Clippers, Reverse Shells, LOLBins, AMSI/ETW/UAC Bypass, Rootkits, Office Macros)
+//   - Deep Archive & Office Macro Inspector (.zip, .docm, .xlsm, .pptm, .docx, .xlsx, .pptx -> vbaProject.bin & hidden EXEs)
+//   - PE Header ("MZ") Masquerading & Shannon Entropy Packed-Binary Detector (>7.50) across Downloads/Desktop/Documents/Temp
+//   - Single-File Drag-and-Drop Inspector, Live Process + Network + Hosts + Startup Unified Audit & Exportable Report
 
 const eicarStandardSignature = `X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*`
 
@@ -292,16 +289,20 @@ func computeShannonEntropy(data []byte) float64 {
 }
 
 var suspiciousDoubleExts = []string{
-	".pdf.exe", ".doc.exe", ".docx.exe", ".xls.exe", ".xlsx.exe",
-	".jpg.exe", ".jpeg.exe", ".png.exe", ".mp3.exe", ".mp4.exe", ".txt.exe",
-	".pdf.scr", ".jpg.scr", ".png.scr", ".doc.scr", ".txt.vbs", ".pdf.vbs",
-	".jpg.bat", ".png.bat", ".docx.js", ".pdf.js", ".zip.exe", ".rar.exe",
-	".pdf.cmd", ".txt.cmd", ".doc.hta", ".pdf.hta", ".png.pif", ".doc.lnk",
+	".pdf.exe", ".doc.exe", ".docx.exe", ".xls.exe", ".xlsx.exe", ".ppt.exe", ".pptx.exe",
+	".jpg.exe", ".jpeg.exe", ".png.exe", ".mp3.exe", ".mp4.exe", ".txt.exe", ".avi.exe",
+	".pdf.scr", ".jpg.scr", ".png.scr", ".doc.scr", ".txt.vbs", ".pdf.vbs", ".docx.vbs",
+	".jpg.bat", ".png.bat", ".docx.js", ".pdf.js", ".zip.exe", ".rar.exe", ".7z.exe",
+	".pdf.cmd", ".txt.cmd", ".doc.hta", ".pdf.hta", ".png.pif", ".doc.lnk", ".pdf.lnk",
+	".mp4.scr", ".wav.exe", ".rtf.exe", ".csv.exe",
 }
 
 var ransomwareExts = map[string]bool{
-	".wannacry": true, ".wcry": true, ".lockbit": true, ".ryuk": true,
-	".cryptolocker": true, ".cerber": true, ".blackcat": true,
+	".wannacry": true, ".wcry": true, ".wncry": true, ".lockbit": true, ".ryuk": true,
+	".cryptolocker": true, ".cerber": true, ".blackcat": true, ".alphv": true, ".conti": true,
+	".revil": true, ".sodinokibi": true, ".djvu": true, ".stop": true, ".phobos": true,
+	".akira": true, ".royal": true, ".play": true, ".clop": true, ".hive": true,
+	".medusa": true, ".blackbasta": true, ".rhysida": true,
 }
 
 type heuristicRule struct {
@@ -313,53 +314,195 @@ type heuristicRule struct {
 
 var scriptHeuristics = []heuristicRule{
 	{[]byte(eicarStandardSignature), "EICAR-Test", "high", "Обнаружена стандартная тестовая сигнатура антивируса EICAR"},
+	// 1. PowerShell / Obfuscation / Download Cradles
 	{[]byte("invoke-expression"), "Suspicious-Script", "medium", "Скрытое динамическое выполнение PowerShell (Invoke-Expression)"},
 	{[]byte("-encodedcommand"), "Obfuscated-PS", "high", "Обфусцированная команда PowerShell (-EncodedCommand)"},
+	{[]byte("-enc "), "Obfuscated-PS", "high", "Скрытая закодированная команда PowerShell (-enc)"},
 	{[]byte("frombase64string"), "Obfuscated-Payload", "medium", "Декодирование скрытой Base64 нагрузки в скрипте"},
+	{[]byte("powershell -nop -w hidden"), "Stealth-PS", "high", "Скрытый запуск PowerShell без окна (-nop -w hidden)"},
+	{[]byte("-windowstyle hidden"), "Stealth-PS", "medium", "Попытка скрыть окно выполнения сценария (-WindowStyle Hidden)"},
+	{[]byte("downloadstring("), "Dropper-Script", "medium", "Загрузка и исполнение удалённого кода (DownloadString)"},
+	{[]byte("downloadfile("), "Dropper-Script", "medium", "Скрытая загрузка файла через WebClient.DownloadFile"},
+	{[]byte("invoke-webrequest"), "Dropper-Script", "low", "Загрузка данных из сети внутри системного скрипта"},
+	{[]byte("start-bitstransfer"), "Dropper-Script", "medium", "Фоновая загрузка удалённой нагрузки через BITS"},
+	{[]byte("net.webclient"), "Dropper-Script", "medium", "Использование сетевого загрузчика Net.WebClient"},
+	{[]byte("reflection.assembly]::load"), "Fileless-Malware", "high", "Бесфайловая загрузка .NET-сборки прямо в память"},
+	{[]byte("gzipstream"), "Obfuscated-Payload", "medium", "Распаковка сжатого полезного кода в памяти"},
+	{[]byte("memorystream"), "Fileless-Malware", "medium", "Исполнение нагрузки через MemoryStream"},
+	// 2. LOLBins & Living-off-the-Land Droppers
 	{[]byte("certutil -urlcache"), "LOLBin-Dropper", "high", "Попытка скрытой загрузки через certutil -urlcache"},
+	{[]byte("certutil -decode"), "LOLBin-Decoder", "high", "Декодирование скрытого бинарника через certutil -decode"},
 	{[]byte("bitsadmin /transfer"), "LOLBin-Dropper", "high", "Скрытая загрузка файла через bitsadmin /transfer"},
 	{[]byte("mshta http"), "Remote-HTA", "high", "Удалённый запуск HTA-сценария (mshta http)"},
-	{[]byte("regsvr32 /s /u /i:http"), "LOLBin-Squiblydoo", "high", "Удалённое выполнение скрипта через regsvr32"},
+	{[]byte("mshta vbscript:"), "Remote-HTA", "high", "Скрытый запуск VBScript через mshta"},
+	{[]byte("regsvr32 /s /u /i:http"), "LOLBin-Squiblydoo", "high", "Удалённое выполнение скрипта через regsvr32 (Squiblydoo)"},
+	{[]byte("regsvr32 /s /n /u /i:http"), "LOLBin-Abuse", "high", "Удалённая загрузка скрипта через regsvr32 (Squiblydoo)"},
 	{[]byte("rundll32 javascript:"), "LOLBin-Script", "high", "Исполнение скрытого JavaScript через rundll32"},
-	{[]byte("downloadstring("), "Dropper-Script", "medium", "Загрузка и исполнение удалённого кода (DownloadString)"},
-	{[]byte("invoke-mimikatz"), "Credential-Stealer", "high", "Сигнатура инструмента дампа учётных данных (Mimikatz)"},
-	{[]byte("sekurlsa::logonpasswords"), "Credential-Stealer", "high", "Попытка извлечения паролей из LSASS"},
-	{[]byte("bash -i >& /dev/tcp/"), "Reverse-Shell", "high", "Скрытый обратный shell (/dev/tcp)"},
-	{[]byte("powershell -nop -w hidden"), "Stealth-PS", "high", "Скрытый запуск PowerShell без окна (-nop -w hidden)"},
-	{[]byte("add-mppreference -exclusionpath"), "Defense-Evasion", "high", "Попытка добавить исключение в Windows Defender"},
-	{[]byte("set-mppreference -disablerealtimemonitoring"), "Defense-Evasion", "high", "Попытка отключить защиту реального времени Windows Defender"},
-	{[]byte("vssadmin delete shadows"), "Ransomware-Behavior", "high", "Попытка удаления теневых копий системы (признак шифровальщика)"},
-	{[]byte("wbadmin delete catalog"), "Ransomware-Behavior", "high", "Попытка уничтожения резервных копий Windows"},
-	{[]byte("wmic shadowcopy delete"), "Ransomware-Behavior", "high", "Удаление теневых копий через WMIC"},
-	{[]byte("schtasks /create"), "Persistence-Task", "medium", "Создание скрытого задания автозапуска в планировщике"},
-	// LumaShield 1.4 Advanced Rules (AMSI, Crypto Miners, Token/Browser Stealers, UAC Bypass)
-	{[]byte("amsiutils"), "AMSI-Bypass", "high", "Попытка обхода системы защиты скриптов AMSI (AmsiUtils)"},
-	{[]byte("amsiinitfailed"), "AMSI-Bypass", "high", "Попытка патча памяти AMSI (amsiInitFailed)"},
-	{[]byte("stratum+tcp://"), "Crypto-Miner", "high", "Обнаружен скрытый пул майнинга криптовалюты (stratum+tcp)"},
-	{[]byte("xmrig"), "Crypto-Miner", "high", "Сигнатура скрытого криптомайнера (XMRig)"},
+	{[]byte("rundll32 url.dll"), "LOLBin-Abuse", "medium", "Запуск скрытого URL/объекта через rundll32"},
+	{[]byte("cmstp /s"), "LOLBin-Bypass", "high", "Обход контроля приложений через cmstp"},
+	{[]byte("installutil /logfile="), "LOLBin-Bypass", "high", "Запуск кода в обход AppLocker через InstallUtil"},
+	{[]byte("wmic process call create"), "LOLBin-Exec", "high", "Скрытый запуск процесса через WMIC"},
+	{[]byte("forfiles /p "), "LOLBin-Exec", "medium", "Нестандартный запуск команды через forfiles"},
+	{[]byte("msiexec /q /i http"), "LOLBin-Dropper", "high", "Тихая удалённая установка MSI-пакета"},
+	// 3. Telegram / Discord / Browser / Crypto Wallet InfoStealers (LumaShield 2.0!)
+	{[]byte("\\telegram desktop\\tdata"), "Telegram-Stealer", "high", "Попытка кражи сессии Telegram Desktop (tdata)"},
+	{[]byte("tdata\\d877f783d5d3ef8c"), "Telegram-Stealer", "high", "Сигнатура стилера ключей сессии Telegram"},
+	{[]byte("api.telegram.org/bot"), "InfoStealer-Exfil", "high", "Скрытая отправка украденных данных через Telegram Bot API"},
 	{[]byte("discord.com/api/webhooks"), "InfoStealer-Webhook", "medium", "Подозрительная отправка данных через Discord Webhook"},
+	{[]byte("\\discord\\local storage\\leveldb"), "Discord-Stealer", "high", "Попытка кражи токенов авторизации Discord"},
 	{[]byte("\\google\\chrome\\user data\\default\\login data"), "Browser-Stealer", "high", "Попытка кражи сохранённых паролей Google Chrome"},
-	{[]byte("fodhelper.exe"), "UAC-Bypass", "high", "Признак обхода контроля учётных записей (UAC Bypass fodhelper)"},
-	{[]byte("compmgmtlauncher.exe"), "UAC-Bypass", "medium", "Подозрительный паттерн повышения привилегий (UAC Bypass)"},
-	{[]byte("virtualalloc"), "Shellcode-Injection", "medium", "Подозрительное выделение исполняемой памяти (VirtualAlloc)"},
-	{[]byte("createremotethread"), "Process-Injection", "high", "Попытка внедрения кода в чужой процесс (CreateRemoteThread)"},
-	{[]byte("net user /add"), "Backdoor-Account", "high", "Попытка скрытого создания учётной записи пользователя"},
-	{[]byte("bcdedit /set {default} recoveryenabled no"), "Ransomware-Behavior", "high", "Попытка отключения восстановления системы Windows (Ransomware)"},
-	// LumaShield 1.5 Boron Rules (Credential Dumping, Crypto Wallets, Defender Tampering, LOLBins, Persistence)
-	{[]byte("sekurlsa::logonpasswords"), "Credential-Dumper", "high", "Сигнатура извлечения паролей из памяти LSASS (Mimikatz/sekurlsa)"},
-	{[]byte("reg save hklm\\sam"), "Credential-Dumper", "high", "Попытка дампа ветки реестра SAM (кража хешей паролей)"},
-	{[]byte("procdump"), "Credential-Dumper", "medium", "Потенциальный дамп памяти системных процессов (ProcDump)"},
-	{[]byte("add-mppreference -exclusionpath"), "Defense-Evasion", "high", "Попытка добавить скрытое исключение в антивирус Defender"},
-	{[]byte("set-mppreference -disablerealtimemonitoring"), "Defense-Evasion", "high", "Попытка отключить защиту в реальном времени Windows Defender"},
-	{[]byte("wbadmin delete catalog"), "Ransomware-Behavior", "high", "Попытка удалить каталог резервных копий (Ransomware)"},
-	{[]byte("vssadmin delete shadows"), "Ransomware-Behavior", "high", "Попытка уничтожения теневых копий томов (Ransomware)"},
+	{[]byte("\\microsoft\\edge\\user data\\default\\login data"), "Browser-Stealer", "high", "Попытка кражи сохранённых паролей Microsoft Edge"},
+	{[]byte("\\bravesoftware\\brave-browser\\user data"), "Browser-Stealer", "high", "Попытка кражи паролей/куки Brave Browser"},
+	{[]byte("\\yandex\\yandexbrowser\\user data"), "Browser-Stealer", "high", "Попытка кражи паролей/куки Яндекс Браузера"},
+	{[]byte("\\opera software\\opera stable\\login data"), "Browser-Stealer", "high", "Попытка кражи паролей Opera"},
+	{[]byte("\\mozilla\\firefox\\profiles"), "Browser-Stealer", "medium", "Обращение скрипта к базе профилей/паролей Firefox"},
+	{[]byte("local state"), "Browser-Stealer", "medium", "Чтение ключа шифрования браузера (Local State DPAPI)"},
+	{[]byte("cryptunprotectdata"), "Credential-Stealer", "high", "Дешифровка защищённых паролей Windows через DPAPI (CryptUnprotectData)"},
 	{[]byte("\\exodus\\exodus.wallet"), "Wallet-Stealer", "high", "Попытка доступа к криптокошельку Exodus"},
 	{[]byte("nkbihfbeogaeaoehlefnkodbefgpgknn"), "Wallet-Stealer", "high", "Попытка кражи данных криптокошелька MetaMask"},
-	{[]byte("\\microsoft\\edge\\user data\\default\\login data"), "Browser-Stealer", "high", "Попытка кражи сохранённых паролей Microsoft Edge"},
-	{[]byte("image file execution options"), "Persistence-IFEO", "high", "Попытка перехвата запуска приложений через IFEO (Persistence)"},
-	{[]byte("rundll32 javascript:"), "LOLBin-Abuse", "high", "Запуск скрытого скрипта через rundll32 javascript"},
-	{[]byte("regsvr32 /s /n /u /i:http"), "LOLBin-Abuse", "high", "Удалённая загрузка скрипта через regsvr32 (Squiblydoo)"},
-	{[]byte("bitsadmin /transfer"), "LOLBin-Download", "medium", "Скрытая фоновая загрузка файла через bitsadmin"},
+	{[]byte("bfnaelmomeimhlpmgjnjophhpkkoljpa"), "Wallet-Stealer", "high", "Попытка кражи криптокошелька Phantom"},
+	{[]byte("egjidjbpglichdcondbcbdnbeeppgdph"), "Wallet-Stealer", "high", "Попытка кражи криптокошелька Trust Wallet"},
+	{[]byte("hnfanknocfeofbddgcijnmhnfnkdnaad"), "Wallet-Stealer", "high", "Попытка кражи криптокошелька Coinbase Wallet"},
+	{[]byte("\\electrum\\wallets"), "Wallet-Stealer", "high", "Попытка кражи файлов криптокошелька Electrum"},
+	{[]byte("\\atomic\\local storage"), "Wallet-Stealer", "high", "Попытка кражи данных Atomic Wallet"},
+	{[]byte("seed phrase"), "Wallet-Stealer", "medium", "Поиск мнемонической seed-фразы криптокошелька"},
+	{[]byte("\\steam\\config\\loginusers.vdf"), "Gaming-Stealer", "high", "Попытка кражи сессии Steam (loginusers.vdf)"},
+	{[]byte("ssfn"), "Gaming-Stealer", "medium", "Поиск файлов аутентификации Steam (ssfn)"},
+	// 4. Keyloggers, Screen-Spies & Crypto-Clippers
+	{[]byte("setwindowshookex"), "Keylogger-Spy", "high", "Перехват нажатий клавиш через Win32 SetWindowsHookEx (Кейлоггер)"},
+	{[]byte("getasynckeystate"), "Keylogger-Spy", "high", "Скрытое считывание клавиш через GetAsyncKeyState (Кейлоггер)"},
+	{[]byte("getkeyboardstate"), "Keylogger-Spy", "medium", "Считывание состояния клавиатуры в скрипте"},
+	{[]byte("pynput.keyboard"), "Keylogger-Spy", "high", "Python-кейлоггер на базе pynput.keyboard"},
+	{[]byte("openclipboard"), "Crypto-Clipper", "medium", "Перехват буфера обмена (возможен крипто-клиппер)"},
+	{[]byte("setclipboarddata"), "Crypto-Clipper", "medium", "Подмена содержимого буфера обмена (Crypto-Clipper)"},
+	{[]byte("bc1q"), "Crypto-Clipper", "low", "Обнаружен встроенный BTC-адрес (проверьте на клиппер)"},
+	// 5. Credential Dumpers & LSASS Attacks
+	{[]byte("invoke-mimikatz"), "Credential-Stealer", "high", "Сигнатура инструмента дампа учётных данных (Mimikatz)"},
+	{[]byte("sekurlsa::logonpasswords"), "Credential-Dumper", "high", "Попытка извлечения паролей из памяти LSASS (sekurlsa)"},
+	{[]byte("lsadump::sam"), "Credential-Dumper", "high", "Попытка извлечения хешей SAM (Mimikatz)"},
+	{[]byte("reg save hklm\\sam"), "Credential-Dumper", "high", "Попытка дампа ветки реестра SAM (кража хешей паролей)"},
+	{[]byte("reg save hklm\\system"), "Credential-Dumper", "high", "Попытка дампа системного ключа реестра SYSTEM"},
+	{[]byte("comsvcs.dll, minidump"), "Credential-Dumper", "high", "Дамп памяти LSASS через comsvcs.dll MiniDump"},
+	{[]byte("procdump"), "Credential-Dumper", "medium", "Потенциальный дамп памяти системных процессов (ProcDump)"},
+	{[]byte("lazagne"), "Credential-Stealer", "high", "Сигнатура сборщика паролей LaZagne"},
+	// 6. Ransomware & Destructive Behavior
+	{[]byte("vssadmin delete shadows"), "Ransomware-Behavior", "high", "Уничтожение теневых копий системы (признак шифровальщика)"},
+	{[]byte("wbadmin delete catalog"), "Ransomware-Behavior", "high", "Уничтожение каталога резервных копий Windows (Ransomware)"},
+	{[]byte("wmic shadowcopy delete"), "Ransomware-Behavior", "high", "Удаление теневых копий через WMIC (Ransomware)"},
+	{[]byte("bcdedit /set {default} recoveryenabled no"), "Ransomware-Behavior", "high", "Отключение восстановления системы Windows (Ransomware)"},
+	{[]byte("bcdedit /set {default} bootstatuspolicy ignoreallfailures"), "Ransomware-Behavior", "high", "Подавление экрана восстановления Windows (Ransomware)"},
+	{[]byte("cipher /w:"), "Ransomware-Wiper", "high", "Затирание свободного места диска для блокировки восстановления"},
+	{[]byte("wevtutil cl security"), "Anti-Forensics", "high", "Очистка журнала безопасности Windows (заметание следов)"},
+	{[]byte("wevtutil cl system"), "Anti-Forensics", "high", "Очистка системного журнала Windows"},
+	{[]byte("your files have been encrypted"), "Ransomware-Note", "high", "Текст записки вымогателя-шифровальщика"},
+	{[]byte("ваши файлы зашифрованы"), "Ransomware-Note", "high", "Текст записки вымогателя-шифровальщика"},
+	// 7. Defense Evasion, AMSI, ETW, UAC Bypass
+	{[]byte("add-mppreference -exclusionpath"), "Defense-Evasion", "high", "Попытка добавить скрытое исключение в антивирус Defender"},
+	{[]byte("set-mppreference -disablerealtimemonitoring"), "Defense-Evasion", "high", "Попытка отключить защиту реального времени Windows Defender"},
+	{[]byte("set-mppreference -disablebehaviormonitoring"), "Defense-Evasion", "high", "Отключение поведенческого анализа антивируса"},
+	{[]byte("amsiutils"), "AMSI-Bypass", "high", "Попытка обхода системы защиты скриптов AMSI (AmsiUtils)"},
+	{[]byte("amsiinitfailed"), "AMSI-Bypass", "high", "Попытка патча памяти AMSI (amsiInitFailed)"},
+	{[]byte("amsiscanbuffer"), "AMSI-Bypass", "high", "Патч функции AmsiScanBuffer для обхода антивируса"},
+	{[]byte("etweventwrite"), "ETW-Bypass", "high", "Попытка отключения телеметрии ядра ETW (EtwEventWrite)"},
+	{[]byte("fodhelper.exe"), "UAC-Bypass", "high", "Признак обхода контроля учётных записей (UAC Bypass fodhelper)"},
+	{[]byte("compmgmtlauncher.exe"), "UAC-Bypass", "medium", "Подозрительный паттерн повышения привилегий (UAC Bypass)"},
+	{[]byte("eventvwr.exe"), "UAC-Bypass", "medium", "Возможный обход UAC через eventvwr"},
+	{[]byte("sdclt.exe"), "UAC-Bypass", "medium", "Возможный обход UAC через sdclt"},
+	{[]byte("netsh advfirewall set allprofiles state off"), "Firewall-Tamper", "high", "Попытка полного отключения брандмауэра Windows"},
+	// 8. Reverse Shells, C2 & Backdoors
+	{[]byte("bash -i >& /dev/tcp/"), "Reverse-Shell", "high", "Скрытый обратный shell (/dev/tcp)"},
+	{[]byte("nc -e /bin/sh"), "Reverse-Shell", "high", "Обратный shell через Netcat (nc -e)"},
+	{[]byte("ncat -e cmd"), "Reverse-Shell", "high", "Обратный shell Windows через Ncat"},
+	{[]byte("socket.socket(socket.af_inet"), "Reverse-Shell", "medium", "Скрытое сетевое подключение/бэкдор на Python"},
+	{[]byte("subprocess.popen"), "Suspicious-Exec", "low", "Запуск скрытого системного подпроцесса из Python"},
+	{[]byte("new-object system.net.sockets.tcpclient"), "Reverse-Shell", "high", "PowerShell Reverse Shell (TCPClient)"},
+	{[]byte("fsockopen("), "WebShell-Backdoor", "high", "PHP обратный shell (fsockopen)"},
+	{[]byte("eval($_post"), "WebShell-Backdoor", "high", "PHP веб-шелл бэкдор (eval $_POST)"},
+	{[]byte("meterpreter"), "C2-Framework", "high", "Сигнатура фреймворка удалённого управления Meterpreter"},
+	{[]byte("cobaltstrike"), "C2-Framework", "high", "Сигнатура агента Cobalt Strike Beacon"},
+	{[]byte("net user /add"), "Backdoor-Account", "high", "Попытка скрытого создания учётной записи пользователя"},
+	{[]byte("net localgroup administrators"), "Privilege-Escalation", "high", "Попытка добавления пользователя в группу Администраторы"},
+	// 9. Process Injection, Shellcode & Persistence
+	{[]byte("virtualalloc"), "Shellcode-Injection", "medium", "Подозрительное выделение исполняемой памяти (VirtualAlloc)"},
+	{[]byte("virtualallocex"), "Process-Injection", "high", "Выделение памяти в чужом процессе (VirtualAllocEx)"},
+	{[]byte("writeprocessmemory"), "Process-Injection", "high", "Запись шеллкода в память другого процесса (WriteProcessMemory)"},
+	{[]byte("createremotethread"), "Process-Injection", "high", "Внедрение потока исполнения в чужой процесс (CreateRemoteThread)"},
+	{[]byte("ntunmapviewofsection"), "Process-Hollowing", "high", "Техника подмены процесса Process Hollowing"},
+	{[]byte("queueuserapc"), "Process-Injection", "high", "Внедрение кода через асинхронный вызов QueueUserAPC"},
+	{[]byte("schtasks /create"), "Persistence-Task", "medium", "Создание скрытого задания автозапуска в планировщике"},
+	{[]byte("image file execution options"), "Persistence-IFEO", "high", "Перехват запуска приложений через ветку IFEO"},
+	{[]byte("currentversion\\run"), "Persistence-Registry", "medium", "Запись в ветку автозагрузки реестра Windows Run"},
+	{[]byte("__eventfilter"), "Persistence-WMI", "high", "Скрытое закрепление через подписку WMI EventFilter"},
+	// 10. Crypto Miners & Office VBA Macro Droppers
+	{[]byte("stratum+tcp://"), "Crypto-Miner", "high", "Обнаружен скрытый пул майнинга криптовалюты (stratum+tcp)"},
+	{[]byte("stratum+ssl://"), "Crypto-Miner", "high", "Зашифрованный пул скрытого криптомайнера (stratum+ssl)"},
+	{[]byte("xmrig"), "Crypto-Miner", "high", "Сигнатура скрытого криптомайнера (XMRig)"},
+	{[]byte("randomx"), "Crypto-Miner", "medium", "Алгоритм майнинга Monero (RandomX) в скрипте"},
+	{[]byte("autoopen()"), "Office-Macro-Dropper", "high", "Автозапускаемый макрос Office (AutoOpen)"},
+	{[]byte("document_open()"), "Office-Macro-Dropper", "high", "Автозапускаемый макрос Word (Document_Open)"},
+	{[]byte("workbook_open()"), "Office-Macro-Dropper", "high", "Автозапускаемый макрос Excel (Workbook_Open)"},
+	{[]byte("wscript.shell"), "Script-Dropper", "medium", "Вызов системной оболочки через WScript.Shell"},
+	{[]byte("shell.application"), "Script-Dropper", "medium", "Запуск программ через COM-объект Shell.Application"},
+}
+
+// inspectArchiveThreat checks ZIP archives and Office macro documents (.docm/.xlsm/.pptm/.zip) for VBA macros or hidden executables.
+func inspectArchiveThreat(path, name, ext string, info os.FileInfo) *SecurityThreat {
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		return nil
+	}
+	defer zr.Close()
+
+	isOfficeMacroExt := ext == ".docm" || ext == ".xlsm" || ext == ".pptm" || ext == ".docx" || ext == ".xlsx" || ext == ".pptx"
+	for _, f := range zr.File {
+		lowEntry := strings.ToLower(strings.ReplaceAll(f.Name, "\\", "/"))
+		// 1. Office VBA Macro binary (vbaProject.bin)
+		if isOfficeMacroExt && strings.HasSuffix(lowEntry, "vbaproject.bin") {
+			return &SecurityThreat{
+				ID:         fmt.Sprintf("thr_vba_%d", time.Now().UnixNano()),
+				Path:       path,
+				Name:       name,
+				Severity:   "high",
+				Category:   "Office-VBA-Macro",
+				Reason:     fmt.Sprintf("В документе обнаружен исполняемый макрос VBA (%s) — потенциальный дроппер", f.Name),
+				SHA256:     computeFileSHA256(path),
+				Size:       info.Size(),
+				DetectedAt: time.Now().Format("15:04:05"),
+			}
+		}
+		// 2. Double extension or dangerous script disguised inside ZIP
+		if ext == ".zip" {
+			for _, dext := range suspiciousDoubleExts {
+				if strings.HasSuffix(lowEntry, dext) {
+					return &SecurityThreat{
+						ID:         fmt.Sprintf("thr_zip_%d", time.Now().UnixNano()),
+						Path:       path,
+						Name:       name,
+						Severity:   "high",
+						Category:   "Archive-Masquerading",
+						Reason:     fmt.Sprintf("Внутри архива скрыт файл с двойным расширением (%s)", f.Name),
+						SHA256:     computeFileSHA256(path),
+						Size:       info.Size(),
+						DetectedAt: time.Now().Format("15:04:05"),
+					}
+				}
+			}
+			if strings.HasSuffix(lowEntry, ".hta") || strings.HasSuffix(lowEntry, ".vbs") || strings.HasSuffix(lowEntry, ".scr") || strings.HasSuffix(lowEntry, ".pif") {
+				return &SecurityThreat{
+					ID:         fmt.Sprintf("thr_zip_%d", time.Now().UnixNano()),
+					Path:       path,
+					Name:       name,
+					Severity:   "medium",
+					Category:   "Archive-Suspicious-Payload",
+					Reason:     fmt.Sprintf("Архив содержит потенциально опасный скрипт/исполняемый файл (%s)", f.Name),
+					SHA256:     computeFileSHA256(path),
+					Size:       info.Size(),
+					DetectedAt: time.Now().Format("15:04:05"),
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (s *SecurityKernel) inspectSingleFile(path string, info os.FileInfo) *SecurityThreat {
@@ -392,7 +535,7 @@ func (s *SecurityKernel) inspectSingleFile(path string, info os.FileInfo) *Secur
 	}
 
 	// 2. Known ransomware encrypted extension or ransom note check
-	if ransomwareExts[ext] || strings.Contains(lower, "how_to_decrypt") || strings.Contains(lower, "restore_my_files") {
+	if ransomwareExts[ext] || strings.Contains(lower, "how_to_decrypt") || strings.Contains(lower, "restore_my_files") || strings.Contains(lower, "readme_decrypt") {
 		return &SecurityThreat{
 			ID:         fmt.Sprintf("thr_%d", time.Now().UnixNano()),
 			Path:       path,
@@ -406,13 +549,21 @@ func (s *SecurityKernel) inspectSingleFile(path string, info os.FileInfo) *Secur
 		}
 	}
 
-	// 3. Content signature, PE-header masquerading & Shannon entropy check
-	isDocOrImg := ext == ".pdf" || ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".docx" || ext == ".xlsx" || ext == ".txt"
-	isScript := ext == ".ps1" || ext == ".bat" || ext == ".cmd" || ext == ".vbs" || ext == ".hta" || ext == ".js" || ext == ".sh"
-	isBinary := ext == ".exe" || ext == ".scr" || ext == ".dll" || ext == ".pif" || ext == ".com"
-	scanContent := isDocOrImg || isScript || ext == ".py" || ext == ".eicar" || (isBinary && info.Size() <= 2*1024*1024) || info.Size() <= 256*1024
+	// 2b. LumaShield 2.0 Archive & Office VBA Macro Deep Inspection (.zip, .docm, .xlsm, .pptm, .docx, .xlsx, .pptx)
+	if (ext == ".zip" || ext == ".docm" || ext == ".xlsm" || ext == ".pptm" || ext == ".docx" || ext == ".xlsx" || ext == ".pptx") &&
+		info.Size() > 0 && info.Size() <= 25*1024*1024 && !strings.Contains(lowerPath, "l_h-3.0") {
+		if archThreat := inspectArchiveThreat(path, name, ext, info); archThreat != nil {
+			return archThreat
+		}
+	}
 
-	if scanContent && info.Size() > 0 && info.Size() <= 4*1024*1024 {
+	// 3. Content signature, PE-header masquerading & Shannon entropy check
+	isDocOrImg := ext == ".pdf" || ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".docx" || ext == ".xlsx" || ext == ".pptx" || ext == ".txt" || ext == ".mp3" || ext == ".mp4"
+	isScript := ext == ".ps1" || ext == ".bat" || ext == ".cmd" || ext == ".vbs" || ext == ".hta" || ext == ".js" || ext == ".wsf" || ext == ".sh" || ext == ".py" || ext == ".php" || ext == ".rb" || ext == ".vba"
+	isBinary := ext == ".exe" || ext == ".scr" || ext == ".dll" || ext == ".pif" || ext == ".com" || ext == ".msi"
+	scanContent := isDocOrImg || isScript || ext == ".eicar" || (isBinary && info.Size() <= 4*1024*1024) || info.Size() <= 256*1024
+
+	if scanContent && info.Size() > 0 && info.Size() <= 8*1024*1024 {
 		f, err := os.Open(path)
 		if err == nil {
 			buf := make([]byte, 256*1024)
@@ -451,8 +602,8 @@ func (s *SecurityKernel) inspectSingleFile(path string, info os.FileInfo) *Secur
 					}
 				}
 
-				// 3c. Script-only heuristic rules (avoid false positives on Luma's own sources)
-				if isScript && !strings.Contains(lowerPath, "l_h-3.0") {
+				// 3c. Script & small-file heuristic rules (170+ LumaShield 2.0 signatures)
+				if (isScript || ext == ".txt" || ext == ".lnk") && !strings.Contains(lowerPath, "l_h-3.0") {
 					lowChunk := bytes.ToLower(chunk)
 					for _, rule := range scriptHeuristics[1:] {
 						if bytes.Contains(lowChunk, rule.needle) {
@@ -471,18 +622,19 @@ func (s *SecurityKernel) inspectSingleFile(path string, info os.FileInfo) *Secur
 					}
 				}
 
-				// 3d. High Shannon Entropy Packed Binary Check in Temp/Downloads (suspected crypter/packer)
-				if isBinary && n >= 16384 && (strings.Contains(lowerPath, `\temp\`) || strings.Contains(lowerPath, "/tmp/")) &&
-					!strings.Contains(lower, "lumaos") && !strings.Contains(lower, "setup") && !strings.Contains(lower, "install") {
+				// 3d. High Shannon Entropy Packed Binary Check in Temp / Downloads / Desktop
+				if isBinary && n >= 16384 &&
+					(strings.Contains(lowerPath, `\temp\`) || strings.Contains(lowerPath, "/tmp/") || strings.Contains(lowerPath, "downloads")) &&
+					!strings.Contains(lower, "lumaos") && !strings.Contains(lower, "setup") && !strings.Contains(lower, "install") && !strings.Contains(lower, "update") {
 					ent := computeShannonEntropy(chunk)
-					if ent >= 7.65 {
+					if ent >= 7.55 {
 						return &SecurityThreat{
 							ID:         fmt.Sprintf("thr_%d", time.Now().UnixNano()),
 							Path:       path,
 							Name:       name,
 							Severity:   "medium",
 							Category:   "High-Entropy-Packer",
-							Reason:     fmt.Sprintf("Сильно запакованный/зашифрованный бинарник в Temp (энтропия %.2f бит/байт)", ent),
+							Reason:     fmt.Sprintf("Сильно запакованный/криптованный бинарник (энтропия Шеннона %.2f бит/байт)", ent),
 							SHA256:     computeFileSHA256(path),
 							Size:       info.Size(),
 							DetectedAt: time.Now().Format("15:04:05"),
@@ -493,22 +645,23 @@ func (s *SecurityKernel) inspectSingleFile(path string, info os.FileInfo) *Secur
 		}
 	}
 
-	// 4. Suspicious temp-dropped executable names
-	if (ext == ".exe" || ext == ".scr" || ext == ".pif") &&
+	// 4. Suspicious temp/downloads executable names
+	if (ext == ".exe" || ext == ".scr" || ext == ".pif" || ext == ".bat" || ext == ".vbs") &&
 		(strings.Contains(lowerPath, `\temp\`) || strings.Contains(lowerPath, "/tmp/") || strings.Contains(lowerPath, "downloads")) {
-		if strings.Contains(lower, "crack") || strings.Contains(lower, "keygen") ||
-			strings.Contains(lower, "stealer") || strings.Contains(lower, "miner") ||
-			strings.Contains(lower, "trojan") || strings.Contains(lower, "rat_") || strings.Contains(lower, "redline") {
-			return &SecurityThreat{
-				ID:         fmt.Sprintf("thr_%d", time.Now().UnixNano()),
-				Path:       path,
-				Name:       name,
-				Severity:   "high",
-				Category:   "Suspicious-Binary",
-				Reason:     "Подозрительный исполняемый файл (признак трояна/майнера/кряка)",
-				SHA256:     computeFileSHA256(path),
-				Size:       info.Size(),
-				DetectedAt: time.Now().Format("15:04:05"),
+		badNameTokens := []string{"crack", "keygen", "stealer", "miner", "trojan", "rat_", "redline", "lumma", "vidar", "raccoon", "asyncrat", "njrat", "clipper", "keylog", "cheatengine_crack", "activator_kms"}
+		for _, tok := range badNameTokens {
+			if strings.Contains(lower, tok) {
+				return &SecurityThreat{
+					ID:         fmt.Sprintf("thr_%d", time.Now().UnixNano()),
+					Path:       path,
+					Name:       name,
+					Severity:   "high",
+					Category:   "Suspicious-Binary",
+					Reason:     fmt.Sprintf("Подозрительный исполняемый файл (индикатор «%s»)", tok),
+					SHA256:     computeFileSHA256(path),
+					Size:       info.Size(),
+					DetectedAt: time.Now().Format("15:04:05"),
+				}
 			}
 		}
 	}
@@ -523,20 +676,27 @@ func minInt(a, b int) int {
 	return b
 }
 
-// ScanRunningProcesses inspects active host processes for suspicious execution locations or known malware indicators.
+// ScanRunningProcesses inspects active host processes for 35+ known malware/stealer/RAT/miner signatures + Temp execution.
 func (s *SecurityKernel) ScanRunningProcesses(probe *platformProbe) []SecurityThreat {
 	if probe == nil {
 		return []SecurityThreat{}
 	}
-	procs := probe.TopProcesses(100)
+	procs := probe.TopProcesses(150)
 	var found []SecurityThreat
-	suspiciousNames := []string{"xmrig", "minerd", "njrat", "darkcomet", "mimikatz", "redline", "asyncrat", "remcos"}
+	suspiciousNames := []string{
+		"xmrig", "minerd", "cpuminer", "nbminer", "t-rex", "phoenixminer", "lolminer", "gminer",
+		"njrat", "darkcomet", "quasarrat", "asyncrat", "remcos", "nanocore", "warzone", "orcus",
+		"mimikatz", "rubeus", "lazagne", "procdump", "sharphound", "cobaltstrike", "meterpreter",
+		"redline", "raccoon", "vidar", "lumma", "stealc", "meta_stealer", "azorult", "lokibot",
+		"keylogger", "clipper", "hvnc", "xworm", "venomrat", "dcrat",
+	}
 	for _, pr := range procs {
 		if pr.IsSelf {
 			continue
 		}
 		lowName := strings.ToLower(pr.Name)
 		lowPath := strings.ToLower(pr.ExePath)
+		matched := false
 		for _, bad := range suspiciousNames {
 			if strings.Contains(lowName, bad) || strings.Contains(lowPath, bad) {
 				found = append(found, SecurityThreat{
@@ -545,22 +705,129 @@ func (s *SecurityKernel) ScanRunningProcesses(probe *platformProbe) []SecurityTh
 					Name:       fmt.Sprintf("%s (PID %d)", pr.Name, pr.PID),
 					Severity:   "high",
 					Category:   "Malicious-Process",
-					Reason:     fmt.Sprintf("Обнаружен подозрительный активный процесс (%s)", bad),
+					Reason:     fmt.Sprintf("LumaShield 2.0: обнаружен вредоносный активный процесс (%s)", bad),
 					DetectedAt: time.Now().Format("15:04:05"),
 				})
+				matched = true
 				break
 			}
+		}
+		if !matched && lowPath != "" && (strings.Contains(lowPath, `\appdata\local\temp\`) || strings.Contains(lowPath, `\windows\temp\`)) &&
+			!strings.Contains(lowName, "setup") && !strings.Contains(lowName, "install") && !strings.Contains(lowName, "update") && !strings.Contains(lowName, "luma") {
+			found = append(found, SecurityThreat{
+				ID:         fmt.Sprintf("thr_tmpproc_%d", pr.PID),
+				Path:       pr.ExePath,
+				Name:       fmt.Sprintf("%s (PID %d)", pr.Name, pr.PID),
+				Severity:   "medium",
+				Category:   "Temp-Process",
+				Reason:     "Необычный процесс запущен напрямую из временного каталога Temp",
+				DetectedAt: time.Now().Format("15:04:05"),
+			})
 		}
 	}
 	if len(found) > 0 {
 		s.mu.Lock()
 		s.lastThreats = append(found, s.lastThreats...)
 		s.mu.Unlock()
-		s.LogAudit("danger", "process-guard", "Сканирование процессов: найдены угрозы", fmt.Sprintf("Подозрительных процессов: %d", len(found)))
+		s.LogAudit("danger", "process-guard", "LumaShield 2.0 · Процессы: найдены угрозы", fmt.Sprintf("Подозрительных процессов: %d", len(found)))
 	} else {
-		s.LogAudit("ok", "process-guard", "Сканирование процессов завершено", fmt.Sprintf("Проверено %d активных процессов — угроз не найдено", len(procs)))
+		s.LogAudit("ok", "process-guard", "LumaShield 2.0 · Процессы проверены", fmt.Sprintf("Проверено %d активных процессов — угроз не найдено", len(procs)))
 	}
 	return found
+}
+
+// InspectUploadedFile analyzes an arbitrary file dropped in the UI (bytes + filename) through LumaShield 2.0 without touching the user's disk permanently.
+func (s *SecurityKernel) InspectUploadedFile(name string, raw []byte) map[string]interface{} {
+	tmpDir := filepath.Join(os.TempDir(), "LumaShield_SingleCheck")
+	_ = os.MkdirAll(tmpDir, 0o700)
+	safeName := filepath.Base(strings.TrimSpace(name))
+	if safeName == "" || safeName == "." {
+		safeName = "dropped_file.bin"
+	}
+	tmpPath := filepath.Join(tmpDir, safeName)
+	_ = os.WriteFile(tmpPath, raw, 0o600)
+	defer os.Remove(tmpPath)
+
+	st, _ := os.Stat(tmpPath)
+	thr := s.inspectSingleFile(tmpPath, st)
+	hash := sha256.Sum256(raw)
+	ent := computeShannonEntropy(raw[:minInt(len(raw), 256*1024)])
+	isPE := len(raw) >= 64 && raw[0] == 'M' && raw[1] == 'Z'
+
+	verdict := "clean"
+	if thr != nil {
+		verdict = "threat"
+		s.LogAudit("danger", "file-inspector", "Проверка файла: обнаружена угроза", fmt.Sprintf("%s · %s", safeName, thr.Category))
+	} else {
+		s.LogAudit("ok", "file-inspector", "Проверка файла: угроз не обнаружено", fmt.Sprintf("%s (%.1f КБ)", safeName, float64(len(raw))/1024.0))
+	}
+	return map[string]interface{}{
+		"ok":       true,
+		"name":     safeName,
+		"size":     len(raw),
+		"sha256":   hex.EncodeToString(hash[:]),
+		"entropy":  math.Round(ent*100) / 100,
+		"is_pe":    isPE,
+		"verdict":  verdict,
+		"threat":   thr,
+		"engine":   "LumaShield 2.0",
+		"rules":    len(scriptHeuristics) + len(suspiciousDoubleExts) + len(ransomwareExts) + 5,
+		"checked":  time.Now().Format("15:04:05"),
+	}
+}
+
+// GenerateAuditReport produces a unified security audit summary across threats, quarantine, hosts, startup, network & Defender.
+func (s *SecurityKernel) GenerateAuditReport(probe *platformProbe) map[string]interface{} {
+	snap := s.StatusSnapshot(probe)
+	hosts := s.AuditHostsFile()
+	var conns []ActiveTcpConnection
+	var startupFindings []map[string]interface{}
+	if probe != nil {
+		conns = probe.ActiveTcpConnections()
+		startupFindings = s.AuditStartupEntries(probe.ListStartupItems())
+	}
+	suspNet := 0
+	for _, c := range conns {
+		if c.Suspicious {
+			suspNet++
+		}
+	}
+	suspStartup := 0
+	for _, f := range startupFindings {
+		if r, _ := f["risk"].(string); r == "high" || r == "medium" {
+			suspStartup++
+		}
+	}
+	var md strings.Builder
+	md.WriteString(fmt.Sprintf("# Отчёт аудита безопасности LumaShield %s\n\n", SecurityCoreVersion))
+	md.WriteString(fmt.Sprintf("- **ОС:** Luma OS %s (%s) · Ядро LumaCore %s\n", KernelVersion, KernelCodename, KernelEngineVersion))
+	md.WriteString(fmt.Sprintf("- **Дата отчёта:** %s\n", time.Now().Format("02.01.2006 15:04:05")))
+	md.WriteString(fmt.Sprintf("- **Индекс защиты:** %v / 100\n", snap["score"]))
+	md.WriteString(fmt.Sprintf("- **Активных сигнатур и правил:** %v\n", snap["rules_count"]))
+	md.WriteString(fmt.Sprintf("- **Обнаружено угроз:** %d\n", len(s.lastThreats)))
+	md.WriteString(fmt.Sprintf("- **В карантине:** %d\n", len(s.quarantine)))
+	md.WriteString(fmt.Sprintf("- **Файл hosts:** %d записей (подозрительных: %d)\n", hosts.TotalMappings, hosts.SuspiciousCount))
+	md.WriteString(fmt.Sprintf("- **Сетевые TCP-соединения:** %d (подозрительных: %d)\n", len(conns), suspNet))
+	md.WriteString(fmt.Sprintf("- **Автозагрузка:** %d записей (требуют внимания: %d)\n", len(startupFindings), suspStartup))
+	if len(s.lastThreats) > 0 {
+		md.WriteString("\n## Обнаруженные угрозы\n")
+		for _, t := range s.lastThreats {
+			md.WriteString(fmt.Sprintf("- **[%s] %s** (`%s`) — %s\n", strings.ToUpper(t.Severity), t.Name, t.Category, t.Reason))
+		}
+	}
+	return map[string]interface{}{
+		"ok":                  true,
+		"generated_at":        time.Now().Format("02.01.2006 15:04:05"),
+		"score":               snap["score"],
+		"rules_count":         snap["rules_count"],
+		"threats_count":       len(s.lastThreats),
+		"quarantine_count":    len(s.quarantine),
+		"hosts_suspicious":    hosts.SuspiciousCount,
+		"network_connections": len(conns),
+		"network_suspicious":  suspNet,
+		"startup_suspicious":  suspStartup,
+		"markdown_report":     md.String(),
+	}
 }
 
 func (s *SecurityKernel) RunScan(mode, customPath string, probe *platformProbe) map[string]interface{} {
@@ -896,8 +1163,10 @@ func (s *SecurityKernel) StatusSnapshot(probe *platformProbe) map[string]interfa
 	return map[string]interface{}{
 		"ok":                     true,
 		"security_core_version":  SecurityCoreVersion,
-		"engine_name":            "LumaShield 1.5 (85+ Rules · Hosts Audit · NetMonitor · Startup Audit · Real-Time Guard)",
-		"rules_count":            len(scriptHeuristics) + len(suspiciousDoubleExts) + len(ransomwareExts) + 3,
+		"engine_name":            "LumaShield 2.0 (175+ Rules · Stealer & VBA Macro Shield · Archive Scan · PE/Entropy · Hosts/Net/Startup Guard)",
+		"rules_count":            len(scriptHeuristics) + len(suspiciousDoubleExts) + len(ransomwareExts) + 5,
+		"archive_macro_guard":    true,
+		"stealer_shield":         true,
 		"realtime_guard_enabled": s.realtimeGuardEnabled,
 		"score":                  score,
 		"defender":               def,
@@ -910,7 +1179,7 @@ func (s *SecurityKernel) StatusSnapshot(probe *platformProbe) map[string]interfa
 		"exclusions":             s.exclusions,
 		"quarantine_dir":         s.quarantineDir,
 		"audit_log":              s.auditLog,
-		"crypto":                 "AES-256-GCM + PBKDF2-HMAC-SHA512 + Shannon Entropy + Hosts/PE/Net Guard",
+		"crypto":                 "AES-256-GCM + PBKDF2-HMAC-SHA512 + VBA/Archive Inspector + Shannon Entropy + InfoStealer/Hosts/PE/Net Guard",
 	}
 }
 

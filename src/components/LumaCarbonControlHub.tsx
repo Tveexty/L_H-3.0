@@ -38,11 +38,21 @@ import {
   ToggleRight,
   Download,
   FolderOpen,
+  Moon,
+  Mic,
+  MicOff,
+  Flame,
+  FileText,
+  ShieldCheck,
+  Speaker,
+  Palette,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react';
 
 export interface CarbonNotificationItem {
   id: string;
-  source: 'telegram' | 'discord' | 'browser' | 'system';
+  source: 'telegram' | 'discord' | 'whatsapp' | 'browser' | 'system';
   sender: string;
   title: string;
   body: string;
@@ -59,11 +69,23 @@ export interface WirelessDeviceItem {
   source?: string;
 }
 
+export interface HubAudioEndpoint {
+  id: string;
+  name: string;
+  kind: string;
+  is_default: boolean;
+}
+
 export type ControlHubTileId =
   | 'wifi'
   | 'bluetooth'
   | 'dnd'
   | 'theme'
+  | 'night_light'
+  | 'gaming_boost'
+  | 'mic_mute'
+  | 'office'
+  | 'security'
   | 'screenshot'
   | 'recorder'
   | 'vault'
@@ -82,6 +104,11 @@ export const ALL_HUB_TILES: { id: ControlHubTileId; label: string; desc: string 
   { id: 'bluetooth', label: 'Bluetooth', desc: 'Беспроводные модули' },
   { id: 'dnd', label: 'Не беспокоить', desc: 'Приглушить уведомления' },
   { id: 'theme', label: 'Тема', desc: 'Светлая / Тёмная' },
+  { id: 'night_light', label: 'Ночной свет', desc: 'Защита глаз от синего' },
+  { id: 'gaming_boost', label: 'Игровой режим', desc: 'Приоритет CPU / RAM' },
+  { id: 'mic_mute', label: 'Микрофон', desc: 'Быстрый Mute микрофона' },
+  { id: 'office', label: 'Office Studio', desc: 'Word · Excel · PowerPoint' },
+  { id: 'security', label: 'LumaShield 2.0', desc: 'Антивирус и аудит' },
   { id: 'screenshot', label: 'Скриншот', desc: 'Компактный JPEG (~120 КБ)' },
   { id: 'recorder', label: 'Запись экрана', desc: 'Компактный WebM VP9' },
   { id: 'vault', label: 'Конфиденциальность', desc: 'Приватный стол AES-256' },
@@ -90,8 +117,8 @@ export const ALL_HUB_TILES: { id: ControlHubTileId; label: string; desc: string 
   { id: 'island', label: 'Dynamic Island', desc: 'Живой остров сверху' },
   { id: 'dual_bar', label: 'Двойная панель', desc: 'Верх: утилиты, Низ: окна' },
   { id: 'trash', label: 'Корзина', desc: 'Удалённые файлы Luma' },
-  { id: 'code_studio', label: 'Code Studio', desc: 'Редактор кода (VS Code)' },
-  { id: 'cut_studio', label: 'Cut Studio', desc: 'Видеоредактор (CapCut)' },
+  { id: 'code_studio', label: 'Code Studio', desc: 'Редактор кода (IDE)' },
+  { id: 'cut_studio', label: 'Cut Studio', desc: 'Видеоредактор Pro' },
   { id: 'power_saver', label: 'Энергосбережение', desc: 'План питания ОС' },
   { id: 'features_mgr', label: 'Функции ОС', desc: 'Вкл/Выкл модулей системы' },
 ];
@@ -100,14 +127,14 @@ export const DEFAULT_HUB_TILES: ControlHubTileId[] = [
   'wifi',
   'bluetooth',
   'dnd',
-  'theme',
+  'night_light',
+  'gaming_boost',
+  'mic_mute',
+  'office',
   'screenshot',
   'recorder',
   'vault',
-  'scenarios',
-  'mouse_dpi',
-  'dual_bar',
-  'trash',
+  'security',
   'features_mgr',
 ];
 
@@ -125,13 +152,13 @@ export interface SystemFeaturesMap {
 }
 
 export const SYSTEM_FEATURE_META: { key: keyof SystemFeaturesMap; label: string; desc: string }[] = [
-  { key: 'ai', label: 'Luma AI Ассистент', desc: 'Локальная и облачная нейросеть' },
-  { key: 'dynamicIsland', label: 'Dynamic Island', desc: 'Плавающий островок уведомлений и плеера' },
-  { key: 'calendar', label: 'Календарь и задачи', desc: 'Месяц/Неделя/Повестка, Pomodoro и .ics' },
+  { key: 'ai', label: 'Luma AI 2.0 Ассистент', desc: 'Luma Lang 2.0 + Luma Code 2.0' },
+  { key: 'dynamicIsland', label: 'Dynamic Island', desc: 'Остров с резиновой анимацией уведомлений' },
+  { key: 'calendar', label: 'Календарь и задачи', desc: 'День/Неделя/Месяц/Повестка и напоминания' },
   { key: 'scenarios', label: 'Сценарии (Автоматизация)', desc: 'Правила «Если действие → результат»' },
-  { key: 'codeStudio', label: 'Luma Code Studio', desc: 'Встроенная IDE для разработки' },
-  { key: 'cutStudio', label: 'Luma Cut Studio', desc: 'Видеоредактор с таймлайном и экспортом' },
-  { key: 'trash', label: 'Корзина Luma OS', desc: 'Системное хранилище удалённых файлов' },
+  { key: 'codeStudio', label: 'Luma Code Studio', desc: 'IDE с подсветкой синтаксиса и миникартой' },
+  { key: 'cutStudio', label: 'Luma Cut Studio', desc: 'Видеоредактор с кодеками и анимациями' },
+  { key: 'trash', label: 'Корзина Luma OS', desc: 'Корзина с превью и автоочисткой' },
   { key: 'wirelessScanner', label: 'Сканер BT / 2.4GHz', desc: 'Заряд мышек IO, Ajazz, Ardor, наушников' },
   { key: 'privateVault', label: 'Суперконфиденциальность', desc: 'Изолированный приватный рабочий стол' },
   { key: 'easterEgg', label: 'Мини-игра Пасхалка', desc: 'Секретная игра в разделе «О системе»' },
@@ -161,6 +188,19 @@ interface LumaCarbonControlHubProps {
   onToggleDualTaskbar: () => void;
   powerPlan: string;
   onTogglePowerSaver: () => void;
+  onSetPowerPlan?: (plan: 'performance' | 'balanced' | 'saver') => void;
+  nightLightLevel?: number;
+  onNightLightChange?: (level: number) => void;
+  gamingBoost?: boolean;
+  onToggleGamingBoost?: () => void;
+  micMuted?: boolean;
+  onToggleMicMute?: () => void;
+  audioOutputs?: HubAudioEndpoint[];
+  audioInputs?: HubAudioEndpoint[];
+  activeAudioOutputId?: string;
+  activeAudioInputId?: string;
+  onSwitchAudioDevice?: (id: string, kind: 'output' | 'input') => void;
+  onPickAccentColor?: (hex: string) => void;
   wirelessDevices: WirelessDeviceItem[];
   onRefreshWireless: () => void;
   trashCount: number;
@@ -178,8 +218,11 @@ interface LumaCarbonControlHubProps {
   onAddNotification: (n: Omit<CarbonNotificationItem, 'id' | 'time'>) => void;
 }
 
-const HUB_TILES_KEY = 'luma_carbon_hub_tiles_v15';
+const HUB_TILES_KEY = 'luma_carbon_hub_tiles_v151';
 const HUB_BT_COLLAPSED_KEY = 'luma_bt_section_collapsed_v15';
+const HUB_NOTIF_COLLAPSED_KEY = 'luma_notif_collapsed_v151';
+
+const ACCENT_SWATCHES = ['#06b6d4', '#10b981', '#6366f1', '#f43f5e', '#f59e0b', '#3b82f6'];
 
 export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   open,
@@ -204,6 +247,19 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   onToggleDualTaskbar,
   powerPlan,
   onTogglePowerSaver,
+  onSetPowerPlan,
+  nightLightLevel = 0,
+  onNightLightChange,
+  gamingBoost = false,
+  onToggleGamingBoost,
+  micMuted = false,
+  onToggleMicMute,
+  audioOutputs = [],
+  audioInputs = [],
+  activeAudioOutputId = '',
+  activeAudioInputId = '',
+  onSwitchAudioDevice,
+  onPickAccentColor,
   wirelessDevices,
   onRefreshWireless,
   trashCount,
@@ -235,7 +291,36 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       return false;
     }
   });
+  const [notifCollapsed, setNotifCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(HUB_NOTIF_COLLAPSED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [audioCollapsed, setAudioCollapsed] = useState(true);
   const [notifTab, setNotifTab] = useState<'all' | 'telegram' | 'system'>('all');
+
+  // Auto-close on mouse leave (with 280ms grace delay; paused during Edit Mode or Features Manager)
+  const leaveTimerRef = useRef<number | null>(null);
+  const handleHubMouseEnter = () => {
+    if (leaveTimerRef.current) {
+      window.clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
+  };
+  const handleHubMouseLeave = () => {
+    if (editMode || showFeaturesModal) return;
+    if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current);
+    leaveTimerRef.current = window.setTimeout(() => {
+      onClose();
+    }, 280);
+  };
+  useEffect(() => {
+    return () => {
+      if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current);
+    };
+  }, []);
 
   // Compact Screen Recorder & Screenshot state
   const [recording, setRecording] = useState(false);
@@ -264,12 +349,19 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   }, [btCollapsed]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem(HUB_NOTIF_COLLAPSED_KEY, notifCollapsed ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  }, [notifCollapsed]);
+
+  useEffect(() => {
     if (!recording) return;
     const t = window.setInterval(() => setRecSeconds((s) => s + 1), 1000);
     return () => window.clearInterval(t);
   }, [recording]);
 
-  // Compact Screenshot: native Win32 GDI32 JPEG (~120 KB) with automatic browser getDisplayMedia fallback!
   const handleTakeScreenshot = useCallback(async () => {
     setCaptureBanner('Делаю компактный снимок экрана...');
     try {
@@ -292,12 +384,8 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
         });
         return;
       }
-      // Browser fallback (Linux / headless / WebView)
       if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { frameRate: 15 },
-          audio: false,
-        });
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 15 }, audio: false });
         const video = document.createElement('video');
         video.srcObject = stream;
         await video.play();
@@ -305,8 +393,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth || 1280;
         canvas.height = video.videoHeight || 720;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
         stream.getTracks().forEach((tr) => tr.stop());
         const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
         const saveRes = await fetch('/api/kernel/capture/screenshot', {
@@ -335,7 +422,6 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
     }
   }, [onAddNotification]);
 
-  // Compact Screen Recorder (VP9/VP8 low bitrate ~9 MB/min)
   const stopRecording = useCallback(() => {
     try {
       mediaRecRef.current?.stop();
@@ -356,10 +442,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 30 },
-        audio: true,
-      });
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
       streamRef.current = stream;
       chunksRef.current = [];
       const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
@@ -373,11 +456,9 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
         videoBitsPerSecond: Math.round(recBitrateMbps * 1_000_000),
       });
       mediaRecRef.current = rec;
-
       rec.ondataavailable = (ev) => {
         if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data);
       };
-
       rec.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: 'video/webm' });
         const mb = (blob.size / (1024 * 1024)).toFixed(2);
@@ -406,7 +487,6 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                 return;
               }
             }
-            // Fallback browser download
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -420,11 +500,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
           setCaptureBanner(`Запись завершена (${mb} МБ)`);
         }
       };
-
-      stream.getVideoTracks()[0]?.addEventListener('ended', () => {
-        stopRecording();
-      });
-
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => stopRecording());
       setRecSeconds(0);
       setRecording(true);
       rec.start(1000);
@@ -453,13 +529,12 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
 
   const filteredNotifs = notifications.filter((n) => {
     if (notifTab === 'all') return true;
-    if (notifTab === 'telegram') return n.source === 'telegram' || n.source === 'discord';
+    if (notifTab === 'telegram') return n.source === 'telegram' || n.source === 'discord' || n.source === 'whatsapp';
     return n.source === 'system' || n.source === 'browser';
   });
 
   if (!open && !recording) return null;
 
-  // When closed but still recording, show a sleek floating mini REC pill in top-right!
   if (!open && recording) {
     const mm = String(Math.floor(recSeconds / 60)).padStart(2, '0');
     const ss = String(recSeconds % 60).padStart(2, '0');
@@ -478,8 +553,8 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   }
 
   const glassSurface = isDark
-    ? 'bg-[#0c0e14]/88 border-white/14 text-white shadow-[0_24px_70px_rgba(0,0,0,0.65)]'
-    : 'bg-white/88 border-slate-300/80 text-slate-900 shadow-[0_24px_60px_rgba(15,23,42,0.18)]';
+    ? 'bg-[#0c0e14]/90 border-white/14 text-white shadow-[0_24px_70px_rgba(0,0,0,0.65)]'
+    : 'bg-white/90 border-slate-300/80 text-slate-900 shadow-[0_24px_60px_rgba(15,23,42,0.18)]';
   const subText = isDark ? 'text-white/55' : 'text-slate-500';
 
   const renderTileCard = (id: ControlHubTileId, idx: number) => {
@@ -517,6 +592,47 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
         sub = isDark ? 'Тёмная' : 'Светлая';
         active = isDark;
         onClick = onToggleTheme;
+        break;
+      case 'night_light':
+        icon = <Moon size={14} />;
+        label = 'Ночной свет';
+        sub = nightLightLevel > 0 ? `Тепло ${nightLightLevel}%` : 'Выкл';
+        active = nightLightLevel > 0;
+        onClick = () => onNightLightChange?.(nightLightLevel > 0 ? 0 : 35);
+        break;
+      case 'gaming_boost':
+        icon = <Flame size={14} />;
+        label = 'Игровой';
+        sub = gamingBoost ? 'Турбо ВКЛ' : 'Обычный';
+        active = gamingBoost;
+        onClick = () => onToggleGamingBoost?.();
+        break;
+      case 'mic_mute':
+        icon = micMuted ? <MicOff size={14} /> : <Mic size={14} />;
+        label = 'Микрофон';
+        sub = micMuted ? 'Заглушён' : 'Активен';
+        active = !micMuted;
+        onClick = () => onToggleMicMute?.();
+        break;
+      case 'office':
+        icon = <FileText size={14} />;
+        label = 'Office';
+        sub = 'Docs·Sheets·PPT';
+        active = false;
+        onClick = () => {
+          onClose();
+          onOpenWindow('office');
+        };
+        break;
+      case 'security':
+        icon = <ShieldCheck size={14} />;
+        label = 'LumaShield';
+        sub = 'v2.0 · 175+';
+        active = true;
+        onClick = () => {
+          onClose();
+          onOpenWindow('security');
+        };
         break;
       case 'screenshot':
         icon = <Camera size={14} />;
@@ -589,7 +705,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       case 'code_studio':
         icon = <Sliders size={14} />;
         label = 'Code IDE';
-        sub = 'VS Studio';
+        sub = 'Редактор Pro';
         active = false;
         onClick = () => {
           onClose();
@@ -609,8 +725,8 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       case 'power_saver':
         icon = <Power size={14} />;
         label = 'Эко-режим';
-        sub = powerPlan === 'powersaver' ? 'Включён' : 'Баланс';
-        active = powerPlan === 'powersaver';
+        sub = powerPlan === 'saver' || powerPlan === 'powersaver' ? 'Включён' : 'Баланс';
+        active = powerPlan === 'saver' || powerPlan === 'powersaver';
         onClick = onTogglePowerSaver;
         break;
       case 'features_mgr':
@@ -626,7 +742,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       <div
         key={id}
         onClick={() => !editMode && onClick()}
-        className={`relative p-2.5 rounded-2xl border transition cursor-pointer select-none flex flex-col justify-between min-h-[62px] ${
+        className={`relative p-2.5 rounded-2xl border transition cursor-pointer select-none flex flex-col justify-between min-h-[60px] ${
           id === 'recorder' && recording
             ? 'bg-rose-500/25 border-rose-400/60 text-rose-100 animate-pulse'
             : active
@@ -640,36 +756,9 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       >
         {editMode && (
           <div className="absolute top-1 right-1 flex items-center gap-0.5 z-10">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                moveTile(idx, -1);
-              }}
-              className="p-0.5 rounded bg-black/50 text-white hover:bg-cyan-500"
-              title="Влево/Вверх"
-            >
-              <ChevronUp size={10} />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                moveTile(idx, 1);
-              }}
-              className="p-0.5 rounded bg-black/50 text-white hover:bg-cyan-500"
-              title="Вправо/Вниз"
-            >
-              <ChevronDown size={10} />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleTileInDeck(id);
-              }}
-              className="p-0.5 rounded bg-rose-500/80 text-white hover:bg-rose-500"
-              title="Убрать плитку"
-            >
-              <X size={10} />
-            </button>
+            <button onClick={(e) => { e.stopPropagation(); moveTile(idx, -1); }} className="p-0.5 rounded bg-black/50 text-white hover:bg-cyan-500" title="Влево/Вверх"><ChevronUp size={10} /></button>
+            <button onClick={(e) => { e.stopPropagation(); moveTile(idx, 1); }} className="p-0.5 rounded bg-black/50 text-white hover:bg-cyan-500" title="Вправо/Вниз"><ChevronDown size={10} /></button>
+            <button onClick={(e) => { e.stopPropagation(); toggleTileInDeck(id); }} className="p-0.5 rounded bg-rose-500/80 text-white hover:bg-rose-500" title="Убрать плитку"><X size={10} /></button>
           </div>
         )}
         <div className="flex items-center justify-between">
@@ -691,36 +780,53 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
     return <BatteryCharging size={12} className="text-sky-400" />;
   };
 
+  const triggerTestTelegram = async () => {
+    try {
+      await fetch('/api/kernel/notifications/os', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'test',
+          app: 'Telegram',
+          title: 'Telegram · Новое сообщение',
+          body: 'Привет! Уведомления Telegram и мессенджеров работают в Luma OS 1.5.1 Carbon!',
+          level: 'info',
+        }),
+      });
+    } catch {
+      onAddNotification({
+        source: 'telegram',
+        sender: 'Telegram',
+        title: 'Новое сообщение',
+        body: 'Уведомления Telegram работают в Luma OS 1.5.1 Carbon!',
+        unread: true,
+      });
+    }
+  };
+
   return (
     <>
-      {/* Subtle click-away backdrop */}
       <div className="fixed inset-0 z-[940]" onClick={onClose} />
 
-      {/* Top-Right Carbon Control Hub (1/4 Screen Width × 1/2 Height) + Unified Notification Center Below */}
+      {/* Top-Right Carbon Control Hub (1/4 Screen Width × 1/2 Height) + Collapsible Notification Center Below — Auto-closes when cursor leaves! */}
       <div
         onClick={(e) => e.stopPropagation()}
+        onMouseEnter={handleHubMouseEnter}
+        onMouseLeave={handleHubMouseLeave}
         className="fixed top-3 right-3 bottom-3 z-[945] flex flex-col gap-2.5 pointer-events-none"
-        style={{ width: 'clamp(330px, 25vw, 430px)' }}
+        style={{ width: 'clamp(340px, 26vw, 440px)' }}
       >
-        {/* UPPER HALF (~50vh): Fully Editable Carbon Control Deck */}
+        {/* UPPER HALF: Fully Editable Carbon Control Deck */}
         <div
           className={`pointer-events-auto rounded-3xl border backdrop-blur-2xl flex flex-col overflow-hidden luma-anim-harmony7 ${glassSurface}`}
-          style={{ height: '50vh', minHeight: 330 }}
+          style={{ height: notifCollapsed ? 'calc(100% - 62px)' : '54vh', minHeight: 330 }}
         >
           {/* Header */}
-          <div
-            className={`px-3.5 py-2.5 border-b flex items-center justify-between gap-2 shrink-0 ${
-              isDark ? 'border-white/10' : 'border-slate-200'
-            }`}
-          >
+          <div className={`px-3.5 py-2.5 border-b flex items-center justify-between gap-2 shrink-0 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]" />
-              <span className="text-xs font-bold tracking-tight truncate">Панель управления Carbon</span>
-              <span
-                className={`text-[9px] font-mono px-1.5 py-0.5 rounded-md border ${
-                  isDark ? 'bg-white/[0.06] border-white/10 text-white/60' : 'bg-slate-100 border-slate-200 text-slate-500'
-                }`}
-              >
+              <span className="text-xs font-bold tracking-tight truncate">Панель управления 1.5.1</span>
+              <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-md border ${isDark ? 'bg-white/[0.06] border-white/10 text-white/60' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
                 TAB
               </span>
             </div>
@@ -741,11 +847,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                 {editMode ? <Check size={11} /> : <Pencil size={11} />}
                 {editMode ? 'Готово' : 'Редакт.'}
               </button>
-              <button
-                onClick={onClose}
-                className={`p-1 rounded-xl ${subText} hover:opacity-100`}
-                title="Закрыть (Tab / Esc)"
-              >
+              <button onClick={onClose} className={`p-1 rounded-xl ${subText} hover:opacity-100`} title="Закрыть (Tab / Esc)">
                 <X size={14} />
               </button>
             </div>
@@ -756,15 +858,8 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             {showFeaturesModal ? (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-cyan-400">
-                    Менеджер функций Luma OS 1.5
-                  </span>
-                  <button
-                    onClick={() => setShowFeaturesModal(false)}
-                    className="text-[10px] px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/15"
-                  >
-                    Назад
-                  </button>
+                  <span className="text-[11px] font-bold text-cyan-400">Менеджер функций Luma OS 1.5.1</span>
+                  <button onClick={() => setShowFeaturesModal(false)} className="text-[10px] px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/15">Назад</button>
                 </div>
                 {SYSTEM_FEATURE_META.map((feat) => {
                   const on = enabledFeatures[feat.key];
@@ -773,79 +868,50 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                       key={feat.key}
                       onClick={() => onToggleFeature(feat.key)}
                       className={`w-full p-2 rounded-xl border flex items-center justify-between gap-2 text-left transition ${
-                        isDark
-                          ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08]'
-                          : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                        isDark ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08]' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       <div className="min-w-0">
                         <div className="text-[11px] font-semibold truncate">{feat.label}</div>
                         <div className={`text-[9px] truncate ${subText}`}>{feat.desc}</div>
                       </div>
-                      {on ? (
-                        <ToggleRight size={20} className="text-emerald-400 shrink-0" />
-                      ) : (
-                        <ToggleLeft size={20} className="text-white/30 shrink-0" />
-                      )}
+                      {on ? <ToggleRight size={20} className="text-emerald-400 shrink-0" /> : <ToggleLeft size={20} className="text-white/30 shrink-0" />}
                     </button>
                   );
                 })}
               </div>
             ) : (
               <>
-                {/* Editable Tiles Grid */}
                 <div className="grid grid-cols-3 gap-1.5">
                   {tiles.map((t, idx) => renderTileCard(t, idx))}
                 </div>
 
-                {/* Add hidden tiles when in Edit Mode */}
                 {editMode && (
-                  <div
-                    className={`p-2.5 rounded-2xl border space-y-1.5 ${
-                      isDark ? 'bg-cyan-500/[0.06] border-cyan-400/25' : 'bg-cyan-50 border-cyan-200'
-                    }`}
-                  >
-                    <div className="text-[10px] font-semibold text-cyan-400">
-                      Добавить плитки в панель управления:
-                    </div>
+                  <div className={`p-2.5 rounded-2xl border space-y-1.5 ${isDark ? 'bg-cyan-500/[0.06] border-cyan-400/25' : 'bg-cyan-50 border-cyan-200'}`}>
+                    <div className="text-[10px] font-semibold text-cyan-400">Добавить плитки в панель управления:</div>
                     <div className="flex flex-wrap gap-1">
                       {ALL_HUB_TILES.filter((x) => !tiles.includes(x.id)).map((x) => (
                         <button
                           key={x.id}
                           onClick={() => toggleTileInDeck(x.id)}
                           className={`px-2 py-1 rounded-lg text-[10px] font-medium border flex items-center gap-1 ${
-                            isDark
-                              ? 'bg-white/[0.06] border-white/10 hover:bg-white/15'
-                              : 'bg-white border-slate-200 hover:bg-slate-100'
+                            isDark ? 'bg-white/[0.06] border-white/10 hover:bg-white/15' : 'bg-white border-slate-200 hover:bg-slate-100'
                           }`}
                         >
-                          <Plus size={10} />
-                          {x.label}
+                          <Plus size={10} /> {x.label}
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* Compact Recording Bitrate & Last Capture Banner */}
                 {(captureBanner || recording) && (
-                  <div
-                    className={`px-2.5 py-2 rounded-xl border text-[10px] flex items-center justify-between gap-2 ${
-                      isDark ? 'bg-emerald-500/10 border-emerald-400/25 text-emerald-200' : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                    }`}
-                  >
+                  <div className={`px-2.5 py-2 rounded-xl border text-[10px] flex items-center justify-between gap-2 ${isDark ? 'bg-emerald-500/10 border-emerald-400/25 text-emerald-200' : 'bg-emerald-50 border-emerald-200 text-emerald-900'}`}>
                     <span className="truncate">{captureBanner}</span>
                     {lastCapturePath && (
                       <button
-                        onClick={() =>
-                          fetch('/api/kernel/open-path', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ path: lastCapturePath }),
-                          })
-                        }
+                        onClick={() => fetch('/api/kernel/open-path', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: lastCapturePath }) })}
                         className="shrink-0 px-1.5 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/35 flex items-center gap-1"
-                        title="Открыть файл"
                       >
                         <FolderOpen size={10} /> Открыть
                       </button>
@@ -853,131 +919,180 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                   </div>
                 )}
 
-                {/* Recording Quality Selector */}
-                <div className="flex items-center justify-between text-[10px] px-1">
-                  <span className={subText}>Качество записи экрана:</span>
-                  <div className="flex items-center gap-1">
-                    {([1.2, 2.5, 5] as const).map((mbps) => (
-                      <button
-                        key={mbps}
-                        onClick={() => setRecBitrateMbps(mbps)}
-                        className={`px-1.5 py-0.5 rounded-md font-mono border transition ${
-                          recBitrateMbps === mbps
-                            ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-300'
-                            : isDark
-                            ? 'bg-white/[0.04] border-white/10 text-white/50'
-                            : 'bg-slate-100 border-slate-200 text-slate-600'
-                        }`}
-                      >
-                        {mbps === 1.2 ? 'Эко' : mbps === 2.5 ? 'Норм' : 'HD'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Volume & Brightness Sliders */}
-                <div
-                  className={`p-2.5 rounded-2xl border space-y-2 ${
-                    isDark ? 'bg-white/[0.03] border-white/10' : 'bg-slate-50 border-slate-200'
-                  }`}
-                >
+                {/* Volume, Brightness & Night Light Sliders */}
+                <div className={`p-2.5 rounded-2xl border space-y-2 ${isDark ? 'bg-white/[0.03] border-white/10' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="flex items-center gap-2">
                     <button onClick={onToggleMute} className={subText} title="Вкл/Выкл звук">
                       {muted || volume === 0 ? <VolumeX size={14} className="text-rose-400" /> : <Volume2 size={14} className="text-cyan-400" />}
                     </button>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={muted ? 0 : volume}
-                      onChange={(e) => onVolumeChange(Number(e.target.value))}
-                      className="flex-1 h-1.5 accent-cyan-400 cursor-pointer"
-                    />
+                    <input type="range" min={0} max={100} value={muted ? 0 : volume} onChange={(e) => onVolumeChange(Number(e.target.value))} className="flex-1 h-1.5 accent-cyan-400 cursor-pointer" />
                     <span className="text-[10px] font-mono w-7 text-right">{muted ? 0 : volume}%</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Sun size={14} className="text-amber-400" />
-                    <input
-                      type="range"
-                      min={30}
-                      max={100}
-                      value={brightness}
-                      onChange={(e) => onBrightnessChange(Number(e.target.value))}
-                      className="flex-1 h-1.5 accent-amber-400 cursor-pointer"
-                    />
+                    <input type="range" min={30} max={100} value={brightness} onChange={(e) => onBrightnessChange(Number(e.target.value))} className="flex-1 h-1.5 accent-amber-400 cursor-pointer" />
                     <span className="text-[10px] font-mono w-7 text-right">{brightness}%</span>
+                  </div>
+                  {onNightLightChange && (
+                    <div className="flex items-center gap-2">
+                      <Moon size={14} className="text-orange-400" />
+                      <input type="range" min={0} max={70} value={nightLightLevel} onChange={(e) => onNightLightChange(Number(e.target.value))} className="flex-1 h-1.5 accent-orange-400 cursor-pointer" />
+                      <span className="text-[10px] font-mono w-7 text-right">{nightLightLevel}%</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Power Plan 3-Way Switcher + Accent Swatches */}
+                <div className={`p-2.5 rounded-2xl border space-y-2 ${isDark ? 'bg-white/[0.03] border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className={subText}>План питания ОС:</span>
+                    <div className="flex items-center gap-1">
+                      {(
+                        [
+                          ['saver', 'Эко'],
+                          ['balanced', 'Баланс'],
+                          ['performance', 'Макс'],
+                        ] as const
+                      ).map(([p, lbl]) => {
+                        const isCur = powerPlan === p || (p === 'saver' && powerPlan === 'powersaver');
+                        return (
+                          <button
+                            key={p}
+                            onClick={() => (onSetPowerPlan ? onSetPowerPlan(p) : onTogglePowerSaver())}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition cursor-pointer ${
+                              isCur
+                                ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-300'
+                                : isDark
+                                ? 'bg-white/[0.04] border-white/10 text-white/55'
+                                : 'bg-white border-slate-200 text-slate-600'
+                            }`}
+                          >
+                            {lbl}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {onPickAccentColor && (
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className={`flex items-center gap-1 ${subText}`}><Palette size={11} /> Быстрый акцент:</span>
+                      <div className="flex items-center gap-1.5">
+                        {ACCENT_SWATCHES.map((hex) => (
+                          <button
+                            key={hex}
+                            onClick={() => onPickAccentColor(hex)}
+                            className="w-4 h-4 rounded-full border border-white/30 hover:scale-115 transition cursor-pointer"
+                            style={{ backgroundColor: hex }}
+                            title={hex}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className={subText}>Качество записи экрана:</span>
+                    <div className="flex items-center gap-1">
+                      {([1.2, 2.5, 5] as const).map((mbps) => (
+                        <button
+                          key={mbps}
+                          onClick={() => setRecBitrateMbps(mbps)}
+                          className={`px-1.5 py-0.5 rounded-md font-mono border transition cursor-pointer ${
+                            recBitrateMbps === mbps
+                              ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-300'
+                              : isDark
+                              ? 'bg-white/[0.04] border-white/10 text-white/50'
+                              : 'bg-slate-100 border-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {mbps === 1.2 ? 'Эко' : mbps === 2.5 ? 'Норм' : 'HD'}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                {/* Collapsible Bluetooth / 2.4GHz Peripherals Section (IO Nova SE, Ajazz, Ardor Gaming...) */}
+                {/* Audio Output / Input Switcher inside Hub */}
+                {(audioOutputs.length > 0 || audioInputs.length > 0) && (
+                  <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-white/[0.03] border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+                    <button
+                      onClick={() => setAudioCollapsed((c) => !c)}
+                      className="w-full px-2.5 py-2 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Speaker size={12} className="text-cyan-400" />
+                        Звук · Вывод и Микрофон ({audioOutputs.length + audioInputs.length})
+                      </span>
+                      <ChevronRight size={12} className={`transition-transform ${!audioCollapsed ? 'rotate-90' : ''}`} />
+                    </button>
+                    {!audioCollapsed && (
+                      <div className="px-2.5 pb-2.5 space-y-1.5">
+                        {audioOutputs.map((dev) => (
+                          <button
+                            key={dev.id}
+                            onClick={() => onSwitchAudioDevice?.(dev.id, 'output')}
+                            className={`w-full px-2 py-1.5 rounded-xl text-left text-[10px] flex items-center justify-between border transition cursor-pointer ${
+                              dev.id === activeAudioOutputId || dev.is_default
+                                ? 'bg-cyan-500/18 border-cyan-400/40 text-cyan-200'
+                                : isDark
+                                ? 'bg-white/[0.04] border-white/10 hover:bg-white/10'
+                                : 'bg-white border-slate-200'
+                            }`}
+                          >
+                            <span className="truncate">🔊 {dev.name}</span>
+                            {(dev.id === activeAudioOutputId || dev.is_default) && <Check size={11} className="text-cyan-400 shrink-0" />}
+                          </button>
+                        ))}
+                        {audioInputs.map((dev) => (
+                          <button
+                            key={dev.id}
+                            onClick={() => onSwitchAudioDevice?.(dev.id, 'input')}
+                            className={`w-full px-2 py-1.5 rounded-xl text-left text-[10px] flex items-center justify-between border transition cursor-pointer ${
+                              dev.id === activeAudioInputId || dev.is_default
+                                ? 'bg-emerald-500/18 border-emerald-400/40 text-emerald-200'
+                                : isDark
+                                ? 'bg-white/[0.04] border-white/10 hover:bg-white/10'
+                                : 'bg-white border-slate-200'
+                            }`}
+                          >
+                            <span className="truncate">🎙 {dev.name}</span>
+                            {(dev.id === activeAudioInputId || dev.is_default) && <Check size={11} className="text-emerald-400 shrink-0" />}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Collapsible Bluetooth / 2.4GHz Peripherals Section */}
                 {enabledFeatures.wirelessScanner && (
-                  <div
-                    className={`rounded-2xl border overflow-hidden ${
-                      isDark ? 'bg-white/[0.03] border-white/10' : 'bg-slate-50 border-slate-200'
-                    }`}
-                  >
+                  <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-white/[0.03] border-white/10' : 'bg-slate-50 border-slate-200'}`}>
                     <div className="px-2.5 py-2 flex items-center justify-between gap-2">
-                      <button
-                        onClick={() => setBtCollapsed((c) => !c)}
-                        className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider flex-1 text-left"
-                      >
-                        <ChevronRight
-                          size={12}
-                          className={`transition-transform ${!btCollapsed ? 'rotate-90' : ''}`}
-                        />
+                      <button onClick={() => setBtCollapsed((c) => !c)} className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider flex-1 text-left">
+                        <ChevronRight size={12} className={`transition-transform ${!btCollapsed ? 'rotate-90' : ''}`} />
                         <span>Устройства BT / 2.4GHz ({wirelessDevices.length})</span>
                       </button>
                       <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={onRefreshWireless}
-                          className={`p-1 rounded-lg ${subText} hover:text-cyan-400`}
-                          title="Опросить заряд мышек IO / Ajazz / Ardor / BT"
-                        >
-                          <RefreshCw size={11} />
-                        </button>
-                        <button
-                          onClick={() => setBtCollapsed((c) => !c)}
-                          className={`text-[10px] px-2 py-0.5 rounded-lg border ${
-                            isDark ? 'bg-white/[0.06] border-white/10 text-white/75' : 'bg-white border-slate-200 text-slate-600'
-                          }`}
-                        >
+                        <button onClick={onRefreshWireless} className={`p-1 rounded-lg ${subText} hover:text-cyan-400`} title="Опросить заряд мышек IO / Ajazz / Ardor / BT"><RefreshCw size={11} /></button>
+                        <button onClick={() => setBtCollapsed((c) => !c)} className={`text-[10px] px-2 py-0.5 rounded-lg border ${isDark ? 'bg-white/[0.06] border-white/10 text-white/75' : 'bg-white border-slate-200 text-slate-600'}`}>
                           {btCollapsed ? 'Показать' : 'Скрыть'}
                         </button>
                       </div>
                     </div>
-
                     {!btCollapsed && (
                       <div className="px-2.5 pb-2.5 space-y-1.5">
                         {wirelessDevices.length === 0 ? (
-                          <div className={`text-[10px] py-1 ${subText}`}>
-                            Нет обнаруженных беспроводных устройств
-                          </div>
+                          <div className={`text-[10px] py-1 ${subText}`}>Нет обнаруженных беспроводных устройств</div>
                         ) : (
                           wirelessDevices.map((dev, i) => (
-                            <div
-                              key={`${dev.name}-${i}`}
-                              className={`px-2 py-1.5 rounded-xl flex items-center justify-between gap-2 text-[11px] ${
-                                isDark ? 'bg-white/[0.04]' : 'bg-white border border-slate-200/70'
-                              }`}
-                            >
+                            <div key={`${dev.name}-${i}`} className={`px-2 py-1.5 rounded-xl flex items-center justify-between gap-2 text-[11px] ${isDark ? 'bg-white/[0.04]' : 'bg-white border border-slate-200/70'}`}>
                               <div className="flex items-center gap-2 min-w-0">
                                 {renderWirelessIcon(dev.device_type)}
                                 <div className="min-w-0">
                                   <div className="font-medium truncate leading-tight">{dev.name}</div>
-                                  <div className={`text-[9px] truncate ${subText}`}>
-                                    {dev.transport || '2.4GHz / BT'}
-                                  </div>
+                                  <div className={`text-[9px] truncate ${subText}`}>{dev.transport || '2.4GHz / BT'}</div>
                                 </div>
                               </div>
-                              <span
-                                className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                                  dev.battery_percent >= 0
-                                    ? dev.battery_percent <= 20
-                                      ? 'bg-rose-500/20 text-rose-300'
-                                      : 'bg-emerald-500/20 text-emerald-300'
-                                    : 'bg-cyan-500/15 text-cyan-300'
-                                }`}
-                              >
+                              <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${dev.battery_percent >= 0 ? (dev.battery_percent <= 20 ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300') : 'bg-cyan-500/15 text-cyan-300'}`}>
                                 {dev.battery_percent >= 0 ? `${dev.battery_percent}%` : 'Подкл.'}
                               </span>
                             </div>
@@ -992,122 +1107,128 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
           </div>
         </div>
 
-        {/* LOWER HALF (~44vh): Unified Notification Center (Telegram + System + All Apps) */}
+        {/* LOWER HALF: Collapsible Unified Notification Center (Telegram + Discord + WhatsApp + Windows OS) */}
         <div
-          className={`pointer-events-auto flex-1 min-h-[210px] rounded-3xl border backdrop-blur-2xl flex flex-col overflow-hidden luma-anim-harmony7 ${glassSurface}`}
+          className={`pointer-events-auto rounded-3xl border backdrop-blur-2xl flex flex-col overflow-hidden transition-all duration-200 luma-anim-harmony7 ${glassSurface} ${
+            notifCollapsed ? 'shrink-0' : 'flex-1 min-h-[190px]'
+          }`}
         >
-          <div
-            className={`px-3.5 py-2.5 border-b flex items-center justify-between gap-2 shrink-0 ${
-              isDark ? 'border-white/10' : 'border-slate-200'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <Bell size={13} className="text-cyan-400" />
-              <span className="text-xs font-bold">Центр уведомлений</span>
+          <div className={`px-3.5 py-2.5 flex items-center justify-between gap-2 shrink-0 ${!notifCollapsed ? (isDark ? 'border-b border-white/10' : 'border-b border-slate-200') : ''}`}>
+            <button
+              onClick={() => setNotifCollapsed((c) => !c)}
+              className="flex items-center gap-2 text-left flex-1 min-w-0 cursor-pointer"
+              title={notifCollapsed ? 'Развернуть Центр уведомлений' : 'Свернуть Центр уведомлений'}
+            >
+              <Bell size={13} className="text-cyan-400 shrink-0" />
+              <span className="text-xs font-bold truncate">Центр уведомлений</span>
               {notifications.length > 0 && (
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300">
                   {notifications.length}
                 </span>
               )}
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() =>
-                  onAddNotification({
-                    source: 'telegram',
-                    sender: 'Telegram',
-                    title: 'Новое сообщение',
-                    body: 'Luma OS 1.5 Carbon — уведомления Telegram подключены в единый центр!',
-                    unread: true,
-                  })
-                }
-                className={`px-2 py-0.5 rounded-lg text-[10px] border transition ${
-                  isDark ? 'bg-sky-500/15 border-sky-400/25 text-sky-300 hover:bg-sky-500/25' : 'bg-sky-50 border-sky-200 text-sky-700'
-                }`}
-                title="Тест уведомления Telegram"
-              >
-                <Send size={9} className="inline mr-1" />
-                TG
-              </button>
-              {notifications.length > 0 && (
-                <button
-                  onClick={onClearNotifications}
-                  className={`text-[10px] px-2 py-0.5 rounded-lg ${subText} hover:text-rose-400`}
-                >
-                  Очистить
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Filter Tabs */}
-          <div className="px-3 pt-2 pb-1 flex items-center gap-1 shrink-0">
-            {(
-              [
-                ['all', 'Все'],
-                ['telegram', 'Telegram / Чаты'],
-                ['system', 'Система'],
-              ] as const
-            ).map(([k, lbl]) => (
-              <button
-                key={k}
-                onClick={() => setNotifTab(k)}
-                className={`px-2.5 py-1 rounded-xl text-[10px] font-semibold transition ${
-                  notifTab === k
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/35'
-                    : isDark
-                    ? 'bg-white/[0.04] text-white/55 hover:bg-white/[0.08]'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {lbl}
-              </button>
-            ))}
-          </div>
-
-          {/* Notification Feed */}
-          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
-            {filteredNotifs.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center py-6">
-                <Bell size={22} className="opacity-25 mb-1.5" />
-                <div className={`text-xs font-medium ${subText}`}>Уведомлений пока нет</div>
-                <div className={`text-[10px] opacity-60 mt-0.5 ${subText}`}>
-                  Сообщения Telegram, события сценариев и системы появятся здесь
-                </div>
-              </div>
-            ) : (
-              filteredNotifs.map((n) => (
-                <div
-                  key={n.id}
-                  className={`group p-2.5 rounded-2xl border transition relative ${
-                    isDark
-                      ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08]'
-                      : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-400/25 hidden sm:inline">
+                TG/OS Live
+              </span>
+            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              {!notifCollapsed && (
+                <>
                   <button
-                    onClick={() => onDismissNotification(n.id)}
-                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-0.5 rounded-md hover:bg-white/15"
+                    onClick={() => void triggerTestTelegram()}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] border transition cursor-pointer ${
+                      isDark ? 'bg-sky-500/15 border-sky-400/25 text-sky-300 hover:bg-sky-500/25' : 'bg-sky-50 border-sky-200 text-sky-700'
+                    }`}
+                    title="Проверить доставку уведомления Telegram + эффект резины на Острове"
                   >
-                    <X size={11} />
+                    <Send size={9} className="inline mr-1" /> TG
                   </button>
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    {n.source === 'telegram' ? (
-                      <Send size={11} className="text-sky-400" />
-                    ) : n.source === 'discord' ? (
-                      <MessageCircle size={11} className="text-indigo-400" />
-                    ) : (
-                      <Download size={11} className="text-emerald-400" />
-                    )}
-                    <span className="text-[10px] font-bold text-cyan-400">{n.sender}</span>
-                    <span className={`text-[9px] font-mono ml-auto pr-4 ${subText}`}>{n.time}</span>
-                  </div>
-                  <div className="text-[11px] font-semibold leading-snug">{n.title}</div>
-                  <div className={`text-[10px] leading-relaxed mt-0.5 ${subText}`}>{n.body}</div>
-                </div>
-              ))
-            )}
+                  {notifications.length > 0 && (
+                    <button onClick={onClearNotifications} className={`text-[10px] px-1.5 py-0.5 rounded-lg cursor-pointer ${subText} hover:text-rose-400`}>
+                      Очистить
+                    </button>
+                  )}
+                </>
+              )}
+              <button
+                onClick={() => setNotifCollapsed((c) => !c)}
+                className={`px-2 py-0.5 rounded-lg text-[10px] border flex items-center gap-1 transition cursor-pointer ${
+                  isDark ? 'bg-white/[0.06] border-white/10 text-white/75 hover:bg-white/15' : 'bg-slate-100 border-slate-200 text-slate-700'
+                }`}
+                title={notifCollapsed ? 'Развернуть окно уведомлений' : 'Свернуть окно уведомлений'}
+              >
+                {notifCollapsed ? <Maximize2 size={10} /> : <Minimize2 size={10} />}
+                {notifCollapsed ? 'Развернуть' : 'Свернуть'}
+              </button>
+            </div>
           </div>
+
+          {!notifCollapsed && (
+            <>
+              <div className="px-3 pt-2 pb-1 flex items-center gap-1 shrink-0">
+                {(
+                  [
+                    ['all', 'Все'],
+                    ['telegram', 'Telegram / Мессенджеры'],
+                    ['system', 'Система'],
+                  ] as const
+                ).map(([k, lbl]) => (
+                  <button
+                    key={k}
+                    onClick={() => setNotifTab(k)}
+                    className={`px-2.5 py-1 rounded-xl text-[10px] font-semibold transition cursor-pointer ${
+                      notifTab === k
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/35'
+                        : isDark
+                        ? 'bg-white/[0.04] text-white/55 hover:bg-white/[0.08]'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
+                {filteredNotifs.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center py-5">
+                    <Bell size={22} className="opacity-25 mb-1.5" />
+                    <div className={`text-xs font-medium ${subText}`}>Уведомлений пока нет</div>
+                    <div className={`text-[10px] opacity-60 mt-0.5 ${subText}`}>
+                      Telegram, Discord, WhatsApp, VK и системные события приходят сюда автоматически
+                    </div>
+                  </div>
+                ) : (
+                  filteredNotifs.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`group p-2.5 rounded-2xl border transition relative ${
+                        isDark ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08]' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <button onClick={() => onDismissNotification(n.id)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-0.5 rounded-md hover:bg-white/15 cursor-pointer">
+                        <X size={11} />
+                      </button>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        {n.source === 'telegram' ? (
+                          <Send size={11} className="text-sky-400" />
+                        ) : n.source === 'discord' ? (
+                          <MessageCircle size={11} className="text-indigo-400" />
+                        ) : n.source === 'whatsapp' ? (
+                          <MessageCircle size={11} className="text-emerald-400" />
+                        ) : (
+                          <Download size={11} className="text-cyan-400" />
+                        )}
+                        <span className="text-[10px] font-bold text-cyan-400">{n.sender}</span>
+                        <span className={`text-[9px] font-mono ml-auto pr-4 ${subText}`}>{n.time}</span>
+                      </div>
+                      <div className="text-[11px] font-semibold leading-snug">{n.title}</div>
+                      <div className={`text-[10px] leading-relaxed mt-0.5 ${subText}`}>{n.body}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </>

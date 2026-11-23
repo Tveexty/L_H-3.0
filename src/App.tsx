@@ -199,6 +199,8 @@ import { LumaTerminalWindow } from './components/LumaTerminalWindow';
 import { LumaTrackerWindow } from './components/LumaTrackerWindow';
 import { LumaTrashWindow } from './components/LumaTrashWindow';
 import { LumaUpdateCinemaOverlay } from './components/LumaUpdateCinemaOverlay';
+import { LumaOfficeSuiteWindow } from './components/LumaOfficeSuiteWindow';
+import { SmartContextMenu } from './components/SmartContextMenu';
 import { getLangLocale, LUMA_LANGUAGES, LumaLangCode, tr } from './i18n/translations';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -256,7 +258,8 @@ type DexWinId =
   | 'trash'
   | 'scenarios'
   | 'code_studio'
-  | 'cut_studio';
+  | 'cut_studio'
+  | 'office';
 type AnimationPreset = 'harmony7' | 'standard' | 'spring' | 'glide' | 'silk' | 'elastic' | 'none';
 type TaskbarSizePreset = 'compact' | 'standard' | 'large';
 type FontPreset = 'sans' | 'mono' | 'rounded';
@@ -475,6 +478,7 @@ const INITIAL_WINDOWS: Record<DexWinId, DexWinState> = {
   scenarios: { open: false, minimized: false, z: 20, desktop: 1 },
   code_studio: { open: false, minimized: false, z: 20, desktop: 1 },
   cut_studio: { open: false, minimized: false, z: 20, desktop: 1 },
+  office: { open: false, minimized: false, z: 20, desktop: 1 },
 };
 
 export default function App() {
@@ -692,7 +696,9 @@ export default function App() {
     kind: string;
     barPct?: number;
   }>(null);
+  const [islandRubberPhase, setIslandRubberPhase] = useState<'idle' | 'expand' | 'snap'>('idle');
   const islandPulseTimerRef = useRef<number | null>(null);
+  const islandRubberSnapRef = useRef<number | null>(null);
   const [taskbarShowTelemetry, setTaskbarShowTelemetry] = useState<boolean>(savedState?.taskbarShowTelemetry ?? true);
   const [taskbarCenterIcons, setTaskbarCenterIcons] = useState<boolean>(savedState?.taskbarCenterIcons ?? false);
   const [taskbarSizePx, setTaskbarSizePx] = useState<number>(() => {
@@ -920,22 +926,36 @@ export default function App() {
     {
       id: 'notif_carbon_welcome',
       source: 'system',
-      sender: 'Luma OS 1.5 Carbon',
-      title: 'Добро пожаловать в Carbon 1.5!',
-      body: 'Нажмите Tab или наведите на верхний правый угол для Панели управления и Центра уведомлений.',
+      sender: 'Luma OS 1.5.1 Carbon',
+      title: 'Добро пожаловать в Carbon 1.5.1!',
+      body: 'Новое: Luma Office Studio, Luma AI 2.0, LumaShield 2.0, обои 4K и резинка Dynamic Island.',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       unread: true,
     },
     {
       id: 'notif_tg_ready',
       source: 'telegram',
-      sender: 'Telegram',
-      title: 'Уведомления мессенджеров подключены',
-      body: 'Все входящие сообщения Telegram и уведомления приложений отображаются в этом центре.',
+      sender: 'Telegram / Мессенджеры',
+      title: 'Живой мост уведомлений активен',
+      body: 'Сообщения из Telegram, Discord, WhatsApp, VK и Windows автоматически приходят в Центр и на Dynamic Island.',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       unread: true,
     },
   ]);
+  const [nightLightLevel, setNightLightLevel] = useState<number>(() => {
+    try {
+      const n = Number(localStorage.getItem('luma_night_light_v151') || '0');
+      return Number.isFinite(n) ? Math.max(0, Math.min(75, n)) : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [gamingBoost, setGamingBoost] = useState<boolean>(false);
+  const [micMuted, setMicMuted] = useState<boolean>(false);
+  const ccHoverEnteredRef = useRef<boolean>(false);
+  const ccLeaveTimerRef = useRef<number | null>(null);
+  const seenOsNotifIdsRef = useRef<Set<string>>(new Set());
+  const osNotifSinceRef = useRef<number>(0);
   const [customWidgetModal, setCustomWidgetModal] = useState<{
     open: boolean;
     editWidgetId?: string;
@@ -948,6 +968,9 @@ export default function App() {
   } | null>(null);
   const cornerHoverTimerRef = useRef<number | null>(null);
 
+  useEffect(() => {
+    try { localStorage.setItem('luma_night_light_v151', String(nightLightLevel)); } catch { /* ignore */ }
+  }, [nightLightLevel]);
   useEffect(() => {
     try { localStorage.setItem('luma_win_controls_v15', windowControlsStyle); } catch { /* ignore */ }
   }, [windowControlsStyle]);
@@ -1437,7 +1460,7 @@ export default function App() {
           total_bytes: 23.4 * 1024 * 1024,
           speed_mbps: 24.2,
           target_version: '1.5 (Carbon · C-6)',
-          message: 'Загрузка образа LumaOS_1.5.exe (LumaCore 1.5 + LumaShield 1.5)...',
+          message: 'Загрузка образа LumaOS_1.5.1.exe (LumaCore 1.5 + LumaShield 1.5)...',
         },
       },
       {
@@ -2819,7 +2842,7 @@ export default function App() {
         pushToast('Окно ОС', d?.detail || `Переключено на ${win?.title || win?.name || `PID ${pid}`}`, 'info');
       }
     } catch {
-      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.5.exe', 'info');
+      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.5.1.exe', 'info');
     }
   };
 
@@ -2848,7 +2871,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Окна ОС', 'Доступно при запуске LumaOS_1.5.exe', 'info');
+      pushToast('Окна ОС', 'Доступно при запуске LumaOS_1.5.1.exe', 'info');
     }
   };
 
@@ -2886,7 +2909,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('2 окна рядом', 'Доступно при запуске LumaOS_1.5.exe', 'info');
+      pushToast('2 окна рядом', 'Доступно при запуске LumaOS_1.5.1.exe', 'info');
     }
   };
 
@@ -2941,15 +2964,110 @@ export default function App() {
       .catch(() => setCodeContent(`// Не удалось загрузить ${selectedCodePath}`));
   }, [selectedCodePath, windows.kernel.open]);
 
-  // --- Dynamic Island 2.0 Reactive User Activity Pulse ---
-  const triggerIslandPulse = (title: string, detail?: string, kind = 'info', barPct?: number) => {
-    setIslandPulse({ id: Date.now(), title, detail, kind, barPct });
+  // --- Dynamic Island 2.0 Reactive Pulse + Elastic Rubber-Band Notification Animation (1.5.1) ---
+  const triggerIslandPulse = useCallback((title: string, detail?: string, kind = 'info', barPct?: number) => {
+    const isNotif =
+      kind === 'notification' ||
+      kind === 'telegram' ||
+      kind === 'discord' ||
+      kind === 'whatsapp' ||
+      kind === 'messenger' ||
+      kind === 'system';
+
     if (islandPulseTimerRef.current) window.clearTimeout(islandPulseTimerRef.current);
-    islandPulseTimerRef.current = window.setTimeout(() => {
-      setIslandPulse(null);
-      islandPulseTimerRef.current = null;
-    }, 2600);
-  };
+    if (islandRubberSnapRef.current) window.clearTimeout(islandRubberSnapRef.current);
+
+    setIslandPulse({ id: Date.now() + Math.random(), title, detail, kind, barPct });
+    setIslandRubberPhase(isNotif ? 'expand' : 'idle');
+
+    if (isNotif) {
+      // Elastic rubber-band expand -> hold briefly so message is readable -> snap back tightly!
+      islandRubberSnapRef.current = window.setTimeout(() => {
+        setIslandRubberPhase('snap');
+        islandPulseTimerRef.current = window.setTimeout(() => {
+          setIslandPulse(null);
+          setIslandRubberPhase('idle');
+          islandPulseTimerRef.current = null;
+        }, 420);
+      }, 2200);
+    } else {
+      islandPulseTimerRef.current = window.setTimeout(() => {
+        setIslandPulse(null);
+        setIslandRubberPhase('idle');
+        islandPulseTimerRef.current = null;
+      }, 2400);
+    }
+  }, []);
+
+  // --- Live Telegram, Discord, WhatsApp, VK, Viber & Windows WPN Notification Bridge Poller (1.5.1) ---
+  useEffect(() => {
+    let active = true;
+    const mapAppKeyToSource = (key: string): CarbonNotificationItem['source'] => {
+      const k = (key || '').toLowerCase();
+      if (k === 'telegram') return 'telegram';
+      if (k === 'discord') return 'discord';
+      if (k === 'whatsapp' || k === 'viber') return 'whatsapp';
+      if (k === 'browser' || k === 'vk') return 'browser';
+      return 'system';
+    };
+
+    const pollOsNotifications = async () => {
+      try {
+        const since = osNotifSinceRef.current;
+        const r = await fetch(`/api/kernel/notifications/os${since > 0 ? `?since=${since}` : ''}`);
+        if (!r.ok || !active) return;
+        const d = await r.json();
+        const list = Array.isArray(d?.notifications) ? d.notifications : [];
+        if (list.length === 0) return;
+
+        const fresh: CarbonNotificationItem[] = [];
+        let maxTs = since;
+        for (const item of list) {
+          const id = String(item.id || '');
+          if (!id || seenOsNotifIdsRef.current.has(id)) continue;
+          seenOsNotifIdsRef.current.add(id);
+          const ts = Number(item.timestamp || 0);
+          if (ts > maxTs) maxTs = ts;
+          fresh.push({
+            id,
+            source: mapAppKeyToSource(item.app_key || item.app || ''),
+            sender: item.app || 'Система',
+            title: item.title || item.app || 'Новое уведомление',
+            body: item.body || '',
+            time: item.time || new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+            unread: true,
+          });
+        }
+        if (maxTs > osNotifSinceRef.current) osNotifSinceRef.current = maxTs;
+
+        if (fresh.length > 0 && active) {
+          setHubNotifications((prev) => [...fresh, ...prev].slice(0, 50));
+          // Trigger elastic rubber-band Dynamic Island animation for the newest incoming notification!
+          const latest = fresh[0];
+          if (!dndEnabled) {
+            triggerIslandPulse(
+              `${latest.sender}: ${latest.title}`,
+              latest.body || 'Новое сообщение',
+              latest.source
+            );
+          }
+        }
+      } catch {
+        // kernel offline / standalone preview
+      }
+    };
+
+    void pollOsNotifications();
+    const timer = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void pollOsNotifications();
+    }, 2500);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [dndEnabled, triggerIslandPulse]);
 
   // --- Audio Input/Output Devices Switcher (1.3) ---
   const fetchAudioDevices = async (force = false) => {
@@ -3307,7 +3425,7 @@ export default function App() {
         pushToast('Питание', d?.detail || `Выполнено: ${action}`, 'info');
       }
     } catch {
-      pushToast('Питание', 'Доступно при запуске LumaOS_1.5.exe', 'info');
+      pushToast('Питание', 'Доступно при запуске LumaOS_1.5.1.exe', 'info');
     }
   };
 
@@ -3340,7 +3458,7 @@ export default function App() {
         pushToast('Режим оболочки Windows', 'Параметры применены к системе', 'success');
       }
     } catch {
-      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.5.exe)', 'info');
+      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.5.1.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -3783,7 +3901,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.5.exe', 'info');
+      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.5.1.exe', 'info');
     }
   };
 
@@ -4119,6 +4237,7 @@ export default function App() {
   const rawTaskbarApps: { id: DexWinId; label: string; icon: React.ReactNode; pinned: boolean }[] = [
     { id: 'explorer', label: t('explorer', 'Проводник'), icon: <FolderOpen className="w-4 h-4" />, pinned: true },
     { id: 'apps', label: t('apps', 'Приложения'), icon: <AppWindow className="w-4 h-4" />, pinned: true },
+    { id: 'office', label: 'Office Studio', icon: <FileText className="w-4 h-4" />, pinned: true },
     ...(enabledFeatures.calendar ? [{ id: 'calendar' as DexWinId, label: 'Календарь', icon: <Calendar className="w-4 h-4" />, pinned: true }] : []),
     ...(enabledFeatures.codeStudio ? [{ id: 'code_studio' as DexWinId, label: 'Code Studio', icon: <Code2 className="w-4 h-4" />, pinned: true }] : []),
     ...(enabledFeatures.cutStudio ? [{ id: 'cut_studio' as DexWinId, label: 'Cut Studio', icon: <Film className="w-4 h-4" />, pinned: true }] : []),
@@ -4341,12 +4460,16 @@ export default function App() {
               if (e.key === 'Enter' || e.key === ' ') openIslandTab('overview');
             }}
             style={
-              islandGlowEnabled || displayMediaPlaying
-                ? { boxShadow: '0 0 26px -2px var(--luma-accent-border), 0 12px 28px rgba(0,0,0,0.48)' }
+              islandGlowEnabled || displayMediaPlaying || islandRubberPhase !== 'idle'
+                ? { boxShadow: '0 0 28px -2px var(--luma-accent-border), 0 12px 30px rgba(0,0,0,0.52)' }
                 : undefined
             }
-            className={`luma-island-pill ${islandHeightCls} pl-3 pr-2 rounded-full bg-[#0a0a0c]/95 text-zinc-100 border shadow-xl flex items-center gap-2.5 cursor-pointer whitespace-nowrap ${
-              islandPulse
+            className={`luma-island-pill ${islandHeightCls} pl-3 pr-2.5 rounded-full bg-[#0a0a0c]/95 text-zinc-100 border shadow-xl flex items-center gap-2.5 cursor-pointer whitespace-nowrap ${
+              islandRubberPhase === 'expand'
+                ? 'luma-island-rubber-expand border-sky-400/80 px-4'
+                : islandRubberPhase === 'snap'
+                ? 'luma-island-rubber-snap border-[var(--luma-accent)]/70'
+                : islandPulse
                 ? 'luma-island-pulse border-[var(--luma-accent)]/70'
                 : displayMediaPlaying
                 ? 'luma-island-playing border-[var(--luma-accent)]/45'
@@ -4355,7 +4478,17 @@ export default function App() {
           >
             {islandPulse ? (
               <>
-                <span className="w-5 h-5 rounded-full bg-[var(--luma-accent)]/20 text-[var(--luma-accent)] flex items-center justify-center shrink-0">
+                <span
+                  className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                    islandPulse.kind === 'telegram'
+                      ? 'bg-sky-500/25 text-sky-400'
+                      : islandPulse.kind === 'discord'
+                      ? 'bg-indigo-500/25 text-indigo-400'
+                      : islandPulse.kind === 'whatsapp'
+                      ? 'bg-emerald-500/25 text-emerald-400'
+                      : 'bg-[var(--luma-accent)]/20 text-[var(--luma-accent)]'
+                  }`}
+                >
                   {islandPulse.kind === 'volume' ? (
                     islandPulse.barPct === 0 ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />
                   ) : islandPulse.kind === 'audio' ? (
@@ -4368,16 +4501,23 @@ export default function App() {
                     <Music className="w-3 h-3" />
                   ) : islandPulse.kind === 'rollback' ? (
                     <History className="w-3 h-3" />
+                  ) : islandPulse.kind === 'telegram' ||
+                    islandPulse.kind === 'discord' ||
+                    islandPulse.kind === 'whatsapp' ||
+                    islandPulse.kind === 'messenger' ? (
+                    <MessageSquare className="w-3 h-3" />
+                  ) : islandPulse.kind === 'notification' || islandPulse.kind === 'system' ? (
+                    <Bell className="w-3 h-3" />
                   ) : (
                     <Sparkles className="w-3 h-3" />
                   )}
                 </span>
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-[11px] font-bold text-white truncate max-w-[160px]">
+                  <span className="text-[11px] font-bold text-white truncate max-w-[200px]">
                     {islandPulse.title}
                   </span>
                   {islandPulse.detail && (
-                    <span className="text-[10px] font-mono text-zinc-300 truncate max-w-[150px]">
+                    <span className="text-[10px] font-mono text-zinc-300 truncate max-w-[180px]">
                       {islandPulse.detail}
                     </span>
                   )}
@@ -5212,12 +5352,12 @@ export default function App() {
                   Диспетчер задач
                 </button>
                 <a
-                  href="/LumaOS_1.5.exe"
-                  download="LumaOS_1.5.exe"
+                  href="/LumaOS_1.5.1.exe"
+                  download="LumaOS_1.5.1.exe"
                   className="px-3.5 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  LumaOS_1.5.exe
+                  LumaOS_1.5.1.exe
                 </a>
               </div>
             </div>
@@ -5447,12 +5587,12 @@ export default function App() {
         </DexWindow>
       )}
 
-      {/* ==================== LUMA OS 1.5 CARBON: TRASH, SCENARIOS, CODE STUDIO & CUT STUDIO ==================== */}
+      {/* ==================== LUMA OS 1.5.1 CARBON: TRASH, SCENARIOS, CODE STUDIO, CUT STUDIO & OFFICE STUDIO ==================== */}
       {isWinVisible('trash') && (
         <DexWindow
           id="trash"
           title="Корзина Luma OS"
-          subtitle="Системное хранилище · Восстановление и очистка"
+          subtitle="Системная корзина Pro · Массовые операции · Превью · Автоочистка"
           icon={<Trash2 className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -5462,8 +5602,8 @@ export default function App() {
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.trash || null}
           zIndex={windows.trash.z}
-          initialWidth={820}
-          initialHeight={560}
+          initialWidth={860}
+          initialHeight={580}
           onFocus={() => focusWindow('trash')}
           onMinimize={() => minimizeWindow('trash')}
           onClose={() => closeWindow('trash')}
@@ -5510,7 +5650,7 @@ export default function App() {
         <DexWindow
           id="code_studio"
           title="Luma Code Studio"
-          subtitle="IDE · VS Code Engine · Файлы ПК · Терминал"
+          subtitle="IDE Pro · Подсветка синтаксиса · Миникарта · Команды Ctrl+Shift+P"
           icon={<Code2 className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -5537,7 +5677,7 @@ export default function App() {
         <DexWindow
           id="cut_studio"
           title="Luma Cut Studio"
-          subtitle="Видеоредактор · Таймлайн · 10 LUT · WebM Экспорт"
+          subtitle="Видеоредактор Pro · VP9/H.264/AV1 · 8 переходов · 12 LUT · Анимации"
           icon={<Film className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -5547,8 +5687,8 @@ export default function App() {
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.cut_studio || null}
           zIndex={windows.cut_studio.z}
-          initialWidth={1140}
-          initialHeight={720}
+          initialWidth={1160}
+          initialHeight={730}
           onFocus={() => focusWindow('cut_studio')}
           onMinimize={() => minimizeWindow('cut_studio')}
           onClose={() => closeWindow('cut_studio')}
@@ -5560,12 +5700,45 @@ export default function App() {
         </DexWindow>
       )}
 
-      {/* WINDOW 5: SYSTEM SETTINGS (1.0.4: SEARCH + KERNEL UI + TASKBAR + BLUETOOTH + POWER + STORAGE/HIDDEN FILES + APPS + NOTIFICATIONS + 8 THEMES + PERSONALIZATION) */}
+      {isWinVisible('office') && (
+        <DexWindow
+          id="office"
+          title="Luma Office Studio"
+          subtitle="Docs (.docx) · Sheets (.xlsx) · Slides (.pptx) · Открытие и экспорт в любой формат"
+          icon={<FileText className="w-4 h-4" />}
+          isDark={isDark}
+          designStyle={designStyle}
+          windowControlsStyle={windowControlsStyle}
+          taskbarPosition={taskbarPosition}
+          taskbarSizePx={effectiveTaskbarSizePx}
+          topBarOffsetPx={dualTaskbarMode ? 46 : 0}
+          snapCommand={snapCommands.office || null}
+          zIndex={windows.office.z}
+          initialWidth={1180}
+          initialHeight={740}
+          onFocus={() => focusWindow('office')}
+          onMinimize={() => minimizeWindow('office')}
+          onClose={() => closeWindow('office')}
+        >
+          <LumaOfficeSuiteWindow
+            isDark={isDark}
+            onNotify={(title, body, level) =>
+              pushToast(
+                title,
+                body,
+                level === 'ok' ? 'success' : level === 'warn' || level === 'danger' ? 'warning' : 'info'
+              )
+            }
+          />
+        </DexWindow>
+      )}
+
+      {/* WINDOW 5: SYSTEM SETTINGS (1.5.1 CARBON) */}
       {isWinVisible('settings') && (
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.5 (Carbon · C-6)"
+          subtitle="Luma OS 1.5.1 (Carbon · C-6)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -6397,7 +6570,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.5.exe).
+                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.5.1.exe).
                   </div>
                 </div>
               )}
@@ -7345,13 +7518,13 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Complete Additive Wallpaper Gallery (ALL classic & version artworks preserved + 3 new 1.5 Carbon artworks!) */}
+                    {/* Complete Additive Wallpaper Gallery (ALL classic & version artworks preserved + upgraded 4K UHD Carbon artworks!) */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                       {[
                         { label: 'Без картинки (Тема)', url: '', preview: '' },
-                        { label: 'Carbon 1.5 (3D Monolith)', url: '/luma-carbon-hero.jpg', preview: '/luma-carbon-hero.jpg' },
-                        { label: 'Carbon Weave Ribbons (1.5)', url: '/luma-carbon-weave.jpg', preview: '/luma-carbon-weave.jpg' },
-                        { label: 'Forged Carbon Flow (1.5)', url: '/luma-carbon-forged.jpg', preview: '/luma-carbon-forged.jpg' },
+                        { label: 'Carbon 1.5.1 · 4K UHD Monolith', url: '/luma-carbon-hero.jpg', preview: '/luma-carbon-hero.jpg' },
+                        { label: 'Carbon Weave · 4K UHD', url: '/luma-carbon-weave.jpg', preview: '/luma-carbon-weave.jpg' },
+                        { label: 'Forged Carbon · 4K UHD', url: '/luma-carbon-forged.jpg', preview: '/luma-carbon-forged.jpg' },
                         { label: 'Boron 1.4 (3D Prism)', url: '/luma-boron-hero.jpg', preview: '/luma-boron-hero.jpg' },
                         { label: 'Boron Dusk Horizon (1.4)', url: '/luma-boron-horizon.jpg', preview: '/luma-boron-horizon.jpg' },
                         { label: 'Cobalt Silk Fold (1.4)', url: '/luma-boron-silk.jpg', preview: '/luma-boron-silk.jpg' },
@@ -8477,23 +8650,23 @@ export default function App() {
                 </div>
               )}
 
-              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.4 BORON) */}
+              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.5.1 CARBON) */}
               {settingsTab === 'about' && (
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.4 (BORON · B-5)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.5.1 (CARBON · C-6)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5 · LumaShield 1.5 · Developer SDK v3.0
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.6.1 · LumaShield 2.0 · Luma AI 2.0 · Office Studio
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.5.exe"
-                      download="LumaOS_1.5.exe"
+                      href="/LumaOS_1.5.1.exe"
+                      download="LumaOS_1.5.1.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.5.exe
+                      LumaOS_1.5.1.exe
                     </a>
                   </div>
 
@@ -8530,14 +8703,14 @@ export default function App() {
                       <div
                         key={ver}
                         className={`p-4 rounded-xl border space-y-2 ${
-                          ver === '1.4 (Boron)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
+                          ver === '1.5.1 (Carbon)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-mono font-bold">
                             Версия {ver}
                           </span>
-                          {ver === '1.4 (Boron)' && <StatusPill active={true} />}
+                          {ver === '1.5.1 (Carbon)' && <StatusPill active={true} />}
                         </div>
                         <ul className="space-y-1 text-xs leading-relaxed">
                           {items.map((line, i) => (
@@ -10807,10 +10980,12 @@ export default function App() {
 
       {/* ==================== TRAY ITEM RIGHT-CLICK MENU (CPU/RAM, CLIPBOARD, FULLSCREEN, WIRELESS) ==================== */}
       {trayItemCtxMenu && (
-        <div
+        <SmartContextMenu
+          x={trayItemCtxMenu.x}
+          y={trayItemCtxMenu.y}
+          zIndex={85}
           onClick={(e) => e.stopPropagation()}
-          style={{ left: trayItemCtxMenu.x, top: trayItemCtxMenu.y }}
-          className={`luma-animate-in fixed z-[85] w-56 border p-1.5 shadow-2xl text-xs ${popoverShellCls}`}
+          className={`luma-animate-in w-56 border p-1.5 shadow-2xl text-xs ${popoverShellCls}`}
         >
           <div className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider truncate ${mutedCls}`}>
             {trayItemCtxMenu.label}
@@ -10859,15 +11034,17 @@ export default function App() {
             <X className="w-3.5 h-3.5" />
             Убрать с панели задач
           </button>
-        </div>
+        </SmartContextMenu>
       )}
 
       {/* ==================== WINDOWS-STYLE TASKBAR RIGHT-CLICK CONTEXT MENU ==================== */}
       {taskbarCtxMenu && (
-        <div
+        <SmartContextMenu
+          x={taskbarCtxMenu.x}
+          y={taskbarCtxMenu.y}
+          zIndex={80}
           onClick={(e) => e.stopPropagation()}
-          style={{ left: taskbarCtxMenu.x, top: taskbarCtxMenu.y }}
-          className={`luma-animate-in fixed z-[75] w-64 border p-1.5 shadow-2xl text-xs ${popoverShellCls}`}
+          className={`luma-animate-in w-64 border p-1.5 shadow-2xl text-xs ${popoverShellCls}`}
         >
           <div className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>
             Панель задач Luma OS
@@ -10994,7 +11171,7 @@ export default function App() {
             <Minimize className="w-3.5 h-3.5" />
             <span>Показать рабочий стол</span>
           </button>
-        </div>
+        </SmartContextMenu>
       )}
 
       {/* ==================== COLLAPSED "LUMA СИСТЕМА" TASKBAR FOLDER POPOVER (1.3.1) ==================== */}
@@ -11848,6 +12025,21 @@ export default function App() {
       {controlCenterOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
+          onMouseEnter={() => {
+            ccHoverEnteredRef.current = true;
+            if (ccLeaveTimerRef.current) {
+              window.clearTimeout(ccLeaveTimerRef.current);
+              ccLeaveTimerRef.current = null;
+            }
+          }}
+          onMouseLeave={() => {
+            if (!ccHoverEnteredRef.current) return;
+            if (ccLeaveTimerRef.current) window.clearTimeout(ccLeaveTimerRef.current);
+            ccLeaveTimerRef.current = window.setTimeout(() => {
+              ccHoverEnteredRef.current = false;
+              setControlCenterOpen(false);
+            }, 280);
+          }}
           className={`luma-animate-in fixed z-50 w-80 max-h-[84vh] overflow-y-auto border p-4 space-y-3.5 ${popoverShellCls} ${
             taskbarPosition === 'left'
               ? 'bottom-3 left-[68px]'
@@ -11863,7 +12055,7 @@ export default function App() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.4 (BORON)</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.5.1 (CARBON)</span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>
               {liveSystem?.location?.city || 'LOCAL'}
             </span>
@@ -11872,7 +12064,7 @@ export default function App() {
           <div className="grid grid-cols-2 gap-2 text-xs">
             {[
               { label: isDark ? 'Тёмная' : 'Светлая', active: isDark, icon: isDark ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />, run: () => { const nxt = isDark ? 'nothing_paper' : 'nothing_mono'; setThemeKey(nxt); triggerIslandPulse('Тема', nxt === 'nothing_paper' ? 'Светлая' : 'Тёмная', 'theme'); } },
-              { label: designStyle === 'nothing' ? 'Nothing' : 'Pixelbook', active: designStyle === 'pixelbook', icon: <Sliders className="w-3.5 h-3.5" />, run: () => setDesignStyle(designStyle === 'nothing' ? 'pixelbook' : 'nothing') },
+              { label: designStyle === 'nothing' ? 'Классический' : 'Модерн', active: designStyle === 'pixelbook', icon: <Sliders className="w-3.5 h-3.5" />, run: () => setDesignStyle(designStyle === 'nothing' ? 'pixelbook' : 'nothing') },
               { label: 'Luma Island', active: dynamicIslandEnabled, icon: <Disc3 className="w-3.5 h-3.5" />, run: handleToggleDynamicIsland },
               { label: 'Экономия', active: powerProfile === 'saver', icon: <Leaf className="w-3.5 h-3.5" />, run: () => handleChangePowerProfile(powerProfile === 'saver' ? 'balanced' : 'saver') },
               { label: 'Не беспокоить', active: dndEnabled, icon: <BellOff className="w-3.5 h-3.5" />, run: () => setDndEnabled((v) => { triggerIslandPulse(!v ? 'Не беспокоить: ВКЛ' : 'Не беспокоить: ВЫКЛ', undefined, 'dnd'); return !v; }) },
@@ -11891,31 +12083,7 @@ export default function App() {
             ))}
           </div>
 
-          <div className="space-y-1.5">
-            <div className={`text-[10px] font-mono uppercase ${mutedCls}`}>Панель задач</div>
-            <div className="grid grid-cols-4 gap-1.5 text-[11px]">
-              {(
-                [
-                  ['bottom', 'Снизу'],
-                  ['left', 'Слева'],
-                  ['right', 'Справа'],
-                  ['top', 'Сверху'],
-                ] as const
-              ).map(([pos, label]) => (
-                <button
-                  key={pos}
-                  onClick={() => setTaskbarPosition(pos)}
-                  className={`py-1.5 rounded-lg border font-semibold cursor-pointer ${
-                    taskbarPosition === pos ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Volume + Real Audio Output & Input Device Switcher (1.3) */}
+          {/* Volume + Real Audio Output & Input Device Switcher */}
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-mono">
               <span className={mutedCls}>ГРОМКОСТЬ</span>
@@ -12140,28 +12308,6 @@ export default function App() {
                 <SkipForward className="w-3 h-3" />
               </button>
             </div>
-          </div>
-
-          <div className={`pt-3 border-t flex items-center justify-between gap-1.5 ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
-            <div className="flex gap-1">
-              <button onClick={() => handleExecutePowerAction('lock')} title="Заблокировать" className={`p-2 rounded-lg border cursor-pointer ${btnCls}`}>
-                <Lock className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={() => handleExecutePowerAction('sleep')} title="Сон" className={`p-2 rounded-lg border cursor-pointer ${btnCls}`}>
-                <Power className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={() => handleExecutePowerAction('recycle_bin')} title="Корзина" className={`p-2 rounded-lg border cursor-pointer ${btnCls}`}>
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <a
-              href="/LumaOS_1.5.exe"
-              download="LumaOS_1.5.exe"
-              className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-mono font-bold inline-flex items-center gap-1 ${btnCls}`}
-            >
-              <Download className="w-3 h-3 text-[var(--luma-accent)]" />
-              EXE
-            </a>
           </div>
         </div>
       )}
@@ -12594,6 +12740,55 @@ export default function App() {
             body: JSON.stringify({ plan: next === 'saver' ? 'powersaver' : next }),
           }).catch(() => {});
         }}
+        onSetPowerPlan={(plan) => {
+          const mapped: PowerProfile = plan === 'saver' ? 'saver' : plan === 'performance' ? 'performance' : 'balanced';
+          setPowerProfile(mapped);
+          void fetch('/api/kernel/power-plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ plan: mapped === 'saver' ? 'powersaver' : mapped }),
+          }).catch(() => {});
+          pushToast('План питания', mapped === 'performance' ? 'Макс. производительность' : mapped === 'saver' ? 'Энергосбережение' : 'Сбалансированный', 'info');
+        }}
+        nightLightLevel={nightLightLevel}
+        onNightLightChange={setNightLightLevel}
+        gamingBoost={gamingBoost}
+        onToggleGamingBoost={() => {
+          setGamingBoost((prev) => {
+            const next = !prev;
+            if (next) {
+              setPowerProfile('performance');
+              void fetch('/api/kernel/optimize', { method: 'POST' }).catch(() => {});
+              pushToast('Игровой режим', 'CPU/RAM оптимизированы, включён приоритет производительности', 'success');
+              triggerIslandPulse('Игровой режим: ВКЛ', 'CPU + RAM Boost', 'system');
+            } else {
+              setPowerProfile('balanced');
+              pushToast('Игровой режим', 'Возврат в сбалансированный режим', 'info');
+            }
+            return next;
+          });
+        }}
+        micMuted={micMuted}
+        onToggleMicMute={() => {
+          setMicMuted((m) => {
+            const next = !m;
+            triggerIslandPulse(next ? 'Микрофон выключен' : 'Микрофон активен', undefined, 'audio');
+            return next;
+          });
+        }}
+        audioOutputs={audioDevices?.outputs || []}
+        audioInputs={audioDevices?.inputs || []}
+        activeAudioOutputId={audioDevices?.outputs?.find((d) => d.is_default)?.id}
+        activeAudioInputId={audioDevices?.inputs?.find((d) => d.is_default)?.id}
+        onSwitchAudioDevice={(id, kind) => {
+          const list = kind === 'output' ? audioDevices?.outputs || [] : audioDevices?.inputs || [];
+          const found = list.find((d) => d.id === id);
+          if (found) void handleSelectAudioDevice(found);
+        }}
+        onPickAccentColor={(hex) => {
+          setCustomAccentOverride(hex);
+          pushToast('Акцентный цвет', `Применён цвет ${hex}`, 'success');
+        }}
         wirelessDevices={wirelessBatteries}
         onRefreshWireless={() => {
           void fetch('/api/kernel/wireless/batteries?refresh=1')
@@ -12613,23 +12808,44 @@ export default function App() {
             return { ...prev, [key]: nextVal };
           });
         }}
-        onOpenWindow={(w) => openWindow(w as DexWinId)}
+        onOpenWindow={(w) => {
+          if (w === 'security') openWindow('settings', 'security');
+          else openWindow(w as DexWinId);
+        }}
         onOpenVault={() => setVaultOpen(true)}
         onOpenMouseSettings={() => openWindow('settings', 'mouse_dpi')}
         notifications={hubNotifications}
-        onClearNotifications={() => setHubNotifications([])}
+        onClearNotifications={() => {
+          setHubNotifications([]);
+          void fetch('/api/kernel/notifications/os', { method: 'DELETE' }).catch(() => {});
+        }}
         onDismissNotification={(id) => setHubNotifications((prev) => prev.filter((n) => n.id !== id))}
-        onAddNotification={(n) =>
+        onAddNotification={(n) => {
           setHubNotifications((prev) => [
             {
               ...n,
               id: `hn_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
               time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
             },
-            ...prev.slice(0, 39),
-          ])
-        }
+            ...prev.slice(0, 49),
+          ]);
+          if (!dndEnabled) {
+            triggerIslandPulse(`${n.sender}: ${n.title}`, n.body, n.source);
+          }
+        }}
       />
+
+      {/* Warm Night Light Eye-Protection Filter Overlay */}
+      {nightLightLevel > 0 && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 z-[99990] transition-opacity duration-300"
+          style={{
+            backgroundColor: `rgba(255, 146, 43, ${(nightLightLevel / 100) * 0.42})`,
+            mixBlendMode: 'multiply',
+          }}
+        />
+      )}
 
       {/* ==================== SUPER-CONFIDENTIALITY AES-256-GCM ISOLATED PRIVATE DESKTOP ==================== */}
       <LumaPrivateVaultOverlay
@@ -12798,7 +13014,7 @@ export default function App() {
                       {t('noOpenWindows', 'На этом рабочем столе нет открытых окон')}
                     </div>
                     <div className="flex flex-wrap justify-center gap-2 text-xs">
-                      {(['explorer', 'ai', 'calculator', 'terminal', 'utilities', 'settings'] as DexWinId[]).map((wid) => {
+                      {(['office', 'explorer', 'ai', 'code_studio', 'cut_studio', 'terminal', 'settings'] as DexWinId[]).map((wid) => {
                         const meta = taskbarApps.find((x) => x.id === wid);
                         if (!meta) return null;
                         return (

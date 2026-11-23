@@ -52,13 +52,13 @@ export interface AIProviderPreset {
 export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
   {
     id: 'luma_local',
-    label: 'Luma AI 1.2 (2 модели)',
+    label: 'Luma AI 2.0 (Lang 2.0 + Code 2.0)',
     badge: 'Без API',
-    defaultModel: 'luma-lang-1.2',
-    models: ['luma-lang-1.2', 'luma-code-1.2', 'luma-hybrid-1.2'],
-    defaultBaseUrl: 'internal://luma-ai-1.2',
+    defaultModel: 'luma-lang-2.0',
+    models: ['luma-lang-2.0', 'luma-code-2.0', 'luma-hybrid-2.0'],
+    defaultBaseUrl: 'internal://luma-ai-2.0',
     needsKey: false,
-    hint: 'Два автономных движка прямо в ядре LumaCore 1.3: Языковая модель (Luma Lang 1.2 — 45+ тем оффлайн + живой поиск Wikipedia, математика, конвертер, диагностика ПК) и Кодер (Luma Code 1.2 — 12 языков программирования).',
+    hint: 'Умные автономные движки в ядре LumaCore 1.6.1 с контекстной памятью: Luma Lang 2.0 (планы, письма, чеклисты, уравнения, Wikipedia, диагностика ПК) и Luma Code 2.0 (статическое ревью вашего кода + 45+ шаблонов на 14 языках).',
   },
   {
     id: 'gemini',
@@ -169,7 +169,7 @@ export const DEFAULT_LUMA_AI_CONFIG: LumaAIConfig = {
   models: {},
   baseUrls: {},
   systemPrompt:
-    'Ты — встроенный системный ИИ-ассистент Luma OS 1.2.3 (Lithium). Отвечай чётко, структурированно и на языке пользователя.',
+    'Ты — встроенный системный ИИ-ассистент Luma AI 2.0 в Luma OS 1.5.1 (Carbon). Отвечай чётко, умно, структурированно и на языке пользователя.',
   temperature: 0.7,
   includeSystemContext: true,
 };

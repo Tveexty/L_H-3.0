@@ -198,6 +198,74 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
     if (subTab === 'hosts_audit') void fetchHostsAudit();
   }, [subTab]);
 
+  // LumaShield 2.0 Single-File Inspector & Unified Audit Report state
+  const [singleFileResult, setSingleFileResult] = useState<{
+    name: string;
+    size: number;
+    sha256: string;
+    entropy: number;
+    is_pe: boolean;
+    verdict: 'clean' | 'threat';
+    threat?: SecurityThreatItem | null;
+    checked: string;
+  } | null>(null);
+  const [singleScanning, setSingleScanning] = useState(false);
+  const [exportingReport, setExportingReport] = useState(false);
+
+  const handleInspectDroppedFile = async (file: File) => {
+    setSingleScanning(true);
+    try {
+      const b64 = await new Promise<string>((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result || ''));
+        r.readAsDataURL(file);
+      });
+      const res = await fetch('/api/kernel/security/scan-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_name: file.name, base64_data: b64 }),
+      });
+      const data = await res.json();
+      if (data?.ok) {
+        setSingleFileResult(data);
+        await fetchStatus();
+        onPushToast(
+          'LumaShield 2.0 · Анализ файла',
+          data.verdict === 'threat'
+            ? `УГРОЗА в ${data.name}: ${data.threat?.category || 'Malware'}`
+            : `Файл ${data.name} чист (энтропия ${data.entropy})`,
+          data.verdict === 'threat' ? 'warning' : 'success'
+        );
+      }
+    } catch {
+      onPushToast('LumaShield 2.0', 'Не удалось проанализировать файл', 'warning');
+    } finally {
+      setSingleScanning(false);
+    }
+  };
+
+  const handleExportAuditReport = async () => {
+    setExportingReport(true);
+    try {
+      const r = await fetch('/api/kernel/security/report');
+      const d = await r.json();
+      if (d?.ok && d.markdown_report) {
+        const blob = new Blob([d.markdown_report], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `LumaShield_2.0_Audit_${new Date().toISOString().slice(0, 10)}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        onPushToast('LumaShield 2.0', 'Полный отчёт аудита безопасности сохранён (.md)', 'success');
+      }
+    } catch {
+      onPushToast('LumaShield 2.0', 'Ошибка генерации отчёта', 'warning');
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   const toggleRealtimeGuard = async () => {
     const next = !(status?.realtime_guard_enabled ?? true);
     try {
@@ -209,13 +277,13 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       if (r.ok) {
         await fetchStatus();
         onPushToast(
-          'LumaShield 1.5 Real-Time Guard',
+          'LumaShield 2.0 Real-Time Guard',
           next ? 'Фоновая защита Загрузок и Рабочего стола включена' : 'Фоновая защита приостановлена',
           next ? 'success' : 'info'
         );
       }
     } catch {
-      onPushToast('LumaShield 1.5', 'Не удалось переключить Real-Time Guard', 'warning');
+      onPushToast('LumaShield 2.0', 'Не удалось переключить Real-Time Guard', 'warning');
     }
   };
 
@@ -223,13 +291,13 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
     setScanning(true);
     setScanLabel(
       mode === 'quick'
-        ? 'Быстрая проверка (Загрузки, Рабочий стол, Автозагрузка, PE-маскировка)...'
+        ? 'Быстрая проверка LumaShield 2.0 (Загрузки, Рабочий стол, Архивы/VBA, PE-маскировка)...'
         : mode === 'deep'
-        ? 'Глубокое сканирование (85+ правил LumaShield 1.5, Энтропия Шеннона, AMSI/Стиллеры/Майнеры/Инъекции)...'
+        ? 'Глубокое сканирование LumaShield 2.0 (175+ правил, Telegram/Браузер-стилеры, Кейлоггеры, Архивы/Макросы, Энтропия)...'
         : mode === 'startup'
         ? 'Аудит автозагрузки и скриптов...'
         : mode === 'processes'
-        ? 'Инспекция активных процессов в памяти ОС...'
+        ? 'Инспекция 150 активных процессов (35+ сигнатур майнеров/RAT/стилеров + Temp)...'
         : `Проверка: ${path || '~'}...`
     );
     try {
@@ -242,14 +310,14 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       await fetchStatus();
       const count = d?.threats?.length ?? 0;
       onPushToast(
-        'LumaShield 1.5',
+        'LumaShield 2.0',
         count > 0
           ? `Обнаружено угроз: ${count} (проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс)`
           : `Угроз не найдено · Проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс`,
         count > 0 ? 'warning' : 'success'
       );
     } catch {
-      onPushToast('LumaShield 1.5', 'Не удалось выполнить сканирование', 'warning');
+      onPushToast('LumaShield 2.0', 'Не удалось выполнить сканирование', 'warning');
     } finally {
       setScanning(false);
       setScanLabel('');
@@ -400,9 +468,12 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
             </div>
             <div>
               <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--luma-accent)] font-bold flex flex-wrap items-center gap-1.5">
-                <span>ЯДРО БЕЗОПАСНОСТИ · LUMASHIELD {status?.security_core_version || '1.5'}</span>
+                <span>ЯДРО БЕЗОПАСНОСТИ · LUMASHIELD {status?.security_core_version || '2.0'}</span>
                 <span className="px-1.5 py-0.5 rounded bg-[var(--luma-accent-soft)] text-[9px]">
-                  {status?.rules_count || 85}+ ПРАВИЛ
+                  {status?.rules_count || 175}+ ПРАВИЛ
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 text-[9px]">
+                  STEALER &amp; VBA SHIELD
                 </span>
               </div>
               <div className="text-base font-extrabold flex items-center gap-2">
@@ -419,12 +490,12 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
                 )}
               </div>
               <div className={`text-[11px] font-mono ${mutedCls}`}>
-                {status?.crypto || 'AES-256-GCM + 85+ Heuristics + Hosts DNS Audit + TCP Monitor + Startup Auditor'}
+                {status?.crypto || 'AES-256-GCM + 175+ Heuristics + Archive/VBA Macro Scanner + InfoStealer & Hosts/Net Guard'}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => void toggleRealtimeGuard()}
               className={`px-3 py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition ${
@@ -434,6 +505,15 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
             >
               {rtGuard ? <ShieldCheck className="w-3.5 h-3.5" /> : <ShieldOff className="w-3.5 h-3.5" />}
               Real-Time Guard: {rtGuard ? 'ВКЛ' : 'ВЫКЛ'}
+            </button>
+            <button
+              disabled={exportingReport}
+              onClick={() => void handleExportAuditReport()}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}
+              title="Скачать полный отчёт аудита безопасности (.md)"
+            >
+              <ListChecks className="w-3.5 h-3.5 text-cyan-400" />
+              {exportingReport ? 'Экспорт...' : 'Отчёт (.md)'}
             </button>
             <button
               onClick={() => void fetchStatus()}
@@ -456,11 +536,11 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
             <div className="min-w-0">
-              <div className="font-bold">LumaShield 1.5 + Windows Defender (Без конфликтов)</div>
+              <div className="font-bold">LumaShield 2.0 + Windows Defender (Без конфликтов)</div>
               <div className="text-[11px] opacity-85">
                 {status?.defender?.available
-                  ? `Windows Defender активен (реальное время: ${status.defender.realtime_enabled ? 'ВКЛ' : 'ВЫКЛ'} · базы ${status.defender.signature_version}). LumaShield 1.5 добавляет 85+ правил, Аудит Hosts (DNS), Сетевой монитор TCP и Аудит автозагрузки.`
-                  : 'LumaShield 1.5 работает в безопасном user-space режиме: 85+ поведенческих правил, Аудит Hosts (DNS), PE-маскировка, энтропия Шеннона, TCP-монитор и аудит автозагрузки.'}
+                  ? `Windows Defender активен (реальное время: ${status.defender.realtime_enabled ? 'ВКЛ' : 'ВЫКЛ'} · базы ${status.defender.signature_version}). LumaShield 2.0 усиливает защиту: 175+ правил, защита от Telegram/Браузер-стилеров, проверка ZIP/VBA-макросов и аудит Hosts/TCP.`
+                  : 'LumaShield 2.0 работает в безопасном user-space режиме: 175+ правил, защита от стилеров (Telegram/Discord/Chrome/Кошельки), проверка архивов и макросов Office VBA, PE-маскировка, энтропия Шеннона и аудит Hosts/TCP.'}
               </div>
             </div>
           </div>
@@ -478,7 +558,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       {/* Sub-Tabs */}
       <div className="flex flex-wrap gap-1.5 text-xs">
         {[
-          { id: 'scanner' as const, label: 'Антивирус 1.5', badge: threats.length || undefined },
+          { id: 'scanner' as const, label: 'Антивирус 2.0', badge: threats.length || undefined },
           { id: 'hosts_audit' as const, label: 'Аудит Hosts (DNS)', badge: hostsAudit ? hostsAudit.suspicious_count || undefined : undefined },
           { id: 'network' as const, label: 'Сетевой экран', badge: suspTcpCount || (tcpConns.length || undefined) },
           { id: 'startup_audit' as const, label: 'Аудит автозагрузки', badge: startupFindings.filter((f) => f.risk !== 'safe').length || undefined },
@@ -501,14 +581,14 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         ))}
       </div>
 
-      {/* TAB 1B: HOSTS FILE DNS INTEGRITY AUDITOR (LUMASHIELD 1.5) */}
+      {/* TAB 1B: HOSTS FILE DNS INTEGRITY AUDITOR (LUMASHIELD 2.0) */}
       {subTab === 'hosts_audit' && (
         <div className={`p-4 rounded-2xl border space-y-3 text-xs ${surfaceCls}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <div className="font-bold flex items-center gap-1.5">
                 <Globe className="w-4 h-4 text-[var(--luma-accent)]" />
-                Аудит целостности файла Hosts (DNS Hijack Protection · LumaShield 1.5)
+                Аудит целостности файла Hosts (DNS Hijack Protection · LumaShield 2.0)
               </div>
               <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
                 Проверка системного файла hosts на скрытые DNS-перенаправления банков, антивирусов, обновлений Windows и фишинговые подмены
@@ -588,7 +668,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         </div>
       )}
 
-      {/* TAB 1: ANTIVIRUS SCANNER */}
+      {/* TAB 1: ANTIVIRUS SCANNER 2.0 */}
       {subTab === 'scanner' && (
         <div className="space-y-3">
           <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
@@ -607,7 +687,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
                 className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 ${btnCls}`}
               >
                 <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                Глубокая
+                Глубокая (175+)
               </button>
               <button
                 disabled={scanning}
@@ -634,6 +714,62 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
                 EICAR-тест
               </button>
             </div>
+
+            {/* Drag-and-Drop Single-File Deep Inspector */}
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files?.[0];
+                if (f) void handleInspectDroppedFile(f);
+              }}
+              className={`p-3 rounded-xl border border-dashed flex flex-wrap items-center justify-between gap-2 text-xs ${
+                isDark ? 'border-cyan-400/35 bg-cyan-500/[0.05]' : 'border-cyan-500/40 bg-cyan-50/70'
+              }`}
+            >
+              <div className="min-w-0">
+                <div className="font-bold text-cyan-400">Мгновенная проверка файла (LumaShield 2.0 Sandbox)</div>
+                <div className={`text-[11px] ${mutedCls}`}>
+                  Перетащите сюда подозрительный .exe, .zip, .docx, .docm, .ps1, .bat или .pdf — проверка макросов, энтропии и 175+ сигнатур
+                </div>
+              </div>
+              <label className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/35 text-cyan-300 font-semibold cursor-pointer shrink-0">
+                {singleScanning ? 'Анализ...' : 'Выбрать файл'}
+                <input
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleInspectDroppedFile(f);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            </div>
+
+            {singleFileResult && (
+              <div
+                className={`p-3 rounded-xl border text-xs space-y-1 ${
+                  singleFileResult.verdict === 'threat'
+                    ? 'bg-rose-500/15 border-rose-500/40 text-rose-200'
+                    : 'bg-emerald-500/12 border-emerald-500/30 text-emerald-200'
+                }`}
+              >
+                <div className="flex items-center justify-between font-bold">
+                  <span>
+                    {singleFileResult.verdict === 'threat' ? '⚠ ОБНАРУЖЕНА УГРОЗА: ' : '✓ ФАЙЛ БЕЗОПАСЕН: '}
+                    {singleFileResult.name}
+                  </span>
+                  <span className="font-mono text-[10px]">Энтропия: {singleFileResult.entropy} · {singleFileResult.is_pe ? 'PE Binary' : 'Data'}</span>
+                </div>
+                {singleFileResult.threat && (
+                  <div className="text-[11px] font-semibold text-rose-300">
+                    [{singleFileResult.threat.category}] {singleFileResult.threat.reason}
+                  </div>
+                )}
+                <div className="text-[10px] font-mono opacity-75 truncate">SHA-256: {singleFileResult.sha256}</div>
+              </div>
+            )}
 
             <div className="flex flex-wrap gap-2">
               <input

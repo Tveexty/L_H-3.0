@@ -82,6 +82,7 @@ interface LumaSpotlightProps {
       | 'scenarios'
       | 'code_studio'
       | 'cut_studio'
+      | 'office'
   ) => void;
   onOpenSettingsTab?: (tab: string) => void;
   onOpenVault?: () => void;
@@ -472,10 +473,20 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         run: () => onOpenWindow('explorer'),
       },
       {
+        id: 'svc_office',
+        group: 'Службы и утилиты',
+        title: 'Luma Office Studio (Docs · Sheets · Slides)',
+        subtitle: 'Встроенный Word, Excel и PowerPoint: открытие и экспорт .pptx, .docx, .xlsx, .pdf, .csv',
+        badge: 'OFFICE',
+        keywords: 'офис office word excel powerpoint презентация таблица документ pptx docx xlsx odt odp ods slides docs sheets pdf',
+        icon: <AppWindow className="w-4 h-4 text-sky-400" />,
+        run: () => onOpenWindow('office'),
+      },
+      {
         id: 'svc_terminal',
         group: 'Службы и утилиты',
-        title: 'Терминал LumaCore 1.5',
-        subtitle: 'Командная строка, системные команды, сеть и процессы',
+        title: 'Терминал LumaCore 1.6.1',
+        subtitle: 'Командная строка + 20 новых системных команд (ip, tcp, scan, wireless, hash, matrix)',
         badge: 'CLI',
         keywords: 'терминал консоль cmd powershell shell terminal',
         icon: <Terminal className="w-4 h-4" />,
@@ -514,17 +525,17 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'svc_ai',
         group: 'Службы и утилиты',
-        title: 'Luma AI (Автономный ИИ + Облако)',
-        subtitle: 'Luma Lang, Luma Code, Gemini, OpenAI, Claude, Ollama',
-        badge: 'AI',
-        keywords: 'ии нейросеть ai ассистент chatgpt gemini claude код',
+        title: 'Luma AI 2.0 (Luma Lang 2.0 + Code 2.0 + Облако)',
+        subtitle: 'Офлайн-ИИ с памятью диалога и ревью кода, Gemini, OpenAI, Claude, Ollama',
+        badge: 'AI 2.0',
+        keywords: 'ии нейросеть ai ассистент chatgpt gemini claude код luma ai 2.0',
         icon: <Sparkles className="w-4 h-4" />,
         run: () => onOpenWindow('ai'),
       },
       {
         id: 'svc_kernel',
         group: 'Службы и утилиты',
-        title: 'Монитор ядра LumaCore 1.5 & JSON-RPC',
+        title: 'Монитор ядра LumaCore 1.6.1 & JSON-RPC',
         subtitle: 'Внутренний монитор, диагностика GC, JSON-RPC консоль и код ядра',
         keywords: 'ядро kernel rpc ipc монитор диагностика',
         icon: <Code2 className="w-4 h-4" />,
