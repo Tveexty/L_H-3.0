@@ -48,9 +48,9 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.5.2"
+	KernelVersion       = "1.5.3"
 	KernelCodename      = "Carbon"
-	KernelEngineVersion = "1.4.5"
+	KernelEngineVersion = "1.4.6"
 	SecurityCoreVersion = "2.0"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
@@ -2480,25 +2480,28 @@ func main() {
 	privateVault := newLumaPrivateVault()
 	osNotifBridge := NewOSNotificationBridge(kernel.probe)
 
-	// 1. Real Telegram & Messenger OS Notification Bridge (/api/kernel/notifications/os)
+	// 1. Real 4-Layer Telegram & Messenger OS Notification Bridge (/api/kernel/notifications/os)
 	mux.HandleFunc("/api/kernel/notifications/os", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if r.Method == http.MethodPost {
 			var req struct {
-				Action string `json:"action"` // test | clear
-				App    string `json:"app"`
-				Title  string `json:"title"`
-				Body   string `json:"body"`
-				Level  string `json:"level"`
+				Action    string `json:"action"` // test | clear
+				App       string `json:"app"`
+				Sender    string `json:"sender"`
+				Chat      string `json:"chat"`
+				Title     string `json:"title"`
+				Body      string `json:"body"`
+				AvatarURL string `json:"avatar_url"`
+				Level     string `json:"level"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&req)
 			switch req.Action {
 			case "clear":
 				osNotifBridge.Clear()
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "notifications": []OSNotificationItem{}})
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "notifications": []OSNotificationItem{}, "diagnostics": osNotifBridge.Diagnostics()})
 			default:
-				item := osNotifBridge.PushManual(req.App, req.Title, req.Body, req.Level)
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "notification": item, "notifications": osNotifBridge.List(0)})
+				item := osNotifBridge.PushManualRich(req.App, req.Sender, req.Chat, req.Title, req.Body, req.AvatarURL, req.Level)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "notification": item, "notifications": osNotifBridge.List(0), "diagnostics": osNotifBridge.Diagnostics()})
 			}
 			return
 		}
@@ -2511,6 +2514,7 @@ func main() {
 			"ok":            true,
 			"count":         len(list),
 			"sources":       osNotifBridge.Sources(),
+			"diagnostics":   osNotifBridge.Diagnostics(),
 			"notifications": list,
 		})
 	})
@@ -2924,16 +2928,69 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "file": file, "captures": listLumaCaptures()})
 	})
 
+	idleSleepMgr := NewIdleSleepManager(kernel.vfsDir)
+
 	mux.HandleFunc("/api/kernel/alt-tab/toggle", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodPost {
+			var req struct {
+				Enabled     *bool `json:"enabled"`
+				WinDEnabled *bool `json:"win_d_enabled"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			if req.Enabled != nil {
+				setCustomAltTabEnabled(*req.Enabled)
+			}
+			if req.WinDEnabled != nil {
+				setWinDToLumaEnabled(*req.WinDEnabled)
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":            true,
+			"enabled":       isCustomAltTabEnabled(),
+			"win_d_enabled": isWinDToLumaEnabled(),
+		})
+	})
+
+	mux.HandleFunc("/api/kernel/alt-tab/release", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		releaseAltTabTopmost()
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+	})
+
+	mux.HandleFunc("/api/kernel/win-d/toggle", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if r.Method == http.MethodPost {
 			var req struct {
 				Enabled bool `json:"enabled"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&req)
-			setCustomAltTabEnabled(req.Enabled)
+			setWinDToLumaEnabled(req.Enabled)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "enabled": isCustomAltTabEnabled()})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "enabled": isWinDToLumaEnabled()})
+	})
+
+	mux.HandleFunc("/api/kernel/home/focus", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		bringLumaHomeNow()
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+	})
+
+	mux.HandleFunc("/api/kernel/power/idle-sleep", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		hw := kernel.SystemSnapshot()
+		acOnline := !hw.BatteryPresent || hw.BatteryCharging
+		if r.Method == http.MethodPost {
+			var req IdleSleepConfig
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(idleSleepMgr.Update(req, acOnline))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(idleSleepMgr.Status(acOnline))
 	})
 
 	mux.HandleFunc("/api/kernel/capture/list", func(w http.ResponseWriter, r *http.Request) {
@@ -2947,12 +3004,12 @@ func main() {
 		})
 	})
 
-	// Serve standalone executable download for LumaOS_1.5.2.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.5.3.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.2.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.3.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -2960,12 +3017,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.2.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.3.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.5.3.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.2.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.exe", serveExe)
@@ -3025,8 +3083,8 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.5.2 (CARBON · C-6) — LUMACORE 1.4.5 & LUMASHIELD 2.0")
-	log.Printf("  - Native AVI Recorder, Luma Alt+Tab, AI 3.0, Office & Cut Pro")
+	log.Printf("  LUMA OS 1.5.3 (CARBON · C-6) — LUMACORE 1.4.6 & LUMASHIELD 2.0")
+	log.Printf("  - Topmost Alt+Tab & Win+D Home, 4-Layer Messenger Bridge, Office Pro, Idle Sleep")
 	log.Printf("  - Desktop Environment:          http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:    http://%s/api/kernel/status", addr)

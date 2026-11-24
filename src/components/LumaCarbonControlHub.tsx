@@ -525,7 +525,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   }, [recording, stopRecording]);
 
   const startRecording = useCallback(async () => {
-    // 1) PRIMARY (Windows / Native Kernel 1.4.5): Zero-Freeze pure-Go GDI background AVI recorder!
+    // 1) PRIMARY (Windows / Native Kernel 1.4.6): Zero-Freeze pure-Go GDI background AVI recorder!
     // Never invokes WebView2 getDisplayMedia modal, so HWND_TOPMOST can NEVER deadlock the desktop!
     setCaptureBanner('Запускаю Zero-Freeze запись экрана...');
     try {
@@ -966,7 +966,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
           <div className={`px-3.5 py-2.5 border-b flex items-center justify-between gap-2 shrink-0 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]" />
-              <span className="text-xs font-bold tracking-tight truncate">Панель управления 1.5.2</span>
+              <span className="text-xs font-bold tracking-tight truncate">Панель управления 1.5.3</span>
               <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-md border ${isDark ? 'bg-white/[0.06] border-white/10 text-white/60' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
                 TAB
               </span>
@@ -999,7 +999,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             {showFeaturesModal ? (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-cyan-400">Менеджер функций Luma OS 1.5.2</span>
+                  <span className="text-[11px] font-bold text-cyan-400">Менеджер функций Luma OS 1.5.3</span>
                   <button onClick={() => setShowFeaturesModal(false)} className="text-[10px] px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/15">Назад</button>
                 </div>
                 {SYSTEM_FEATURE_META.map((feat) => {
@@ -1334,11 +1334,30 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                   <div className="h-full flex flex-col items-center justify-center text-center py-4 px-2">
                     <Bell size={22} className="opacity-25 mb-1.5" />
                     <div className={`text-xs font-medium ${subText}`}>Входящих сообщений пока нет</div>
-                    <div className={`text-[10px] opacity-65 mt-1 leading-relaxed ${subText}`}>
-                      Показываются только реальные входящие сообщения от пользователей Telegram, WhatsApp, Discord и VK.
+                    <div className={`text-[10px] opacity-70 mt-1 leading-relaxed ${subText}`}>
+                      4-слойный мост 1.5.3 активен: WPN DB/WAL + всплывающие окна Telegram/WhatsApp/Discord + дельта непрочитанных.
                       <br />
-                      Совет: включите «Нативные уведомления Windows» в настройках Telegram Desktop.
+                      Для полного текста и аватарок в Telegram включите «Нативные уведомления Windows».
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void fetch('/api/kernel/notifications/os', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            app: 'Telegram',
+                            sender: 'Luma Тест',
+                            chat: 'Проверка связи',
+                            title: 'Luma Тест',
+                            body: 'Входящие уведомления Luma OS 1.5.3 работают отлично!',
+                          }),
+                        }).catch(() => {});
+                      }}
+                      className="mt-2.5 px-3 py-1 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-400 border border-sky-400/30 text-[10px] font-bold cursor-pointer transition"
+                    >
+                      Проверить уведомление
+                    </button>
                   </div>
                 ) : (
                   filteredNotifs.map((n) => {

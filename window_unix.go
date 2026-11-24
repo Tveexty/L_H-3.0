@@ -83,7 +83,10 @@ func isNativeFullscreen() bool {
 
 func suspendWindowTopmost(suspend bool) {}
 
-var unixAltTabEnabled = true
+var (
+	unixAltTabEnabled = true
+	unixWinDEnabled   = true
+)
 
 func setCustomAltTabEnabled(enabled bool) {
 	unixShellMu.Lock()
@@ -96,3 +99,20 @@ func isCustomAltTabEnabled() bool {
 	defer unixShellMu.Unlock()
 	return unixAltTabEnabled
 }
+
+func setWinDToLumaEnabled(enabled bool) {
+	unixShellMu.Lock()
+	unixWinDEnabled = enabled
+	unixShellMu.Unlock()
+}
+
+func isWinDToLumaEnabled() bool {
+	unixShellMu.Lock()
+	defer unixShellMu.Unlock()
+	return unixWinDEnabled
+}
+
+func releaseAltTabTopmost() {}
+
+func bringLumaHomeNow() {}
+

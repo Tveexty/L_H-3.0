@@ -690,7 +690,7 @@ const PRESET_TEMPLATES: { name: string; emoji: string; patch: Partial<CustomUser
 const ram = Math.round(ctx.telemetry.ram_percent || 0);
 const devs = ctx.wireless || [];
 return {
-  headline: 'LUMA CORE 1.4.5',
+  headline: 'LUMA CORE 1.4.6',
   value: cpu + '% CPU',
   subtitle: 'RAM ' + ram + '% · Устройств: ' + devs.length,
   progress: cpu,

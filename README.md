@@ -4,30 +4,41 @@
 
 <br />
 
-# Luma OS 1.5.2 — **Carbon · C-6**
+# Luma OS 1.5.3 — **Carbon · C-6**
 
-**Флагманская настольная операционная среда для Windows 10 / 11 на ядре `LumaCore 1.4.5`, антивирусе `LumaShield 2.0`, обновлённых студиях `Cut Studio`, `Code Studio`, `Office Studio` и `Luma AI 3.0`**
+**Флагманская настольная операционная среда для Windows 10 / 11 на ядре `LumaCore 1.4.6`, с фирменным `Alt + Tab` поверх всех окон, `Win + D` возвратом в Luma OS, 4-слойным перехватом входящих сообщений, аутентичным Microsoft-стилем `Luma Office` (`Word` · `Excel` · `PowerPoint`) и настройками сна при бездействии**
 
 <p>
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.5.2"><img src="https://img.shields.io/badge/Release-v1.5.2%20(Carbon%20·%20C--6)-06b6d4?style=for-the-badge" alt="Release v1.5.2" /></a>
-  <img src="https://img.shields.io/badge/Kernel-LumaCore%201.4.5%20(Zero--WMI)-10b981?style=for-the-badge" alt="LumaCore 1.4.5" />
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.5.3"><img src="https://img.shields.io/badge/Release-v1.5.3%20(Carbon%20·%20C--6)-06b6d4?style=for-the-badge" alt="Release v1.5.3" /></a>
+  <img src="https://img.shields.io/badge/Kernel-LumaCore%201.4.6%20(Zero--WMI)-10b981?style=for-the-badge" alt="LumaCore 1.4.6" />
   <img src="https://img.shields.io/badge/Security-LumaShield%202.0%20(175%2B%20Rules)-f43f5e?style=for-the-badge" alt="LumaShield 2.0" />
-  <img src="https://img.shields.io/badge/Studios-Cut%20·%20Code%20·%20Office%20Pro-3b82f6?style=for-the-badge" alt="Studios Pro" />
+  <img src="https://img.shields.io/badge/Office-Word%20·%20Excel%20·%20PowerPoint%20Pro-185ABD?style=for-the-badge" alt="Luma Office Pro" />
   <img src="https://img.shields.io/badge/AI-Luma%20AI%203.0%20Overview-8b5cf6?style=for-the-badge" alt="Luma AI 3.0" />
   <img src="https://img.shields.io/badge/Wallpapers-4K%20UHD%203840×2160-f59e0b?style=for-the-badge" alt="4K UHD Wallpapers" />
 </p>
 
 <h3>
-  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.5.2.exe">⬇️ Скачать LumaOS_1.5.2.exe (Portable · 1 файл · 0 зависимостей)</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.5.3.exe">⬇️ Скачать LumaOS_1.5.3.exe (Portable · 1 файл · 0 зависимостей)</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.5.2">📦 Страница релиза v1.5.2</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.5.3">📦 Страница релиза v1.5.3</a>
 </h3>
 
 </div>
 
 ---
 
-## Что нового в **Luma OS 1.5.2 (Carbon · C-6 · Ядро `1.4.5`)**
+## Что нового в **Luma OS 1.5.3 (Carbon · C-6 · Ядро `1.4.6`)**
+
+| Модуль | Ключевые улучшения обновления 1.5.3 |
+| :--- | :--- |
+| **Фирменный `Alt + Tab` поверх ВСЕХ окон + `Win + D` → Luma OS** | Переработанный Win32 `WH_KEYBOARD_LL` перехватчик с `AttachThreadInput` и временным `HWND_TOPMOST` мгновенно открывает стеклянный **Luma Switcher** поверх Chrome, Telegram и любых приложений Windows. На первом месте — карточка **«Главная · Luma OS»** с живыми часами и превью обоев; нажатие **`Win + D`** полностью заменено на мгновенный возврат на главный экран Luma OS. |
+| **4-слойный гарантированный перехват входящих сообщений** | Полностью устранены задержки NTFS `ModTime` и пропуски сообщений в Windows WPN (`CreateFileW` с `FILE_SHARE_READ\|WRITE\|DELETE`), добавлен перехват **нативных всплывающих окон Telegram Desktop** (работает даже без включения системных уведомлений Windows!), строгий дельта-детектор (`+1` новое сообщение без спама), всплывающая кликабельная карточка с круглой аватаркой и звуковой сигнал. |
+| **Luma Office 1.5.3 — аутентичный интерфейс Word, Excel и PowerPoint** | **20× больше функций и 100% знакомое расположение кнопок**: фирменные цветные шапки (`Word #185ABD`, `Excel #107C41`, `PowerPoint #B7472A`), подписанные группы ленты **Ribbon**, меню **«Файл» (Backstage)** с шаблонами и строка поиска инструментов (**Tell Me**). **Word**: 7 вкладок, интерактивная сетка таблиц `10×8`, Формат по образцу, уравнения/символы, сантиметровая линейка, навигация по заголовкам, типографика, озвучка текста и примечания. **Excel**: **55+ формул на русском и английском** (`СУММ`/`SUM`, `ВПР`/`VLOOKUP`, `ЕСЛИ`/`IF`, `СЧЁТЕСЛИ`/`COUNTIF`, `ПЛТ`/`PMT`, `МЕДИАНА`), маркер автозаполнения (**Fill Handle**), сводные таблицы, условное форматирование с гистограммами, **6 типов графиков**, автофильтр и живая строка состояния `Среднее · Количество · Сумма`. **PowerPoint**: 8 вкладок, 9 макетов, 15+ фигур, SmartArt, рисование пером/маркером на слайдах, 12 тем, 10 переходов, 10 анимаций, Сортировщик слайдов и **режим докладчика F5 с лазерной указкой**. |
+| **Сон и выключение экрана при бездействии (в «Питание и Батарея»)** | Прямая синхронизация с активной схемой электропитания Windows (**`powrprof.dll`**): отдельные таймеры выключения экрана и перехода в сон для работы **От сети (AC — ПК)** и **От батареи (DC — Ноутбук)**, гибернация, блокировка перед сном, живой счётчик бездействия (`GetLastInputInfo`), защита от сна при видео/записи и режим **«Кофеин» (`SetThreadExecutionState`)**. |
+
+---
+
+## Что нового было в **Luma OS 1.5.2 (Carbon · C-6 · Ядро `1.4.5`)**
 
 | Модуль | Ключевые улучшения и исправления обновления 1.5.2 |
 | :--- | :--- |

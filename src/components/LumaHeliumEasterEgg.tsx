@@ -92,7 +92,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
       >
         <img
           src={carbonHeroImg}
-          alt="Luma OS 1.5.2 Carbon 4K"
+          alt="Luma OS 1.5.3 Carbon 4K"
           loading="eager"
           decoding="sync"
           draggable={false}
@@ -143,7 +143,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
               filter: 'drop-shadow(0 6px 26px rgba(34, 211, 238, 0.52))',
             }}
           >
-            1.5.2
+            1.5.3
           </div>
           <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">
             LumaOS

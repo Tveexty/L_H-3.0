@@ -188,14 +188,14 @@ export const DESKTOP_WIDGET_CATALOG: WidgetCatalogDef[] = [
     defaultH: 2,
     defaultVariant: 'wide_telemetry',
     defaultShape: 'squircle',
-    summary: 'Вся телеметрия железа: 4 шкалы CPU/RAM/Диск, двойные кольца, GPU чип + VRAM + температура и пульс ядра LumaCore 1.4.5',
+    summary: 'Вся телеметрия железа: 4 шкалы CPU/RAM/Диск, двойные кольца, GPU чип + VRAM + температура и пульс ядра LumaCore 1.4.6',
     variants: [
       { id: 'wide_telemetry', label: 'Панель 4 шкалы', desc: 'CPU, ОЗУ, Диск и Заряд в ряд', w: 6, h: 2, shape: 'squircle', previewKind: 'wide' },
       { id: 'dual_rings', label: 'Двойные кольца CPU/RAM', desc: 'Два круговых датчика CPU и ОЗУ', w: 4, h: 3, shape: 'squircle', previewKind: 'square' },
       { id: 'pill_strip', label: 'Узкая лента CPU/RAM', desc: 'Компактная капсула 5×1', w: 5, h: 1, shape: 'pill', previewKind: 'pill' },
       { id: 'dual_bars', label: 'GPU Чип + VRAM + °C', desc: 'Полная телеметрия видеокарты NVML / PDH', w: 5, h: 2, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_gpu_vram' },
       { id: 'circle_gpu', label: 'Круговой датчик GPU', desc: 'Кольцо загрузки видеокарты 3×3', w: 3, h: 3, shape: 'circle', previewKind: 'circle', targetWidgetType: 'luma_gpu_vram' },
-      { id: 'crystal_deck', label: 'Пульс ядра LumaCore', desc: 'Изумрудно-золотой HUD ядра 1.4.5 и LumaShield', w: 5, h: 2, shape: 'chamfer', previewKind: 'wide', targetWidgetType: 'luma_beryllium_pulse' },
+      { id: 'crystal_deck', label: 'Пульс ядра LumaCore', desc: 'Изумрудно-золотой HUD ядра 1.4.6 и LumaShield', w: 5, h: 2, shape: 'chamfer', previewKind: 'wide', targetWidgetType: 'luma_beryllium_pulse' },
     ],
   },
   {

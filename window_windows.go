@@ -410,7 +410,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.5.2 (Carbon)",
+			Title:  "Luma OS 1.5.3 (Carbon)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,
@@ -481,6 +481,8 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 var (
 	customAltTabMu      sync.Mutex
 	customAltTabEnabled = true
+	winDToLumaEnabled   = true
+	altTabPinnedTopmost = false
 )
 
 func setCustomAltTabEnabled(enabled bool) {
@@ -493,6 +495,126 @@ func isCustomAltTabEnabled() bool {
 	customAltTabMu.Lock()
 	defer customAltTabMu.Unlock()
 	return customAltTabEnabled
+}
+
+func setWinDToLumaEnabled(enabled bool) {
+	customAltTabMu.Lock()
+	winDToLumaEnabled = enabled
+	customAltTabMu.Unlock()
+}
+
+func isWinDToLumaEnabled() bool {
+	customAltTabMu.Lock()
+	defer customAltTabMu.Unlock()
+	return winDToLumaEnabled
+}
+
+// forceBringLumaToFront elevates Luma OS ABOVE all active Windows apps (Chrome, Telegram, fullscreen borderless apps)
+// using AttachThreadInput + AllowSetForegroundWindow + HWND_TOPMOST without un-maximizing a maximized window.
+func forceBringLumaToFront(lumaHwnd uintptr, pinTopmost bool) {
+	if lumaHwnd == 0 {
+		return
+	}
+	procIsIconic := user32WinDLL.NewProc("IsIconic")
+	procGetFg := user32WinDLL.NewProc("GetForegroundWindow")
+	procGetWinThreadProcId := user32WinDLL.NewProc("GetWindowThreadProcessId")
+	procAttachThreadInput := user32WinDLL.NewProc("AttachThreadInput")
+	procAllowSetFg := user32WinDLL.NewProc("AllowSetForegroundWindow")
+	procBringToTop := user32WinDLL.NewProc("BringWindowToTop")
+	procSetFg := user32WinDLL.NewProc("SetForegroundWindow")
+	procSetFocus := user32WinDLL.NewProc("SetFocus")
+
+	const (
+		swRestore     = 9
+		swpShowWindow = 0x0040
+		asfwAny       = ^uintptr(0)
+	)
+
+	iconic, _, _ := procIsIconic.Call(lumaHwnd)
+	if iconic != 0 {
+		_, _, _ = procShowWindow.Call(lumaHwnd, swRestore)
+	} else {
+		_, _, _ = procShowWindow.Call(lumaHwnd, swShow)
+	}
+
+	fgHwnd, _, _ := procGetFg.Call()
+	var fgTid, lumaTid uintptr
+	if fgHwnd != 0 {
+		fgTid, _, _ = procGetWinThreadProcId.Call(fgHwnd, 0)
+	}
+	lumaTid, _, _ = procGetWinThreadProcId.Call(lumaHwnd, 0)
+
+	attached := false
+	if fgTid != 0 && lumaTid != 0 && fgTid != lumaTid {
+		ok, _, _ := procAttachThreadInput.Call(fgTid, lumaTid, 1)
+		attached = ok != 0
+	}
+
+	_, _, _ = procAllowSetFg.Call(asfwAny)
+	// Always pulse HWND_TOPMOST so Windows immediately lifts Luma OS above Chrome / external apps!
+	_, _, _ = procSetWindowPos.Call(lumaHwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpShowWindow)
+	_, _, _ = procBringToTop.Call(lumaHwnd)
+	_, _, _ = procSetFg.Call(lumaHwnd)
+	_, _, _ = procSetFocus.Call(lumaHwnd)
+
+	if attached {
+		_, _, _ = procAttachThreadInput.Call(fgTid, lumaTid, 0)
+	}
+
+	if pinTopmost {
+		customAltTabMu.Lock()
+		altTabPinnedTopmost = true
+		customAltTabMu.Unlock()
+	} else {
+		nativeWinMu.Lock()
+		keepTop := activeShellCfg.AlwaysOnTop
+		nativeWinMu.Unlock()
+		if !keepTop {
+			_, _, _ = procSetWindowPos.Call(lumaHwnd, hwndNoTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoOwnerZOrder)
+		}
+		customAltTabMu.Lock()
+		altTabPinnedTopmost = false
+		customAltTabMu.Unlock()
+	}
+}
+
+// releaseAltTabTopmost drops the temporary HWND_TOPMOST elevation applied during Alt+Tab
+// so external Windows apps (Chrome, Telegram, Steam) smoothly return to the foreground when selected.
+func releaseAltTabTopmost() {
+	customAltTabMu.Lock()
+	wasPinned := altTabPinnedTopmost
+	altTabPinnedTopmost = false
+	customAltTabMu.Unlock()
+
+	nativeWinMu.Lock()
+	wv := nativeWebView
+	keepTop := activeShellCfg.AlwaysOnTop
+	nativeWinMu.Unlock()
+	if wv == nil || keepTop || !wasPinned {
+		return
+	}
+	wv.Dispatch(func() {
+		hwnd := uintptr(wv.Window())
+		if hwnd == 0 {
+			return
+		}
+		_, _, _ = procSetWindowPos.Call(hwnd, hwndNoTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoOwnerZOrder)
+	})
+}
+
+func bringLumaHomeNow() {
+	nativeWinMu.Lock()
+	wv := nativeWebView
+	nativeWinMu.Unlock()
+	if wv == nil {
+		return
+	}
+	wv.Dispatch(func() {
+		hwnd := uintptr(wv.Window())
+		if hwnd != 0 {
+			forceBringLumaToFront(hwnd, false)
+		}
+	})
 }
 
 // suspendWindowTopmost temporarily clears HWND_TOPMOST before browser pickers / screen recording
@@ -536,8 +658,9 @@ type winMsgStruct struct {
 	PtY     int32
 }
 
-// startWin32AltTabHook (LumaCore 1.4.5): Lightweight WH_KEYBOARD_LL hook that replaces Windows Alt+Tab
-// with Luma OS's own glassmorphic switcher (covering BOTH Luma windows AND Windows apps like Chrome!).
+// startWin32AltTabHook (LumaCore 1.4.6): Ultra-fast non-blocking WH_KEYBOARD_LL hook that:
+//   1. Replaces Windows Alt+Tab with Luma OS's glassmorphic switcher GUARANTEED ON TOP OF ALL WINDOWS (Chrome, Telegram, games).
+//   2. Replaces Win+D with instant return to Luma OS Home Desktop (never minimizing Luma OS to bare Windows desktop!).
 // Never blocks Ctrl+Alt+Del / Ctrl+Shift+Esc and always unhooks cleanly on shutdown.
 func startWin32AltTabHook(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan struct{}) {
 	runtime.LockOSThread()
@@ -549,61 +672,127 @@ func startWin32AltTabHook(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan s
 	procGetMessageW := user32WinDLL.NewProc("GetMessageW")
 	procPostThreadMessageW := user32WinDLL.NewProc("PostThreadMessageW")
 	procGetAsyncKeyState := user32WinDLL.NewProc("GetAsyncKeyState")
-	procSetFg := user32WinDLL.NewProc("SetForegroundWindow")
-	procShowWin := user32WinDLL.NewProc("ShowWindow")
+	procGetFg := user32WinDLL.NewProc("GetForegroundWindow")
+	procKeybdEvent := user32WinDLL.NewProc("keybd_event")
 	kernel32Local := syscall.NewLazyDLL("kernel32.dll")
 	procGetCurrentThreadId := kernel32Local.NewProc("GetCurrentThreadId")
 
 	const (
-		whKeyboardLL = 13
-		wmKeyDown    = 0x0100
-		wmKeyUp      = 0x0101
-		wmSysKeyDown = 0x0104
-		wmSysKeyUp   = 0x0105
-		wmQuit       = 0x0012
-		vkTab        = 0x09
-		vkShift      = 0x10
-		vkControl    = 0x11
-		vkLMenu      = 0xA4
-		vkRMenu      = 0xA5
-		vkMenu       = 0x12
-		llkhfAltDown = 0x20
-		swRestore    = 9
+		whKeyboardLL    = 13
+		wmKeyDown       = 0x0100
+		wmKeyUp         = 0x0101
+		wmSysKeyDown    = 0x0104
+		wmSysKeyUp      = 0x0105
+		wmQuit          = 0x0012
+		vkTab           = 0x09
+		vkShift         = 0x10
+		vkControl       = 0x11
+		vkEscape        = 0x1B
+		vkD             = 0x44
+		vkLWin          = 0x5B
+		vkRWin          = 0x5C
+		vkLMenu         = 0xA4
+		vkRMenu         = 0xA5
+		vkMenu          = 0x12
+		vkDummyMask     = 0xE8 // Unassigned VK used to suppress Start Menu when swallowing Win+D
+		keyeventfKeyUp  = 0x0002
+		llkhfAltDown    = 0x20
+		llkhfInjected   = 0x10
 	)
 
 	altTabActive := false
+	lwinDown := false
+	rwinDown := false
 	var hookHandle uintptr
 
 	cb := syscall.NewCallback(func(nCode int, wParam uintptr, lParam uintptr) uintptr {
-		if nCode >= 0 && lParam != 0 && isCustomAltTabEnabled() {
+		if nCode >= 0 && lParam != 0 {
 			info := (*kbdLLHookStruct)(unsafe.Pointer(lParam))
 			isDown := wParam == wmKeyDown || wParam == wmSysKeyDown
 			isUp := wParam == wmKeyUp || wParam == wmSysKeyUp
+			injected := (info.Flags & llkhfInjected) != 0
 
-			if info.VkCode == vkTab && isDown && (info.Flags&llkhfAltDown) != 0 {
-				ctrlState, _, _ := procGetAsyncKeyState.Call(vkControl)
-				if (ctrlState & 0x8000) == 0 {
-					shiftState, _, _ := procGetAsyncKeyState.Call(vkShift)
-					reverse := (shiftState & 0x8000) != 0
-					altTabActive = true
-					// Bring Luma OS window cleanly into view so our glassmorphic switcher is immediately visible
-					if lumaHwnd != 0 {
-						_, _, _ = procShowWin.Call(lumaHwnd, swRestore)
-						_, _, _ = procSetFg.Call(lumaHwnd)
-					}
-					js := fmt.Sprintf(`window.dispatchEvent(new CustomEvent('luma-alt-tab',{detail:{reverse:%v}}));`, reverse)
-					wv.Dispatch(func() {
-						wv.Eval(js)
-					})
-					return 1 // Swallow native Windows Alt+Tab cleanly!
+			// Track Win key state reliably
+			if !injected {
+				if info.VkCode == vkLWin {
+					lwinDown = isDown
+				} else if info.VkCode == vkRWin {
+					rwinDown = isDown
 				}
 			}
 
-			if isUp && altTabActive && (info.VkCode == vkLMenu || info.VkCode == vkRMenu || info.VkCode == vkMenu) {
-				altTabActive = false
-				wv.Dispatch(func() {
-					wv.Eval(`window.dispatchEvent(new CustomEvent('luma-alt-tab-commit'));`)
-				})
+			// 1. Replace Win+D with instant return to Luma OS Home Desktop!
+			if !injected && isDown && info.VkCode == vkD && isWinDToLumaEnabled() {
+				winHeld := lwinDown || rwinDown
+				if !winHeld {
+					lw, _, _ := procGetAsyncKeyState.Call(vkLWin)
+					rw, _, _ := procGetAsyncKeyState.Call(vkRWin)
+					winHeld = (lw&0x8000) != 0 || (rw&0x8000) != 0
+				}
+				if winHeld && (info.Flags&llkhfAltDown) == 0 {
+					ctrlState, _, _ := procGetAsyncKeyState.Call(vkControl)
+					shiftState, _, _ := procGetAsyncKeyState.Call(vkShift)
+					if (ctrlState&0x8000) == 0 && (shiftState&0x8000) == 0 {
+						// Suppress Start Menu popup on Win key release using standard dummy VK pulse
+						go func() {
+							_, _, _ = procKeybdEvent.Call(vkDummyMask, 0, 0, 0)
+							_, _, _ = procKeybdEvent.Call(vkDummyMask, 0, keyeventfKeyUp, 0)
+							if lumaHwnd != 0 {
+								forceBringLumaToFront(lumaHwnd, false)
+							}
+							wv.Dispatch(func() {
+								wv.Eval(`window.dispatchEvent(new CustomEvent('luma-win-d-home'));`)
+							})
+						}()
+						return 1 // Swallow native Windows Win+D!
+					}
+				}
+			}
+
+			// 2. Replace Alt+Tab with Luma OS Glassmorphic Switcher ABOVE ALL WINDOWS (Chrome, Telegram, Games)
+			if !injected && isCustomAltTabEnabled() {
+				if info.VkCode == vkTab && isDown && (info.Flags&llkhfAltDown) != 0 {
+					ctrlState, _, _ := procGetAsyncKeyState.Call(vkControl)
+					if (ctrlState & 0x8000) == 0 {
+						shiftState, _, _ := procGetAsyncKeyState.Call(vkShift)
+						reverse := (shiftState & 0x8000) != 0
+						fgHwnd, _, _ := procGetFg.Call()
+						fromExternal := lumaHwnd != 0 && fgHwnd != lumaHwnd
+						altTabActive = true
+						go func(rev, ext bool) {
+							if lumaHwnd != 0 {
+								forceBringLumaToFront(lumaHwnd, true)
+							}
+							js := fmt.Sprintf(`window.dispatchEvent(new CustomEvent('luma-alt-tab',{detail:{reverse:%v,fromExternal:%v}}));`, rev, ext)
+							wv.Dispatch(func() {
+								wv.Eval(js)
+							})
+						}(reverse, fromExternal)
+						return 1 // Swallow native Windows Alt+Tab cleanly!
+					}
+				}
+
+				// Cancel Alt+Tab cleanly on Escape while Alt is held
+				if altTabActive && isDown && info.VkCode == vkEscape {
+					altTabActive = false
+					go func() {
+						releaseAltTabTopmost()
+						wv.Dispatch(func() {
+							wv.Eval(`window.dispatchEvent(new CustomEvent('luma-alt-tab-cancel'));`)
+						})
+					}()
+					return 1
+				}
+
+				// Commit selected window when Alt key is released
+				if isUp && altTabActive && (info.VkCode == vkLMenu || info.VkCode == vkRMenu || info.VkCode == vkMenu) {
+					altTabActive = false
+					go func() {
+						wv.Dispatch(func() {
+							wv.Eval(`window.dispatchEvent(new CustomEvent('luma-alt-tab-commit'));`)
+						})
+					}()
+				}
 			}
 		}
 		ret, _, _ := procCallNextHookEx.Call(hookHandle, uintptr(nCode), wParam, lParam)

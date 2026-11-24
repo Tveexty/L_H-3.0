@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   BatteryCharging,
+  CheckCircle2,
   Clock,
+  Coffee,
   Cpu,
   Gamepad2,
   Headphones,
@@ -12,9 +14,11 @@ import {
   Leaf,
   Lock,
   Monitor,
+  Moon,
   Mouse,
   Pin,
   PinOff,
+  Plug,
   Power,
   Radio,
   RefreshCw,
@@ -420,6 +424,13 @@ export const LumaBatteryPanel: React.FC<LumaBatteryPanelProps> = ({
         )}
       </div>
 
+      {/* Idle Sleep & Display Timeout Settings (Synced to Windows powrprof.dll!) */}
+      <IdleSleepSettingsCard
+        isDark={isDark}
+        cardCls={cardCls}
+        onSleepNow={onPowerAction ? () => onPowerAction('sleep') : undefined}
+      />
+
       {/* Desktop PC Notice if no physical battery */}
       {!hasBattery && !demoMode && (
         <div
@@ -734,3 +745,382 @@ const WirelessBatteriesCard: React.FC<{
     </div>
   );
 };
+
+interface IdleSleepConfigState {
+  display_off_ac_min: number;
+  sleep_ac_min: number;
+  display_off_dc_min: number;
+  sleep_dc_min: number;
+  hibernate_after_min: number;
+  lock_before_sleep: boolean;
+  keep_awake: boolean;
+  prevent_sleep_on_media: boolean;
+}
+
+const DISPLAY_TIMEOUT_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: '1 минута' },
+  { value: 2, label: '2 минуты' },
+  { value: 3, label: '3 минуты' },
+  { value: 5, label: '5 минут' },
+  { value: 10, label: '10 минут' },
+  { value: 15, label: '15 минут' },
+  { value: 20, label: '20 минут' },
+  { value: 30, label: '30 минут' },
+  { value: 45, label: '45 минут' },
+  { value: 60, label: '1 час' },
+  { value: 120, label: '2 часа' },
+  { value: 0, label: 'Никогда' },
+];
+
+const SLEEP_TIMEOUT_OPTIONS: { value: number; label: string }[] = [
+  { value: 2, label: '2 минуты' },
+  { value: 5, label: '5 минут' },
+  { value: 10, label: '10 минут' },
+  { value: 15, label: '15 минут' },
+  { value: 20, label: '20 минут' },
+  { value: 30, label: '30 минут' },
+  { value: 45, label: '45 минут' },
+  { value: 60, label: '1 час' },
+  { value: 120, label: '2 часа' },
+  { value: 180, label: '3 часа' },
+  { value: 300, label: '5 часов' },
+  { value: 0, label: 'Никогда' },
+];
+
+const HIBERNATE_OPTIONS: { value: number; label: string }[] = [
+  { value: 0, label: 'Никогда' },
+  { value: 30, label: 'Через 30 минут' },
+  { value: 60, label: 'Через 1 час' },
+  { value: 120, label: 'Через 2 часа' },
+  { value: 180, label: 'Через 3 часа' },
+  { value: 360, label: 'Через 6 часов' },
+];
+
+const IdleSleepSettingsCard: React.FC<{
+  isDark: boolean;
+  cardCls: string;
+  onSleepNow?: () => void;
+}> = ({ isDark, cardCls, onSleepNow }) => {
+  const [cfg, setCfg] = useState<IdleSleepConfigState>({
+    display_off_ac_min: 15,
+    sleep_ac_min: 30,
+    display_off_dc_min: 5,
+    sleep_dc_min: 15,
+    hibernate_after_min: 0,
+    lock_before_sleep: true,
+    keep_awake: false,
+    prevent_sleep_on_media: true,
+  });
+  const [idleSec, setIdleSec] = useState(0);
+  const [acOnline, setAcOnline] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [statusMsg, setStatusMsg] = useState('');
+
+  const loadIdleConfig = async () => {
+    try {
+      const r = await fetch('/api/kernel/power/idle-sleep');
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.config) setCfg(d.config);
+        if (typeof d?.idle_seconds === 'number') setIdleSec(d.idle_seconds);
+        if (typeof d?.ac_online === 'boolean') setAcOnline(d.ac_online);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  useEffect(() => {
+    void loadIdleConfig();
+    const id = window.setInterval(() => void loadIdleConfig(), 15000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const saveConfig = async (next: IdleSleepConfigState) => {
+    setCfg(next);
+    setSaving(true);
+    try {
+      const r = await fetch('/api/kernel/power/idle-sleep', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.config) setCfg(d.config);
+        setStatusMsg(d?.message || 'Применено в системе Windows');
+        window.setTimeout(() => setStatusMsg(''), 4000);
+      }
+    } catch {
+      setStatusMsg('Сохранено локально');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const applyPreset = (preset: 'eco' | 'balanced' | 'never') => {
+    if (preset === 'eco') {
+      void saveConfig({ ...cfg, display_off_ac_min: 5, sleep_ac_min: 15, display_off_dc_min: 2, sleep_dc_min: 5, keep_awake: false });
+    } else if (preset === 'balanced') {
+      void saveConfig({ ...cfg, display_off_ac_min: 15, sleep_ac_min: 30, display_off_dc_min: 5, sleep_dc_min: 15, keep_awake: false });
+    } else {
+      void saveConfig({ ...cfg, display_off_ac_min: 0, sleep_ac_min: 0, display_off_dc_min: 15, sleep_dc_min: 0, keep_awake: true });
+    }
+  };
+
+  const selectCls = isDark
+    ? 'w-full px-2.5 py-2 rounded-xl border border-white/12 bg-[#111520] text-zinc-100 text-xs font-medium outline-none focus:border-[var(--luma-accent)] cursor-pointer'
+    : 'w-full px-2.5 py-2 rounded-xl border border-zinc-300 bg-white text-zinc-900 text-xs font-medium outline-none focus:border-[var(--luma-accent)] cursor-pointer';
+
+  const subCardCls = isDark
+    ? 'rounded-xl border border-white/10 bg-black/25 p-3.5 space-y-3'
+    : 'rounded-xl border border-zinc-200 bg-zinc-50/90 p-3.5 space-y-3';
+
+  const fmtIdle = (s: number) => {
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return m > 0 ? `${m} мин ${r} с` : `${r} с`;
+  };
+
+  return (
+    <div className={`rounded-2xl border p-4 space-y-4 ${cardCls}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-xs font-bold flex items-center gap-2">
+            <Moon className="w-4 h-4 text-indigo-400" />
+            Сон и выключение экрана при бездействии (ПК и Ноутбук)
+          </div>
+          <div className="text-[11px] text-zinc-500 mt-0.5">
+            Напрямую синхронизируется со схемой электропитания Windows (`powrprof.dll`) — отдельно для питания от сети и от батареи
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
+          <span
+            className={`px-2 py-1 rounded-full border ${
+              acOnline
+                ? 'bg-sky-500/15 text-sky-400 border-sky-500/30'
+                : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+            }`}
+          >
+            {acOnline ? 'Сейчас: От сети (AC)' : 'Сейчас: От батареи (DC)'}
+          </span>
+          <span className="px-2 py-1 rounded-full border border-zinc-500/25 text-zinc-400">
+            Бездействие: {fmtIdle(idleSec)}
+          </span>
+          {statusMsg && (
+            <span className="px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" />
+              {statusMsg}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Quick Presets */}
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        <span className="text-zinc-500 font-semibold">Быстрые профили:</span>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => applyPreset('eco')}
+          className={`px-2.5 py-1 rounded-lg border font-semibold cursor-pointer transition ${
+            isDark ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20' : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+          }`}
+        >
+          Экономный (экран 2–5м · сон 5–15м)
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => applyPreset('balanced')}
+          className={`px-2.5 py-1 rounded-lg border font-semibold cursor-pointer transition ${
+            isDark ? 'border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20' : 'border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100'
+          }`}
+        >
+          Сбалансированный (15/30м)
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => applyPreset('never')}
+          className={`px-2.5 py-1 rounded-lg border font-semibold cursor-pointer transition ${
+            isDark ? 'border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20' : 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
+          }`}
+        >
+          Игровой / Никогда не спать
+        </button>
+      </div>
+
+      {/* AC vs DC Side-by-Side Timeout Controls */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* AC (Plugged in / Desktop PC) */}
+        <div className={subCardCls}>
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-bold flex items-center gap-1.5 text-sky-400">
+              <Plug className="w-3.5 h-3.5" />
+              При работе от сети (ПК / Зарядка)
+            </div>
+            {acOnline && <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300">Активно</span>}
+          </div>
+          <label className="block space-y-1">
+            <span className="text-[11px] text-zinc-400">Выключать экран при бездействии через:</span>
+            <select
+              value={cfg.display_off_ac_min}
+              onChange={(e) => void saveConfig({ ...cfg, display_off_ac_min: Number(e.target.value) })}
+              className={selectCls}
+            >
+              {DISPLAY_TIMEOUT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-[11px] text-zinc-400">Переводить ПК в сон при бездействии через:</span>
+            <select
+              value={cfg.sleep_ac_min}
+              onChange={(e) => void saveConfig({ ...cfg, sleep_ac_min: Number(e.target.value) })}
+              className={selectCls}
+            >
+              {SLEEP_TIMEOUT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {/* DC (Laptop on Battery) */}
+        <div className={subCardCls}>
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-bold flex items-center gap-1.5 text-emerald-400">
+              <BatteryCharging className="w-3.5 h-3.5" />
+              При работе от батареи (Ноутбук)
+            </div>
+            {!acOnline && <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">Активно</span>}
+          </div>
+          <label className="block space-y-1">
+            <span className="text-[11px] text-zinc-400">Выключать экран от батареи через:</span>
+            <select
+              value={cfg.display_off_dc_min}
+              onChange={(e) => void saveConfig({ ...cfg, display_off_dc_min: Number(e.target.value) })}
+              className={selectCls}
+            >
+              {DISPLAY_TIMEOUT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-[11px] text-zinc-400">Переводить ноутбук в сон от батареи через:</span>
+            <select
+              value={cfg.sleep_dc_min}
+              onChange={(e) => void saveConfig({ ...cfg, sleep_dc_min: Number(e.target.value) })}
+              className={selectCls}
+            >
+              {SLEEP_TIMEOUT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {/* Hibernate + Caffeine Keep Awake + Media & Lock Guards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+        <div className={`${subCardCls} flex flex-col justify-between`}>
+          <label className="block space-y-1">
+            <span className="text-[11px] font-semibold">Гибернация после сна (сохранение ОЗУ на диск):</span>
+            <select
+              value={cfg.hibernate_after_min}
+              onChange={(e) => void saveConfig({ ...cfg, hibernate_after_min: Number(e.target.value) })}
+              className={selectCls}
+            >
+              {HIBERNATE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+
+          <div
+            onClick={() => void saveConfig({ ...cfg, lock_before_sleep: !cfg.lock_before_sleep })}
+            className="pt-2 border-t border-zinc-500/15 flex items-center justify-between cursor-pointer"
+          >
+            <div>
+              <div className="font-semibold">Блокировать экран перед сном</div>
+              <div className="text-[10px] text-zinc-500">Защита данных при пробуждении ПК</div>
+            </div>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
+                cfg.lock_before_sleep
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40'
+                  : 'bg-zinc-500/10 text-zinc-500 border-zinc-500/25'
+              }`}
+            >
+              {cfg.lock_before_sleep ? 'ВКЛ' : 'ВЫКЛ'}
+            </span>
+          </div>
+        </div>
+
+        <div className={`${subCardCls} flex flex-col justify-between`}>
+          <div
+            onClick={() => void saveConfig({ ...cfg, keep_awake: !cfg.keep_awake })}
+            className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition ${
+              cfg.keep_awake
+                ? 'border-amber-400/50 bg-amber-500/15'
+                : isDark
+                ? 'border-white/10 hover:bg-white/5'
+                : 'border-zinc-200 hover:bg-white'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Coffee className={`w-4 h-4 ${cfg.keep_awake ? 'text-amber-400' : 'text-zinc-400'}`} />
+              <div>
+                <div className="font-bold">Режим «Кофеин» (Не засыпать)</div>
+                <div className="text-[10px] text-zinc-500">Временно запретить авто-сон (`SetThreadExecutionState`)</div>
+              </div>
+            </div>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
+                cfg.keep_awake
+                  ? 'bg-amber-500/25 text-amber-300 border-amber-400/50'
+                  : 'bg-zinc-500/10 text-zinc-500 border-zinc-500/25'
+              }`}
+            >
+              {cfg.keep_awake ? 'АКТИВЕН' : 'ВЫКЛ'}
+            </span>
+          </div>
+
+          <div
+            onClick={() => void saveConfig({ ...cfg, prevent_sleep_on_media: !cfg.prevent_sleep_on_media })}
+            className="pt-2 flex items-center justify-between cursor-pointer"
+          >
+            <div>
+              <div className="font-semibold">Не засыпать при видео и записи экрана</div>
+              <div className="text-[10px] text-zinc-500">Блокирует переход в сон во время рендера и фильмов</div>
+            </div>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
+                cfg.prevent_sleep_on_media
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40'
+                  : 'bg-zinc-500/10 text-zinc-500 border-zinc-500/25'
+              }`}
+            >
+              {cfg.prevent_sleep_on_media ? 'ВКЛ' : 'ВЫКЛ'}
+            </span>
+          </div>
+
+          {onSleepNow && (
+            <button
+              type="button"
+              onClick={onSleepNow}
+              className="w-full py-1.5 rounded-xl bg-indigo-600/85 hover:bg-indigo-600 text-white font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer transition"
+            >
+              <Moon className="w-3.5 h-3.5" />
+              Перевести ПК / Ноутбук в сон сейчас
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
