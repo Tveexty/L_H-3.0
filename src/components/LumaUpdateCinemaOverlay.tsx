@@ -71,22 +71,22 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
         {/* Centerpiece Card */}
         <div className="relative z-10 w-full max-w-xl rounded-[32px] border border-white/15 bg-white/[0.04] shadow-[0_32px_90px_rgba(0,0,0,0.65)] p-7 sm:p-9 flex flex-col items-center text-center gap-6">
           {/* Top Pill */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.07] border border-indigo-400/30 text-[11px] font-mono uppercase tracking-[0.2em] text-indigo-200">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-300" />
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.07] border border-sky-400/35 text-[11px] font-mono uppercase tracking-[0.2em] text-sky-200">
+            <Sparkles className="w-3.5 h-3.5 text-sky-300" />
             <span>
-              {previewMode ? 'ДЕМО-АНИМАЦИЯ ОБНОВЛЕНИЯ · BORON' : `LUMA OS OTA · v${progress.target_version || '1.4'}`}
+              {previewMode ? 'ДЕМО-АНИМАЦИЯ ОБНОВЛЕНИЯ · NITROGEN' : `LUMA OS OTA · v${progress.target_version || '1.6'}`}
             </span>
           </div>
 
-          {/* Luminous Boron-5 Orbital Progress Reactor */}
+          {/* Luminous Nitrogen-7 Orbital Progress Reactor */}
           <div className="relative w-56 h-56 flex items-center justify-center">
-            {/* Outer Spinning Orbit Ring 1 (Boron 5-electron halo) */}
-            <div className="absolute inset-0 rounded-full border border-indigo-400/20 luma-update-orbit-slow">
-              <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-indigo-400 shadow-[0_0_16px_#818cf8]" />
-              <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-violet-400 shadow-[0_0_14px_#c084fc]" />
+            {/* Outer Spinning Orbit Ring 1 (Nitrogen 7-electron halo) */}
+            <div className="absolute inset-0 rounded-full border border-sky-400/25 luma-update-orbit-slow">
+              <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-sky-400 shadow-[0_0_16px_#38bdf8]" />
+              <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-indigo-400 shadow-[0_0_14px_#818cf8]" />
             </div>
             {/* Inner Counter-Spinning Orbit Ring 2 */}
-            <div className="absolute inset-3 rounded-full border border-sky-400/15 luma-update-orbit-rev">
+            <div className="absolute inset-3 rounded-full border border-cyan-400/20 luma-update-orbit-rev">
               <span className="absolute top-1/2 -right-1 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_14px_#34d399]" />
             </div>
 
@@ -96,7 +96,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
             )}
 
             {/* SVG Precision Progress Ring */}
-            <svg className="w-48 h-48 -rotate-90 drop-shadow-[0_0_24px_rgba(99,102,241,0.45)]" viewBox="0 0 200 200">
+            <svg className="w-48 h-48 -rotate-90 drop-shadow-[0_0_24px_rgba(56,189,248,0.45)]" viewBox="0 0 200 200">
               <defs>
                 <linearGradient id="lumaBoronUpdateGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="#38bdf8" />
@@ -134,7 +134,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
                 <div
                   className="text-5xl font-black font-mono tracking-tight leading-none"
                   style={{
-                    backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #c7d2fe 58%, #67e8f9 100%)',
+                    backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #bae6fd 58%, #38bdf8 100%)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
                   }}
@@ -143,7 +143,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
                 </div>
               )}
               <div className="mt-1.5 text-[10px] font-mono uppercase tracking-[0.22em] text-zinc-300">
-                {isDone ? 'ГОТОВО' : isErr ? 'ОШИБКА' : 'BORON · B-5'}
+                {isDone ? 'ГОТОВО' : isErr ? 'ОШИБКА' : 'NITROGEN · N-7'}
               </div>
             </div>
           </div>
@@ -152,10 +152,10 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
           <div className="space-y-1.5 max-w-md">
             <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
               {isDone
-                ? `Luma OS ${progress.target_version || '1.4'} готова к запуску`
+                ? `Luma OS ${progress.target_version || '1.6'} готова к запуску`
                 : isErr
                 ? 'Не удалось завершить обновление'
-                : `Обновление до Luma OS ${progress.target_version || '1.4'}`}
+                : `Обновление до Luma OS ${progress.target_version || '1.6'}`}
             </h2>
             <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
               {progress.message || 'Подготовка защищённого канала обновления...'}
@@ -192,7 +192,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
                     completed
                       ? 'border-emerald-400/45 bg-emerald-500/12 text-emerald-200'
                       : reached
-                      ? 'border-indigo-400/60 bg-indigo-500/15 text-white shadow-[0_0_20px_rgba(99,102,241,0.22)]'
+                      ? 'border-sky-400/60 bg-sky-500/15 text-white shadow-[0_0_20px_rgba(56,189,248,0.22)]'
                       : 'border-white/10 bg-white/[0.02] text-zinc-500'
                   }`}
                 >
@@ -201,7 +201,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
                     {completed ? (
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                     ) : reached ? (
-                      <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                      <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
                     ) : (
                       <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
                     )}
@@ -213,7 +213,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
           </div>
 
           <div className="text-[11px] text-zinc-400 font-mono">
-            Все виджеты, папки, приложения и темы автоматически сохраняются · LumaCore 1.5
+            Все виджеты, папки, приложения и темы автоматически сохраняются · LumaCore 1.5.0 · LumaShield 2.5
           </div>
         </div>
       </div>

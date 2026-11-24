@@ -137,6 +137,9 @@ export const KernelUIPanel: React.FC<{
   mutedCls: string;
   isDark: boolean;
   onTriggerEasterEgg?: () => void;
+  devModeEnabled?: boolean;
+  onToggleDevMode?: (next: boolean) => void;
+  onPushToast?: (title: string, msg: string, level?: 'info' | 'warning' | 'success') => void;
 }> = ({
   liveSystem,
   customDeviceName,
@@ -147,9 +150,47 @@ export const KernelUIPanel: React.FC<{
   mutedCls,
   isDark,
   onTriggerEasterEgg,
+  devModeEnabled = false,
+  onToggleDevMode,
+  onPushToast,
 }) => {
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(customDeviceName || liveSystem?.hostname || 'Luma Desktop');
+  const [adminInfo, setAdminInfo] = useState<{
+    is_admin: boolean;
+    integrity_level: string;
+    user: string;
+    platform: string;
+    can_elevate: boolean;
+  } | null>(null);
+  const [elevating, setElevating] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/kernel/admin/status')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d) setAdminInfo(d);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleElevateAdmin = async () => {
+    setElevating(true);
+    try {
+      const r = await fetch('/api/kernel/admin/elevate', { method: 'POST' });
+      const d = await r.json();
+      onPushToast?.(
+        'Режим Администратора (UAC)',
+        d.message || (d.ok ? 'Запрошен перезапуск Luma OS с правами Администратора.' : d.error || 'Не удалось повысить права'),
+        d.ok ? 'success' : 'warning'
+      );
+    } catch {
+      onPushToast?.('Режим Администратора', 'Ядро LumaCore недоступно.', 'warning');
+    } finally {
+      setElevating(false);
+    }
+  };
+
   const deviceName = customDeviceName.trim() || liveSystem?.hostname || 'Luma Workstation';
   const modelName = liveSystem?.device_model
     ? liveSystem.manufacturer &&
@@ -161,11 +202,11 @@ export const KernelUIPanel: React.FC<{
 
   return (
     <div className="space-y-4">
-      {/* Flagship Sculpted 3D Carbon 1.5.4 4K Hero Artwork — Click for Easter Egg Mini-Game! */}
+      {/* Flagship Sculpted 3D Nitrogen 1.6 QHD Hero Artwork — Click for Easter Egg Mini-Game! */}
       <LumaHeliumHeroCard
         onTriggerEasterEgg={() => onTriggerEasterEgg?.()}
-        kernelVersion={liveSystem?.kernel_engine_version || '1.4.7'}
-        securityVersion="2.0"
+        kernelVersion={liveSystem?.kernel_engine_version || '1.5.0'}
+        securityVersion="2.5"
       />
 
       {/* Device & Kernel UI Identity Card */}
@@ -173,28 +214,28 @@ export const KernelUIPanel: React.FC<{
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
             <div className="w-12 h-12 rounded-2xl bg-[var(--luma-accent)] text-white flex items-center justify-center font-mono font-black text-xl shrink-0">
-              C
+              N
             </div>
             <div className="min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--luma-accent)] font-bold">
-                ЯДРО UI · LUMA CARBON · C-6
+                ЯДРО UI · LUMA NITROGEN · N-7
               </div>
               <div className="text-lg font-extrabold tracking-tight truncate">
-                Luma OS 1.5.4 (Carbon)
+                Luma OS 1.6 (Nitrogen)
               </div>
               <div className={`text-xs font-mono truncate ${mutedCls}`}>
-                LumaCore {liveSystem?.kernel_engine_version || '1.4.7'} · LumaShield 2.0 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
+                LumaCore {liveSystem?.kernel_engine_version || '1.5.0'} · LumaShield 2.5 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
               </div>
             </div>
           </div>
 
           <a
-            href="/LumaOS_1.5.4.exe"
-            download="LumaOS_1.5.4.exe"
+            href="/LumaOS_1.6.exe"
+            download="LumaOS_1.6.exe"
             className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
-            LumaOS_1.5.4.exe
+            LumaOS_1.6.exe
           </a>
         </div>
 
@@ -248,19 +289,79 @@ export const KernelUIPanel: React.FC<{
           {/* 3. Версия ПО */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия ПО</div>
-            <div className="text-sm font-mono font-bold">1.5.4 (Carbon)</div>
+            <div className="text-sm font-mono font-bold">1.6 (Nitrogen · N-7)</div>
           </div>
 
-          {/* 4. Версия Ядра (1.4.5) */}
+          {/* 4. Версия Ядра (1.5.0) */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия Ядра</div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-mono font-bold text-[var(--luma-accent)]">
-                {liveSystem?.kernel_engine_version || '1.4.7'}
+                {liveSystem?.kernel_engine_version || '1.5.0'}
               </span>
-              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore 1.4.7 · Zero-WMI</span>
+              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore 1.5.0 · Zero-WMI</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Developer Mode & Administrator (UAC) Elevation Controls — Luma OS 1.6 Nitrogen */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+        <div className={`p-4 rounded-2xl border space-y-2.5 ${surfaceCls}`}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-sky-400" />
+              <span className="font-bold">Режим разработчика (Live HUD)</span>
+            </div>
+            <StatusBadge active={devModeEnabled} onLabel="АКТИВЕН" offLabel="ВЫКЛ" />
+          </div>
+          <p className={`text-[11px] leading-relaxed ${mutedCls}`}>
+            Показывает живой HUD поверх экрана: FPS, JS/Go RAM, поток HTTP/IPC запросов, интерактивный инспектор DOM и запуск GC. Горячая клавиша: <kbd className="px-1 py-0.5 rounded bg-white/10 font-mono">Ctrl+Shift+D</kbd>.
+          </p>
+          <button
+            onClick={() => onToggleDevMode?.(!devModeEnabled)}
+            className={`w-full py-2 rounded-xl font-bold transition cursor-pointer ${
+              devModeEnabled
+                ? 'bg-sky-500 text-white shadow-md shadow-sky-500/25'
+                : `${btnCls} border hover:border-[var(--luma-accent)]`
+            }`}
+          >
+            {devModeEnabled ? 'Выключить Dev HUD' : 'Включить Режим разработчика'}
+          </button>
+        </div>
+
+        <div className={`p-4 rounded-2xl border space-y-2.5 ${surfaceCls}`}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className={`w-4 h-4 ${adminInfo?.is_admin ? 'text-emerald-400' : 'text-amber-400'}`} />
+              <span className="font-bold">Режим Администратора (UAC)</span>
+            </div>
+            <StatusBadge
+              active={Boolean(adminInfo?.is_admin)}
+              onLabel="АДМИНИСТРАТОР"
+              offLabel={adminInfo?.integrity_level || 'СТАНДАРТ'}
+            />
+          </div>
+          <p className={`text-[11px] leading-relaxed ${mutedCls}`}>
+            {adminInfo?.is_admin
+              ? `Текущая сессия (${adminInfo.user || 'User'}) запущена с повышенными правами Администратора (${adminInfo.integrity_level}). Доступны Виртуальная память, Реестр HKLM и Службы.`
+              : `Обычный пользователь (${adminInfo?.user || 'User'}). Для настройки файла подкачки (RAM Plus), очистки HKLM и системных служб перезапустите от Администратора.`}
+          </p>
+          <button
+            disabled={elevating || Boolean(adminInfo?.is_admin)}
+            onClick={() => void handleElevateAdmin()}
+            className={`w-full py-2 rounded-xl font-bold transition cursor-pointer disabled:opacity-55 ${
+              adminInfo?.is_admin
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+                : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20'
+            }`}
+          >
+            {adminInfo?.is_admin
+              ? '✓ Права Администратора уже активны'
+              : elevating
+              ? 'Запрос UAC (runas)…'
+              : 'Перезапустить от имени Администратора'}
+          </button>
         </div>
       </div>
 
@@ -276,8 +377,8 @@ export const KernelUIPanel: React.FC<{
           ],
           ['Оперативная память', liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ (${liveSystem.ram_percent}%)` : '—'],
           ['Платформа / Архитектура', `${liveSystem?.os_name || 'Luma OS'} · ${liveSystem?.arch || 'amd64'}`],
-          ['Ядро безопасности', 'LumaShield 2.0 · 175+ Rules + Stealer & VBA Shield'],
-          ['Шина ядра / SDK', 'TCP JSON-RPC 2.0 :49215 · Office Engine · AI 2.0'],
+          ['Ядро безопасности', 'LumaShield 2.5 · 235+ Rules + Tasks & Stealer Shield'],
+          ['Шина ядра / ИИ', 'LumaCore 1.5.0 · TCP RPC :49215 · Luma AI 3.8 FlashLite'],
         ].map(([k, v]) => (
           <div key={k} className={`p-3.5 rounded-xl border space-y-1 ${surfaceCls}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>{k}</div>

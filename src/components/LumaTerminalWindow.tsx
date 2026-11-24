@@ -46,6 +46,7 @@ interface TermTab {
 
 const BUILTIN_COMMANDS = [
   'help',
+  'ai',
   'neofetch',
   'sys',
   'top',
@@ -105,8 +106,8 @@ function createTab(idx: number): TermTab {
     cwd: '~',
     history: [],
     lines: [
-      { id: 1, kind: 'accent', text: 'LUMA OS 1.5.4 (CARBON · C-6) · LUMACORE 1.4.7 · LUMASHIELD 2.0 TERMINAL [IPC :49215]' },
-      { id: 2, kind: 'out', text: 'Команды: help, neofetch, sys, top, ip, tcp, battery, wireless, scan, hosts, trash, dpi, uuid, hash, base64, gc, matrix, sh <cmd>.' },
+      { id: 1, kind: 'accent', text: 'LUMA OS 1.6 (NITROGEN · N-7) · LUMACORE 1.5.0 · LUMASHIELD 2.5 TERMINAL [IPC :49215]' },
+      { id: 2, kind: 'out', text: 'Команды: ai <вопрос>, help, neofetch, sys, top, ip, tcp, battery, wireless, scan, hosts, trash, dpi, uuid, hash, base64, gc, matrix, sh <cmd>.' },
     ],
   };
 }
@@ -227,11 +228,46 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
       return;
     }
 
+    if (head === 'ai') {
+      if (!rest) {
+        appendToTab(tid, 'Использование: ai <ваш вопрос>  (пример: ai курс доллара | ai погода в Москве | ai статус пк | ai что такое Rust)', 'accent');
+        return;
+      }
+      setBusy(true);
+      appendToTab(tid, '✦ Luma AI 3.8 FlashLite — запрос к проверенным источникам…', 'accent');
+      try {
+        const r = await fetch('/api/kernel/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: rest, mode: 'flashlite' }),
+        });
+        const d = await r.json();
+        const replyText = String(d.reply || d.error || 'Нет ответа от Luma AI 3.8');
+        const sources: { title: string; url: string; provider: string }[] = Array.isArray(d.sources) ? d.sources : [];
+        const linesOut = [replyText];
+        if (sources.length > 0) {
+          linesOut.push('');
+          linesOut.push('── ПРОВЕРЕННЫЕ ИСТОЧНИКИ ──────────────────────────────');
+          sources.forEach((s, idx) => {
+            linesOut.push(`  [${idx + 1}] (${s.provider}) ${s.title} -> ${s.url}`);
+          });
+        }
+        appendToTab(tid, linesOut.join('\n'), 'out');
+      } catch {
+        appendToTab(tid, 'Не удалось связаться с Luma AI 3.8 (/api/kernel/ai/chat).', 'err');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     if (head === 'help') {
       appendToTab(
         tid,
         [
-          'LUMA PRO TERMINAL 1.5.4 — СПРАВОЧНИК КОМАНД (50+):',
+          'LUMA PRO TERMINAL 1.6 NITROGEN — СПРАВОЧНИК КОМАНД (55+):',
+          '  ── ИСКУССТВЕННЫЙ ИНТЕЛЛЕКТ (LUMA AI 3.8 FLASHLITE) ─────────────────',
+          '  ai <вопрос>            — проверенные факты (Wiki/DDG/MDN/GitHub/ЦБ РФ/Погода/Телеметрия)',
           '  ── СИСТЕМА И ЖЕЛЕЗО ────────────────────────────────────────────────',
           '  neofetch               — паспорт системы, железо и версии ядер',
           '  sys / disks / loc      — CPU, GPU, RAM, диски, авто-регион',
@@ -239,10 +275,10 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
           '  battery / wireless     — заряд батареи ПК, мышек IO/Ajazz/Ardor и BT',
           '  dpi [400..6400]        — текущая скорость/DPI мыши или установка',
           '  uptime | date | gc     — аптайм ядра, точная дата/время, очистка памяти GC',
-          '  ── СЕТЬ И БЕЗОПАСНОСТЬ (LUMASHIELD 2.0) ───────────────────────────',
+          '  ── СЕТЬ И БЕЗОПАСНОСТЬ (LUMASHIELD 2.5) ───────────────────────────',
           '  ip | net               — сетевые интерфейсы, IPv4, MAC, скорость',
           '  tcp                    — активные TCP-соединения и подозрительные порты',
-          '  scan [quick|deep|proc] — запуск антивируса LumaShield 2.0 (175+ правил)',
+          '  scan [quick|deep|proc] — запуск антивируса LumaShield 2.5 (235+ правил)',
           '  hosts                  — аудит целостности файла hosts (DNS Hijack)',
           '  ── ФАЙЛЫ, КОРЗИНА И УТИЛИТЫ ───────────────────────────────────────',
           '  ls / find / mkdir / touch / cat / open — работа с ФС на ПК',
@@ -273,12 +309,12 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         [
           `  ██╗     ██╗   ██╗███╗   ███╗ █████╗      luma@${hostName}`,
           `  ██║     ██║   ██║████╗ ████║██╔══██╗     ──────────────────────────`,
-          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.5.4 Carbon (${os})`,
-          `  ██║     ██║   ██║██║╚██╔╝██║██╔══██║     STYLE   : ${designStyle === 'nothing' ? 'КЛАССИЧЕСКИЙ' : 'МОДЕРН'} · TASKBAR ${taskbarPosition.toUpperCase()}`,
+          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.6 Nitrogen (${os})`,
+          `  ██║     ██║   ██║██║╚██╔╝██║██╔══██║     STYLE   : ${designStyle === 'ubuntu' ? 'UBUNTU' : designStyle === 'nothing' ? 'КЛАССИЧЕСКИЙ' : 'МОДЕРН'} · TASKBAR ${taskbarPosition.toUpperCase()}`,
           `  ███████╗╚██████╔╝██║ ╚═╝ ██║██║  ██║     CPU     : ${cpu}`,
           `  ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝     GPU     : ${gpu}`,
           `                                           RAM     : ${ram}`,
-          `  KERNEL : LumaCore ${liveSystem?.kernel_engine_version || '1.4.7'} · Shield 2.0     REGION  : ${loc}`,
+          `  KERNEL : LumaCore ${liveSystem?.kernel_engine_version || '1.5.0'} · Shield 2.5     REGION  : ${loc}`,
         ].join('\n'),
         'accent'
       );

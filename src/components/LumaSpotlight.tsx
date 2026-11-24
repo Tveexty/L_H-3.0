@@ -13,7 +13,9 @@ import {
   Cpu,
   Disc3,
   Download,
+  ExternalLink,
   FolderOpen,
+  Gamepad2,
   Globe,
   HardDrive,
   Keyboard,
@@ -83,6 +85,8 @@ interface LumaSpotlightProps {
       | 'code_studio'
       | 'cut_studio'
       | 'office'
+      | 'gamepad'
+      | 'uninstaller'
   ) => void;
   onOpenSettingsTab?: (tab: string) => void;
   onOpenVault?: () => void;
@@ -152,11 +156,44 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [installedApps, setInstalledApps] = useState<InstalledAppInfo[]>(cachedInstalledApps || []);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState<{
+    reply: string;
+    model?: string;
+    sources: { title: string; url: string; provider: string }[];
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const askSpotlightAI38 = async (qText?: string) => {
+    const prompt = (qText ?? query).trim();
+    if (!prompt) return;
+    setAiLoading(true);
+    try {
+      const r = await fetch('/api/kernel/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, mode: 'flashlite' }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        setAiResult({
+          reply: String(d.reply || ''),
+          model: d.model || 'Luma AI 3.8 FlashLite',
+          sources: Array.isArray(d.sources) ? d.sources : [],
+        });
+      }
+    } catch {
+      setAiResult({ reply: 'Не удалось получить ответ от Luma AI 3.8 FlashLite.', sources: [] });
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
     setQuery('');
+    setAiResult(null);
+    setAiLoading(false);
     setSelectedIndex(0);
     requestAnimationFrame(() => inputRef.current?.focus());
     const t = window.setTimeout(() => inputRef.current?.focus(), 45);
@@ -233,9 +270,9 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'set_kernel_ui',
         group: 'Настройки системы',
-        title: 'Ядро UI и О системе (Luma OS 1.5 Carbon)',
-        subtitle: 'Имя ПК, характеристики, LumaCore 1.6, LumaShield 1.6, пасхалка',
-        keywords: 'ядро ui о системе версия модель устройство carbon 1.5 about',
+        title: 'Ядро UI, Режим разработчика и Администратор (Luma OS 1.6 Nitrogen)',
+        subtitle: 'Имя ПК, LumaCore 1.5.0, LumaShield 2.5, Live Dev HUD, права UAC',
+        keywords: 'ядро ui о системе версия модель устройство nitrogen 1.6 about разработчик dev hud администратор uac',
         icon: <Cpu className="w-4 h-4" />,
         run: () => openSetting('kernel_ui'),
       },
@@ -260,18 +297,18 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'set_appearance',
         group: 'Настройки системы',
-        title: 'Оформление, Обои Carbon 1.5, 3 точки и Анимации HarmonyOS 7',
-        subtitle: 'Стили Классический/Модерн, 3 новых арта Carbon, кнопки окна 3 точки, анимации',
-        keywords: 'темы обои фон цвет прозрачность blur анимации оформление виджеты wallpaper theme carbon harmonyos 3 точки',
+        title: 'Оформление, Стиль Ubuntu, Обои Nitrogen 1.6 и Анимации',
+        subtitle: 'Стили Классический / Модерн / Ubuntu, QHD-коллекция Nitrogen, 3 точки, анимации',
+        keywords: 'темы обои фон цвет прозрачность blur анимации оформление виджеты wallpaper theme nitrogen ubuntu 3 точки',
         icon: <Palette className="w-4 h-4" />,
         run: () => openSetting('appearance'),
       },
       {
         id: 'set_taskbar',
         group: 'Настройки системы',
-        title: 'Настройка Панели задач (Двойная панель + Прямой запуск)',
-        subtitle: '2 панели задач (верх: утилиты, низ: окна), автоскрытие, прямой запуск приложений',
-        keywords: 'панель задач taskbar двойная панель автоскрытие трей прямой запуск',
+        title: 'Настройка Панели задач и Умного Dock',
+        subtitle: '2 панели задач, автоскрытие, стеки папок Dock, клавиша Win',
+        keywords: 'панель задач taskbar двойная панель автоскрытие трей прямой запуск dock стеки win',
         icon: <SlidersHorizontal className="w-4 h-4" />,
         run: () => openSetting('taskbar'),
       },
@@ -296,9 +333,9 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'set_security',
         group: 'Настройки системы',
-        title: 'Безопасность и Антивирус (LumaShield 1.6)',
-        subtitle: 'Сканер 85+ правил, Аудит файла Hosts (DNS), TCP-монитор, Карантин',
-        keywords: 'безопасность антивирус защита сканер карантин lumashield сеть firewall hosts dns',
+        title: 'Безопасность и Антивирус (LumaShield 2.5 · 235+ правил)',
+        subtitle: 'Сканер 235+ правил, Аудит автозагрузки и Задач, Hosts (DNS), TCP-монитор, Карантин',
+        keywords: 'безопасность антивирус защита сканер карантин lumashield 2.5 сеть firewall hosts dns задачи',
         icon: <ShieldCheck className="w-4 h-4" />,
         run: () => openSetting('security'),
       },
@@ -314,9 +351,9 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'set_storage',
         group: 'Настройки системы',
-        title: 'Память, Диски и Файлы',
-        subtitle: 'Состояние дисков, ОЗУ и быстрый просмотр скрытых файлов',
-        keywords: 'память диски файлы хранилище storage ram',
+        title: 'Виртуальная память (RAM Plus 2/4/6 ГБ), Диски и Файлы',
+        subtitle: 'Фиксированный pagefile Min==Max для SSD, сжатие памяти, расчёт TBW и диски',
+        keywords: 'память диски файлы хранилище storage ram виртуальная память ram plus pagefile подкачка ssd tbw',
         icon: <HardDrive className="w-4 h-4" />,
         run: () => openSetting('storage'),
       },
@@ -360,15 +397,35 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
 
     // 3. System Services, Luma Modules & Windows Utilities
     const serviceItems: SpotlightResult[] = [
+      {
+        id: 'svc_gamepad_studio',
+        group: 'Службы и утилиты',
+        title: 'Luma Gamepad Studio (DS4 / DualSense / Xbox)',
+        subtitle: 'Аналог DS4Windows: 60 FPS визуализатор, кривые, RGB Lightbar, вибрация, эмуляция мыши',
+        badge: 'GAMEPAD',
+        keywords: 'геймпад контроллер ds4 dualsense xbox ds4windows джойстик вибрация lightbar стики gamepad',
+        icon: <Gamepad2 className="w-4 h-4 text-sky-400" />,
+        run: () => onOpenWindow('gamepad'),
+      },
+      {
+        id: 'svc_uninstaller',
+        group: 'Службы и утилиты',
+        title: 'Luma Uninstaller (Очистка хвостов программ)',
+        subtitle: 'Аналог Revo / BCUninstaller: 4-этапный сканер остатков, реестр, службы и автобэкап',
+        badge: 'CLEANER',
+        keywords: 'удаление программ очистка хвостов revo uninstaller bcuninstaller остатки реестр бэкап',
+        icon: <Trash2 className="w-4 h-4 text-rose-400" />,
+        run: () => onOpenWindow('uninstaller'),
+      },
       ...(onOpenControlHub
         ? [
             {
               id: 'svc_carbon_hub',
               group: 'Службы и утилиты' as const,
-              title: 'Панель управления Carbon + Центр уведомлений (Tab)',
+              title: 'Панель управления Nitrogen + Центр уведомлений (Tab)',
               subtitle: 'Редактируемая панель 1/4×1/2, Скриншот, Запись экрана, Telegram и Функции ОС',
               badge: 'TAB',
-              keywords: 'панель управления tab уведомления telegram скриншот запись экрана control hub carbon',
+              keywords: 'панель управления tab уведомления telegram скриншот запись экрана control hub nitrogen',
               icon: <SlidersHorizontal className="w-4 h-4" />,
               run: () => onOpenControlHub(),
             },
@@ -391,10 +448,10 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'svc_code_studio',
         group: 'Службы и утилиты',
-        title: 'Luma Code Studio (Редактор кода · VS Code)',
-        subtitle: 'Файловое дерево ПК, вкладки, подсветка, HTML-превью и встроенный терминал',
+        title: 'Luma Code Studio (Редактор кода · AI 3.8)',
+        subtitle: 'Файловое дерево ПК, вкладки, подсветка, HTML-превью, AI 3.8 и встроенный терминал',
         badge: 'IDE',
-        keywords: 'код редактор vscode code studio ide программирование js python go html',
+        keywords: 'код редактор vscode code studio ide программирование js python go html ai',
         icon: <Code2 className="w-4 h-4" />,
         run: () => onOpenWindow('code_studio'),
       },
@@ -822,13 +879,27 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
             spellCheck={false}
           />
           {query && (
-            <button
-              onClick={() => setQuery('')}
-              className="p-1 rounded-lg opacity-60 hover:opacity-100 cursor-pointer"
-              title="Очистить"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <>
+              <button
+                onClick={() => void askSpotlightAI38()}
+                disabled={aiLoading}
+                className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-500 hover:brightness-110 text-white text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-60"
+                title="Спросить Luma AI 3.8 FlashLite (проверенные факты и источники)"
+              >
+                <Sparkles className="w-3 h-3" />
+                {aiLoading ? 'AI…' : 'AI 3.8'}
+              </button>
+              <button
+                onClick={() => {
+                  setQuery('');
+                  setAiResult(null);
+                }}
+                className="p-1 rounded-lg opacity-60 hover:opacity-100 cursor-pointer"
+                title="Очистить"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
           )}
           <kbd
             className={`px-2 py-0.5 rounded-md border text-[10px] font-mono opacity-65 shrink-0 ${
@@ -839,6 +910,62 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
           </kbd>
         </div>
 
+        {/* Inline Luma AI 3.8 FlashLite Verified Answer Box */}
+        {(aiLoading || aiResult) && (
+          <div
+            className={`px-4 py-3 border-t space-y-2 ${
+              isDark ? 'border-sky-400/20 bg-sky-500/[0.08]' : 'border-sky-200 bg-sky-50/90'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-black text-sky-400">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{aiResult?.model || 'Luma AI 3.8 FlashLite · Проверенные источники'}</span>
+              </div>
+              <button
+                onClick={() => setAiResult(null)}
+                className="text-[10px] opacity-65 hover:opacity-100 cursor-pointer"
+              >
+                Скрыть
+              </button>
+            </div>
+            {aiLoading ? (
+              <div className="text-xs opacity-80 animate-pulse">
+                Поиск фактов (Wikipedia · DDG · MDN · GitHub · ЦБ РФ · Погода · LumaCore)…
+              </div>
+            ) : aiResult ? (
+              <>
+                <div className="text-xs whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto pr-1">
+                  {aiResult.reply}
+                </div>
+                {aiResult.sources.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {aiResult.sources.map((src, sIdx) => (
+                      <button
+                        key={`${src.url}_${sIdx}`}
+                        onClick={() => {
+                          if (src.url.startsWith('http')) openExternalUrl(src.url);
+                          else onOpenWindow('taskmgr');
+                        }}
+                        className={`px-2 py-1 rounded-lg border text-[10px] font-semibold inline-flex items-center gap-1 cursor-pointer transition ${
+                          isDark
+                            ? 'bg-slate-900/80 border-sky-400/30 text-sky-300 hover:bg-sky-500/20'
+                            : 'bg-white border-sky-300 text-sky-700 hover:bg-sky-100'
+                        }`}
+                        title={src.url}
+                      >
+                        <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                        <span className="font-bold opacity-75">{src.provider}:</span>
+                        <span className="truncate max-w-[170px]">{src.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
+        )}
+
         {/* Empty state: ultra-clean minimal subtle footer only */}
         {!query.trim() ? (
           <div
@@ -846,7 +973,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
               isDark ? 'border-white/[0.07] bg-white/[0.02] text-zinc-400' : 'border-zinc-900/[0.07] bg-black/[0.02] text-zinc-500'
             }`}
           >
-            <span>Приложения ПК · Настройки · Службы ОС · Поиск в Интернете</span>
+            <span>Приложения ПК · Настройки · Luma AI 3.8 · Поиск в Интернете</span>
             <span>ESC — закрыть</span>
           </div>
         ) : (

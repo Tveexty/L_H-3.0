@@ -23,6 +23,7 @@ import {
   Code2,
   BookOpen,
   Power,
+  ExternalLink,
 } from 'lucide-react';
 
 export type AIProviderId =
@@ -38,6 +39,13 @@ export type AIProviderId =
 
 export type LocalAIMode = 'auto' | 'language' | 'code';
 
+export interface AISourceLinkItem {
+  title: string;
+  url: string;
+  provider: string;
+  snippet?: string;
+}
+
 export interface AIProviderPreset {
   id: AIProviderId;
   label: string;
@@ -52,13 +60,13 @@ export interface AIProviderPreset {
 export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
   {
     id: 'luma_local',
-    label: 'Luma AI 3.0 (Lang 3.0 + Code 3.0 + Web Overview)',
-    badge: 'Без API',
-    defaultModel: 'luma-lang-3.0',
-    models: ['luma-lang-3.0', 'luma-code-3.0', 'luma-hybrid-3.0'],
-    defaultBaseUrl: 'internal://luma-ai-3.0',
+    label: 'Luma AI 3.8 FlashLite (Проверенные источники + Code 3.8)',
+    badge: 'AI 3.8',
+    defaultModel: 'luma-3.8-flashlite',
+    models: ['luma-3.8-flashlite', 'luma-3.8-code', 'luma-3.8-research'],
+    defaultBaseUrl: 'internal://luma-ai-3.8-flashlite',
     needsKey: false,
-    hint: 'Умный движок уровня Chrome AI Overview в ядре LumaCore 1.4.7: живой двух-источниковый веб-синтез (Wikipedia + DuckDuckGo), переводчик, суммаризация текста, кредитный калькулятор, сравнения A vs B, инженерные гайды и Code 3.0.',
+    hint: 'Обновлённая Luma AI 3.8 FlashLite в ядре LumaCore 1.5.0: получение фактов из проверенных источников (Wikipedia RU/EN, DuckDuckGo, MDN, GitHub, Open-Meteo, курсы ЦБ РФ + живая телеметрия ПК) с кликабельными ссылками и интеграцией в Office, Code Studio, Терминал, Quick Look и Alt+R.',
   },
   {
     id: 'gemini',
@@ -169,7 +177,7 @@ export const DEFAULT_LUMA_AI_CONFIG: LumaAIConfig = {
   models: {},
   baseUrls: {},
   systemPrompt:
-    'Ты — встроенный системный ИИ-ассистент Luma AI 3.0 в Luma OS 1.5.4 (Carbon · Kernel 1.4.7). Отвечай чётко, умно, структурированно и на языке пользователя.',
+    'Ты — встроенный системный ИИ-ассистент Luma AI 3.8 FlashLite в Luma OS 1.6 (Nitrogen · N-7 · LumaCore 1.5.0). Отвечай точно, опираясь на проверенные источники.',
   temperature: 0.7,
   includeSystemContext: true,
 };
@@ -180,6 +188,7 @@ interface ChatMsg {
   content: string;
   time: string;
   model?: string;
+  sources?: AISourceLinkItem[];
 }
 
 interface ChatThread {
@@ -475,13 +484,16 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
       const data = await r.json();
       const replyText = data?.ok
         ? data.reply
-        : `Ошибка (${preset.label}): ${data?.error || 'Не удалось получить ответ'}.\n\nСовет: используйте встроенные модели **Luma Lang 1.2** или **Luma Code 1.2** (работают без API-ключей прямо в ядре).`;
+        : `Ошибка (${preset.label}): ${data?.error || 'Не удалось получить ответ'}.\n\nСовет: используйте встроенную **Luma AI 3.8 FlashLite** (работает без API-ключей с проверенными источниками прямо в ядре).`;
+      const sourcesList: AISourceLinkItem[] | undefined =
+        Array.isArray(data?.sources) && data.sources.length > 0 ? data.sources : undefined;
       const botMsg: ChatMsg = {
         id: `m_${Date.now()}_a`,
         role: 'assistant',
         content: replyText,
         time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
         model: data?.model || currentModel,
+        sources: sourcesList,
       };
       setThreads((prev) =>
         prev.map((t) => (t.id === activeThread.id ? { ...t, messages: [...t.messages, botMsg] } : t))
@@ -490,14 +502,28 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
         speakText(replyText, botMsg.id);
       }
       if (!data?.ok) {
-        onPushToast('Luma AI', data?.error || 'Требуется настройка провайдера', 'warning');
+        onPushToast('Luma AI 3.8', data?.error || 'Требуется настройка провайдера', 'warning');
       }
     } catch {
-      onPushToast('Luma AI', 'Нет ответа от шлюза LumaCore 1.3', 'warning');
+      onPushToast('Luma AI 3.8', 'Нет ответа от шлюза LumaCore 1.5.0', 'warning');
     } finally {
       setLoading(false);
     }
   };
+
+  // Listen for external "luma-ai-ask" requests (e.g. from Quick Look, Explorer, Office, Code Studio)
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ prompt?: string }>).detail;
+      if (detail?.prompt) {
+        void sendMessageRef.current(detail.prompt);
+      }
+    };
+    window.addEventListener('luma-ai-ask', handler);
+    return () => window.removeEventListener('luma-ai-ask', handler);
+  }, []);
 
   // Full inline Markdown formatter (**bold**, *italic*, `inline code`)
   const renderInlineMarkdown = (line: string, keyPrefix: string, isUserBubble: boolean) => {
@@ -588,6 +614,17 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
     );
   };
 
+  const openVerifiedSource = (url: string) => {
+    if (!url || !url.startsWith('http')) return;
+    void fetch('/api/kernel/launch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: `src_${Date.now()}`, name: url, url, target: url, type: 'web' }),
+    }).catch(() => {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    });
+  };
+
   const renderMessageContent = (msg: ChatMsg) => {
     const parts = msg.content.split(/(```[\s\S]*?```)/g);
     const isUserBubble = msg.role === 'user';
@@ -640,6 +677,33 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           if (!part.trim()) return null;
           return renderMarkdownSegment(part, idx, isUserBubble);
         })}
+
+        {/* Verified Clickable Source Chips from Luma AI 3.8 FlashLite */}
+        {!isUserBubble && msg.sources && msg.sources.length > 0 && (
+          <div className="pt-2 mt-2 border-t border-white/10 space-y-1.5">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-sky-400 font-bold">
+              Проверенные источники ({msg.sources.length})
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {msg.sources.map((src, sIdx) => (
+                <button
+                  key={`${src.url}_${sIdx}`}
+                  onClick={() => openVerifiedSource(src.url)}
+                  title={src.snippet || src.url}
+                  className={`px-2 py-1 rounded-lg border text-[10px] font-semibold inline-flex items-center gap-1 cursor-pointer transition ${
+                    isDark
+                      ? 'bg-sky-500/10 border-sky-400/30 text-sky-300 hover:bg-sky-500/20'
+                      : 'bg-sky-50 border-sky-300 text-sky-700 hover:bg-sky-100'
+                  }`}
+                >
+                  <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                  <span className="font-bold opacity-80">{src.provider}:</span>
+                  <span className="truncate max-w-[180px]">{src.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   };

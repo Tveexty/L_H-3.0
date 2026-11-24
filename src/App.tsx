@@ -202,6 +202,21 @@ import { LumaTrashWindow } from './components/LumaTrashWindow';
 import { LumaUpdateCinemaOverlay } from './components/LumaUpdateCinemaOverlay';
 import { LumaOfficeSuiteWindow } from './components/LumaOfficeSuiteWindow';
 import { AltTabEntry, LumaAltTabSwitcher } from './components/LumaAltTabSwitcher';
+import { LumaDevHudOverlay } from './components/LumaDevHudOverlay';
+import { LumaUbuntuPanel } from './components/LumaUbuntuPanel';
+import { LumaVirtualMemoryPanel } from './components/LumaVirtualMemoryPanel';
+import { LumaQuickLookModal, QuickLookCandidate } from './components/LumaQuickLookModal';
+import { LumaGamepadStudioWindow } from './components/LumaGamepadStudioWindow';
+import { LumaUninstallerWindow } from './components/LumaUninstallerWindow';
+import {
+  DockFolderStackConfig,
+  DockIconProgressBar,
+  DockMessengerBadge,
+  LumaSmartDockStacks,
+  matchDockTaskForApp,
+  matchMessengerBadgeForApp,
+  SmartDockStatus,
+} from './components/LumaSmartDock';
 import { SmartContextMenu } from './components/SmartContextMenu';
 import { getLangLocale, LUMA_LANGUAGES, LumaLangCode, tr } from './i18n/translations';
 import { useLumaAutoTranslate } from './i18n/LumaAutoTranslator';
@@ -262,7 +277,9 @@ type DexWinId =
   | 'scenarios'
   | 'code_studio'
   | 'cut_studio'
-  | 'office';
+  | 'office'
+  | 'gamepad'
+  | 'uninstaller';
 type AnimationPreset = 'harmony7' | 'standard' | 'spring' | 'glide' | 'silk' | 'elastic' | 'none';
 type TaskbarSizePreset = 'compact' | 'standard' | 'large';
 type FontPreset = 'sans' | 'mono' | 'rounded';
@@ -299,6 +316,7 @@ interface DexWinState {
   minimized: boolean;
   z: number;
   desktop?: number;
+  alwaysOnTop?: boolean;
 }
 
 interface ToastMessage {
@@ -482,6 +500,8 @@ const INITIAL_WINDOWS: Record<DexWinId, DexWinState> = {
   code_studio: { open: false, minimized: false, z: 20, desktop: 1 },
   cut_studio: { open: false, minimized: false, z: 20, desktop: 1 },
   office: { open: false, minimized: false, z: 20, desktop: 1 },
+  gamepad: { open: false, minimized: false, z: 20, desktop: 1 },
+  uninstaller: { open: false, minimized: false, z: 20, desktop: 1 },
 };
 
 export default function App() {
@@ -822,9 +842,65 @@ export default function App() {
   const [globalWidgetColor, setGlobalWidgetColor] = useState<string>('#1e1b4b');
 
   const [designStyle, setDesignStyle] = useState<DesignStyle>(
-    savedState?.designStyle === 'pixelbook' ? 'pixelbook' : 'nothing'
+    savedState?.designStyle === 'ubuntu'
+      ? 'ubuntu'
+      : savedState?.designStyle === 'pixelbook'
+      ? 'pixelbook'
+      : 'nothing'
   );
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
+  // ==================== LUMA OS 1.6 (NITROGEN · N-7) FLAGSHIP STATE ====================
+  const [devModeEnabled, setDevModeEnabled] = useState<boolean>(() => {
+    try { return localStorage.getItem('luma_dev_mode_v16') === '1'; } catch { return false; }
+  });
+  const [ubuntuPanelOpen, setUbuntuPanelOpen] = useState<boolean>(false);
+  const [quickLookState, setQuickLookState] = useState<{
+    open: boolean;
+    items: QuickLookCandidate[];
+    index: number;
+  }>({ open: false, items: [], index: 0 });
+  const [smartDock, setSmartDock] = useState<SmartDockStatus>({
+    ok: true,
+    tasks: [],
+    badges: {},
+    stacks: [],
+    checked_at: '',
+  });
+  const [winKeyToLuma, setWinKeyToLuma] = useState<boolean>(true);
+
+  useEffect(() => {
+    try { localStorage.setItem('luma_dev_mode_v16', devModeEnabled ? '1' : '0'); } catch { /* ignore */ }
+  }, [devModeEnabled]);
+
+  useEffect(() => {
+    fetch('/api/kernel/win-key/toggle')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && typeof d.enabled === 'boolean') setWinKeyToLuma(d.enabled);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const pollSmartDock = async () => {
+      if (document.hidden) return;
+      try {
+        const r = await fetch('/api/kernel/dock/status');
+        if (r.ok && alive) {
+          const d: SmartDockStatus = await r.json();
+          if (d?.ok) setSmartDock(d);
+        }
+      } catch { /* ignore */ }
+    };
+    void pollSmartDock();
+    const id = window.setInterval(() => void pollSmartDock(), 2500);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
 
   // --- Kernel UI, Power Saver & Notification Preferences ---
   const [customDeviceName, setCustomDeviceName] = useState<string>(savedState?.customDeviceName || '');
@@ -946,12 +1022,12 @@ export default function App() {
   });
   const [hubNotifications, setHubNotifications] = useState<ShadeNotificationItem[]>([
     {
-      id: 'notif_carbon_welcome_154',
+      id: 'notif_nitrogen_welcome_160',
       source: 'system',
-      appName: 'Luma OS 1.5.4',
-      sender: 'Luma OS 1.5.4 Carbon',
-      title: 'Добро пожаловать в Carbon 1.5.4!',
-      body: 'Ядро 1.4.7 · Чистая Шторка уведомлений (Alt+N) · Alt+Tab с MRU и живыми превью · Многошторочный Проводник · 140+ формул Excel · Battery Care.',
+      appName: 'Luma OS 1.6',
+      sender: 'Luma OS 1.6 Nitrogen',
+      title: 'Добро пожаловать в Luma OS 1.6 (Nitrogen · N-7)!',
+      body: 'LumaCore 1.5.0 · LumaShield 2.5 (235+ правил) · Стиль Ubuntu · Luma AI 3.8 · Gamepad Studio · Очистка хвостов · Quick Look (Space) · Умный Dock и Стеки.',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       dateLabel: 'Сегодня',
       timestamp: Date.now(),
@@ -1124,7 +1200,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.5 (Carbon · C-6) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.6 (Nitrogen · N-7) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -1157,7 +1233,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.5 (Carbon)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.6 (Nitrogen · N-7)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -1172,8 +1248,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 1.5',
-      message: 'Инициализация оболочки Luma OS 1.5 (Carbon · C-6), LumaShield 1.5 и SDK v3.0',
+      source: 'LumaCore 1.5.0',
+      message: 'Инициализация оболочки Luma OS 1.6 (Nitrogen · N-7), LumaCore 1.5.0, LumaShield 2.5 и AI 3.8',
       level: 'success',
     },
   ]);
@@ -1464,8 +1540,8 @@ export default function App() {
           downloaded_bytes: 1.2 * 1024 * 1024,
           total_bytes: 23.4 * 1024 * 1024,
           speed_mbps: 14.8,
-          target_version: '1.5 (Carbon · C-6)',
-          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.4...',
+          target_version: '1.6 (Nitrogen · N-7)',
+          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.6...',
         },
       },
       {
@@ -1477,8 +1553,8 @@ export default function App() {
           downloaded_bytes: 6.8 * 1024 * 1024,
           total_bytes: 23.4 * 1024 * 1024,
           speed_mbps: 24.2,
-          target_version: '1.5 (Carbon · C-6)',
-          message: 'Загрузка образа LumaOS_1.5.4.exe (LumaCore 1.5 + LumaShield 1.5)...',
+          target_version: '1.6 (Nitrogen · N-7)',
+          message: 'Загрузка образа LumaOS_1.6.exe (LumaCore 1.5.0 + LumaShield 2.5)...',
         },
       },
       {
@@ -1490,8 +1566,8 @@ export default function App() {
           downloaded_bytes: 15.0 * 1024 * 1024,
           total_bytes: 23.4 * 1024 * 1024,
           speed_mbps: 31.6,
-          target_version: '1.5 (Carbon · C-6)',
-          message: 'Потоковая загрузка ресурсов и студийных артов Boron 1.4...',
+          target_version: '1.6 (Nitrogen · N-7)',
+          message: 'Потоковая загрузка ресурсов и коллекции обоев Nitrogen QHD...',
         },
       },
       {
@@ -1503,9 +1579,9 @@ export default function App() {
           downloaded_bytes: 23.4 * 1024 * 1024,
           total_bytes: 23.4 * 1024 * 1024,
           speed_mbps: 0,
-          target_version: '1.5 (Carbon · C-6)',
+          target_version: '1.6 (Nitrogen · N-7)',
           sha256: 'b5f9e20a7c14d389a6e1f2c904b77d21',
-          message: 'Криптографическая проверка SHA-256 и заголовка PE32+ (LumaShield 1.5)...',
+          message: 'Криптографическая проверка SHA-256 и заголовка PE32+ (LumaShield 2.5)...',
         },
       },
       {
@@ -1517,9 +1593,9 @@ export default function App() {
           downloaded_bytes: 23.4 * 1024 * 1024,
           total_bytes: 23.4 * 1024 * 1024,
           speed_mbps: 0,
-          target_version: '1.5 (Carbon · C-6)',
+          target_version: '1.6 (Nitrogen · N-7)',
           sha256: 'b5f9e20a7c14d389a6e1f2c904b77d21',
-          message: 'Сборка Luma OS 1.5 (Carbon) проверена и готова к мгновенному запуску!',
+          message: 'Сборка Luma OS 1.6 (Nitrogen · N-7) проверена и готова к мгновенному запуску!',
         },
       },
     ];
@@ -3024,7 +3100,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Окна ОС', 'Доступно при запуске LumaOS_1.5.4.exe', 'info');
+      pushToast('Окна ОС', 'Доступно при запуске LumaOS_1.6.exe', 'info');
     }
   };
 
@@ -3062,7 +3138,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('2 окна рядом', 'Доступно при запуске LumaOS_1.5.4.exe', 'info');
+      pushToast('2 окна рядом', 'Доступно при запуске LumaOS_1.6.exe', 'info');
     }
   };
 
@@ -3285,14 +3361,146 @@ export default function App() {
     return () => window.removeEventListener('luma-custom-sys-action', onCustomAction);
   }, []);
 
-  // --- Native Custom Alt+Tab (True MRU Order + Live Window Previews) + Win+D Return to Luma OS Home (1.5.4) ---
+  // --- Luma OS 1.6 Nitrogen Helpers: Always-on-Top, Admin UAC Elevate, Quick Look & Win Key Toggle ---
+  const designStyleRef = useRef<DesignStyle>(designStyle);
+  designStyleRef.current = designStyle;
+
+  const getWinZ = useCallback(
+    (id: DexWinId) => {
+      const w = windows[id];
+      if (!w) return 20;
+      return w.alwaysOnTop ? 6500 + (w.z || 20) : w.z || 20;
+    },
+    [windows]
+  );
+
+  const toggleWindowAlwaysOnTop = useCallback(
+    (id: DexWinId) => {
+      setWindows((prev) => {
+        const cur = prev[id];
+        if (!cur) return prev;
+        const nextPin = !cur.alwaysOnTop;
+        pushToast(
+          nextPin ? '📌 Поверх всех окон' : 'Окно откреплено',
+          nextPin ? 'Окно закреплено поверх остальных окон Luma OS' : 'Обычный порядок перекрытия окон',
+          'info'
+        );
+        return { ...prev, [id]: { ...cur, alwaysOnTop: nextPin } };
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  const handleToggleHostTopmost = useCallback(
+    async (pid: number, hwnd?: number) => {
+      try {
+        const r = await fetch('/api/kernel/windows/topmost', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pid, hwnd: hwnd || 0, toggle: true }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          pushToast(
+            d.topmost ? '📌 Поверх всех окон (Windows)' : 'Окно Windows откреплено',
+            d.message || (d.topmost ? `PID ${pid} закреплён поверх всех окон` : `PID ${pid} возвращён в обычный слой`),
+            d.ok ? 'success' : 'warning'
+          );
+          void pollHostWindows();
+        }
+      } catch {
+        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.5.0', 'warning');
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  const handleElevateAdmin = useCallback(async () => {
+    try {
+      const r = await fetch('/api/kernel/admin/elevate', { method: 'POST' });
+      const d = await r.json();
+      pushToast(
+        'Режим Администратора (UAC)',
+        d.message || (d.ok ? 'Запрошен перезапуск от имени Администратора' : d.error || 'Не удалось повысить права'),
+        d.ok ? 'success' : 'warning'
+      );
+    } catch {
+      pushToast('Режим Администратора', 'Ядро LumaCore недоступно', 'warning');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleToggleWinKeyToLuma = useCallback(async (next: boolean) => {
+    setWinKeyToLuma(next);
+    try {
+      await fetch('/api/kernel/win-key/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+      pushToast(
+        'Клавиша Win',
+        next ? 'Клавиша Win теперь открывает меню Luma OS (Win+D/L/Shift+S сохранены)' : 'Возвращено стандартное меню Windows Start',
+        'info'
+      );
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const openQuickLook = useCallback((items: QuickLookCandidate[], index: number) => {
+    if (!items || items.length === 0) return;
+    setQuickLookState({
+      open: true,
+      items,
+      index: Math.max(0, Math.min(index, items.length - 1)),
+    });
+  }, []);
+
+  // Listen for Win key solo-tap (Item 11), Ctrl+Shift+D Dev HUD (Item 2), and luma-ai-ask (Item 6)
+  useEffect(() => {
+    const onWinStart = () => {
+      setSpotlightOpen(false);
+      setControlCenterOpen(false);
+      setCarbonHubOpen(false);
+      if (designStyleRef.current === 'ubuntu') {
+        setStartMenuOpen(false);
+        setUbuntuPanelOpen((v) => !v);
+      } else {
+        setUbuntuPanelOpen(false);
+        setStartMenuOpen((v) => !v);
+      }
+    };
+    const onAiAskOpen = () => {
+      openWindow('ai');
+    };
+    const onGlobalDevShortcut = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyD') {
+        e.preventDefault();
+        setDevModeEnabled((v) => !v);
+      }
+    };
+    window.addEventListener('luma-win-start', onWinStart);
+    window.addEventListener('luma-ai-ask', onAiAskOpen);
+    window.addEventListener('keydown', onGlobalDevShortcut);
+    return () => {
+      window.removeEventListener('luma-win-start', onWinStart);
+      window.removeEventListener('luma-ai-ask', onAiAskOpen);
+      window.removeEventListener('keydown', onGlobalDevShortcut);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --- Native Custom Alt+Tab (True MRU Order + Live Window Previews + Zero Double-Switch) + Win+D Return to Luma OS Home (1.6 Nitrogen) ---
   const altTabEntries: AltTabEntry[] = useMemo(() => {
     const lumaTitles: Partial<Record<DexWinId, string>> = {
       apps: 'Приложения', explorer: 'Проводник', taskmgr: 'Диспетчер задач', terminal: 'Терминал',
-      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.4.7', settings: 'Настройки', plugins: 'Расширения',
-      island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma AI 3.0', utilities: 'Службы ОС',
+      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.5.0', settings: 'Настройки', plugins: 'Расширения',
+      island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma AI 3.8 FlashLite', utilities: 'Службы ОС',
       calculator: 'Калькулятор', calendar: 'Календарь', trash: 'Корзина', scenarios: 'Сценарии',
       code_studio: 'Code Studio Pro', cut_studio: 'Cut Studio Pro', office: 'Luma Office Pro',
+      gamepad: 'Luma Gamepad Studio', uninstaller: 'Luma Uninstaller',
     };
     const homeEntry: AltTabEntry & { _mru: number } = {
       key: 'luma_home_desktop',
@@ -3315,6 +3523,7 @@ export default function App() {
           subtitle: windows[id].minimized ? 'Свёрнуто · Luma OS' : 'Активно · Luma OS',
           minimized: windows[id].minimized,
           active: !windows[id].minimized,
+          topmost: Boolean(windows[id].alwaysOnTop),
           _mru: windowMruMap[key] || (windows[id]?.z || 0) * 1000,
         };
       });
@@ -3325,10 +3534,12 @@ export default function App() {
         kind: 'host',
         id: String(hw.pid),
         pid: hw.pid,
+        hwnd: hw.hwnd,
         title: hw.friendly_name || hw.title || hw.name,
         subtitle: hw.name || `PID ${hw.pid}`,
         iconUrl: hw.icon_url,
         previewUrl: hostWindowPreviews[hw.pid],
+        topmost: Boolean(hw.topmost),
         _mru: Math.max(windowMruMap[key] || 0, hw.mru || 0),
       };
     });
@@ -3354,14 +3565,19 @@ export default function App() {
   altTabIdxRef.current = altTabIdx;
   const altTabOpenRef = useRef<boolean>(altTabOpen);
   altTabOpenRef.current = altTabOpen;
+  const nativeAltTabSessionRef = useRef<boolean>(false);
+  const lastAltTabSeqRef = useRef<number>(0);
+  const altTabCommitLockUntilRef = useRef<number>(0);
 
   const returnToLumaHome = useCallback(
     (allowToggleBack = false) => {
+      nativeAltTabSessionRef.current = false;
       setAltTabOpen(false);
       setAltTabFromExternal(false);
       setSpotlightOpen(false);
       setCarbonHubOpen(false);
       setNotifShadeOpen(false);
+      setUbuntuPanelOpen(false);
       touchWindowMru('luma_home_desktop');
       void fetch('/api/kernel/alt-tab/release', { method: 'POST' }).catch(() => {});
 
@@ -3390,6 +3606,7 @@ export default function App() {
   );
 
   const cancelAltTab = useCallback(() => {
+    nativeAltTabSessionRef.current = false;
     setAltTabOpen(false);
     setAltTabFromExternal(false);
     void fetch('/api/kernel/alt-tab/release', { method: 'POST' }).catch(() => {});
@@ -3397,6 +3614,10 @@ export default function App() {
 
   const activateAltTabEntry = useCallback(
     (item?: AltTabEntry) => {
+      const nowMs = Date.now();
+      if (nowMs < altTabCommitLockUntilRef.current) return;
+      altTabCommitLockUntilRef.current = nowMs + 260;
+      nativeAltTabSessionRef.current = false;
       setAltTabOpen(false);
       setAltTabFromExternal(false);
       if (!item) {
@@ -3443,8 +3664,20 @@ export default function App() {
     };
 
     const onNativeAltTab = (e: Event) => {
-      const det = (e as CustomEvent<{ reverse?: boolean; fromExternal?: boolean }>).detail;
+      const det = (e as CustomEvent<{ reverse?: boolean; fromExternal?: boolean; seq?: number; native?: boolean }>).detail;
+      if (det?.seq && det.seq === lastAltTabSeqRef.current) return;
+      if (det?.seq) lastAltTabSeqRef.current = det.seq;
+      nativeAltTabSessionRef.current = true;
       stepSwitcher(Boolean(det?.reverse), Boolean(det?.fromExternal));
+    };
+    const onNativeAltTabNav = (e: Event) => {
+      if (!altTabOpenRef.current) return;
+      const key = (e as CustomEvent<{ key?: string }>).detail?.key;
+      const len = Math.max(1, altTabEntriesRef.current.length);
+      if (key === 'ArrowRight') setAltTabIdx((c) => (c + 1) % len);
+      else if (key === 'ArrowLeft') setAltTabIdx((c) => (c - 1 + len) % len);
+      else if (key === 'ArrowDown') setAltTabIdx((c) => (c + 4) % len);
+      else if (key === 'ArrowUp') setAltTabIdx((c) => (c - 4 + len * 4) % len);
     };
     const onNativeCommit = () => {
       if (!altTabOpenRef.current) return;
@@ -3457,14 +3690,21 @@ export default function App() {
       returnToLumaHome(true);
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      // Browser/WebView fallback: Alt+Tab or Alt+Q opens custom Luma Alt+Tab Switcher
+      // Browser/WebView fallback: ONLY step if NOT driven by native Win32 WH_KEYBOARD_LL hook (prevents double-switching!)
       if (e.altKey && (e.key === 'Tab' || e.code === 'KeyQ')) {
         e.preventDefault();
         e.stopPropagation();
+        if (nativeAltTabSessionRef.current && e.key === 'Tab') return;
         stepSwitcher(e.shiftKey, false);
         return;
       }
       if (!altTabOpenRef.current) return;
+      // When native hook is driving Alt+Tab, hook already forwards Arrows/Enter/Esc — ignore duplicates if target isn't search input
+      const isInputFocused = (e.target as HTMLElement)?.tagName === 'INPUT';
+      if (nativeAltTabSessionRef.current && !isInputFocused && ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) {
+        e.preventDefault();
+        return;
+      }
       const len = Math.max(1, altTabEntriesRef.current.length);
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -3487,12 +3727,13 @@ export default function App() {
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Alt' && altTabOpenRef.current) {
+      if (e.key === 'Alt' && altTabOpenRef.current && !nativeAltTabSessionRef.current) {
         activateAltTabEntry(altTabEntriesRef.current[altTabIdxRef.current]);
       }
     };
 
     window.addEventListener('luma-alt-tab', onNativeAltTab);
+    window.addEventListener('luma-alt-tab-nav', onNativeAltTabNav);
     window.addEventListener('luma-alt-tab-commit', onNativeCommit);
     window.addEventListener('luma-alt-tab-cancel', onNativeCancel);
     window.addEventListener('luma-win-d-home', onWinDHome);
@@ -3500,6 +3741,7 @@ export default function App() {
     window.addEventListener('keyup', onKeyUp, true);
     return () => {
       window.removeEventListener('luma-alt-tab', onNativeAltTab);
+      window.removeEventListener('luma-alt-tab-nav', onNativeAltTabNav);
       window.removeEventListener('luma-alt-tab-commit', onNativeCommit);
       window.removeEventListener('luma-alt-tab-cancel', onNativeCancel);
       window.removeEventListener('luma-win-d-home', onWinDHome);
@@ -3864,7 +4106,7 @@ export default function App() {
         pushToast('Питание', d?.detail || `Выполнено: ${action}`, 'info');
       }
     } catch {
-      pushToast('Питание', 'Доступно при запуске LumaOS_1.5.4.exe', 'info');
+      pushToast('Питание', 'Доступно при запуске LumaOS_1.6.exe', 'info');
     }
   };
 
@@ -3897,7 +4139,7 @@ export default function App() {
         pushToast('Режим оболочки Windows', 'Параметры применены к системе', 'success');
       }
     } catch {
-      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.5.4.exe)', 'info');
+      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.6.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -4338,7 +4580,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.5.4.exe', 'info');
+      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.6.exe', 'info');
     }
   };
 
@@ -4619,6 +4861,7 @@ export default function App() {
   // Harmonious Theme-Adaptive Surface Tokens (Cohesive across ALL 8 themes!)
   const isDark = currentTheme.isDark;
   const isPixel = designStyle === 'pixelbook';
+  const isUbuntu = designStyle === 'ubuntu';
   const surfaceCls = isDark
     ? 'bg-white/[0.045] border-white/[0.1] text-zinc-100'
     : 'bg-white/[0.45] border-zinc-900/[0.13] text-zinc-900';
@@ -4626,14 +4869,22 @@ export default function App() {
     ? 'bg-white/[0.06] hover:bg-white/[0.12] border-white/[0.1] text-zinc-200'
     : 'bg-zinc-900/[0.06] hover:bg-zinc-900/[0.12] border-zinc-900/[0.15] text-zinc-900';
   const mutedCls = isDark ? 'text-zinc-400' : 'text-zinc-600';
-  const popoverShellCls = isPixel
+  const popoverShellCls = isUbuntu
+    ? isDark
+      ? 'dex-window-ubuntu-dark text-zinc-100 rounded-2xl'
+      : 'dex-window-ubuntu-light text-zinc-900 rounded-2xl'
+    : isPixel
     ? isDark
       ? 'dex-window-pixel-dark text-slate-100 rounded-[24px]'
       : 'dex-window-pixel-light text-slate-900 rounded-[24px]'
     : isDark
     ? 'dex-window-dark text-zinc-100 rounded-2xl'
     : 'dex-window-light text-zinc-900 rounded-2xl';
-  const taskbarGlassCls = isPixel
+  const taskbarGlassCls = isUbuntu
+    ? isDark
+      ? 'bg-[#1c1c1e]/88 backdrop-blur-2xl border-white/[0.12] text-zinc-100'
+      : 'bg-[#f4f3f2]/92 backdrop-blur-2xl border-zinc-900/[0.14] text-zinc-900'
+    : isPixel
     ? isDark
       ? 'luma-taskbar-pixel-dark border-white/[0.14] text-slate-100'
       : 'luma-taskbar-pixel-light border-zinc-900/[0.14] text-slate-900'
@@ -4680,7 +4931,9 @@ export default function App() {
     ...(enabledFeatures.cutStudio ? [{ id: 'cut_studio' as DexWinId, label: 'Cut Studio', icon: <Film className="w-4 h-4" />, pinned: true }] : []),
     ...(enabledFeatures.scenarios ? [{ id: 'scenarios' as DexWinId, label: 'Сценарии', icon: <Zap className="w-4 h-4" />, pinned: true }] : []),
     ...(enabledFeatures.trash ? [{ id: 'trash' as DexWinId, label: 'Корзина', icon: <Trash2 className="w-4 h-4" />, pinned: true }] : []),
-    ...(enabledFeatures.ai ? [{ id: 'ai' as DexWinId, label: t('ai', 'Luma AI'), icon: <Sparkles className="w-4 h-4" />, pinned: aiEnabled }] : []),
+    ...(enabledFeatures.ai ? [{ id: 'ai' as DexWinId, label: t('ai', 'Luma AI 3.8'), icon: <Sparkles className="w-4 h-4" />, pinned: aiEnabled }] : []),
+    { id: 'gamepad', label: 'Gamepad Studio', icon: <Gamepad2 className="w-4 h-4" />, pinned: true },
+    { id: 'uninstaller', label: 'Очистка хвостов', icon: <Trash2 className="w-4 h-4 text-rose-400" />, pinned: true },
     { id: 'calculator', label: t('calculator', 'Калькулятор'), icon: <Calculator className="w-4 h-4" />, pinned: true },
     { id: 'terminal', label: t('terminal', 'Терминал'), icon: <Terminal className="w-4 h-4" />, pinned: true },
     { id: 'utilities', label: t('utilities', 'Службы'), icon: <Wrench className="w-4 h-4" />, pinned: true },
@@ -4880,6 +5133,7 @@ export default function App() {
         }
         pendingCustomWidget={pendingCustomWidget}
         onConsumePendingCustomWidget={() => setPendingCustomWidget(null)}
+        onQuickLook={openQuickLook}
       />
 
       {/* ==================== LAYER 2: DYNAMIC ISLAND 2.0 (REACTIVE ACTIVITY PULSE + 7-BAR HARMONIC SPECTRUM + VINYL) ==================== */}
@@ -5088,7 +5342,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.apps || null}
-          zIndex={windows.apps.z}
+          zIndex={getWinZ('apps')}
+          alwaysOnTop={Boolean(windows.apps.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('apps')}
           initialWidth={1060}
           initialHeight={660}
           onFocus={() => focusWindow('apps')}
@@ -5523,7 +5779,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.explorer || null}
-          zIndex={windows.explorer.z}
+          zIndex={getWinZ('explorer')}
+          alwaysOnTop={Boolean(windows.explorer.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('explorer')}
           initialWidth={1080}
           initialHeight={660}
           initialX={90}
@@ -5555,6 +5813,7 @@ export default function App() {
                 ],
               })
             }
+            onQuickLook={openQuickLook}
             onPushToast={pushToast}
           />
         </DexWindow>
@@ -5574,7 +5833,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.taskmgr || null}
-          zIndex={windows.taskmgr.z}
+          zIndex={getWinZ('taskmgr')}
+          alwaysOnTop={Boolean(windows.taskmgr.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('taskmgr')}
           initialWidth={980}
           initialHeight={640}
           initialX={130}
@@ -5629,7 +5890,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.terminal || null}
-          zIndex={windows.terminal.z}
+          zIndex={getWinZ('terminal')}
+          alwaysOnTop={Boolean(windows.terminal.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('terminal')}
           initialWidth={840}
           initialHeight={520}
           initialX={140}
@@ -5685,7 +5948,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.tracker || null}
-          zIndex={windows.tracker.z}
+          zIndex={getWinZ('tracker')}
+          alwaysOnTop={Boolean(windows.tracker.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('tracker')}
           initialWidth={920}
           initialHeight={620}
           onFocus={() => focusWindow('tracker')}
@@ -5742,7 +6007,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.kernel || null}
-          zIndex={windows.kernel.z}
+          zIndex={getWinZ('kernel')}
+          alwaysOnTop={Boolean(windows.kernel.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('kernel')}
           initialWidth={1040}
           initialHeight={660}
           onFocus={() => focusWindow('kernel')}
@@ -5789,12 +6056,12 @@ export default function App() {
                   Диспетчер задач
                 </button>
                 <a
-                  href="/LumaOS_1.5.4.exe"
-                  download="LumaOS_1.5.4.exe"
+                  href="/LumaOS_1.6.exe"
+                  download="LumaOS_1.6.exe"
                   className="px-3.5 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  LumaOS_1.5.4.exe
+                  LumaOS_1.6.exe
                 </a>
               </div>
             </div>
@@ -5808,7 +6075,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 1.5`,
+                        sub: `${ramLoad}% занято · LumaCore 1.5.0`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -5834,9 +6101,9 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.5 (Carbon · C-6)'],
-                      ['Версия Ядра', '1.5 (LumaCore)'],
-                      ['Безопасность', `LumaShield 1.5 (${kernelDiag?.security_rules ?? 85}+ правил)`],
+                      ['Версия ПО', '1.6 (Nitrogen · N-7)'],
+                      ['Версия Ядра', 'LumaCore 1.5.0 (1.6.0)'],
+                      ['Безопасность', `LumaShield 2.5 (${kernelDiag?.security_rules ?? 235}+ правил)`],
                       ['Developer SDK', `v3.0 (${kernelDiag?.sdk_themes ?? Object.keys(customThemes).length} тем / ${kernelDiag?.sdk_plugins ?? plugins.length} плаг.)`],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
                       ['LumaGuard', `AES-256 #${cryptoKeyVersion}`],
@@ -6039,7 +6306,9 @@ export default function App() {
             taskbarSizePx={effectiveTaskbarSizePx}
             topBarOffsetPx={dualTaskbarMode ? 46 : 0}
             snapCommand={snapCommands.trash || null}
-            zIndex={windows.trash.z}
+            zIndex={getWinZ('trash')}
+            alwaysOnTop={Boolean(windows.trash.alwaysOnTop)}
+            onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('trash')}
             initialWidth={860}
             initialHeight={580}
             onFocus={() => focusWindow('trash')}
@@ -6070,7 +6339,9 @@ export default function App() {
             taskbarSizePx={effectiveTaskbarSizePx}
             topBarOffsetPx={dualTaskbarMode ? 46 : 0}
             snapCommand={snapCommands.scenarios || null}
-            zIndex={windows.scenarios.z}
+            zIndex={getWinZ('scenarios')}
+            alwaysOnTop={Boolean(windows.scenarios.alwaysOnTop)}
+            onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('scenarios')}
             initialWidth={940}
             initialHeight={620}
             onFocus={() => focusWindow('scenarios')}
@@ -6092,7 +6363,7 @@ export default function App() {
           <DexWindow
             id="code_studio"
             title="Luma Code Studio Pro"
-            subtitle="IDE 1.5.4 · Live диагностика ошибок · Pro Терминал · Автосохранение"
+            subtitle="IDE 1.6 · Luma AI 3.8 · Live диагностика · Pro Терминал · Автосохранение"
             icon={<Code2 className="w-4 h-4" />}
             isDark={isDark}
             designStyle={designStyle}
@@ -6101,7 +6372,9 @@ export default function App() {
             taskbarSizePx={effectiveTaskbarSizePx}
             topBarOffsetPx={dualTaskbarMode ? 46 : 0}
             snapCommand={snapCommands.code_studio || null}
-            zIndex={windows.code_studio.z}
+            zIndex={getWinZ('code_studio')}
+            alwaysOnTop={Boolean(windows.code_studio.alwaysOnTop)}
+            onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('code_studio')}
             initialWidth={1120}
             initialHeight={700}
             onFocus={() => focusWindow('code_studio')}
@@ -6130,7 +6403,9 @@ export default function App() {
             taskbarSizePx={effectiveTaskbarSizePx}
             topBarOffsetPx={dualTaskbarMode ? 46 : 0}
             snapCommand={snapCommands.cut_studio || null}
-            zIndex={windows.cut_studio.z}
+            zIndex={getWinZ('cut_studio')}
+            alwaysOnTop={Boolean(windows.cut_studio.alwaysOnTop)}
+            onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('cut_studio')}
             initialWidth={1180}
             initialHeight={740}
             onFocus={() => focusWindow('cut_studio')}
@@ -6159,7 +6434,9 @@ export default function App() {
             taskbarSizePx={effectiveTaskbarSizePx}
             topBarOffsetPx={dualTaskbarMode ? 46 : 0}
             snapCommand={snapCommands.office || null}
-            zIndex={windows.office.z}
+            zIndex={getWinZ('office')}
+            alwaysOnTop={Boolean(windows.office.alwaysOnTop)}
+            onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('office')}
             initialWidth={1200}
             initialHeight={750}
             onFocus={() => focusWindow('office')}
@@ -6180,12 +6457,78 @@ export default function App() {
         </div>
       )}
 
-      {/* WINDOW 5: SYSTEM SETTINGS (1.5.2 CARBON) */}
+      {/* WINDOW 4B: LUMA GAMEPAD STUDIO (DS4WINDOWS ALTERNATIVE — ITEM 8) */}
+      {windows.gamepad.open && (
+        <div style={{ display: isWinVisible('gamepad') ? 'contents' : 'none' }}>
+          <DexWindow
+            id="gamepad"
+            title="Luma Gamepad Studio"
+            subtitle="DualShock 4 · DualSense · Xbox XInput · HID · 60 FPS · RGB · Вибрация · Эмуляция"
+            icon={<Gamepad2 className="w-4 h-4 text-sky-400" />}
+            isDark={isDark}
+            designStyle={designStyle}
+            windowControlsStyle={windowControlsStyle}
+            taskbarPosition={taskbarPosition}
+            taskbarSizePx={effectiveTaskbarSizePx}
+            topBarOffsetPx={dualTaskbarMode ? 46 : 0}
+            snapCommand={snapCommands.gamepad || null}
+            zIndex={getWinZ('gamepad')}
+            alwaysOnTop={Boolean(windows.gamepad.alwaysOnTop)}
+            onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('gamepad')}
+            initialWidth={1060}
+            initialHeight={690}
+            onFocus={() => focusWindow('gamepad')}
+            onMinimize={() => minimizeWindow('gamepad')}
+            onClose={() => closeWindow('gamepad')}
+          >
+            <LumaGamepadStudioWindow
+              kernelBase=""
+              isDarkTheme={isDark}
+              onNotify={(title, msg) => pushToast(title, msg, 'success')}
+            />
+          </DexWindow>
+        </div>
+      )}
+
+      {/* WINDOW 4C: LUMA UNINSTALLER & LEFTOVER CLEANER (REVO / BCUNINSTALLER ANALOG — ITEM 9) */}
+      {windows.uninstaller.open && (
+        <div style={{ display: isWinVisible('uninstaller') ? 'contents' : 'none' }}>
+          <DexWindow
+            id="uninstaller"
+            title="Luma Uninstaller & Очистка хвостов"
+            subtitle="4-этапный сканер остатков · AppData · Program Files · Реестр HKCU/HKLM · Службы · Автобэкап"
+            icon={<Trash2 className="w-4 h-4 text-rose-400" />}
+            isDark={isDark}
+            designStyle={designStyle}
+            windowControlsStyle={windowControlsStyle}
+            taskbarPosition={taskbarPosition}
+            taskbarSizePx={effectiveTaskbarSizePx}
+            topBarOffsetPx={dualTaskbarMode ? 46 : 0}
+            snapCommand={snapCommands.uninstaller || null}
+            zIndex={getWinZ('uninstaller')}
+            alwaysOnTop={Boolean(windows.uninstaller.alwaysOnTop)}
+            onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('uninstaller')}
+            initialWidth={1040}
+            initialHeight={690}
+            onFocus={() => focusWindow('uninstaller')}
+            onMinimize={() => minimizeWindow('uninstaller')}
+            onClose={() => closeWindow('uninstaller')}
+          >
+            <LumaUninstallerWindow
+              kernelBase=""
+              isDarkTheme={isDark}
+              onNotify={(title, msg) => pushToast(title, msg, 'success')}
+            />
+          </DexWindow>
+        </div>
+      )}
+
+      {/* WINDOW 5: SYSTEM SETTINGS (1.6 NITROGEN) */}
       {isWinVisible('settings') && (
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.5.4 (Carbon · C-6 · Kernel 1.4.7)"
+          subtitle="Luma OS 1.6 (Nitrogen · N-7 · LumaCore 1.5.0 · LumaShield 2.5)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -6194,7 +6537,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.settings || null}
-          zIndex={windows.settings.z}
+          zIndex={getWinZ('settings')}
+          alwaysOnTop={Boolean(windows.settings.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('settings')}
           initialWidth={1060}
           initialHeight={680}
           onFocus={() => focusWindow('settings')}
@@ -6229,17 +6574,17 @@ export default function App() {
               <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-0.5">
                 {(
                   [
-                    ['kernel_ui', t('tabKernelUI', 'Ядро UI'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.4 boron ядра 1.5 пасхалка kernel'],
+                    ['kernel_ui', t('tabKernelUI', 'Ядро UI · Dev & Admin'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.6 nitrogen разработчик dev hud администратор uac пасхалка kernel'],
                     ['mouse_dpi', 'Мышь и DPI', <MousePointer2 className="w-4 h-4 shrink-0" />, 'мышь скорость dpi edpi сенсор курсор чувствительность raw input колесо mouse'],
                     ['graphics', 'Графика и Экран', <Monitor className="w-4 h-4 shrink-0" />, 'графика gpu цп оптимизация lumacore 1.5 турбо эко адаптация экрана масштаб монитор ноутбук размытие blur тени fps'],
-                    ['security', t('tabSecurity', 'Безопасность и AV'), <ShieldCheck className="w-4 h-4 shrink-0" />, 'безопасность антивирус lumashield 1.5 85 правил hosts dns сетевой экран tcp аудит автозагрузки guard defender карантин eicar security'],
-                    ['ai_settings', t('tabAI', 'ИИ и Нейросети'), <Sparkles className="w-4 h-4 shrink-0" />, 'ии нейросети luma lang code объём кратко баланс подробно verbosity кодер языковая отключить автономный голос ai'],
+                    ['security', t('tabSecurity', 'Безопасность 2.5'), <ShieldCheck className="w-4 h-4 shrink-0" />, 'безопасность антивирус lumashield 2.5 235 правил hosts dns сетевой экран tcp аудит автозагрузки задачи guard defender карантин eicar security'],
+                    ['ai_settings', t('tabAI', 'Luma AI 3.8'), <Sparkles className="w-4 h-4 shrink-0" />, 'ии нейросети luma ai 3.8 flashlite проверенные источники википедия объём голос ai'],
                     ['power_battery', 'Питание и Батарея', <BatteryCharging className="w-4 h-4 shrink-0" />, 'питание батарея экран акб беспроводные 2.4ghz радиоканал мышь клавиатура наушники циклы зарядки энергосбережение яркость сон выключение battery power'],
                     ['language', t('tabLanguage', 'Язык и клавиатура'), <Languages className="w-4 h-4 shrink-0" />, 'язык клавиатура раскладка адаптивная keyboard layout 120 стран мира language english romanian polish turkish arabic korean регион'],
                     ['shell_mode', t('tabShellMode', 'Оболочка Windows'), <Monitor className="w-4 h-4 shrink-0" />, 'оболочка windows полный экран fullscreen автозапуск autostart поверх виндовс скрыть панель задач chrome'],
-                    ['appearance', t('tabThemes', 'Темы, Обои и Виджеты'), <Sliders className="w-4 h-4 shrink-0" />, 'темы обои boron cobalt eclipse живые анимации виджеты прозрачность фон акцент шрифт масштаб blur скругление wallpaper theme'],
-                    ['taskbar', t('tabTaskbar', 'Панель задач'), <LayoutPanelLeft className="w-4 h-4 shrink-0" />, 'панель задач скрыть автоскрытие наведение буфер обмена cpu ram полный экран беспроводные док порядок приложений taskbar'],
-                    ['storage', t('tabStorage', 'Память и Файлы'), <HardDrive className="w-4 h-4 shrink-0" />, 'память озу ram диски накопители проводник скрытые файлы storage disk files'],
+                    ['appearance', t('tabThemes', 'Темы, Стиль Ubuntu и Обои'), <Sliders className="w-4 h-4 shrink-0" />, 'темы обои nitrogen ubuntu стиль живые анимации виджеты прозрачность фон акцент шрифт масштаб blur скругление wallpaper theme'],
+                    ['taskbar', t('tabTaskbar', 'Панель задач · Win · Dock'), <LayoutPanelLeft className="w-4 h-4 shrink-0" />, 'панель задач скрыть автоскрытие клавиша win умный dock стеки наведение буфер обмена cpu ram полный экран док порядок приложений taskbar'],
+                    ['storage', t('tabStorage', 'Виртуальная память и Диски'), <HardDrive className="w-4 h-4 shrink-0" />, 'память виртуальная ram plus 2 4 6 гб pagefile ssd tbw озу ram диски накопители проводник скрытые файлы storage disk files'],
                     ['bluetooth', t('tabBluetooth', 'Bluetooth и 2.4GHz'), <Bluetooth className="w-4 h-4 shrink-0" />, 'bluetooth блютуз беспроводные мышь клавиатура наушники 2.4ghz радиоканал заряд процент адаптер устройства'],
                     ['apps_list', t('apps', 'Приложения и иконки'), <AppWindow className="w-4 h-4 shrink-0" />, 'приложения иконки размер увеличить редактировать программы список удалить свойства apps'],
                     ['notifications', t('notifications', 'Уведомления'), <Bell className="w-4 h-4 shrink-0" />, 'уведомления оповещения справа звук баннеры dnd не беспокоить журнал notifications'],
@@ -6249,7 +6594,7 @@ export default function App() {
                     ['navigation', 'Навигация', <MousePointerClick className="w-4 h-4 shrink-0" />, 'навигация пкм назад горячие клавиши alt+r поиск ctrl+k alt+w spotlight мультизадачность'],
                     ['plugins', 'Окна и SDK v3.0', <LayoutGrid className="w-4 h-4 shrink-0" />, 'окна плагины api sdk 3.0 темы колонки сетка расширения разработчик'],
                     ['updater', t('tabUpdater', 'Обновления и Откат'), <Stethoscope className="w-4 h-4 shrink-0" />, 'обновления откат версии анимация cinema rollback downgrade github ota ежедневная проверка патч прогресс бар новая версия'],
-                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.4 boron история изменений changelog exe скачать'],
+                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.6 nitrogen история изменений changelog exe скачать'],
                   ] as [SettingsTabId, string, React.ReactNode, string][]
                 )
                   .filter(([, label, , keywords]) => {
@@ -6289,6 +6634,9 @@ export default function App() {
                   mutedCls={mutedCls}
                   isDark={isDark}
                   onTriggerEasterEgg={() => setEasterEggOpen(true)}
+                  devModeEnabled={devModeEnabled}
+                  onToggleDevMode={setDevModeEnabled}
+                  onPushToast={pushToast}
                 />
               )}
 
@@ -7017,7 +7365,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.5.4.exe).
+                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.6.exe).
                   </div>
                 </div>
               )}
@@ -7518,29 +7866,39 @@ export default function App() {
               )}
 
               {settingsTab === 'storage' && (
-                <StorageMemoryPanel
-                  liveSystem={liveSystem}
-                  surfaceCls={surfaceCls}
-                  btnCls={btnCls}
-                  mutedCls={mutedCls}
-                  isDark={isDark}
-                  onInspectFile={(info) => setPropertiesTarget(info)}
-                  onPinFileToDesktop={(entry) =>
-                    setPendingPinItems({
-                      id: Date.now(),
-                      items: [
-                        {
-                          kind: entry.is_dir ? 'disk_folder' : 'file',
-                          label: entry.name,
-                          icon: entry.is_dir ? 'Folder' : 'FileText',
-                          target: entry.path,
-                        },
-                      ],
-                    })
-                  }
-                  onOpenInExplorer={openExplorerAt}
-                  onPushToast={pushToast}
-                />
+                <div className="space-y-5">
+                  <LumaVirtualMemoryPanel
+                    isDark={isDark}
+                    surfaceCls={surfaceCls}
+                    btnCls={btnCls}
+                    mutedCls={mutedCls}
+                    onElevateAdmin={() => void handleElevateAdmin()}
+                    onPushToast={pushToast}
+                  />
+                  <StorageMemoryPanel
+                    liveSystem={liveSystem}
+                    surfaceCls={surfaceCls}
+                    btnCls={btnCls}
+                    mutedCls={mutedCls}
+                    isDark={isDark}
+                    onInspectFile={(info) => setPropertiesTarget(info)}
+                    onPinFileToDesktop={(entry) =>
+                      setPendingPinItems({
+                        id: Date.now(),
+                        items: [
+                          {
+                            kind: entry.is_dir ? 'disk_folder' : 'file',
+                            label: entry.name,
+                            icon: entry.is_dir ? 'Folder' : 'FileText',
+                            target: entry.path,
+                          },
+                        ],
+                      })
+                    }
+                    onOpenInExplorer={openExplorerAt}
+                    onPushToast={pushToast}
+                  />
+                </div>
               )}
 
               {settingsTab === 'apps_list' && (
@@ -7587,14 +7945,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.5 (Carbon)',
-                        message: 'Система оповещений Luma OS 1.5 (Carbon) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.6 (Nitrogen)',
+                        message: 'Система оповещений Luma OS 1.6 (Nitrogen) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.5 (Carbon)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.6 (Nitrogen)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -7606,7 +7964,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.5 (Carbon) · LumaCore 1.5</div>
+                      <div className="text-sm font-bold">Luma OS 1.6 (Nitrogen · N-7) · LumaCore 1.5.0</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -7755,7 +8113,7 @@ export default function App() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <div className="text-sm font-bold">Стиль системы и панель задач</div>
-                        <div className={`text-xs ${mutedCls}`}>Переключение оболочки «Классический» / «Модерн» и стороны дока</div>
+                        <div className={`text-xs ${mutedCls}`}>Переключение оболочки «Классический» / «Модерн» / «Ubuntu» и клавиши Win</div>
                       </div>
                       <button
                         onClick={handleToggleFullscreen}
@@ -7771,9 +8129,12 @@ export default function App() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                       <div className="space-y-1.5">
                         <div className={mutedCls}>Дизайн оболочки:</div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-3 gap-2">
                           <button
-                            onClick={() => setDesignStyle('nothing')}
+                            onClick={() => {
+                              setDesignStyle('nothing');
+                              setUbuntuPanelOpen(false);
+                            }}
                             className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
                               designStyle === 'nothing'
                                 ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
@@ -7781,14 +8142,17 @@ export default function App() {
                             }`}
                           >
                             <div className="flex items-center justify-between">
-                              <span className="font-bold font-mono">Классический</span>
+                              <span className="font-bold font-mono text-[11px]">Классика</span>
                               <span className="w-2.5 h-2.5 rounded-full bg-[#d71921]" />
                             </div>
-                            <div className={`text-[10px] mt-0.5 ${mutedCls}`}>Строгий монохром, точки, 1px сетка</div>
+                            <div className={`text-[10px] mt-0.5 ${mutedCls}`}>Монохром, 1px сетка</div>
                           </button>
 
                           <button
-                            onClick={() => setDesignStyle('pixelbook')}
+                            onClick={() => {
+                              setDesignStyle('pixelbook');
+                              setUbuntuPanelOpen(false);
+                            }}
                             className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
                               designStyle === 'pixelbook'
                                 ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
@@ -7796,10 +8160,28 @@ export default function App() {
                             }`}
                           >
                             <div className="flex items-center justify-between">
-                              <span className="font-bold">Модерн</span>
+                              <span className="font-bold text-[11px]">Модерн</span>
                               <span className="w-2.5 h-2.5 rounded-full bg-[#4285f4]" />
                             </div>
-                            <div className={`text-[10px] mt-0.5 ${mutedCls}`}>Плавающий док, мягкие капсулы</div>
+                            <div className={`text-[10px] mt-0.5 ${mutedCls}`}>Плавающий док</div>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setDesignStyle('ubuntu');
+                              setStartMenuOpen(false);
+                            }}
+                            className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                              designStyle === 'ubuntu'
+                                ? 'border-[#E95420] bg-[#E95420]/15'
+                                : btnCls
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-[11px]">Ubuntu</span>
+                              <span className="w-2.5 h-2.5 rounded-full bg-[#E95420]" />
+                            </div>
+                            <div className={`text-[10px] mt-0.5 ${mutedCls}`}>Без Пуска, капсула сверху</div>
                           </button>
                         </div>
                       </div>
@@ -7840,6 +8222,24 @@ export default function App() {
                           ))}
                         </div>
                       </div>
+                    </div>
+
+                    {/* Item 11: Win Key Solo-Tap Interceptor Toggle */}
+                    <div className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-xs ${btnCls}`}>
+                      <div>
+                        <div className="font-bold">Клавиша Win открывает меню Luma OS (или панель Ubuntu)</div>
+                        <div className={`text-[11px] ${mutedCls}`}>
+                          Перехватывает одиночное нажатие Win вместо Windows Start, полностью сохраняя Win+D, Win+L, Win+Shift+S, Win+Space и Win+E
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => void handleToggleWinKeyToLuma(!winKeyToLuma)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+                          winKeyToLuma ? 'bg-[var(--luma-accent)] text-white' : 'bg-white/10 text-zinc-400'
+                        }`}
+                      >
+                        {winKeyToLuma ? 'ВКЛ (Luma Start)' : 'ВЫКЛ (Windows)'}
+                      </button>
                     </div>
                   </div>
 
@@ -7911,16 +8311,16 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Wallpaper Image Engine 1.2.0 (Bespoke Lithium/Obsidian/Helium Art, Live Mesh, 4 Transitions, Custom Upload) */}
+                  {/* Wallpaper Image Engine 1.6 Nitrogen (ALL old artworks 100% preserved + 6 new Nitrogen QHD wallpapers!) */}
                   <div className={`p-4 rounded-xl border space-y-3.5 ${surfaceCls}`}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <div className="text-sm font-bold flex items-center gap-2">
                           <Image className="w-4 h-4 text-[var(--luma-accent)]" />
-                          {t('wallpaperLabel', 'Галерея обоев и анимации смены')}
+                          {t('wallpaperLabel', 'Галерея обоев Nitrogen 1.6 (QHD) и анимации смены')}
                         </div>
                         <div className={`text-xs ${mutedCls}`}>
-                          Фирменные 3D-обои Lithium & Obsidian, живые градиенты, загрузка фото и плавная анимация смены
+                          Новые реалистичные QHD-обои коллекции Nitrogen + 3D-герой N-7, сохранённые обои прошлых версий и 12 живых градиентов
                         </div>
                       </div>
                       {(wallpaperImageUrl || liveWallpaper) && (
@@ -7965,10 +8365,16 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Complete Additive Wallpaper Gallery (ALL classic & version artworks preserved + upgraded 4K UHD Carbon artworks!) */}
+                    {/* Complete Additive Wallpaper Gallery (ALL previous artworks 100% preserved + 6 NEW Nitrogen 1.6 QHD Wallpapers!) */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                       {[
                         { label: 'Без картинки (Тема)', url: '', preview: '' },
+                        { label: 'Nitrogen 1.6 · N-7 Hero QHD', url: '/luma-nitrogen-hero.jpg', preview: '/luma-nitrogen-hero.jpg' },
+                        { label: 'Nitrogen Aurora (Исландия)', url: '/luma-nitrogen-aurora.jpg', preview: '/luma-nitrogen-aurora.jpg' },
+                        { label: 'Nitrogen Glacier (Ледник)', url: '/luma-nitrogen-glacier.jpg', preview: '/luma-nitrogen-glacier.jpg' },
+                        { label: 'Nitrogen Alpine (Альпы)', url: '/luma-nitrogen-alpine.jpg', preview: '/luma-nitrogen-alpine.jpg' },
+                        { label: 'Nitrogen Fjord (Лофотены)', url: '/luma-nitrogen-fjord.jpg', preview: '/luma-nitrogen-fjord.jpg' },
+                        { label: 'Nitrogen Arctic (Арктика)', url: '/luma-nitrogen-arctic.jpg', preview: '/luma-nitrogen-arctic.jpg' },
                         { label: 'Carbon 1.5.1 · 4K UHD Monolith', url: '/luma-carbon-hero.jpg', preview: '/luma-carbon-hero.jpg' },
                         { label: 'Carbon Weave · 4K UHD', url: '/luma-carbon-weave.jpg', preview: '/luma-carbon-weave.jpg' },
                         { label: 'Forged Carbon · 4K UHD', url: '/luma-carbon-forged.jpg', preview: '/luma-carbon-forged.jpg' },
@@ -8028,14 +8434,16 @@ export default function App() {
                       ))}
                     </div>
 
-                    {/* 10 Lightweight CSS Live Animated Mesh Wallpapers */}
+                    {/* 12 Lightweight CSS Live Animated Mesh Wallpapers */}
                     <div className="space-y-1.5">
                       <div className={`text-[11px] font-mono uppercase tracking-wider ${mutedCls}`}>
-                        {t('liveWallpaperLabel', 'Живые анимированные обои (10 стилей · 0% ЦП)')}
+                        {t('liveWallpaperLabel', 'Живые анимированные обои (12 стилей · 0% ЦП)')}
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                         {(
                           [
+                            ['nitrogen', 'Nitrogen N-7 Cryo (1.6 Live)', 'luma-live-wp-nitrogen'],
+                            ['aurora-ice', 'Arctic Aurora Ice (1.6 Live)', 'luma-live-wp-aurora-ice'],
                             ['carbon', 'Carbon Fiber Pulse (1.5 Live)', 'luma-live-wp-carbon'],
                             ['obsidian-gold', 'Obsidian Gold (1.5 Live)', 'luma-live-wp-obsidian-gold'],
                             ['boron', 'Boron Sapphire (1.4 Live)', 'luma-live-wp-boron'],
@@ -9102,18 +9510,18 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.5.4 (CARBON · C-6)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.6 (NITROGEN · N-7)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.4.7 · LumaShield 2.0 · Luma AI 3.0 · Office / Code / Cut Studio Pro
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5.0 · LumaShield 2.5 (235+ правил) · Luma AI 3.8 · Стиль Ubuntu · Gamepad Studio · Очистка хвостов · Quick Look
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.5.4.exe"
-                      download="LumaOS_1.5.4.exe"
+                      href="/LumaOS_1.6.exe"
+                      download="LumaOS_1.6.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.5.4.exe
+                      LumaOS_1.6.exe
                     </a>
                   </div>
 
@@ -9150,14 +9558,14 @@ export default function App() {
                       <div
                         key={ver}
                         className={`p-4 rounded-xl border space-y-2 ${
-                          ver === '1.5.4 (Carbon)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
+                          ver === '1.6 (Nitrogen)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-mono font-bold">
                             Версия {ver}
                           </span>
-                          {ver === '1.5.4 (Carbon)' && <StatusPill active={true} />}
+                          {ver === '1.6 (Nitrogen)' && <StatusPill active={true} />}
                         </div>
                         <ul className="space-y-1 text-xs leading-relaxed">
                           {items.map((line, i) => (
@@ -9187,7 +9595,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.plugins || null}
-          zIndex={windows.plugins.z}
+          zIndex={getWinZ('plugins')}
+          alwaysOnTop={Boolean(windows.plugins.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('plugins')}
           initialWidth={960}
           initialHeight={650}
           onFocus={() => focusWindow('plugins')}
@@ -9457,7 +9867,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.island || null}
-          zIndex={windows.island.z}
+          zIndex={getWinZ('island')}
+          alwaysOnTop={Boolean(windows.island.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('island')}
           initialWidth={780}
           initialHeight={560}
           onFocus={() => focusWindow('island')}
@@ -10017,7 +10429,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.spaces || null}
-          zIndex={windows.spaces.z}
+          zIndex={getWinZ('spaces')}
+          alwaysOnTop={Boolean(windows.spaces.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('spaces')}
           initialWidth={600}
           initialHeight={420}
           onFocus={() => focusWindow('spaces')}
@@ -10071,7 +10485,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.ai || null}
-          zIndex={windows.ai.z}
+          zIndex={getWinZ('ai')}
+          alwaysOnTop={Boolean(windows.ai.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('ai')}
           initialWidth={940}
           initialHeight={620}
           onFocus={() => focusWindow('ai')}
@@ -10111,7 +10527,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.utilities || null}
-          zIndex={windows.utilities.z}
+          zIndex={getWinZ('utilities')}
+          alwaysOnTop={Boolean(windows.utilities.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('utilities')}
           initialWidth={960}
           initialHeight={620}
           onFocus={() => focusWindow('utilities')}
@@ -10150,7 +10568,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.calculator || null}
-          zIndex={windows.calculator.z}
+          zIndex={getWinZ('calculator')}
+          alwaysOnTop={Boolean(windows.calculator.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('calculator')}
           initialWidth={460}
           initialHeight={590}
           minWidth={360}
@@ -10177,7 +10597,9 @@ export default function App() {
           taskbarSizePx={effectiveTaskbarSizePx}
           topBarOffsetPx={dualTaskbarMode ? 46 : 0}
           snapCommand={snapCommands.calendar || null}
-          zIndex={windows.calendar.z}
+          zIndex={getWinZ('calendar')}
+          alwaysOnTop={Boolean(windows.calendar.alwaysOnTop)}
+          onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('calendar')}
           initialWidth={860}
           initialHeight={620}
           minWidth={560}
@@ -10248,38 +10670,40 @@ export default function App() {
               taskbarPosition === 'right' ? 'left-0' : 'right-0'
             }`}
           />
-          {/* Top: Start Menu + Run/Spotlight (Alt+R) + Grid Edit */}
+          {/* Top: Start Menu (hidden in Ubuntu style — opened via top-right Ubuntu pill!) + Run/Spotlight (Alt+R) */}
           <div className="flex flex-col items-center gap-1.5 shrink-0">
-            <button
-              onClick={() => {
-                setStartMenuOpen((v) => !v);
-                setControlCenterOpen(false);
-                setTaskListOpen(false);
-                setTaskbarAppMenuId(null);
-                setTaskbarHostWinPid(null);
-                setTaskbarCtxMenu(null);
-              }}
-              title="Пуск (Меню Luma)"
-              className={`w-10 h-10 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
-                startMenuOpen
-                  ? 'bg-[var(--luma-accent)] text-white'
-                  : isDark
-                  ? 'hover:bg-white/10 text-zinc-200'
-                  : 'hover:bg-zinc-900/10 text-zinc-800'
-              }`}
-            >
-              {isPixel ? (
-                <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center">
-                  <span className="w-2 h-2 rounded-full bg-current" />
-                </span>
-              ) : (
-                <div className="grid grid-cols-3 gap-[3px]">
-                  {Array.from({ length: 9 }).map((_, idx) => (
-                    <span key={idx} className="w-[3.5px] h-[3.5px] rounded-full bg-current" />
-                  ))}
-                </div>
-              )}
-            </button>
+            {!isUbuntu && (
+              <button
+                onClick={() => {
+                  setStartMenuOpen((v) => !v);
+                  setControlCenterOpen(false);
+                  setTaskListOpen(false);
+                  setTaskbarAppMenuId(null);
+                  setTaskbarHostWinPid(null);
+                  setTaskbarCtxMenu(null);
+                }}
+                title="Пуск (Меню Luma OS 1.6)"
+                className={`w-10 h-10 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
+                  startMenuOpen
+                    ? 'bg-[var(--luma-accent)] text-white'
+                    : isDark
+                    ? 'hover:bg-white/10 text-zinc-200'
+                    : 'hover:bg-zinc-900/10 text-zinc-800'
+                }`}
+              >
+                {isPixel ? (
+                  <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center">
+                    <span className="w-2 h-2 rounded-full bg-current" />
+                  </span>
+                ) : (
+                  <div className="grid grid-cols-3 gap-[3px]">
+                    {Array.from({ length: 9 }).map((_, idx) => (
+                      <span key={idx} className="w-[3.5px] h-[3.5px] rounded-full bg-current" />
+                    ))}
+                  </div>
+                )}
+              </button>
+            )}
 
             <button
               onClick={() => setSpotlightOpen(true)}
@@ -10694,39 +11118,41 @@ export default function App() {
             }`}
           />
 
-          {/* Left: Real Start Menu Button + Alt+R Run/Spotlight + Grid Edit (moves to Top Bar in Dual Taskbar Mode!) */}
+          {/* Left: Real Start Menu Button (hidden in Ubuntu style — opened via top-right Ubuntu pill!) + Alt+R + Workspaces */}
           {!dualTaskbarMode && (
             <div className="flex items-center gap-1 shrink-0">
-              <button
-                onClick={() => {
-                  setStartMenuOpen((v) => !v);
-                  setControlCenterOpen(false);
-                  setTaskListOpen(false);
-                  setTaskbarAppMenuId(null);
-                  setTaskbarHostWinPid(null);
-                  setTaskbarCtxMenu(null);
-                }}
-                title={`${t('start', 'Пуск')} (Luma OS 1.5 Carbon)`}
-                className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
-                  startMenuOpen
-                    ? 'bg-[var(--luma-accent)] text-white'
-                    : isDark
-                    ? 'hover:bg-white/10 text-zinc-200'
-                    : 'hover:bg-zinc-900/10 text-zinc-800'
-                }`}
-              >
-                {isPixel ? (
-                  <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center">
-                    <span className="w-2 h-2 rounded-full bg-current" />
-                  </span>
-                ) : (
-                  <div className="grid grid-cols-3 gap-[3px]">
-                    {Array.from({ length: 9 }).map((_, idx) => (
-                      <span key={idx} className="w-[3.5px] h-[3.5px] rounded-full bg-current" />
-                    ))}
-                  </div>
-                )}
-              </button>
+              {!isUbuntu && (
+                <button
+                  onClick={() => {
+                    setStartMenuOpen((v) => !v);
+                    setControlCenterOpen(false);
+                    setTaskListOpen(false);
+                    setTaskbarAppMenuId(null);
+                    setTaskbarHostWinPid(null);
+                    setTaskbarCtxMenu(null);
+                  }}
+                  title={`${t('start', 'Пуск')} (Luma OS 1.6 Nitrogen)`}
+                  className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
+                    startMenuOpen
+                      ? 'bg-[var(--luma-accent)] text-white'
+                      : isDark
+                      ? 'hover:bg-white/10 text-zinc-200'
+                      : 'hover:bg-zinc-900/10 text-zinc-800'
+                  }`}
+                >
+                  {isPixel ? (
+                    <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center">
+                      <span className="w-2 h-2 rounded-full bg-current" />
+                    </span>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-[3px]">
+                      {Array.from({ length: 9 }).map((_, idx) => (
+                        <span key={idx} className="w-[3.5px] h-[3.5px] rounded-full bg-current" />
+                      ))}
+                    </div>
+                  )}
+                </button>
+              )}
 
               <button
                 onClick={() => setSpotlightOpen(true)}
@@ -10777,30 +11203,36 @@ export default function App() {
                 taskbarCenterIcons || dualTaskbarMode ? 'justify-center' : ''
               }`}
             >
-              {/* Luma OS 1.5 Carbon: Direct 1-Click Pinned Apps Launcher right on Taskbar */}
+              {/* Luma OS 1.6 Smart Dock: Direct 1-Click Pinned Apps Launcher + Live Messenger Badges + Download Progress Bars */}
               {taskbarDirectLaunch && taskbarDirectAppIds.length > 0 && (
                 <>
                   {taskbarDirectAppIds
                     .map((aid) => combinedApps.find((a) => a.id === aid))
                     .filter((a): a is AppItem => Boolean(a))
-                    .map((app) => (
-                      <button
-                        key={`direct_${app.id}`}
-                        onClick={() => handleLaunchApp(app)}
-                        title={`Открыть сразу: ${app.name} (Прямой запуск с панели задач)`}
-                        className={`relative h-8 sm:h-9 px-2 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center gap-1.5 text-xs transition cursor-pointer shrink-0 ${
-                          app.isRunning
-                            ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold'
-                            : btnCls
-                        }`}
-                      >
-                        {renderAppVisual(app, 'w-4 h-4 shrink-0')}
-                        {dualTaskbarMode && <span className="hidden md:inline max-w-[90px] truncate">{app.name}</span>}
-                        {app.isRunning && (
-                          <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-2.5 h-[2px] rounded-full bg-[var(--luma-accent)]" />
-                        )}
-                      </button>
-                    ))}
+                    .map((app) => {
+                      const badgeCount = matchMessengerBadgeForApp(smartDock.badges, app.name);
+                      const dlTask = matchDockTaskForApp(smartDock.tasks, app.name);
+                      return (
+                        <button
+                          key={`direct_${app.id}`}
+                          onClick={() => handleLaunchApp(app)}
+                          title={`Открыть сразу: ${app.name}${dlTask ? ` · ${Math.round(dlTask.percent)}% (${dlTask.title})` : ''}${badgeCount > 0 ? ` · ${badgeCount} новых` : ''}`}
+                          className={`relative h-8 sm:h-9 px-2 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center gap-1.5 text-xs transition cursor-pointer shrink-0 ${
+                            app.isRunning
+                              ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold'
+                              : btnCls
+                          }`}
+                        >
+                          {renderAppVisual(app, 'w-4 h-4 shrink-0')}
+                          {dualTaskbarMode && <span className="hidden md:inline max-w-[90px] truncate">{app.name}</span>}
+                          <DockMessengerBadge count={badgeCount} />
+                          <DockIconProgressBar task={dlTask} />
+                          {app.isRunning && !dlTask && (
+                            <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-2.5 h-[2px] rounded-full bg-[var(--luma-accent)]" />
+                          )}
+                        </button>
+                      );
+                    })}
                   <span className={`w-px h-5 mx-0.5 shrink-0 ${isDark ? 'bg-white/15' : 'bg-zinc-900/15'}`} />
                 </>
               )}
@@ -10847,6 +11279,7 @@ export default function App() {
                   const isFocused = st.open && !st.minimized && st.z === topVisibleZ;
                   const isDragged = draggedTaskbarId === item.id;
                   const showLbl = taskbarShowLabels && barCompression !== 'icons';
+                  const sysTask = matchDockTaskForApp(smartDock.tasks, item.id);
                   return (
                     <button
                       key={item.id}
@@ -10870,7 +11303,7 @@ export default function App() {
                       }}
                       title={
                         st.open
-                          ? `${item.label} (ПКМ — закрыть · перетащите для порядка)`
+                          ? `${item.label}${st.alwaysOnTop ? ' (📌 Поверх всех окон)' : ''} (ПКМ — закрыть · перетащите для порядка)`
                           : `${item.label} (перетащите для изменения порядка)`
                       }
                       className={`relative h-8 sm:h-9 ${
@@ -10883,6 +11316,8 @@ export default function App() {
                         isPixel ? 'rounded-full' : 'rounded-xl'
                       } flex items-center gap-1.5 text-xs transition cursor-pointer whitespace-nowrap overflow-hidden ${
                         isDragged ? 'opacity-50 ring-2 ring-[var(--luma-accent)]' : ''
+                      } ${
+                        st.alwaysOnTop ? 'ring-1 ring-amber-400/60' : ''
                       } ${
                         isFocused
                           ? isPixel
@@ -10897,7 +11332,8 @@ export default function App() {
                     >
                       <span className="shrink-0">{item.icon}</span>
                       {showLbl && <span className="hidden lg:inline truncate">{item.label}</span>}
-                      {st.open && (
+                      <DockIconProgressBar task={sysTask} />
+                      {st.open && !sysTask && (
                         <span
                           className={`absolute bottom-1 left-1/2 -translate-x-1/2 rounded-full transition-all ${
                             st.minimized ? 'w-1 h-1 bg-zinc-400' : 'w-3 h-[2px] bg-[var(--luma-accent)]'
@@ -10909,13 +11345,15 @@ export default function App() {
                 })
               )}
 
-              {/* Deduplicated Running Luma Applications (never duplicates real open Windows Steam/Chrome!) */}
+              {/* Deduplicated Running Luma Applications + Smart Dock Badges & Progress */}
               {taskbarRunningApps.length > 0 && (
                 <>
                   <span className={`w-px h-5 mx-0.5 shrink-0 ${isDark ? 'bg-white/15' : 'bg-zinc-900/15'}`} />
                   {taskbarRunningApps.map((app) => {
                     const activePop = taskbarAppMenuId === app.id;
                     const showLbl = taskbarShowLabels && barCompression !== 'icons';
+                    const badgeCount = matchMessengerBadgeForApp(smartDock.badges, app.name);
+                    const dlTask = matchDockTaskForApp(smartDock.tasks, app.name);
                     return (
                       <button
                         key={app.id}
@@ -10940,7 +11378,7 @@ export default function App() {
                               ? 'px-2 max-w-[76px] min-w-[32px] shrink'
                               : 'px-2.5 max-w-[110px] min-w-[36px] shrink'
                             : 'w-8 sm:w-9 justify-center shrink-0'
-                        } ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center gap-1.5 text-xs transition cursor-pointer whitespace-nowrap overflow-hidden border ${
+                        } ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center gap-1.5 text-xs transition cursor-pointer whitespace-nowrap border ${
                           activePop
                             ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold'
                             : isDark
@@ -10950,14 +11388,16 @@ export default function App() {
                       >
                         {renderAppVisual(app, 'w-4 h-4 shrink-0')}
                         {showLbl && <span className="hidden md:inline truncate">{app.name}</span>}
-                        <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-3 h-[2px] rounded-full bg-[var(--luma-accent)]" />
+                        <DockMessengerBadge count={badgeCount} />
+                        <DockIconProgressBar task={dlTask} />
+                        {!dlTask && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-3 h-[2px] rounded-full bg-[var(--luma-accent)]" />}
                       </button>
                     );
                   })}
                 </>
               )}
 
-              {/* REAL Host OS Running Windows (Real Native PNG Icons + Drag-and-Drop Reorderable!) */}
+              {/* REAL Host OS Running Windows + Live Messenger Badges + Steam/Browser Progress Bars + Pin indicator */}
               {taskbarShowHostWindows && orderedHostWindows.length > 0 && (
                 <>
                   <span className={`w-px h-5 mx-0.5 shrink-0 ${isDark ? 'bg-white/15' : 'bg-zinc-900/15'}`} />
@@ -10971,6 +11411,8 @@ export default function App() {
                     const compactMode = hostWinLabelMode === 'compact' || barCompression === 'icons';
                     const showLbl = taskbarShowLabels && !compactMode;
                     const monoInitial = (friendlyName || hw.name || 'W').slice(0, 2).toUpperCase();
+                    const badgeCount = matchMessengerBadgeForApp(smartDock.badges, `${friendlyName} ${hw.name}`);
+                    const dlTask = matchDockTaskForApp(smartDock.tasks, `${friendlyName} ${hw.name}`);
                     return (
                       <button
                         key={`host_${hw.pid}`}
@@ -10999,7 +11441,7 @@ export default function App() {
                           e.stopPropagation();
                           handleKillHostProcess(hw.pid, false);
                         }}
-                        title={`${friendlyName}${hw.title && hw.title !== friendlyName ? ` — ${hw.title}` : ''} (${hw.name} · PID ${hw.pid} · ${hw.mem_mb.toFixed(0)} МБ)\nПеретащите мышкой для порядка · ЛКМ — управлять · ПКМ — закрыть`}
+                        title={`${friendlyName}${hw.topmost ? ' [📌 Поверх всех окон]' : ''}${hw.title && hw.title !== friendlyName ? ` — ${hw.title}` : ''} (${hw.name} · PID ${hw.pid} · ${hw.mem_mb.toFixed(0)} МБ)\nПеретащите мышкой для порядка · ЛКМ — управлять · ПКМ — закрыть`}
                         className={`relative h-8 sm:h-9 ${
                           showLbl
                             ? hostWinLabelMode === 'window_title'
@@ -11008,8 +11450,10 @@ export default function App() {
                               ? 'px-2 max-w-[96px] min-w-[40px] shrink'
                               : 'px-2.5 max-w-[132px] min-w-[44px] shrink'
                             : 'w-8 sm:w-9 justify-center shrink-0'
-                        } ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center gap-1.5 text-xs transition cursor-pointer whitespace-nowrap overflow-hidden border ${
+                        } ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center gap-1.5 text-xs transition cursor-pointer whitespace-nowrap border ${
                           isDragged ? 'opacity-50 ring-2 ring-emerald-400' : ''
+                        } ${
+                          hw.topmost ? 'ring-1 ring-amber-400/70' : ''
                         } ${
                           activePop
                             ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold'
@@ -11033,13 +11477,36 @@ export default function App() {
                           <Monitor className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                         )}
                         {showLbl && <span className="truncate font-medium">{displayLabel}</span>}
-                        <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-3 h-[2px] rounded-full bg-emerald-500" />
+                        <DockMessengerBadge count={badgeCount} />
+                        <DockIconProgressBar task={dlTask} />
+                        {!dlTask && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-3 h-[2px] rounded-full bg-emerald-500" />}
                       </button>
                     );
                   })}
                 </>
               )}
             </div>
+
+            {/* Item 13: Smart Dock Folder Stacks (Fan/Grid + Quick Look + Drag-and-Drop) & Live Downloads Pill */}
+            <LumaSmartDockStacks
+              kernelBase=""
+              stacks={smartDock.stacks}
+              tasks={smartDock.tasks}
+              isDarkTheme={isDark}
+              onStacksChanged={(next: DockFolderStackConfig[]) =>
+                setSmartDock((prev) => ({ ...prev, stacks: next }))
+              }
+              onOpenFolderInExplorer={(p) => openExplorerAt(p)}
+              onOpenFile={(p) => {
+                void fetch('/api/kernel/fs', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'open', path: p }),
+                }).catch(() => {});
+              }}
+              onQuickLook={openQuickLook}
+              onNotify={(title, msg) => pushToast(title, msg, 'success')}
+            />
 
             {totalBarTabsCount > 9 && (
               <button
@@ -11340,29 +11807,31 @@ export default function App() {
         </footer>
       )}
 
-      {/* ==================== LUMA OS 1.5 CARBON: DUAL TASKBAR TOP SYSTEM UTILITY BAR ==================== */}
+      {/* ==================== LUMA OS 1.6 NITROGEN: DUAL TASKBAR TOP SYSTEM UTILITY BAR ==================== */}
       {dualTaskbarMode && (
         <header
           onClick={(e) => e.stopPropagation()}
           className={`fixed top-0 inset-x-0 h-11 z-[8900] px-3 border-b flex items-center justify-between gap-2 select-none ${taskbarGlassCls}`}
         >
-          {/* Top-Left: Start, Search, Desktops & Carbon System Tools */}
+          {/* Top-Left: Start (hidden in Ubuntu style), Search, Desktops & System Tools */}
           <div className="flex items-center gap-1.5 min-w-0">
-            <button
-              onClick={() => {
-                setStartMenuOpen((v) => !v);
-                setControlCenterOpen(false);
-                setCarbonHubOpen(false);
-                setNotifShadeOpen(false);
-              }}
-              title="Пуск (Luma OS 1.5.4 Carbon)"
-              className={`h-8 px-2.5 rounded-xl flex items-center gap-1.5 text-xs font-bold cursor-pointer transition ${
-                startMenuOpen ? 'bg-[var(--luma-accent)] text-white' : btnCls + ' border'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-current" />
-              <span>Luma 1.5</span>
-            </button>
+            {!isUbuntu && (
+              <button
+                onClick={() => {
+                  setStartMenuOpen((v) => !v);
+                  setControlCenterOpen(false);
+                  setCarbonHubOpen(false);
+                  setNotifShadeOpen(false);
+                }}
+                title="Пуск (Luma OS 1.6 Nitrogen)"
+                className={`h-8 px-2.5 rounded-xl flex items-center gap-1.5 text-xs font-bold cursor-pointer transition ${
+                  startMenuOpen ? 'bg-[var(--luma-accent)] text-white' : btnCls + ' border'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-current" />
+                <span>Luma 1.6</span>
+              </button>
+            )}
             <button
               onClick={() => setSpotlightOpen(true)}
               title="Поиск по ПК и системе (Alt+R)"
@@ -11970,6 +12439,18 @@ export default function App() {
                 <Cpu className="w-3 h-3" /> Диспетчер
               </button>
             </div>
+            <button
+              onClick={() => void handleToggleHostTopmost(hw.pid, hw.hwnd)}
+              className={`w-full py-1.5 px-2.5 rounded-lg border text-xs font-bold cursor-pointer inline-flex items-center justify-center gap-1.5 transition ${
+                hw.topmost
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
+                  : btnCls
+              }`}
+              title="Закрепить внешнее окно Windows поверх всех остальных окон (Win32 HWND_TOPMOST)"
+            >
+              <Pin className={`w-3.5 h-3.5 ${hw.topmost ? 'fill-current' : 'text-amber-400'}`} />
+              {hw.topmost ? '📌 Закреплено поверх всех окон (Открепить)' : '📌 Поверх всех окон (Always on Top)'}
+            </button>
             <div className="grid grid-cols-3 gap-1.5 text-[11px]">
               <button
                 onClick={() => void handleSnapHostWindow(hw.pid, 'left')}
@@ -12324,7 +12805,7 @@ export default function App() {
           {!startSearch.trim() && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                <span className={mutedCls}>Luma OS 1.5 (Carbon · C-6)</span>
+                <span className={mutedCls}>Luma OS 1.6 (Nitrogen · N-7)</span>
                 <div className="flex items-center gap-1.5">
                   {enabledFeatures.privateVault && (
                     <button
@@ -12442,7 +12923,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.5 (Carbon)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.6 (Nitrogen)'}
                   </div>
                 </div>
               </div>
@@ -12567,7 +13048,7 @@ export default function App() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.5.4 (CARBON)</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.6 (NITROGEN)</span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>
               {liveSystem?.location?.city || 'LOCAL'}
             </span>
@@ -12576,7 +13057,17 @@ export default function App() {
           <div className="grid grid-cols-2 gap-2 text-xs">
             {[
               { label: isDark ? 'Тёмная' : 'Светлая', active: isDark, icon: isDark ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />, run: () => { const nxt = isDark ? 'nothing_paper' : 'nothing_mono'; setThemeKey(nxt); triggerIslandPulse('Тема', nxt === 'nothing_paper' ? 'Светлая' : 'Тёмная', 'theme'); } },
-              { label: designStyle === 'nothing' ? 'Классический' : 'Модерн', active: designStyle === 'pixelbook', icon: <Sliders className="w-3.5 h-3.5" />, run: () => setDesignStyle(designStyle === 'nothing' ? 'pixelbook' : 'nothing') },
+              {
+                label: designStyle === 'ubuntu' ? 'Ubuntu' : designStyle === 'nothing' ? 'Классика' : 'Модерн',
+                active: designStyle !== 'nothing',
+                icon: <Sliders className="w-3.5 h-3.5" />,
+                run: () => {
+                  const nextStyle: DesignStyle = designStyle === 'nothing' ? 'pixelbook' : designStyle === 'pixelbook' ? 'ubuntu' : 'nothing';
+                  setDesignStyle(nextStyle);
+                  if (nextStyle === 'ubuntu') setStartMenuOpen(false);
+                  else setUbuntuPanelOpen(false);
+                },
+              },
               { label: 'Luma Island', active: dynamicIslandEnabled, icon: <Disc3 className="w-3.5 h-3.5" />, run: handleToggleDynamicIsland },
               { label: 'Экономия', active: powerProfile === 'saver', icon: <Leaf className="w-3.5 h-3.5" />, run: () => handleChangePowerProfile(powerProfile === 'saver' ? 'balanced' : 'saver') },
               { label: 'Не беспокоить', active: dndEnabled, icon: <BellOff className="w-3.5 h-3.5" />, run: () => setDndEnabled((v) => { triggerIslandPulse(!v ? 'Не беспокоить: ВКЛ' : 'Не беспокоить: ВЫКЛ', undefined, 'dnd'); return !v; }) },
@@ -13403,7 +13894,7 @@ export default function App() {
               sender: 'Дмитрий',
               chat: 'Личный чат',
               title: 'Дмитрий',
-              body: 'Привет! Погнали тестить Luma OS 1.5.4 — шторка уведомлений работает мгновенно и без мусорных +4.',
+              body: 'Привет! Погнали тестить Luma OS 1.6 Nitrogen — шторка, AI 3.8 и Умный Dock работают мгновенно.',
             }),
           }).catch(() => {});
         }}
@@ -13527,11 +14018,18 @@ export default function App() {
         isDark={isDark}
         items={altTabEntries}
         selectedIndex={altTabIdx}
-        wallpaperPreviewUrl={wallpaperImageUrl || '/wallpapers/luma-carbon-hero.jpg'}
+        wallpaperPreviewUrl={wallpaperImageUrl || '/luma-nitrogen-hero.jpg'}
         fromExternal={altTabFromExternal}
         onSelectIndex={setAltTabIdx}
         onActivate={(item) => activateAltTabEntry(item)}
         onGoHome={() => returnToLumaHome(false)}
+        onToggleTopmost={(item) => {
+          if (item.kind === 'luma') {
+            toggleWindowAlwaysOnTop(item.id as DexWinId);
+          } else if (item.pid) {
+            void handleToggleHostTopmost(item.pid, item.hwnd);
+          }
+        }}
         onCloseItem={(item) => {
           if (item.kind === 'luma') {
             closeWindow(item.id as DexWinId);
@@ -13546,6 +14044,109 @@ export default function App() {
           }
         }}
         onCancel={cancelAltTab}
+      />
+
+      {/* ==================== LUMA OS 1.6 (NITROGEN) DEVELOPER MODE LIVE HUD (ITEM 2) ==================== */}
+      <LumaDevHudOverlay
+        enabled={devModeEnabled}
+        isDark={isDark}
+        onClose={() => setDevModeEnabled(false)}
+        onElevateAdmin={() => void handleElevateAdmin()}
+        onPushToast={pushToast}
+      />
+
+      {/* ==================== LUMA OS 1.6 (NITROGEN) UBUNTU STYLE TOP-RIGHT PILL & COMPACT PANEL (ITEM 3 & 11) ==================== */}
+      {isUbuntu && (
+        <LumaUbuntuPanel
+          open={ubuntuPanelOpen}
+          onToggleOpen={() => {
+            setStartMenuOpen(false);
+            setControlCenterOpen(false);
+            setUbuntuPanelOpen((v) => !v);
+          }}
+          onClose={() => setUbuntuPanelOpen(false)}
+          isDark={isDark}
+          batteryLevel={batteryLevel}
+          isCharging={isCharging}
+          kbdShort={liveKbdShort || kbdLayouts?.active?.short || 'RUS'}
+          volume={volume}
+          isMuted={isMuted}
+          brightness={screenBrightness}
+          dndEnabled={dndEnabled}
+          nightLightEnabled={nightLightLevel > 0}
+          unreadNotifsCount={unreadNotifCount}
+          activeDesktop={activeDesktop}
+          apps={combinedApps}
+          openLumaWindows={openSystemWindowsList.map((w) => ({
+            id: w.id,
+            title: w.label,
+            minimized: Boolean(windows[w.id]?.minimized),
+            alwaysOnTop: Boolean(windows[w.id]?.alwaysOnTop),
+          }))}
+          hostWindows={orderedHostWindows}
+          onSwitchDesktop={(desk) => {
+            setActiveDesktop(desk);
+            triggerIslandPulse(`Рабочий стол ${desk}`, undefined, 'desktop');
+          }}
+          onOpenSpotlight={() => {
+            setUbuntuPanelOpen(false);
+            setSpotlightOpen(true);
+          }}
+          onLaunchApp={(app) => {
+            setUbuntuPanelOpen(false);
+            handleLaunchApp(app);
+          }}
+          onOpenLumaWindow={(id) => {
+            setUbuntuPanelOpen(false);
+            openWindow(id as DexWinId);
+          }}
+          onCloseLumaWindow={(id) => closeWindow(id as DexWinId)}
+          onToggleLumaTopmost={(id) => toggleWindowAlwaysOnTop(id as DexWinId)}
+          onFocusHostWindow={(pid) => {
+            setUbuntuPanelOpen(false);
+            void handleFocusHostWindow(pid);
+          }}
+          onToggleHostTopmost={(pid, hwnd) => void handleToggleHostTopmost(pid, hwnd)}
+          onCycleKeyboard={() => {
+            const list = kbdLayouts?.installed || [];
+            if (list.length > 1) {
+              const curIdx = list.findIndex((l) => l.tag.toLowerCase() === (kbdLayouts?.active_tag || '').toLowerCase());
+              const nextLay = list[(curIdx + 1) % list.length];
+              if (nextLay) void handleSwitchKeyboardLayout(nextLay.tag, nextLay.hkl);
+            }
+          }}
+          onChangeVolume={handleVolumeChange}
+          onToggleMute={handleToggleMute}
+          onChangeBrightness={setScreenBrightness}
+          onToggleDnd={() => setDndEnabled((v) => !v)}
+          onToggleNightLight={() => setNightLightLevel((v) => (v > 0 ? 0 : 45))}
+          onOpenSettings={() => {
+            setUbuntuPanelOpen(false);
+            openWindow('settings', 'appearance');
+          }}
+          onPowerAction={(act) => {
+            setUbuntuPanelOpen(false);
+            void handleExecutePowerAction(act);
+          }}
+        />
+      )}
+
+      {/* ==================== LUMA OS 1.6 (NITROGEN) QUICK LOOK MODAL (SPACE IN EXPLORER, SHUTTERS, DESKTOP & DOCK — ITEM 10) ==================== */}
+      <LumaQuickLookModal
+        open={quickLookState.open}
+        items={quickLookState.items}
+        activeIndex={quickLookState.index}
+        isDark={isDark}
+        onChangeIndex={(nextIdx) => setQuickLookState((prev) => ({ ...prev, index: nextIdx }))}
+        onClose={() => setQuickLookState((prev) => ({ ...prev, open: false }))}
+        onOpenExternal={(p) => {
+          void fetch('/api/kernel/fs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'open', path: p }),
+          }).catch(() => {});
+        }}
+        onPushToast={pushToast}
       />
 
       {/* ==================== CUSTOM USER WIDGET BUILDER (PHOTO + LIVE JS SCRIPT) ==================== */}
@@ -13648,7 +14249,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.5 (Carbon) · Alt+W — Обзор · 8-сторонний ресайз и Snap Layouts
+                  Luma OS 1.6 (Nitrogen · N-7) · Space — Quick Look · Alt+W — Обзор · 📌 Поверх окон
                 </div>
               </div>
             </div>

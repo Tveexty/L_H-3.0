@@ -16,7 +16,7 @@ import {
   Swords,
   Magnet,
 } from 'lucide-react';
-import carbonHeroImg from '../assets/luma-carbon-hero.jpg';
+import nitrogenHeroImg from '../assets/luma-nitrogen-hero.jpg';
 
 interface HeroCardProps {
   onTriggerEasterEgg: () => void;
@@ -25,14 +25,14 @@ interface HeroCardProps {
 }
 
 /**
- * Flagship sculptural 3D Carbon hexagonal monolith hero banner for Luma OS 1.5 (Carbon · C-6).
+ * Flagship sculptural 3D Nitrogen N-7 heptagonal cryo-sapphire monolith hero banner for Luma OS 1.6 (Nitrogen · N-7).
  * Uses outer perspective wrapper, backfaceVisibility: hidden, content-hashed Vite asset,
  * and dual CSS+<img> layers so WebView2 smoothly tilts on hover without ever dropping the image.
  */
 export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
   onTriggerEasterEgg,
-  kernelVersion = '1.6.1',
-  securityVersion = '2.0',
+  kernelVersion = '1.5.0',
+  securityVersion = '2.5',
 }) => {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [tilt, setTilt] = useState({ rx: 0, ry: 0, gx: 50, gy: 38, hovering: false });
@@ -73,7 +73,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
             handleClick();
           }
         }}
-        className="group relative block w-full h-56 sm:h-64 rounded-3xl overflow-hidden border border-cyan-300/25 shadow-xl cursor-pointer text-left select-none active:scale-[0.99] focus:outline-none"
+        className="group relative block w-full h-56 sm:h-64 rounded-3xl overflow-hidden border border-sky-300/30 shadow-xl cursor-pointer text-left select-none active:scale-[0.99] focus:outline-none"
         style={{
           isolation: 'isolate',
           transformStyle: 'flat',
@@ -83,16 +83,16 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
           transition: tilt.hovering
             ? 'transform 0.14s ease-out, box-shadow 0.25s ease'
             : 'transform 0.52s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease',
-          backgroundColor: '#05070b',
-          backgroundImage: `url("${carbonHeroImg}")`,
+          backgroundColor: '#050811',
+          backgroundImage: `url("${nitrogenHeroImg}")`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
-        title="Нажмите, чтобы запустить игру «Carbon Vanguard»!"
+        title="Нажмите, чтобы запустить игру «Nitrogen Vanguard»!"
       >
         <img
-          src={carbonHeroImg}
-          alt="Luma OS 1.5.4 Carbon 4K"
+          src={nitrogenHeroImg}
+          alt="Luma OS 1.6 Nitrogen N-7 QHD"
           loading="eager"
           decoding="sync"
           draggable={false}
@@ -110,20 +110,20 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
         <div
           className="pointer-events-none absolute inset-0 transition-opacity duration-200 opacity-65 group-hover:opacity-100"
           style={{
-            background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.22) 0%, rgba(34,211,238,0.22) 28%, rgba(16,185,129,0.12) 48%, transparent 66%)`,
+            background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.22) 0%, rgba(56,189,248,0.24) 28%, rgba(129,140,248,0.14) 48%, transparent 66%)`,
           }}
         />
 
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#04060b]/28 via-transparent to-[#03050a]/74" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#040710]/28 via-transparent to-[#03050c]/74" />
 
         <div className="relative z-10 flex items-center justify-between px-5 pt-4">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 border border-cyan-300/30 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 border border-sky-300/35 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
             LUMACORE {kernelVersion} · SHIELD {securityVersion}
           </span>
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 border border-emerald-300/30 text-[10px] font-mono text-cyan-100 group-hover:bg-white/20 transition">
-            <Sparkles className="w-3 h-3 text-cyan-300" />
-            Carbon · 4K Studio
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 border border-cyan-300/35 text-[10px] font-mono text-sky-100 group-hover:bg-white/20 transition">
+            <Sparkles className="w-3 h-3 text-sky-300" />
+            Nitrogen · QHD Studio
           </span>
         </div>
 
@@ -137,25 +137,25 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
           <div
             className="text-5xl sm:text-6xl font-black tracking-tight leading-none select-none transition-transform duration-300 group-hover:scale-105"
             style={{
-              backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #cffafe 52%, #67e8f9 100%)',
+              backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #bae6fd 52%, #38bdf8 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
-              filter: 'drop-shadow(0 6px 26px rgba(34, 211, 238, 0.52))',
+              filter: 'drop-shadow(0 6px 26px rgba(56, 189, 248, 0.56))',
             }}
           >
-            1.5.4
+            1.6
           </div>
           <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">
             LumaOS
           </div>
-          <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-cyan-100/95">
-            <span>CARBON</span>
+          <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-sky-100/95">
+            <span>NITROGEN</span>
             <span className="opacity-50">·</span>
-            <span className="text-emerald-200">C-6</span>
+            <span className="text-cyan-200">N-7</span>
           </div>
         </div>
 
-        {ripple && <div className="pointer-events-none absolute inset-0 bg-cyan-200/20 animate-ping rounded-3xl" />}
+        {ripple && <div className="pointer-events-none absolute inset-0 bg-sky-200/20 animate-ping rounded-3xl" />}
       </div>
     </div>
   );
@@ -164,6 +164,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
 export const LumaLithiumHeroCard = LumaHeliumHeroCard;
 export const LumaBerylliumHeroCard = LumaHeliumHeroCard;
 export const LumaBoronHeroCard = LumaHeliumHeroCard;
+export const LumaNitrogenHeroCard = LumaHeliumHeroCard;
 
 // ==================== MINI-GAME ENGINE: BERYLLIUM VANGUARD (ROGUELITE ARENA) + LITHIUM ORBIT ====================
 
@@ -1609,14 +1610,14 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         <div
           className="relative flex flex-col items-center justify-center w-full max-w-2xl h-[460px] rounded-3xl overflow-hidden border border-emerald-300/20 bg-[#031216] shadow-2xl"
           style={{
-            backgroundImage: `url("${carbonHeroImg}")`,
+            backgroundImage: `url("${nitrogenHeroImg}")`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}
         >
           <img
-            src={carbonHeroImg}
-            alt="Carbon Awakening"
+            src={nitrogenHeroImg}
+            alt="Nitrogen Awakening"
             loading="eager"
             decoding="sync"
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000"

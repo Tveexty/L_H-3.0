@@ -48,10 +48,10 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.5.4"
-	KernelCodename      = "Carbon"
-	KernelEngineVersion = "1.4.7"
-	SecurityCoreVersion = "2.0"
+	KernelVersion       = "1.6.0"
+	KernelCodename      = "Nitrogen"
+	KernelEngineVersion = "1.5.0"
+	SecurityCoreVersion = "2.5"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
 )
@@ -1968,7 +1968,7 @@ func main() {
 
 	// ==================== LUMA OS 1.2.1 (LITHIUM) NEW KERNEL APIS ====================
 
-	// 14. Inline Safe Image/Media Preview for Luma Explorer Pro
+	// 14. Inline Safe Image / Video / Audio / PDF Preview & HTTP Range Streaming for Quick Look & Luma Explorer Pro
 	mux.HandleFunc("/api/kernel/fs/raw", func(w http.ResponseWriter, r *http.Request) {
 		rawPath := resolvePath(r.URL.Query().Get("path"))
 		if rawPath == "" {
@@ -1985,20 +1985,50 @@ func main() {
 			".svg":  "image/svg+xml",
 			".bmp":  "image/bmp",
 			".ico":  "image/x-icon",
+			".avif": "image/avif",
+			".mp4":  "video/mp4",
+			".m4v":  "video/mp4",
+			".webm": "video/webm",
+			".mov":  "video/quicktime",
+			".mkv":  "video/x-matroska",
+			".avi":  "video/x-msvideo",
+			".ogv":  "video/ogg",
+			".mp3":  "audio/mpeg",
+			".wav":  "audio/wav",
+			".flac": "audio/flac",
+			".ogg":  "audio/ogg",
+			".m4a":  "audio/mp4",
+			".aac":  "audio/aac",
+			".opus": "audio/opus",
+			".pdf":  "application/pdf",
 		}
 		ct, ok := mimeMap[ext]
 		if !ok {
 			http.Error(w, "unsupported preview format", http.StatusUnsupportedMediaType)
 			return
 		}
-		st, err := os.Stat(rawPath)
-		if err != nil || st.IsDir() || st.Size() > 25*1024*1024 {
+		f, err := os.Open(rawPath)
+		if err != nil {
 			http.Error(w, "file unavailable", http.StatusNotFound)
 			return
 		}
+		defer f.Close()
+		st, err := f.Stat()
+		if err != nil || st.IsDir() {
+			http.Error(w, "file unavailable", http.StatusNotFound)
+			return
+		}
+		// Keep generous limit for images/PDF, allow multi-GB HTTP Range streaming for video/audio!
+		isStreamMedia := strings.HasPrefix(ct, "video/") || strings.HasPrefix(ct, "audio/")
+		if !isStreamMedia && st.Size() > 64*1024*1024 {
+			http.Error(w, "file too large for inline preview", http.StatusRequestEntityTooLarge)
+			return
+		}
 		w.Header().Set("Content-Type", ct)
+		w.Header().Set("Accept-Ranges", "bytes")
 		w.Header().Set("Cache-Control", "no-store")
-		http.ServeFile(w, r, rawPath)
+		// http.ServeContent natively handles HTTP Range / 206 Partial Content seeking with zero buffering!
+		http.ServeContent(w, r, st.Name(), st.ModTime(), f)
 	})
 
 	// 15. Luma Plugin SDK v2.0 Runtime Execution Bus (real system actions for installed extensions)
@@ -3058,12 +3088,17 @@ func main() {
 		})
 	})
 
-	// Serve standalone executable download for LumaOS_1.5.4.exe (with backward-compatible aliases)
+	// Register all Luma OS 1.6 (Nitrogen · N-7) APIs: Dev HUD, Admin UAC, Virtual Memory RAM Plus,
+	// LumaShield 2.5 Tasks Audit, Luma AI 3.8 FlashLite Assist, Always-on-Top, Gamepad Studio,
+	// Leftover Cleaner / Uninstaller, Quick Look, Win Key toggle, and Smart Dock!
+	registerNitrogen16Routes(mux, kernel, osNotifBridge)
+
+	// Serve standalone executable download for LumaOS_1.6.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.4.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -3071,12 +3106,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.4.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.6.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.4.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.3.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.2.exe", serveExe)
@@ -3136,10 +3172,13 @@ func main() {
 		fileServer.ServeHTTP(w, r)
 	})
 
+	handler := wrapWithDevMetrics(mux)
+
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.5.4 (CARBON · C-6) — LUMACORE 1.4.7 & LUMASHIELD 2.0")
-	log.Printf("  - Notification Shade, Live MRU Alt+Tab, Dual-Pane Explorer, 140+ Excel Formulas, Battery Care")
+	log.Printf("  LUMA OS 1.6 (NITROGEN · N-7) — LUMACORE 1.5.0 & LUMASHIELD 2.5")
+	log.Printf("  - Ubuntu Style, Dev HUD & UAC Admin, RAM Plus, AI 3.8 FlashLite, Always-on-Top")
+	log.Printf("  - Gamepad Studio, 4-Stage Uninstaller, Quick Look (Space), Win Key & Smart Dock")
 	log.Printf("  - Desktop Environment:          http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:    http://%s/api/kernel/status", addr)
@@ -3147,7 +3186,7 @@ func main() {
 
 	if !*headless && runtime.GOOS == "windows" {
 		go func() {
-			if err := http.ListenAndServe(addr, mux); err != nil {
+			if err := http.ListenAndServe(addr, handler); err != nil {
 				log.Printf("Luma OS HTTP server error: %v", err)
 			}
 		}()
@@ -3161,7 +3200,7 @@ func main() {
 		return
 	}
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("Luma OS HTTP server error: %v", err)
 	}
 }

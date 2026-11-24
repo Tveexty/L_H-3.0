@@ -83,6 +83,7 @@ import {
   renderCustomLucideIcon,
 } from './LumaCustomWidgetBuilder';
 import { SmartContextMenu } from './SmartContextMenu';
+import type { QuickLookCandidate } from './LumaQuickLookModal';
 
 export { DESKTOP_WIDGET_CATALOG };
 export type { WidgetShape };
@@ -100,7 +101,9 @@ export type LiveWallpaperId =
   | 'boron'
   | 'cobalt'
   | 'carbon'
-  | 'obsidian-gold';
+  | 'obsidian-gold'
+  | 'nitrogen'
+  | 'aurora-ice';
 
 export type WidgetBgMode = 'theme' | 'glass' | 'dark' | 'light' | 'accent' | 'transparent' | 'custom';
 
@@ -124,7 +127,9 @@ export type DesktopSystemWinId =
   | 'scenarios'
   | 'code_studio'
   | 'cut_studio'
-  | 'office';
+  | 'office'
+  | 'gamepad'
+  | 'uninstaller';
 
 export interface FolderEntry {
   id: string;
@@ -401,6 +406,7 @@ export interface LumaDesktopCanvasProps {
   onOpenCustomWidgetBuilder?: (editWidgetId?: string, spec?: CustomUserWidgetSpec) => void;
   pendingCustomWidget?: { seq: number; editWidgetId?: string; spec: CustomUserWidgetSpec } | null;
   onConsumePendingCustomWidget?: () => void;
+  onQuickLook?: (items: QuickLookCandidate[], index: number) => void;
 }
 
 export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
@@ -474,6 +480,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
   onOpenCustomWidgetBuilder,
   pendingCustomWidget = null,
   onConsumePendingCustomWidget,
+  onQuickLook,
 }) => {
   const totalRows = 10;
   const totalCells = gridCols * totalRows;
@@ -1067,6 +1074,24 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         setHoveredCell(null);
         setResizingTarget(null);
         if (editMode) onSetEditMode(false);
+        return;
+      }
+      if (e.key === ' ' && !e.ctrlKey && !e.altKey && !e.metaKey && onQuickLook && selectedId) {
+        const tgt = e.target as HTMLElement | null;
+        const tag = tgt?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tgt?.isContentEditable) return;
+        const sc = shortcuts.find((s) => s.id === selectedId);
+        if (sc && (sc.kind === 'file' || sc.kind === 'disk_folder') && sc.target) {
+          e.preventDefault();
+          const fileShortcuts = shortcuts.filter((s) => (s.kind === 'file' || s.kind === 'disk_folder') && s.target);
+          const items: QuickLookCandidate[] = fileShortcuts.map((s) => ({
+            path: s.target,
+            name: s.label,
+            isDir: s.kind === 'disk_folder',
+          }));
+          const idx = Math.max(0, fileShortcuts.findIndex((s) => s.id === sc.id));
+          onQuickLook(items, idx);
+        }
       }
     };
     window.addEventListener('click', close);
@@ -1075,7 +1100,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
       window.removeEventListener('click', close);
       window.removeEventListener('keydown', onKey);
     };
-  }, [editMode, onSetEditMode]);
+  }, [editMode, onSetEditMode, onQuickLook, selectedId, shortcuts]);
 
   const currentPlayer = islandPlayers[activePlayerIndex] || islandPlayers[0];
   const hasLiveMedia = Boolean(liveSystem?.media?.available && liveSystem.media.title);
@@ -5108,6 +5133,29 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
             <Play className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
             <span>Открыть</span>
           </button>
+
+          {onQuickLook && (shortcutCtxMenu.sc.kind === 'file' || shortcutCtxMenu.sc.kind === 'disk_folder') && shortcutCtxMenu.sc.target && (
+            <button
+              onClick={() => {
+                const sc = shortcutCtxMenu.sc;
+                const fileShortcuts = shortcuts.filter((s) => (s.kind === 'file' || s.kind === 'disk_folder') && s.target);
+                const items: QuickLookCandidate[] = fileShortcuts.map((s) => ({
+                  path: s.target,
+                  name: s.label,
+                  isDir: s.kind === 'disk_folder',
+                }));
+                const idx = Math.max(0, fileShortcuts.findIndex((s) => s.id === sc.id));
+                onQuickLook(items, idx);
+                setShortcutCtxMenu(null);
+              }}
+              className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left font-semibold text-sky-400 cursor-pointer ${
+                isDark ? 'hover:bg-sky-500/15' : 'hover:bg-sky-50'
+              }`}
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span>Быстрый просмотр (Space)</span>
+            </button>
+          )}
 
           {shortcutCtxMenu.sc.kind === 'folder' && (
             <>

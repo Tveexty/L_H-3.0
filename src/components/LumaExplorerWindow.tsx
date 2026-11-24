@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -32,6 +32,7 @@ import {
   Save,
   Scissors,
   Search,
+  Sparkles,
   Star,
   Table2,
   Trash2,
@@ -39,6 +40,7 @@ import {
 } from 'lucide-react';
 import { LiveDiskMetric, LiveSystemTelemetry } from '../data/launcherData';
 import { PropertiesTarget } from './LumaSettingsExtra';
+import type { QuickLookCandidate } from './LumaQuickLookModal';
 
 interface ExplorerEntry {
   name: string;
@@ -130,6 +132,7 @@ export const LumaExplorerWindow: React.FC<{
   popoverShellCls: string;
   onInspectProperties: (target: PropertiesTarget) => void;
   onPinToDesktop: (entry: { name: string; path: string; is_dir: boolean }) => void;
+  onQuickLook?: (items: QuickLookCandidate[], index: number) => void;
   onPushToast: (title: string, msg: string, type?: 'info' | 'warning' | 'success') => void;
 }> = ({
   initialPath,
@@ -141,6 +144,7 @@ export const LumaExplorerWindow: React.FC<{
   popoverShellCls,
   onInspectProperties,
   onPinToDesktop,
+  onQuickLook,
   onPushToast,
 }) => {
   const [tabs, setTabs] = useState<ExplorerTab[]>([
@@ -574,10 +578,56 @@ export const LumaExplorerWindow: React.FC<{
   const singleSelectedEntry =
     selectedPaths.length === 1 ? entries.find((e) => e.path === selectedPaths[0]) || null : null;
 
+  // Quick Look (Space) active pane tracker — covers main pane AND every open ExplorerShutterPane!
+  const activeQuickLookRef = useRef<{ items: QuickLookCandidate[]; index: number } | null>(null);
+  const explorerRootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (selectedPaths.length > 0 && visibleEntries.length > 0) {
+      const firstPath = selectedPaths[0];
+      const idx = visibleEntries.findIndex((e) => e.path === firstPath);
+      if (idx >= 0) {
+        activeQuickLookRef.current = {
+          items: visibleEntries.map((e) => ({ path: e.path, name: e.name, isDir: e.is_dir })),
+          index: idx,
+        };
+      }
+    }
+  }, [selectedPaths, visibleEntries]);
+
+  const triggerQuickLookForEntry = (entry: ExplorerEntry, list: ExplorerEntry[] = visibleEntries) => {
+    if (!onQuickLook) return;
+    const candidates: QuickLookCandidate[] = list.map((e) => ({ path: e.path, name: e.name, isDir: e.is_dir }));
+    const idx = Math.max(0, list.findIndex((e) => e.path === entry.path));
+    onQuickLook(candidates, idx);
+  };
+
+  useEffect(() => {
+    if (!onQuickLook) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== ' ' || e.ctrlKey || e.altKey || e.metaKey) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
+      // Only trigger if focus/hover is inside Explorer or nothing else specifically focused while Explorer has a selection
+      const insideExplorer = explorerRootRef.current?.contains(target) || document.activeElement === document.body;
+      if (!insideExplorer) return;
+      const cur = activeQuickLookRef.current;
+      if (!cur || cur.items.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onQuickLook(cur.items, cur.index);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onQuickLook]);
+
   return (
     <div
+      ref={explorerRootRef}
+      tabIndex={-1}
       onClick={() => setCtxMenu(null)}
-      className="h-full flex flex-col min-h-0 text-xs select-none"
+      className="h-full flex flex-col min-h-0 text-xs select-none outline-none"
     >
       {/* 1. WINDOWS 11 MULTI-TAB STRIP */}
       <div className={`px-2 pt-1.5 flex items-center gap-1 border-b shrink-0 ${isDark ? 'border-white/[0.08] bg-black/20' : 'border-zinc-900/[0.1] bg-black/[0.03]'}`}>
@@ -782,6 +832,15 @@ export const LumaExplorerWindow: React.FC<{
             className="p-1.5 rounded-lg border border-[var(--luma-accent-border)] bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] disabled:opacity-35 cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            disabled={!singleSelectedEntry}
+            onClick={() => singleSelectedEntry && triggerQuickLookForEntry(singleSelectedEntry)}
+            title="Быстрый просмотр Quick Look (Space)"
+            className={`px-2 py-1 rounded-lg border disabled:opacity-35 inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
+          >
+            <Eye className="w-3.5 h-3.5 text-sky-400" />
+            <span className="hidden xl:inline text-[11px] font-semibold">Quick Look</span>
           </button>
           <button
             disabled={!singleSelectedEntry}
@@ -1251,6 +1310,10 @@ export const LumaExplorerWindow: React.FC<{
             primaryDirPath={activeTab.path}
             refreshTick={shutterRefreshTick}
             onTransfer={(paths, destDir, mode) => void transferFilesToDir(paths, destDir, mode)}
+            onSelectForQuickLook={(itemsList, selIdx) => {
+              activeQuickLookRef.current = { items: itemsList, index: selIdx };
+            }}
+            onQuickLook={onQuickLook}
             onClose={() => setExtraShutters((prev) => prev.filter((x) => x.id !== sh.id))}
           />
         ))}
@@ -1262,7 +1325,7 @@ export const LumaExplorerWindow: React.FC<{
           <span>Элементов: {visibleEntries.length}</span>
           <span>Скрытых в папке: {hiddenCount}</span>
           {selectedPaths.length > 0 && <span className="text-[var(--luma-accent)] font-bold">Выбрано: {selectedPaths.length}</span>}
-          {extraShutters.length > 0 && <span className="text-emerald-400 font-bold">Шторок: {extraShutters.length + 1} (перетащите файл для переноса)</span>}
+          {extraShutters.length > 0 && <span className="text-emerald-400 font-bold">Шторок: {extraShutters.length + 1} (перетащите файл · Space = Quick Look)</span>}
         </div>
         <span className="truncate max-w-[320px]">{isSearchResults ? `Поиск: «${searchQuery}»` : activeTab.path}</span>
       </div>
@@ -1273,9 +1336,9 @@ export const LumaExplorerWindow: React.FC<{
           onClick={(e) => e.stopPropagation()}
           style={{
             left: Math.min(ctxMenu.x, window.innerWidth - 220),
-            top: Math.min(ctxMenu.y, window.innerHeight - 280),
+            top: Math.min(ctxMenu.y, window.innerHeight - 320),
           }}
-          className={`fixed z-[9500] w-52 border p-1.5 space-y-0.5 text-xs ${popoverShellCls}`}
+          className={`fixed z-[9500] w-56 border p-1.5 space-y-0.5 text-xs ${popoverShellCls}`}
         >
           <button
             onClick={() => {
@@ -1285,6 +1348,31 @@ export const LumaExplorerWindow: React.FC<{
             className="w-full px-2.5 py-1.5 rounded-lg hover:bg-[var(--luma-accent-soft)] text-left font-semibold flex items-center gap-2 cursor-pointer"
           >
             <Folder className="w-3.5 h-3.5 text-[var(--luma-accent)]" /> Открыть
+          </button>
+          {onQuickLook && (
+            <button
+              onClick={() => {
+                triggerQuickLookForEntry(ctxMenu.entry);
+                setCtxMenu(null);
+              }}
+              className="w-full px-2.5 py-1.5 rounded-lg hover:bg-sky-500/15 text-sky-400 font-semibold text-left flex items-center gap-2 cursor-pointer"
+            >
+              <Eye className="w-3.5 h-3.5" /> Quick Look (Space)
+            </button>
+          )}
+          <button
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('luma-ai-ask', {
+                  detail: { prompt: `Объясни назначение файла «${ctxMenu.entry.name}» (${ctxMenu.entry.path})` },
+                })
+              );
+              onPushToast('Luma AI 3.8', `Файл «${ctxMenu.entry.name}» отправлен в AI 3.8`, 'info');
+              setCtxMenu(null);
+            }}
+            className="w-full px-2.5 py-1.5 rounded-lg hover:bg-indigo-500/15 text-indigo-300 font-semibold text-left flex items-center gap-2 cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5" /> Объяснить через AI 3.8
           </button>
           <button
             onClick={() => {
@@ -1408,6 +1496,8 @@ const ExplorerShutterPane: React.FC<{
   primaryDirPath: string;
   refreshTick: number;
   onTransfer: (paths: string[], destDir: string, mode: 'move' | 'copy') => void;
+  onSelectForQuickLook?: (items: QuickLookCandidate[], index: number) => void;
+  onQuickLook?: (items: QuickLookCandidate[], index: number) => void;
   onClose: () => void;
 }> = ({
   shutterNumber,
@@ -1422,6 +1512,8 @@ const ExplorerShutterPane: React.FC<{
   primaryDirPath,
   refreshTick,
   onTransfer,
+  onSelectForQuickLook,
+  onQuickLook,
   onClose,
 }) => {
   const [curPath, setCurPath] = useState(initialPath || '~');
@@ -1585,8 +1677,9 @@ const ExplorerShutterPane: React.FC<{
             {loading ? 'Загрузка...' : 'Пустая папка — перетащите файлы сюда'}
           </div>
         ) : (
-          items.map((entry) => {
+          items.map((entry, idx) => {
             const isSel = selected.includes(entry.path);
+            const candidates: QuickLookCandidate[] = items.map((x) => ({ path: x.path, name: x.name, isDir: x.is_dir }));
             return (
               <div
                 key={entry.path}
@@ -1602,11 +1695,13 @@ const ExplorerShutterPane: React.FC<{
                   } else {
                     setSelected([entry.path]);
                   }
+                  onSelectForQuickLook?.(candidates, idx);
                 }}
                 onDoubleClick={() => {
                   if (entry.is_dir) void loadDir(entry.path);
+                  else onQuickLook?.(candidates, idx);
                 }}
-                className={`px-2 py-1.5 rounded-lg border flex items-center justify-between gap-2 text-xs cursor-pointer transition ${
+                className={`group px-2 py-1.5 rounded-lg border flex items-center justify-between gap-2 text-xs cursor-pointer transition ${
                   isSel
                     ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
                     : `${surfaceCls} hover:border-[var(--luma-accent)]/40`
@@ -1616,9 +1711,25 @@ const ExplorerShutterPane: React.FC<{
                   {getFileIcon(entry, 'w-3.5 h-3.5 shrink-0')}
                   <span className="truncate font-medium">{entry.name}</span>
                 </div>
-                <span className={`text-[10px] font-mono shrink-0 ${mutedCls}`}>
-                  {entry.is_dir ? 'Папка' : formatBytesRu(entry.size)}
-                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {onQuickLook && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectForQuickLook?.(candidates, idx);
+                        onQuickLook(candidates, idx);
+                      }}
+                      title="Quick Look (Space)"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-sky-500/20 text-sky-400 cursor-pointer"
+                    >
+                      <Eye className="w-3 h-3" />
+                    </button>
+                  )}
+                  <span className={`text-[10px] font-mono ${mutedCls}`}>
+                    {entry.is_dir ? 'Папка' : formatBytesRu(entry.size)}
+                  </span>
+                </div>
               </div>
             );
           })

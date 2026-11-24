@@ -90,34 +90,51 @@ func RunLumaLocalAI(messages []AIChatMessage, mode, verbosity string, kernel *Lu
 
 	var reply string
 	var modelName string
+	var sources []AISourceLink
 
-	switch normMode {
-	case "code":
-		modelName = "Luma Code 3.0"
-		reply = generateCoderReply(prompt, low, isEnglish, kernel, prevAssistant)
-	case "language":
-		modelName = "Luma Lang 3.0"
-		reply = generateLanguageReply(prompt, low, isEnglish, kernel, false, prevAssistant)
-	default:
-		// Auto / Hybrid 3.0 smart router
-		if (isExplicitCodeRequest(low) || looksLikePastedCode(prompt)) && !isKnowledgeQuestion(low) {
-			modelName = "Luma Code 3.0 (Auto)"
+	// Luma AI 3.8 FlashLite: check verified multi-source factual/telemetry/weather/CBR/MDN/GitHub engine first
+	if !isExplicitCodeRequest(low) && !looksLikePastedCode(prompt) {
+		if flReply, flSrc, flModel := RunLumaAI38FlashLite(prompt, low, normMode, isEnglish, kernel, prevAssistant); flReply != "" {
+			reply = flReply
+			sources = flSrc
+			modelName = flModel
+		}
+	}
+
+	if reply == "" {
+		switch normMode {
+		case "code":
+			modelName = "Luma AI 3.8 FlashLite · Code"
 			reply = generateCoderReply(prompt, low, isEnglish, kernel, prevAssistant)
-		} else {
-			modelName = "Luma Lang 3.0 (Auto)"
-			reply = generateLanguageReply(prompt, low, isEnglish, kernel, true, prevAssistant)
+		case "language":
+			modelName = "Luma AI 3.8 FlashLite · Lang"
+			reply = generateLanguageReply(prompt, low, isEnglish, kernel, false, prevAssistant)
+		default:
+			// Auto / Hybrid 3.8 FlashLite smart router
+			if (isExplicitCodeRequest(low) || looksLikePastedCode(prompt)) && !isKnowledgeQuestion(low) {
+				modelName = "Luma AI 3.8 FlashLite · Code"
+				reply = generateCoderReply(prompt, low, isEnglish, kernel, prevAssistant)
+			} else {
+				modelName = "Luma AI 3.8 FlashLite"
+				reply = generateLanguageReply(prompt, low, isEnglish, kernel, true, prevAssistant)
+			}
 		}
 	}
 
 	reply = applyLocalVerbosity(reply, prompt, normVerb, normMode, isEnglish)
+	if sources == nil {
+		sources = []AISourceLink{}
+	}
 
 	return map[string]interface{}{
-		"ok":        true,
-		"reply":     reply,
-		"provider":  "luma_local",
-		"model":     modelName,
-		"mode":      normMode,
-		"verbosity": normVerb,
+		"ok":             true,
+		"reply":          reply,
+		"provider":       "luma_local",
+		"model":          modelName,
+		"mode":           normMode,
+		"verbosity":      normVerb,
+		"sources":        sources,
+		"verified_facts": len(sources) > 0,
 	}
 }
 

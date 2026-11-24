@@ -127,6 +127,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
   const [tcpLoading, setTcpLoading] = useState(false);
   const [tcpOnlySusp, setTcpOnlySusp] = useState(false);
   const [startupFindings, setStartupFindings] = useState<StartupAuditFindingInfo[]>([]);
+  const [scheduledTasks, setScheduledTasks] = useState<StartupAuditFindingInfo[]>([]);
   const [startupLoading, setStartupLoading] = useState(false);
   const [hostsAudit, setHostsAudit] = useState<HostsAuditResult | null>(null);
   const [hostsLoading, setHostsLoading] = useState(false);
@@ -161,10 +162,17 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
   const fetchStartupAudit = async () => {
     setStartupLoading(true);
     try {
-      const r = await fetch('/api/kernel/security/startup-audit');
+      const r = await fetch('/api/kernel/security/tasks-audit');
       if (r.ok) {
         const d = await r.json();
-        if (Array.isArray(d?.findings)) setStartupFindings(d.findings);
+        if (Array.isArray(d?.startup_entries)) setStartupFindings(d.startup_entries);
+        if (Array.isArray(d?.scheduled_tasks)) setScheduledTasks(d.scheduled_tasks);
+      } else {
+        const r2 = await fetch('/api/kernel/security/startup-audit');
+        if (r2.ok) {
+          const d2 = await r2.json();
+          if (Array.isArray(d2?.findings)) setStartupFindings(d2.findings);
+        }
       }
     } catch {
       // ignore
@@ -468,12 +476,12 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
             </div>
             <div>
               <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--luma-accent)] font-bold flex flex-wrap items-center gap-1.5">
-                <span>ЯДРО БЕЗОПАСНОСТИ · LUMASHIELD {status?.security_core_version || '2.0'}</span>
+                <span>ЯДРО БЕЗОПАСНОСТИ · LUMASHIELD {status?.security_core_version || '2.5'}</span>
                 <span className="px-1.5 py-0.5 rounded bg-[var(--luma-accent-soft)] text-[9px]">
-                  {status?.rules_count || 175}+ ПРАВИЛ
+                  {status?.rules_count || 235}+ ПРАВИЛ
                 </span>
                 <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 text-[9px]">
-                  STEALER &amp; VBA SHIELD
+                  TASKS · BYOVD · STEALER SHIELD
                 </span>
               </div>
               <div className="text-base font-extrabold flex items-center gap-2">
@@ -490,7 +498,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
                 )}
               </div>
               <div className={`text-[11px] font-mono ${mutedCls}`}>
-                {status?.crypto || 'AES-256-GCM + 175+ Heuristics + Archive/VBA Macro Scanner + InfoStealer & Hosts/Net Guard'}
+                {status?.crypto || 'AES-256-GCM + 235+ Heuristics + Startup & Scheduled Tasks Audit + InfoStealer & BYOVD Guard'}
               </div>
             </div>
           </div>
@@ -536,11 +544,11 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
             <div className="min-w-0">
-              <div className="font-bold">LumaShield 2.0 + Windows Defender (Без конфликтов)</div>
+              <div className="font-bold">LumaShield 2.5 + Windows Defender (Без конфликтов)</div>
               <div className="text-[11px] opacity-85">
                 {status?.defender?.available
-                  ? `Windows Defender активен (реальное время: ${status.defender.realtime_enabled ? 'ВКЛ' : 'ВЫКЛ'} · базы ${status.defender.signature_version}). LumaShield 2.0 усиливает защиту: 175+ правил, защита от Telegram/Браузер-стилеров, проверка ZIP/VBA-макросов и аудит Hosts/TCP.`
-                  : 'LumaShield 2.0 работает в безопасном user-space режиме: 175+ правил, защита от стилеров (Telegram/Discord/Chrome/Кошельки), проверка архивов и макросов Office VBA, PE-маскировка, энтропия Шеннона и аудит Hosts/TCP.'}
+                  ? `Windows Defender активен (реальное время: ${status.defender.realtime_enabled ? 'ВКЛ' : 'ВЫКЛ'} · базы ${status.defender.signature_version}). LumaShield 2.5 усиливает защиту: 235+ эвристических правил, аудит автозагрузки и планировщика задач, защита от стилеров, BYOVD и LOLBins.`
+                  : 'LumaShield 2.5 работает в безопасном user-space режиме: 235+ правил, аудит автозагрузки и планировщика задач Windows, защита от стилеров/RAT/BYOVD, проверка архивов и макросов Office VBA, PE-маскировка и аудит Hosts/TCP.'}
               </div>
             </div>
           </div>
@@ -558,10 +566,16 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       {/* Sub-Tabs */}
       <div className="flex flex-wrap gap-1.5 text-xs">
         {[
-          { id: 'scanner' as const, label: 'Антивирус 2.0', badge: threats.length || undefined },
+          { id: 'scanner' as const, label: 'Антивирус 2.5', badge: threats.length || undefined },
           { id: 'hosts_audit' as const, label: 'Аудит Hosts (DNS)', badge: hostsAudit ? hostsAudit.suspicious_count || undefined : undefined },
           { id: 'network' as const, label: 'Сетевой экран', badge: suspTcpCount || (tcpConns.length || undefined) },
-          { id: 'startup_audit' as const, label: 'Аудит автозагрузки', badge: startupFindings.filter((f) => f.risk !== 'safe').length || undefined },
+          {
+            id: 'startup_audit' as const,
+            label: 'Автозагрузка и Задачи',
+            badge:
+              startupFindings.filter((f) => f.risk !== 'safe').length +
+                scheduledTasks.filter((f) => f.risk !== 'safe').length || undefined,
+          },
           { id: 'quarantine' as const, label: 'Карантин', badge: quarantine.length || undefined },
           { id: 'exclusions' as const, label: 'Белый список', badge: exclusions.length || undefined },
           { id: 'audit' as const, label: 'Аудит ядра', badge: audit.length || undefined },
@@ -952,17 +966,17 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         </div>
       )}
 
-      {/* TAB 3: STARTUP PERSISTENCE AUDITOR (LUMASHIELD 1.4) */}
+      {/* TAB 3: STARTUP PERSISTENCE & SCHEDULED TASKS AUDITOR (LUMASHIELD 2.5) */}
       {subTab === 'startup_audit' && (
-        <div className={`p-4 rounded-2xl border space-y-3 text-xs ${surfaceCls}`}>
+        <div className={`p-4 rounded-2xl border space-y-4 text-xs ${surfaceCls}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <div className="font-bold flex items-center gap-1.5">
                 <ListChecks className="w-4 h-4 text-[var(--luma-accent)]" />
-                Аудит автозагрузки (Startup Persistence Auditor)
+                Аудит автозагрузки и планировщика задач (LumaShield 2.5)
               </div>
               <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
-                Проверка записей реестра Run и autostart на скрытый запуск PowerShell, скриптов из Temp/AppData и LOLBins
+                Проверка записей реестра Run, autostart и задач Windows Task Scheduler на скрытый запуск PowerShell, скриптов из Temp/AppData и LOLBins
               </div>
             </div>
             <button
@@ -971,50 +985,101 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
               className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-mono inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${startupLoading ? 'animate-spin' : ''}`} />
-              Проверить
+              Проверить всё
             </button>
           </div>
 
-          {startupFindings.length === 0 ? (
-            <div className={`py-6 text-center font-mono ${mutedCls}`}>
-              {startupLoading ? 'Анализ ключей автозагрузки...' : 'Записей автозагрузки не найдено'}
+          <div className="space-y-2">
+            <div className="text-[11px] font-bold uppercase tracking-wider opacity-75">
+              Автозагрузка ({startupFindings.length})
             </div>
-          ) : (
-            <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-              {startupFindings.map((f, idx) => (
-                <div
-                  key={`${f.name}_${idx}`}
-                  className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 ${
-                    f.risk === 'high'
-                      ? 'bg-rose-500/15 border-rose-500/40'
-                      : f.risk === 'medium'
-                      ? 'bg-amber-500/10 border-amber-500/35'
-                      : btnCls
-                  }`}
-                >
-                  <div className="min-w-0 flex-1 space-y-0.5">
-                    <div className="font-bold flex items-center gap-2">
-                      <span className="truncate">{f.name}</span>
-                      <span className={`text-[10px] font-mono opacity-65`}>{f.location}</span>
-                    </div>
-                    <div className={`text-[10px] font-mono truncate ${mutedCls}`}>{f.command}</div>
-                    <div className="text-[11px] opacity-85">{f.reason}</div>
-                  </div>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase shrink-0 ${
+            {startupFindings.length === 0 ? (
+              <div className={`py-4 text-center font-mono ${mutedCls}`}>
+                {startupLoading ? 'Анализ ключей автозагрузки...' : 'Записей автозагрузки не найдено'}
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                {startupFindings.map((f, idx) => (
+                  <div
+                    key={`${f.name}_${idx}`}
+                    className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 ${
                       f.risk === 'high'
-                        ? 'bg-rose-600 text-white'
+                        ? 'bg-rose-500/15 border-rose-500/40'
                         : f.risk === 'medium'
-                        ? 'bg-amber-500/20 text-amber-300'
-                        : 'bg-emerald-500/20 text-emerald-400'
+                        ? 'bg-amber-500/10 border-amber-500/35'
+                        : btnCls
                     }`}
                   >
-                    {f.risk === 'high' ? 'ОПАСНО' : f.risk === 'medium' ? 'ВНИМАНИЕ' : 'БЕЗОПАСНО'}
-                  </span>
-                </div>
-              ))}
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="font-bold flex items-center gap-2">
+                        <span className="truncate">{f.name}</span>
+                        <span className="text-[10px] font-mono opacity-65">{f.location}</span>
+                      </div>
+                      <div className={`text-[10px] font-mono truncate ${mutedCls}`}>{f.command}</div>
+                      <div className="text-[11px] opacity-85">{f.reason}</div>
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase shrink-0 ${
+                        f.risk === 'high'
+                          ? 'bg-rose-600 text-white'
+                          : f.risk === 'medium'
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : 'bg-emerald-500/20 text-emerald-400'
+                      }`}
+                    >
+                      {f.risk === 'high' ? 'ОПАСНО' : f.risk === 'medium' ? 'ВНИМАНИЕ' : 'БЕЗОПАСНО'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-white/10">
+            <div className="text-[11px] font-bold uppercase tracking-wider opacity-75">
+              Планировщик задач / Системные таймеры ({scheduledTasks.length})
             </div>
-          )}
+            {scheduledTasks.length === 0 ? (
+              <div className={`py-4 text-center font-mono ${mutedCls}`}>
+                {startupLoading ? 'Анализ запланированных задач ОС...' : 'Подозрительных или пользовательских задач не найдено'}
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                {scheduledTasks.map((t, idx) => (
+                  <div
+                    key={`task_${t.name}_${idx}`}
+                    className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 ${
+                      t.risk === 'high'
+                        ? 'bg-rose-500/15 border-rose-500/40'
+                        : t.risk === 'medium'
+                        ? 'bg-amber-500/10 border-amber-500/35'
+                        : btnCls
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="font-bold flex items-center gap-2">
+                        <span className="truncate">{t.name}</span>
+                        <span className="text-[10px] font-mono opacity-65">{t.location}</span>
+                      </div>
+                      <div className={`text-[10px] font-mono truncate ${mutedCls}`}>{t.command}</div>
+                      <div className="text-[11px] opacity-85">{t.reason}</div>
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase shrink-0 ${
+                        t.risk === 'high'
+                          ? 'bg-rose-600 text-white'
+                          : t.risk === 'medium'
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : 'bg-emerald-500/20 text-emerald-400'
+                      }`}
+                    >
+                      {t.risk === 'high' ? 'ОПАСНО' : t.risk === 'medium' ? 'ВНИМАНИЕ' : 'БЕЗОПАСНО'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

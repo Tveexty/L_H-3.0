@@ -942,6 +942,46 @@ html[data-anim="harmony7"] .luma-card-lift:hover {
   transform-origin: top center;
 }
 
+/* ==================== 1.6 (NITROGEN · N-7) LIVE WALLPAPERS & UBUNTU YARU WINDOWS ==================== */
+.luma-live-wp-nitrogen {
+  background: radial-gradient(circle at 20% 22%, rgba(56, 189, 248, 0.42), transparent 50%),
+    radial-gradient(circle at 80% 78%, rgba(99, 102, 241, 0.34), transparent 52%),
+    radial-gradient(circle at 52% 45%, rgba(16, 185, 129, 0.16), transparent 44%),
+    linear-gradient(135deg, #040711 0%, #0b162d 50%, #050a18 100%);
+  background-size: 200% 200%;
+  animation: lumaMeshDrift 16s ease-in-out infinite;
+}
+
+.luma-live-wp-aurora-ice {
+  background: radial-gradient(circle at 18% 18%, rgba(16, 185, 129, 0.38), transparent 46%),
+    radial-gradient(circle at 76% 30%, rgba(56, 189, 248, 0.36), transparent 50%),
+    radial-gradient(circle at 55% 84%, rgba(168, 85, 247, 0.28), transparent 52%),
+    linear-gradient(155deg, #020810 0%, #061b29 48%, #071024 100%);
+  background-size: 220% 220%;
+  animation: lumaMeshDrift 19s ease-in-out infinite;
+}
+
+html[data-wp-paused="true"] .luma-live-wp-nitrogen,
+html[data-wp-paused="true"] .luma-live-wp-aurora-ice {
+  animation-play-state: paused !important;
+}
+
+.dex-window-ubuntu-dark {
+  background: rgba(34, 34, 38, 0.94);
+  backdrop-filter: blur(22px) saturate(135%);
+  -webkit-backdrop-filter: blur(22px) saturate(135%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(233, 84, 32, 0.12);
+}
+
+.dex-window-ubuntu-light {
+  background: rgba(246, 245, 244, 0.96);
+  backdrop-filter: blur(20px) saturate(125%);
+  -webkit-backdrop-filter: blur(20px) saturate(125%);
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(233, 84, 32, 0.12);
+}
+
 /* ==================== 1.2.3 LUMACORE 1.3 ZERO-GPU IDLE FREEZE ==================== */
 /* Automatically freezes all CSS keyframe animations when the Luma window is hidden or minimized */
 html[data-luma-idle="true"] *,

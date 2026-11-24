@@ -86,6 +86,7 @@ func suspendWindowTopmost(suspend bool) {}
 var (
 	unixAltTabEnabled = true
 	unixWinDEnabled   = true
+	unixWinKeyEnabled = true
 )
 
 func setCustomAltTabEnabled(enabled bool) {
@@ -110,6 +111,18 @@ func isWinDToLumaEnabled() bool {
 	unixShellMu.Lock()
 	defer unixShellMu.Unlock()
 	return unixWinDEnabled
+}
+
+func setWinKeyToLumaEnabled(enabled bool) {
+	unixShellMu.Lock()
+	unixWinKeyEnabled = enabled
+	unixShellMu.Unlock()
+}
+
+func isWinKeyToLumaEnabled() bool {
+	unixShellMu.Lock()
+	defer unixShellMu.Unlock()
+	return unixWinKeyEnabled
 }
 
 func releaseAltTabTopmost() {}

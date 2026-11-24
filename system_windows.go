@@ -1743,6 +1743,8 @@ func (p *platformProbe) refreshOpenWindows() {
 		}
 		filtered = append(filtered, HostWindowItem{
 			PID:          pid,
+			Hwnd:         uint64(w.hwnd),
+			Topmost:      isWindowTopmostWin(w.hwnd),
 			Name:         baseName,
 			FriendlyName: friendlyAppName(baseName, w.title),
 			Title:        w.title,

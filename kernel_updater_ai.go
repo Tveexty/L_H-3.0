@@ -531,6 +531,8 @@ func ListRollbackReleases(repoURL string) []RollbackReleaseEntry {
 	baseRaw := fmt.Sprintf("https://github.com/%s/%s/raw/main", owner, repo)
 
 	curated := []RollbackReleaseEntry{
+		{Version: "1.5.4", Tag: "v1.5.4", Title: "Luma OS 1.5.4 (Carbon)", DownloadURL: baseRaw + "/LumaOS_1.5.4.exe", Summary: "Исправлены вылеты (синглтон-колбэки), новая Шторка уведомлений без спама, умный Alt+Tab с MRU и живыми превью, многошторочный Проводник, 140+ формул Excel, анимации PowerPoint и Battery Care"},
+		{Version: "1.5.3", Tag: "v1.5.3", Title: "Luma OS 1.5.3 (Carbon)", DownloadURL: baseRaw + "/LumaOS_1.5.3.exe", Summary: "Alt+Tab поверх всех окон + Win+D в Luma OS, 4-слойный мост уведомлений, MS Office-стиль Luma Office и настройки сна при бездействии"},
 		{Version: "1.5.2", Tag: "v1.5.2", Title: "Luma OS 1.5.2 (Carbon)", DownloadURL: baseRaw + "/LumaOS_1.5.2.exe", Summary: "Ядро LumaCore 1.4.5, фикс зависаний Записи экрана (нативный AVI-рекордер) и Приватного стола, чистые входящие уведомления Telegram/мессенджеров с аватарами, собственный Luma Alt+Tab (окна Luma + Windows), полный Word/Excel/PowerPoint в Office Studio, CapCut-уровень Cut Studio, Code Studio Pro с диагностикой ошибок и сохранением кода при сворачивании, Luma AI 3.0, 100+ опций в конструкторе виджетов, расширенные Сценарии, объединённый каталог виджетов, безрамочные фото-виджеты и 100% перевод интерфейса"},
 		{Version: "1.5.1", Tag: "v1.5.1", Title: "Luma OS 1.5.1 (Carbon)", DownloadURL: baseRaw + "/LumaOS_1.5.1.exe", Summary: "Полноценный Luma Office Studio (Word/Excel/PowerPoint с открытием .pptx/.docx/.xlsx и сохранением в любой формат), мост уведомлений Telegram и мессенджеров + «эффект резины» Dynamic Island, Luma AI 2.0 (Lang 2.0 + Code 2.0), LumaShield 2.0 (175+ правил, проверка архивов/VBA), 4K UHD обои Carbon, обновлённая Панель управления с автозакрытием и сворачиванием уведомлений, очищенный Центр управления, фикс секунд таймера, +20 команд Терминала, умные контекстные меню, чистый старт Code Studio и кодеки/анимации Cut Studio"},
 		{Version: "1.5", Tag: "v1.5", Title: "Luma OS 1.5 (Carbon)", DownloadURL: baseRaw + "/LumaOS_1.5.exe", Summary: "Панель управления Tab / правый верхний угол (1/4×1/2, редактируемая) + Центр уведомлений, Сценарии автоматизации, Двойная панель задач, Кнопки окон «3 точки», Корзина Luma, Luma Code Studio (VS Code), Luma Cut Studio (CapCut), Конструктор своих виджетов, Скриншот и компактная Запись экрана, Суперконфиденциальность (AES-256-GCM сейф), Заряд мышек IO/Ajazz/Ardor, Анимации HarmonyOS 7, Календарь Pro и Карбоновые обои"},
@@ -724,7 +726,7 @@ type AIChatMessage struct {
 
 type AIChatRequest struct {
 	Provider       string          `json:"provider"`  // luma_local | gemini | openai | claude | deepseek | openrouter | groq | ollama | custom
-	Mode           string          `json:"mode"`      // language | code | auto
+	Mode           string          `json:"mode"`      // language | code | auto | flashlite
 	Verbosity      string          `json:"verbosity"` // brief | balanced | detailed
 	APIKey         string          `json:"api_key"`
 	BaseURL        string          `json:"base_url"`
@@ -732,6 +734,8 @@ type AIChatRequest struct {
 	SystemPrompt   string          `json:"system_prompt"`
 	Temperature    float64         `json:"temperature"`
 	IncludeContext bool            `json:"include_context"`
+	Prompt         string          `json:"prompt,omitempty"`
+	Message        string          `json:"message,omitempty"`
 	Messages       []AIChatMessage `json:"messages"`
 }
 
@@ -743,8 +747,17 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 			"error":    "Luma AI отключён пользователем в настройках системы (Настройки → ИИ и Нейросети)",
 		}
 	}
+	if len(req.Messages) == 0 {
+		single := strings.TrimSpace(req.Prompt)
+		if single == "" {
+			single = strings.TrimSpace(req.Message)
+		}
+		if single != "" {
+			req.Messages = []AIChatMessage{{Role: "user", Content: single}}
+		}
+	}
 	provider := strings.ToLower(strings.TrimSpace(req.Provider))
-	if provider == "" || provider == "luma_local" || provider == "offline" || provider == "local" {
+	if provider == "" || provider == "luma_local" || provider == "offline" || provider == "local" || provider == "flashlite" {
 		return RunLumaLocalAI(req.Messages, req.Mode, req.Verbosity, kernel)
 	}
 	apiKey := strings.TrimSpace(req.APIKey)
@@ -758,9 +771,9 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 	if sysPrompt == "" {
 		switch normalizeLocalAIMode(req.Mode) {
 		case "code":
-			sysPrompt = "Ты — Luma Code 1.2, системный ИИ-программист Luma OS 1.2.2 (Lithium). Пиши чистый, современный, готовый к запуску код с пояснениями."
+			sysPrompt = "Ты — Luma AI 3.8 FlashLite (Code), системный ИИ-программист Luma OS 1.6 (Nitrogen). Пиши чистый, современный, готовый к запуску код с пояснениями."
 		case "language":
-			sysPrompt = "Ты — Luma Lang 1.2, языковой и справочный ИИ-ассистент Luma OS 1.2.2 (Lithium). Отвечай грамотно, информативно, естественно и по сути вопроса."
+			sysPrompt = "Ты — Luma AI 3.8 FlashLite, языковой и справочный ИИ-ассистент Luma OS 1.6 (Nitrogen). Отвечай грамотно, информативно, естественно и по сути вопроса."
 		default:
 			sysPrompt = "Ты — встроенный системный ИИ-ассистент Luma OS 1.2.2 (Lithium). Отвечай чётко, по делу и помогай пользователю со знаниями, ПК, командами и кодом."
 		}

@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AppWindow, Home, Layers, Monitor, Search, Sparkles, X } from 'lucide-react';
+import { AppWindow, Home, Layers, Monitor, Pin, Search, Sparkles, X } from 'lucide-react';
 
 export interface AltTabEntry {
   key: string;
   kind: 'home' | 'luma' | 'host';
   id: string;
   pid?: number;
+  hwnd?: number;
   title: string;
   subtitle: string;
   icon?: React.ReactNode;
@@ -14,6 +15,7 @@ export interface AltTabEntry {
   accent?: string;
   minimized?: boolean;
   active?: boolean;
+  topmost?: boolean;
 }
 
 interface LumaAltTabSwitcherProps {
@@ -26,6 +28,7 @@ interface LumaAltTabSwitcherProps {
   onSelectIndex: (idx: number) => void;
   onActivate: (item: AltTabEntry) => void;
   onGoHome: () => void;
+  onToggleTopmost?: (item: AltTabEntry) => void;
   onCloseItem?: (item: AltTabEntry) => void;
   onCancel: () => void;
 }
@@ -147,6 +150,7 @@ export const LumaAltTabSwitcher: React.FC<LumaAltTabSwitcherProps> = ({
   onSelectIndex,
   onActivate,
   onGoHome,
+  onToggleTopmost,
   onCloseItem,
   onCancel,
 }) => {
@@ -377,19 +381,40 @@ export const LumaAltTabSwitcher: React.FC<LumaAltTabSwitcherProps> = ({
                       </>
                     )}
 
-                    {/* Close button on hover */}
-                    {onCloseItem && !isHome && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onCloseItem(item);
-                        }}
-                        title="Закрыть окно"
-                        className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 p-1 rounded-lg bg-black/65 hover:bg-rose-500 text-white/85 hover:text-white transition cursor-pointer"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
+                    {/* Always on Top (Pin) + Close buttons on hover */}
+                    {!isHome && (
+                      <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
+                        {onToggleTopmost && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleTopmost(item);
+                            }}
+                            title={item.topmost ? 'Открепить (Поверх всех окон)' : 'Закрепить поверх всех окон (📌)'}
+                            className={`p-1 rounded-lg transition cursor-pointer ${
+                              item.topmost
+                                ? 'opacity-100 bg-amber-500 text-slate-950 shadow'
+                                : 'opacity-0 group-hover:opacity-100 bg-black/65 hover:bg-amber-500 text-white/85 hover:text-slate-950'
+                            }`}
+                          >
+                            <Pin className={`w-3 h-3 ${item.topmost ? 'fill-current' : ''}`} />
+                          </button>
+                        )}
+                        {onCloseItem && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onCloseItem(item);
+                            }}
+                            title="Закрыть окно"
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg bg-black/65 hover:bg-rose-500 text-white/85 hover:text-white transition cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     )}
 
                     {item.minimized && !isHome && (

@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -17,13 +18,13 @@ import (
 	"time"
 )
 
-// LumaShield 2.0 — Next-Gen Zero-Conflict Antivirus & Threat Detection Engine for Luma OS 1.5.1 (Carbon).
+// LumaShield 2.5 — Next-Gen Zero-Conflict Antivirus & Threat Detection Engine for Luma OS 1.6 (Nitrogen).
 // Runs cleanly alongside Windows Defender with zero driver conflicts:
-//   - 170+ heuristic, behavioral & YARA-like rules (Telegram/Discord/Browser/Crypto Stealers, Ransomware,
-//     Keyloggers, Crypto-Clippers, Reverse Shells, LOLBins, AMSI/ETW/UAC Bypass, Rootkits, Office Macros)
+//   - 230+ heuristic, behavioral & YARA-like rules (Telegram/Discord/Browser/Crypto/Cloud/Dev Stealers, Ransomware,
+//     BYOVD Drivers, Keyloggers, Crypto-Clippers, Reverse Shells, LOLBins, AMSI/ETW/UAC Bypass, Rootkits, Office Macros)
 //   - Deep Archive & Office Macro Inspector (.zip, .docm, .xlsm, .pptm, .docx, .xlsx, .pptx -> vbaProject.bin & hidden EXEs)
-//   - PE Header ("MZ") Masquerading & Shannon Entropy Packed-Binary Detector (>7.50) across Downloads/Desktop/Documents/Temp
-//   - Single-File Drag-and-Drop Inspector, Live Process + Network + Hosts + Startup Unified Audit & Exportable Report
+//   - PE Header ("MZ") Masquerading & Shannon Entropy Packed-Binary Detector (>7.55) across Downloads/Desktop/Documents/Temp
+//   - Unified Startup + Scheduled Tasks Persistence Auditor, Live Process + Network + Hosts Audit & Exportable Report
 
 const eicarStandardSignature = `X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*`
 
@@ -311,6 +312,10 @@ var ransomwareExts = map[string]bool{
 	".revil": true, ".sodinokibi": true, ".djvu": true, ".stop": true, ".phobos": true,
 	".akira": true, ".royal": true, ".play": true, ".clop": true, ".hive": true,
 	".medusa": true, ".blackbasta": true, ".rhysida": true,
+	// LumaShield 2.5 modern ransomware family extensions
+	".blacksuit": true, ".hunters": true, ".inc": true, ".bianlian": true, ".qilin": true,
+	".ransomhub": true, ".cactus": true, ".8base": true, ".trigona": true, ".mallox": true,
+	".cuba": true, ".snatch": true, ".lockbit3": true, ".babuk": true, ".makop": true,
 }
 
 type heuristicRule struct {
@@ -352,7 +357,7 @@ var scriptHeuristics = []heuristicRule{
 	{[]byte("wmic process call create"), "LOLBin-Exec", "high", "Скрытый запуск процесса через WMIC"},
 	{[]byte("forfiles /p "), "LOLBin-Exec", "medium", "Нестандартный запуск команды через forfiles"},
 	{[]byte("msiexec /q /i http"), "LOLBin-Dropper", "high", "Тихая удалённая установка MSI-пакета"},
-	// 3. Telegram / Discord / Browser / Crypto Wallet InfoStealers (LumaShield 2.0!)
+	// 3. Telegram / Discord / Browser / Crypto Wallet InfoStealers
 	{[]byte("\\telegram desktop\\tdata"), "Telegram-Stealer", "high", "Попытка кражи сессии Telegram Desktop (tdata)"},
 	{[]byte("tdata\\d877f783d5d3ef8c"), "Telegram-Stealer", "high", "Сигнатура стилера ключей сессии Telegram"},
 	{[]byte("api.telegram.org/bot"), "InfoStealer-Exfil", "high", "Скрытая отправка украденных данных через Telegram Bot API"},
@@ -451,6 +456,80 @@ var scriptHeuristics = []heuristicRule{
 	{[]byte("workbook_open()"), "Office-Macro-Dropper", "high", "Автозапускаемый макрос Excel (Workbook_Open)"},
 	{[]byte("wscript.shell"), "Script-Dropper", "medium", "Вызов системной оболочки через WScript.Shell"},
 	{[]byte("shell.application"), "Script-Dropper", "medium", "Запуск программ через COM-объект Shell.Application"},
+	// 11. LumaShield 2.5 Next-Gen Rules: Modern InfoStealers, Cloud/Dev Secret Theft, BYOVD, Direct Syscalls & LOLBins (70+ new rules -> 235+ total!)
+	{[]byte("lummac2"), "InfoStealer-Lumma", "high", "LumaShield 2.5: сигнатура стилера LummaC2"},
+	{[]byte("rhadamanthys"), "InfoStealer-Rhadamanthys", "high", "LumaShield 2.5: сигнатура стилера Rhadamanthys"},
+	{[]byte("stealc_config"), "InfoStealer-StealC", "high", "LumaShield 2.5: конфигурация стилера StealC"},
+	{[]byte("redline.client"), "InfoStealer-RedLine", "high", "LumaShield 2.5: сигнатура RedLine Stealer"},
+	{[]byte("vidar_bot"), "InfoStealer-Vidar", "high", "LumaShield 2.5: сигнатура Vidar Stealer"},
+	{[]byte("asyncrat"), "RAT-AsyncRAT", "high", "LumaShield 2.5: сигнатура удалённого трояна AsyncRAT"},
+	{[]byte("xworm"), "RAT-XWorm", "high", "LumaShield 2.5: сигнатура трояна XWorm RAT"},
+	{[]byte("quasar.client"), "RAT-Quasar", "high", "LumaShield 2.5: сигнатура Quasar RAT"},
+	{[]byte("venomrat"), "RAT-Venom", "high", "LumaShield 2.5: сигнатура VenomRAT / HVNC"},
+	{[]byte("remcos_mutex"), "RAT-Remcos", "high", "LumaShield 2.5: мьютекс коммерческого RAT Remcos"},
+	{[]byte("app-bound-encryption"), "Browser-Stealer-ABE", "high", "LumaShield 2.5: попытка обхода Chrome App-Bound Encryption"},
+	{[]byte("ielevator"), "Browser-Stealer-ABE", "high", "LumaShield 2.5: злоупотребление COM IElevator для кражи куки Chrome"},
+	{[]byte("\\opera gx stable\\login data"), "Browser-Stealer", "high", "LumaShield 2.5: попытка кражи паролей Opera GX"},
+	{[]byte("\\vivaldi\\user data\\default\\login data"), "Browser-Stealer", "high", "LumaShield 2.5: попытка кражи паролей Vivaldi"},
+	{[]byte("\\waterfox\\profiles"), "Browser-Stealer", "medium", "LumaShield 2.5: обращение к профилю Waterfox"},
+	{[]byte("cookies.sqlite"), "Browser-Cookie-Stealer", "medium", "LumaShield 2.5: попытка экспорта сессионных cookie браузера"},
+	{[]byte(".aws/credentials"), "Cloud-Cred-Stealer", "high", "LumaShield 2.5: попытка кражи ключей AWS (~/.aws/credentials)"},
+	{[]byte(".ssh/id_rsa"), "SSH-Key-Stealer", "high", "LumaShield 2.5: попытка кражи приватного SSH-ключа"},
+	{[]byte(".ssh/id_ed25519"), "SSH-Key-Stealer", "high", "LumaShield 2.5: попытка кражи ключа Ed25519 SSH"},
+	{[]byte(".kube/config"), "Cloud-Cred-Stealer", "high", "LumaShield 2.5: попытка кражи конфигурации Kubernetes"},
+	{[]byte(".docker/config.json"), "Cloud-Cred-Stealer", "medium", "LumaShield 2.5: попытка чтения токенов Docker Registry"},
+	{[]byte("ghp_"), "Token-Exfiltration", "medium", "LumaShield 2.5: обнаружен GitHub Personal Access Token в скрипте"},
+	{[]byte("odbcconf.exe /a"), "LOLBin-OdbcConf", "high", "LumaShield 2.5: загрузка DLL через LOLBin odbcconf.exe"},
+	{[]byte("pcalua.exe -a"), "LOLBin-Pcalua", "medium", "LumaShield 2.5: скрытый запуск программы через pcalua.exe"},
+	{[]byte("msdt.exe /id pcwdiagnostic"), "CVE-Follina", "high", "LumaShield 2.5: паттерн эксплуатации Follina (msdt.exe)"},
+	{[]byte("mavinject.exe"), "LOLBin-Injection", "high", "LumaShield 2.5: инъекция DLL через системный mavinject.exe"},
+	{[]byte("hh.exe http"), "LOLBin-CHM", "high", "LumaShield 2.5: удалённая загрузка CHM/HTML через hh.exe"},
+	{[]byte("ieexec.exe http"), "LOLBin-Dropper", "high", "LumaShield 2.5: удалённый запуск .NET через ieexec.exe"},
+	{[]byte("syncappvpublishingserver"), "LOLBin-Exec", "high", "LumaShield 2.5: выполнение PowerShell в обход через SyncAppvPublishingServer"},
+	{[]byte("finger.exe "), "LOLBin-C2", "medium", "LumaShield 2.5: подозрительный канал передачи через finger.exe"},
+	{[]byte("msbuild.exe"), "LOLBin-InlineTask", "medium", "LumaShield 2.5: возможный запуск бесфайлового кода через MSBuild"},
+	{[]byte("csc.exe /out:"), "LOLBin-Compile", "medium", "LumaShield 2.5: динамическая компиляция вредоносного C# на хосте"},
+	{[]byte("rtcore64.sys"), "BYOVD-Driver", "high", "LumaShield 2.5: уязвимый драйвер BYOVD RTCore64 для отключения EDR"},
+	{[]byte("dbutil_2_3.sys"), "BYOVD-Driver", "high", "LumaShield 2.5: уязвимый драйвер BYOVD Dell dbutil_2_3"},
+	{[]byte("gdrv.sys"), "BYOVD-Driver", "high", "LumaShield 2.5: уязвимый драйвер BYOVD Gigabyte gdrv.sys"},
+	{[]byte("procexp152.sys"), "BYOVD-Killer", "high", "LumaShield 2.5: злоупотребление драйвером для убийства антивирусов"},
+	{[]byte("ntallocatevirtualmemory"), "Direct-Syscall", "high", "LumaShield 2.5: прямое выделение памяти через NT API / Syscall"},
+	{[]byte("ntwritevirtualmemory"), "Direct-Syscall", "high", "LumaShield 2.5: прямая запись в память процесса (Direct Syscall)"},
+	{[]byte("ntcreatethreadex"), "Direct-Syscall", "high", "LumaShield 2.5: скрытое создание удалённого потока NtCreateThreadEx"},
+	{[]byte("zwunmapviewofsection"), "Process-Hollowing", "high", "LumaShield 2.5: подмена секции процесса ZwUnmapViewOfSection"},
+	{[]byte("setthreadcontext"), "Thread-Hijacking", "high", "LumaShield 2.5: угон контекста потока исполнения SetThreadContext"},
+	{[]byte("reflective_loader"), "Reflective-DLL", "high", "LumaShield 2.5: рефлективный загрузчик DLL в память"},
+	{[]byte("hells_gate"), "Syscall-Evasion", "high", "LumaShield 2.5: техника обхода хуков Hell's Gate"},
+	{[]byte("halos_gate"), "Syscall-Evasion", "high", "LumaShield 2.5: техника обхода хуков Halo's Gate"},
+	{[]byte("inprocserver32"), "COM-Hijacking", "medium", "LumaShield 2.5: закрепление через перехват COM InprocServer32"},
+	{[]byte("appinit_dlls"), "Persistence-AppInit", "high", "LumaShield 2.5: внедрение DLL во все процессы через AppInit_DLLs"},
+	{[]byte("winlogon\\shell"), "Persistence-Winlogon", "high", "LumaShield 2.5: подмена системной оболочки Winlogon Shell"},
+	{[]byte("winlogon\\userinit"), "Persistence-Winlogon", "high", "LumaShield 2.5: модификация Winlogon Userinit для автозапуска"},
+	{[]byte("commandlineeventconsumer"), "Persistence-WMI", "high", "LumaShield 2.5: скрытый автозапуск через WMI CommandLineEventConsumer"},
+	{[]byte("register-scheduledtask"), "Persistence-Task", "medium", "LumaShield 2.5: программная регистрация задачи планировщика Windows"},
+	{[]byte("new-scheduledtaskaction"), "Persistence-Task", "medium", "LumaShield 2.5: создание действия планировщика через PowerShell"},
+	{[]byte("powershell -ep bypass"), "Execution-Bypass", "high", "LumaShield 2.5: обход политики выполнения PowerShell (-ep bypass)"},
+	{[]byte("-executionpolicy bypass"), "Execution-Bypass", "medium", "LumaShield 2.5: запуск скрипта с отключённой проверкой подписи"},
+	{[]byte("iex (irm "), "Fileless-Cradle", "high", "LumaShield 2.5: однострочный бесфайловый загрузчик iex (irm ...)"},
+	{[]byte("iex(new-object"), "Fileless-Cradle", "high", "LumaShield 2.5: бесфайловое выполнение кода из сети"},
+	{[]byte("curl -s http"), "Dropper-Pipe", "medium", "LumaShield 2.5: скрытая загрузка удалённого скрипта через curl"},
+	{[]byte("| bash"), "Dropper-Pipe", "high", "LumaShield 2.5: прямое выполнение загруженного потока в bash"},
+	{[]byte("| sh"), "Dropper-Pipe", "high", "LumaShield 2.5: прямое выполнение загруженного потока в sh"},
+	{[]byte("chmod +x /tmp/"), "Linux-Dropper", "high", "LumaShield 2.5: запуск загруженного бинарника из /tmp"},
+	{[]byte("crontab -l"), "Linux-Persistence", "medium", "LumaShield 2.5: модификация заданий планировщика cron"},
+	{[]byte("sliver_implant"), "C2-Sliver", "high", "LumaShield 2.5: сигнатура импланта C2 Sliver"},
+	{[]byte("havoc_demon"), "C2-Havoc", "high", "LumaShield 2.5: сигнатура агента C2 Havoc Demon"},
+	{[]byte("brute_ratel"), "C2-BruteRatel", "high", "LumaShield 2.5: сигнатура C2 Brute Ratel C4"},
+	{[]byte("ngrok.io"), "Tunnel-Exfil", "medium", "LumaShield 2.5: подозрительный туннель вывода данных через ngrok"},
+	{[]byte("trycloudflare.com"), "Tunnel-Exfil", "medium", "LumaShield 2.5: скрытый туннель C2 через Cloudflare Quick Tunnel"},
+	{[]byte("disableantispyware"), "Defense-Evasion", "high", "LumaShield 2.5: попытка отключения Defender через реестр DisableAntiSpyware"},
+	{[]byte("tamperprotection"), "Defense-Evasion", "high", "LumaShield 2.5: попытка вмешательства в защиту от подделки Tamper Protection"},
+	{[]byte("net stop windefend"), "Defense-Evasion", "high", "LumaShield 2.5: попытка остановки службы Windows Defender"},
+	{[]byte("sc delete windefend"), "Defense-Evasion", "high", "LumaShield 2.5: попытка удаления службы Windows Defender"},
+	{[]byte("vssadmin resize shadowstorage"), "Ransomware-Behavior", "high", "LumaShield 2.5: обнуление хранилища теневых копий перед шифрованием"},
+	{[]byte("fsutil usn deletejournal"), "Anti-Forensics", "high", "LumaShield 2.5: удаление журнала NTFS USN для сокрытия следов"},
+	{[]byte("wevtutil cl application"), "Anti-Forensics", "high", "LumaShield 2.5: очистка журнала приложений Windows"},
+	{[]byte("powershell_ise_stealer"), "InfoStealer-PS", "high", "LumaShield 2.5: сигнатура PowerShell-стилера"},
 }
 
 // inspectArchiveThreat checks ZIP archives and Office macro documents (.docm/.xlsm/.pptm/.zip) for VBA macros or hidden executables.
@@ -1171,10 +1250,11 @@ func (s *SecurityKernel) StatusSnapshot(probe *platformProbe) map[string]interfa
 	return map[string]interface{}{
 		"ok":                     true,
 		"security_core_version":  SecurityCoreVersion,
-		"engine_name":            "LumaShield 2.0 (175+ Rules · Stealer & VBA Macro Shield · Archive Scan · PE/Entropy · Hosts/Net/Startup Guard)",
+		"engine_name":            "LumaShield 2.5 (230+ Rules · Stealer/BYOVD/Syscall/VBA Shield · Archive Scan · PE/Entropy · Startup/Tasks/Hosts/Net Guard)",
 		"rules_count":            len(scriptHeuristics) + len(suspiciousDoubleExts) + len(ransomwareExts) + 5,
 		"archive_macro_guard":    true,
 		"stealer_shield":         true,
+		"tasks_audit_supported":  true,
 		"realtime_guard_enabled": s.realtimeGuardEnabled,
 		"score":                  score,
 		"defender":               def,
@@ -1187,11 +1267,11 @@ func (s *SecurityKernel) StatusSnapshot(probe *platformProbe) map[string]interfa
 		"exclusions":             s.exclusions,
 		"quarantine_dir":         s.quarantineDir,
 		"audit_log":              s.auditLog,
-		"crypto":                 "AES-256-GCM + PBKDF2-HMAC-SHA512 + VBA/Archive Inspector + Shannon Entropy + InfoStealer/Hosts/PE/Net Guard",
+		"crypto":                 "AES-256-GCM + PBKDF2-HMAC-SHA512 + VBA/Archive Inspector + Shannon Entropy + InfoStealer/Tasks/Hosts/PE/Net Guard",
 	}
 }
 
-// AuditStartupEntries (LumaShield 1.5) inspects OS autorun entries for suspicious persistence techniques.
+// AuditStartupEntries (LumaShield 2.5) inspects OS autorun entries for suspicious persistence techniques.
 func (s *SecurityKernel) AuditStartupEntries(entries []StartupEntry) []map[string]interface{} {
 	findings := make([]map[string]interface{}, 0, len(entries))
 	for _, e := range entries {
@@ -1199,13 +1279,13 @@ func (s *SecurityKernel) AuditStartupEntries(entries []StartupEntry) []map[strin
 		risk := "safe"
 		reason := "Штатная запись автозагрузки"
 		switch {
-		case strings.Contains(lowCmd, "-encodedcommand") || strings.Contains(lowCmd, "-w hidden") || strings.Contains(lowCmd, "mshta "):
+		case strings.Contains(lowCmd, "-encodedcommand") || strings.Contains(lowCmd, "-w hidden") || strings.Contains(lowCmd, "mshta ") || strings.Contains(lowCmd, "certutil -urlcache") || strings.Contains(lowCmd, "regsvr32 /s"):
 			risk = "high"
-			reason = "Скрытый или обфусцированный скрипт в автозагрузке"
-		case strings.Contains(lowCmd, "\\temp\\") || strings.Contains(lowCmd, "/tmp/") || strings.HasSuffix(lowCmd, ".vbs") || strings.HasSuffix(lowCmd, ".hta") || strings.HasSuffix(lowCmd, ".bat"):
+			reason = "Скрытый или обфусцированный скрипт/LOLBin в автозагрузке"
+		case strings.Contains(lowCmd, "\\temp\\") || strings.Contains(lowCmd, "/tmp/") || strings.HasSuffix(lowCmd, ".vbs") || strings.HasSuffix(lowCmd, ".hta") || strings.HasSuffix(lowCmd, ".bat") || strings.Contains(lowCmd, "appdata\\local\\temp"):
 			risk = "medium"
 			reason = "Запуск скрипта или файла из временного каталога при старте ОС"
-		case strings.Contains(lowCmd, "powershell") || strings.Contains(lowCmd, "wscript") || strings.Contains(lowCmd, "cscript"):
+		case strings.Contains(lowCmd, "powershell") || strings.Contains(lowCmd, "wscript") || strings.Contains(lowCmd, "cscript") || strings.Contains(lowCmd, "rundll32"):
 			risk = "medium"
 			reason = "Интерпретатор сценариев в автозагрузке — рекомендуется проверить источник"
 		}
@@ -1218,6 +1298,95 @@ func (s *SecurityKernel) AuditStartupEntries(entries []StartupEntry) []map[strin
 			"reason":   reason,
 		})
 	}
+	return findings
+}
+
+// AuditScheduledTasks (LumaShield 2.5) audits Windows Task Scheduler non-OS tasks or POSIX cron/systemd user timers.
+func (s *SecurityKernel) AuditScheduledTasks() []map[string]interface{} {
+	findings := make([]map[string]interface{}, 0, 24)
+	classifyTask := func(name, path, action, state string) map[string]interface{} {
+		low := strings.ToLower(action + " " + name)
+		risk := "safe"
+		reason := "Штатная задача планировщика"
+		switch {
+		case strings.Contains(low, "-encodedcommand") || strings.Contains(low, "-enc ") || strings.Contains(low, "-w hidden") || strings.Contains(low, "mshta") || strings.Contains(low, "certutil") || strings.Contains(low, "iex(") || strings.Contains(low, "| bash"):
+			risk = "high"
+			reason = "Опасная скрытая команда / скрипт в планировщике задач"
+		case strings.Contains(low, "\\temp\\") || strings.Contains(low, "/tmp/") || strings.Contains(low, "powershell") || strings.Contains(low, "wscript") || strings.Contains(low, "cmd.exe /c") || strings.Contains(low, "curl "):
+			risk = "medium"
+			reason = "Нестандартный запуск скрипта/интерпретатора по расписанию"
+		}
+		return map[string]interface{}{
+			"name":   name,
+			"path":   path,
+			"action": action,
+			"state":  state,
+			"risk":   risk,
+			"reason": reason,
+		}
+	}
+
+	if runtime.GOOS == "windows" {
+		ps := `Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskPath -notlike '\Microsoft\*' } | Select-Object -First 40 | ForEach-Object { $act = ($_.Actions | ForEach-Object { "$($_.Execute) $($_.Arguments)".Trim() }) -join '; '; [PSCustomObject]@{ name=$_.TaskName; path=$_.TaskPath; action=$act; state=[string]$_.State } } | ConvertTo-Json -Compress`
+		if out, err := exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps).Output(); err == nil {
+			raw := strings.TrimSpace(string(out))
+			type row struct {
+				Name   string `json:"name"`
+				Path   string `json:"path"`
+				Action string `json:"action"`
+				State  string `json:"state"`
+			}
+			var rows []row
+			if strings.HasPrefix(raw, "[") {
+				_ = json.Unmarshal([]byte(raw), &rows)
+			} else if strings.HasPrefix(raw, "{") {
+				var one row
+				if json.Unmarshal([]byte(raw), &one) == nil && one.Name != "" {
+					rows = append(rows, one)
+				}
+			}
+			for _, r := range rows {
+				findings = append(findings, classifyTask(r.Name, r.Path, r.Action, r.State))
+			}
+		}
+	} else {
+		// Linux/POSIX: inspect user crontab & systemd user units & autostart entries
+		if out, err := exec.Command("crontab", "-l").Output(); err == nil {
+			for i, ln := range strings.Split(string(out), "\n") {
+				t := strings.TrimSpace(ln)
+				if t == "" || strings.HasPrefix(t, "#") {
+					continue
+				}
+				findings = append(findings, classifyTask(fmt.Sprintf("crontab #%d", i+1), "user-crontab", t, "Enabled"))
+			}
+		}
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			for _, dir := range []string{
+				filepath.Join(home, ".config", "systemd", "user"),
+				filepath.Join(home, ".config", "autostart"),
+			} {
+				entries, err2 := os.ReadDir(dir)
+				if err2 != nil {
+					continue
+				}
+				for _, e := range entries {
+					if e.IsDir() {
+						continue
+					}
+					raw, _ := os.ReadFile(filepath.Join(dir, e.Name()))
+					act := e.Name()
+					for _, ln := range strings.Split(string(raw), "\n") {
+						if strings.HasPrefix(ln, "ExecStart=") || strings.HasPrefix(ln, "Exec=") {
+							act = strings.TrimSpace(ln)
+							break
+						}
+					}
+					findings = append(findings, classifyTask(e.Name(), dir, act, "Ready"))
+				}
+			}
+		}
+	}
+	s.LogAudit("ok", "tasks-audit", "LumaShield 2.5: аудит задач планировщика завершён", fmt.Sprintf("Проверено задач: %d", len(findings)))
 	return findings
 }
 

@@ -410,7 +410,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.5.4 (Carbon)",
+			Title:  "Luma OS 1.6 (Nitrogen)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,
@@ -482,6 +482,7 @@ var (
 	customAltTabMu      sync.Mutex
 	customAltTabEnabled = true
 	winDToLumaEnabled   = true
+	winKeyToLumaEnabled = true
 	altTabPinnedTopmost = false
 )
 
@@ -509,8 +510,48 @@ func isWinDToLumaEnabled() bool {
 	return winDToLumaEnabled
 }
 
-// forceBringLumaToFront elevates Luma OS ABOVE all active Windows apps (Chrome, Telegram, fullscreen borderless apps)
-// using AttachThreadInput + AllowSetForegroundWindow + HWND_TOPMOST without un-maximizing a maximized window.
+func setWinKeyToLumaEnabled(enabled bool) {
+	customAltTabMu.Lock()
+	winKeyToLumaEnabled = enabled
+	customAltTabMu.Unlock()
+}
+
+func isWinKeyToLumaEnabled() bool {
+	customAltTabMu.Lock()
+	defer customAltTabMu.Unlock()
+	return winKeyToLumaEnabled
+}
+
+// focusWebView2InnerChild ensures keyboard focus lands inside the embedded WebView2 Chrome_WidgetWin child HWND
+// so Alt+Tab / Start / Ubuntu panel immediately respond to keyboard events over Luma Desktop AND Windows Desktop.
+func focusWebView2InnerChild(parentHwnd uintptr) {
+	if parentHwnd == 0 {
+		return
+	}
+	procFindWindowExW := user32WinDLL.NewProc("FindWindowExW")
+	procGetWindowChild := user32WinDLL.NewProc("GetWindow")
+	procSetFocusLocal := user32WinDLL.NewProc("SetFocus")
+	const gwChild = 5
+
+	for _, cls := range []string{"Chrome_WidgetWin_1", "Chrome_WidgetWin_0"} {
+		if ptr, err := syscall.UTF16PtrFromString(cls); err == nil {
+			if child, _, _ := procFindWindowExW.Call(parentHwnd, 0, uintptr(unsafe.Pointer(ptr)), 0); child != 0 {
+				_, _, _ = procSetFocusLocal.Call(child)
+				if grand, _, _ := procGetWindowChild.Call(child, gwChild); grand != 0 {
+					_, _, _ = procSetFocusLocal.Call(grand)
+				}
+				return
+			}
+		}
+	}
+	if child, _, _ := procGetWindowChild.Call(parentHwnd, gwChild); child != 0 {
+		_, _, _ = procSetFocusLocal.Call(child)
+	}
+}
+
+// forceBringLumaToFront elevates Luma OS ABOVE all active Windows apps (Chrome, Telegram, fullscreen borderless apps,
+// and bare Windows Desktop Progman/WorkerW) using AttachThreadInput + AllowSetForegroundWindow + HWND_TOPMOST
+// AND transfers Win32 keyboard focus into the WebView2 inner child HWND.
 func forceBringLumaToFront(lumaHwnd uintptr, pinTopmost bool) {
 	if lumaHwnd == 0 {
 		return
@@ -551,11 +592,11 @@ func forceBringLumaToFront(lumaHwnd uintptr, pinTopmost bool) {
 	}
 
 	_, _, _ = procAllowSetFg.Call(asfwAny)
-	// Always pulse HWND_TOPMOST so Windows immediately lifts Luma OS above Chrome / external apps!
 	_, _, _ = procSetWindowPos.Call(lumaHwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpShowWindow)
 	_, _, _ = procBringToTop.Call(lumaHwnd)
 	_, _, _ = procSetFg.Call(lumaHwnd)
 	_, _, _ = procSetFocus.Call(lumaHwnd)
+	focusWebView2InnerChild(lumaHwnd)
 
 	if attached {
 		_, _, _ = procAttachThreadInput.Call(fgTid, lumaTid, 0)
@@ -578,8 +619,6 @@ func forceBringLumaToFront(lumaHwnd uintptr, pinTopmost bool) {
 	}
 }
 
-// releaseAltTabTopmost drops the temporary HWND_TOPMOST elevation applied during Alt+Tab
-// so external Windows apps (Chrome, Telegram, Steam) smoothly return to the foreground when selected.
 func releaseAltTabTopmost() {
 	customAltTabMu.Lock()
 	wasPinned := altTabPinnedTopmost
@@ -617,8 +656,6 @@ func bringLumaHomeNow() {
 	})
 }
 
-// suspendWindowTopmost temporarily clears HWND_TOPMOST before browser pickers / screen recording
-// so Windows capture dialogs NEVER get trapped behind Luma OS!
 func suspendWindowTopmost(suspend bool) {
 	nativeWinMu.Lock()
 	wv := nativeWebView
@@ -658,7 +695,6 @@ type winMsgStruct struct {
 	PtY     int32
 }
 
-// safeWebViewEval guards WebView2 Dispatch against shutdown races and panics.
 func safeWebViewEval(wv webview2.WebView, stopCh <-chan struct{}, js string) {
 	defer func() { _ = recover() }()
 	if wv == nil {
@@ -680,162 +716,277 @@ func safeWebViewEval(wv webview2.WebView, stopCh <-chan struct{}, js string) {
 	})
 }
 
-// startWin32AltTabHook (LumaCore 1.4.7): Ultra-fast non-blocking WH_KEYBOARD_LL hook that:
-//   1. Replaces Windows Alt+Tab with Luma OS's glassmorphic switcher GUARANTEED ON TOP OF ALL WINDOWS (Chrome, Telegram, games).
-//   2. Replaces Win+D with instant return to Luma OS Home Desktop (never minimizing Luma OS to bare Windows desktop!).
-// Never blocks Ctrl+Alt+Del / Ctrl+Shift+Esc and always unhooks cleanly on shutdown.
+// ==================== PACKAGE-LEVEL SINGLETON WH_KEYBOARD_LL HOOK (ZERO CALLBACK LEAKS!) ====================
+// All Win32 procs & the single syscall.NewCallback are allocated ONCE at package init time.
+var (
+	procHookSetWindowsHookExW   = user32WinDLL.NewProc("SetWindowsHookExW")
+	procHookUnhookWindowsHookEx = user32WinDLL.NewProc("UnhookWindowsHookEx")
+	procHookCallNextHookEx      = user32WinDLL.NewProc("CallNextHookEx")
+	procHookGetMessageW         = user32WinDLL.NewProc("GetMessageW")
+	procHookPostThreadMessageW  = user32WinDLL.NewProc("PostThreadMessageW")
+	procHookGetAsyncKeyState    = user32WinDLL.NewProc("GetAsyncKeyState")
+	procHookGetFg               = user32WinDLL.NewProc("GetForegroundWindow")
+	procHookIsChild             = user32WinDLL.NewProc("IsChild")
+	procHookKeybdEvent          = user32WinDLL.NewProc("keybd_event")
+	kernel32HookDLL             = syscall.NewLazyDLL("kernel32.dll")
+	procHookGetCurrentThreadId  = kernel32HookDLL.NewProc("GetCurrentThreadId")
+
+	kbdHookStateMu   sync.Mutex
+	kbdHookHandle    uintptr
+	kbdHookWebView   webview2.WebView
+	kbdHookLumaHwnd  uintptr
+	kbdHookStopCh    <-chan struct{}
+	kbdAltTabActive  bool
+	kbdAltTabSeq     uint64
+	kbdLWinDown      bool
+	kbdRWinDown      bool
+	kbdWinComboUsed  bool
+	kbdLastWinTapMs  int64
+
+	// Single permanent package-level Win32 keyboard hook callback (NEVER allocated inside any function/loop!)
+	kbdLLHookCallback = syscall.NewCallback(win32KbdLLHookProc)
+)
+
+const (
+	hkWhKeyboardLL  = 13
+	hkWmKeyDown     = 0x0100
+	hkWmKeyUp       = 0x0101
+	hkWmSysKeyDown  = 0x0104
+	hkWmSysKeyUp    = 0x0105
+	hkWmQuit        = 0x0012
+	hkVkTab         = 0x09
+	hkVkReturn      = 0x0D
+	hkVkShift       = 0x10
+	hkVkControl     = 0x11
+	hkVkMenu        = 0x12
+	hkVkEscape      = 0x1B
+	hkVkLeft        = 0x25
+	hkVkUp          = 0x26
+	hkVkRight       = 0x27
+	hkVkDown        = 0x28
+	hkVkD           = 0x44
+	hkVkLWin        = 0x5B
+	hkVkRWin        = 0x5C
+	hkVkLMenu       = 0xA4
+	hkVkRMenu       = 0xA5
+	hkVkDummyMask   = 0xE8 // Standard unassigned VK used to cancel native Windows Start Menu without sticking Win key
+	hkKeyeventfUp   = 0x0002
+	hkLlkhfAltDown  = 0x20
+	hkLlkhfInjected = 0x10
+)
+
+func win32KbdLLHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
+	kbdHookStateMu.Lock()
+	hHook := kbdHookHandle
+	wv := kbdHookWebView
+	lumaHwnd := kbdHookLumaHwnd
+	stopCh := kbdHookStopCh
+	kbdHookStateMu.Unlock()
+
+	if nCode >= 0 && lParam != 0 {
+		info := (*kbdLLHookStruct)(unsafe.Pointer(lParam))
+		isDown := wParam == hkWmKeyDown || wParam == hkWmSysKeyDown
+		isUp := wParam == hkWmKeyUp || wParam == hkWmSysKeyUp
+		injected := (info.Flags & hkLlkhfInjected) != 0
+
+		if !injected {
+			// --- 1. Track Win Key & Solo Tap vs Combo (Item 11: Preserves Win+D, Win+L, Win+Shift+S, Win+Space, Win+E!) ---
+			if info.VkCode == hkVkLWin || info.VkCode == hkVkRWin {
+				if isDown {
+					wasDown := kbdLWinDown || kbdRWinDown
+					if info.VkCode == hkVkLWin {
+						kbdLWinDown = true
+					} else {
+						kbdRWinDown = true
+					}
+					if !wasDown {
+						kbdWinComboUsed = false
+					}
+				} else if isUp {
+					if info.VkCode == hkVkLWin {
+						kbdLWinDown = false
+					} else {
+						kbdRWinDown = false
+					}
+					// Standalone Win key tap -> suppress native Windows Start Menu safely via 0xE8 mask & open Luma Start / Ubuntu Panel!
+					if !kbdWinComboUsed && !kbdLWinDown && !kbdRWinDown && isWinKeyToLumaEnabled() && !kbdAltTabActive {
+						nowMs := time.Now().UnixMilli()
+						if nowMs-kbdLastWinTapMs > 180 {
+							kbdLastWinTapMs = nowMs
+							// Synchronously pulse unassigned dummy VK 0xE8 BEFORE releasing Win keyup to Windows:
+							// Windows cancels its native Start Menu AND receives Win KEYUP cleanly (zero stuck Win key!).
+							_, _, _ = procHookKeybdEvent.Call(hkVkDummyMask, 0, 0, 0)
+							_, _, _ = procHookKeybdEvent.Call(hkVkDummyMask, 0, hkKeyeventfUp, 0)
+							go func() {
+								defer func() { _ = recover() }()
+								if lumaHwnd != 0 {
+									forceBringLumaToFront(lumaHwnd, false)
+								}
+								safeWebViewEval(wv, stopCh, `try{window.focus();}catch(e){} window.dispatchEvent(new CustomEvent('luma-win-start'));`)
+							}()
+						}
+					}
+					kbdWinComboUsed = false
+				}
+			} else if isDown && (kbdLWinDown || kbdRWinDown) {
+				// Any other key pressed while Win is held marks it as a system combo (Win+L, Win+Shift+S, Win+Space, Win+E, Win+D...)
+				kbdWinComboUsed = true
+
+				// Intercept ONLY Win+D (no Ctrl/Shift/Alt) -> instant return to Luma OS Home Desktop!
+				if info.VkCode == hkVkD && isWinDToLumaEnabled() && (info.Flags&hkLlkhfAltDown) == 0 {
+					ctrlState, _, _ := procHookGetAsyncKeyState.Call(hkVkControl)
+					shiftState, _, _ := procHookGetAsyncKeyState.Call(hkVkShift)
+					if (ctrlState&0x8000) == 0 && (shiftState&0x8000) == 0 {
+						_, _, _ = procHookKeybdEvent.Call(hkVkDummyMask, 0, 0, 0)
+						_, _, _ = procHookKeybdEvent.Call(hkVkDummyMask, 0, hkKeyeventfUp, 0)
+						go func() {
+							defer func() { _ = recover() }()
+							if lumaHwnd != 0 {
+								forceBringLumaToFront(lumaHwnd, false)
+							}
+							safeWebViewEval(wv, stopCh, `try{window.focus();}catch(e){} window.dispatchEvent(new CustomEvent('luma-win-d-home'));`)
+						}()
+						return 1
+					}
+				}
+				// All other Win combos (Win+L, Win+Shift+S, Win+Space, Win+E, Win+V, Win+Arrows) pass straight to Windows!
+			}
+
+			// --- 2. Fixed Desktop & External Alt+Tab Switcher (Item 12: WebView2 Focus + Arrow/Enter/Esc Forwarding + Zero Double-Switch) ---
+			if isCustomAltTabEnabled() {
+				// Watchdog: if Alt was released externally while altTabActive was true, clean up
+				if kbdAltTabActive && isDown && (info.Flags&hkLlkhfAltDown) == 0 {
+					altSt, _, _ := procHookGetAsyncKeyState.Call(hkVkMenu)
+					if (altSt & 0x8000) == 0 {
+						// Allow arrows/Enter/Esc even after user tapped Alt+Tab if switcher stays open,
+						// otherwise let regular typing continue
+					}
+				}
+
+				if info.VkCode == hkVkTab && isDown && (info.Flags&hkLlkhfAltDown) != 0 {
+					ctrlState, _, _ := procHookGetAsyncKeyState.Call(hkVkControl)
+					if (ctrlState & 0x8000) == 0 {
+						shiftState, _, _ := procHookGetAsyncKeyState.Call(hkVkShift)
+						reverse := (shiftState & 0x8000) != 0
+						fgHwnd, _, _ := procHookGetFg.Call()
+						isOurs := lumaHwnd != 0 && fgHwnd == lumaHwnd
+						if !isOurs && fgHwnd != 0 && lumaHwnd != 0 {
+							ch, _, _ := procHookIsChild.Call(lumaHwnd, fgHwnd)
+							isOurs = ch != 0
+						}
+						fromExternal := !isOurs
+						kbdAltTabActive = true
+						kbdAltTabSeq++
+						seq := kbdAltTabSeq
+						go func(rev, ext bool, s uint64) {
+							defer func() { _ = recover() }()
+							if lumaHwnd != 0 {
+								forceBringLumaToFront(lumaHwnd, true)
+							}
+							js := fmt.Sprintf(`try{window.focus();}catch(e){} window.dispatchEvent(new CustomEvent('luma-alt-tab',{detail:{reverse:%v,fromExternal:%v,seq:%d,native:true}}));`, rev, ext, s)
+							safeWebViewEval(wv, stopCh, js)
+						}(reverse, fromExternal, seq)
+						return 1 // Swallow native Windows Alt+Tab cleanly!
+					}
+				}
+
+				// Forward Arrow keys, Enter, and Escape DIRECTLY to WebView2 while Alt+Tab is active
+				// so navigation works over Luma Desktop AND Windows Desktop even before OS focus settles!
+				if kbdAltTabActive && isDown {
+					switch info.VkCode {
+					case hkVkEscape:
+						kbdAltTabActive = false
+						go func() {
+							defer func() { _ = recover() }()
+							releaseAltTabTopmost()
+							safeWebViewEval(wv, stopCh, `window.dispatchEvent(new CustomEvent('luma-alt-tab-cancel'));`)
+						}()
+						return 1
+					case hkVkReturn:
+						kbdAltTabActive = false
+						go func() {
+							defer func() { _ = recover() }()
+							safeWebViewEval(wv, stopCh, `window.dispatchEvent(new CustomEvent('luma-alt-tab-commit',{detail:{native:true}}));`)
+						}()
+						return 1
+					case hkVkRight, hkVkLeft, hkVkDown, hkVkUp:
+						keyName := "ArrowRight"
+						if info.VkCode == hkVkLeft {
+							keyName = "ArrowLeft"
+						} else if info.VkCode == hkVkDown {
+							keyName = "ArrowDown"
+						} else if info.VkCode == hkVkUp {
+							keyName = "ArrowUp"
+						}
+						go func(k string) {
+							defer func() { _ = recover() }()
+							js := fmt.Sprintf(`window.dispatchEvent(new CustomEvent('luma-alt-tab-nav',{detail:{key:%q}}));`, k)
+							safeWebViewEval(wv, stopCh, js)
+						}(keyName)
+						return 1
+					}
+				}
+
+				// Commit selected window when Alt key is released
+				if isUp && kbdAltTabActive && (info.VkCode == hkVkLMenu || info.VkCode == hkVkRMenu || info.VkCode == hkVkMenu) {
+					kbdAltTabActive = false
+					seq := kbdAltTabSeq
+					go func(s uint64) {
+						defer func() { _ = recover() }()
+						js := fmt.Sprintf(`window.dispatchEvent(new CustomEvent('luma-alt-tab-commit',{detail:{seq:%d,native:true}}));`, s)
+						safeWebViewEval(wv, stopCh, js)
+					}(seq)
+				}
+			}
+		}
+	}
+
+	ret, _, _ := procHookCallNextHookEx.Call(hHook, uintptr(nCode), wParam, lParam)
+	return ret
+}
+
+// startWin32AltTabHook (LumaCore 1.5.0): Installs the permanent singleton WH_KEYBOARD_LL hook (zero callback leaks).
 func startWin32AltTabHook(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan struct{}) {
 	defer func() { _ = recover() }()
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	procSetWindowsHookExW := user32WinDLL.NewProc("SetWindowsHookExW")
-	procUnhookWindowsHookEx := user32WinDLL.NewProc("UnhookWindowsHookEx")
-	procCallNextHookEx := user32WinDLL.NewProc("CallNextHookEx")
-	procGetMessageW := user32WinDLL.NewProc("GetMessageW")
-	procPostThreadMessageW := user32WinDLL.NewProc("PostThreadMessageW")
-	procGetAsyncKeyState := user32WinDLL.NewProc("GetAsyncKeyState")
-	procGetFg := user32WinDLL.NewProc("GetForegroundWindow")
-	procKeybdEvent := user32WinDLL.NewProc("keybd_event")
-	kernel32Local := syscall.NewLazyDLL("kernel32.dll")
-	procGetCurrentThreadId := kernel32Local.NewProc("GetCurrentThreadId")
+	kbdHookStateMu.Lock()
+	kbdHookWebView = wv
+	kbdHookLumaHwnd = lumaHwnd
+	kbdHookStopCh = stopCh
+	kbdAltTabActive = false
+	kbdLWinDown = false
+	kbdRWinDown = false
+	kbdWinComboUsed = false
+	kbdHookStateMu.Unlock()
 
-	const (
-		whKeyboardLL    = 13
-		wmKeyDown       = 0x0100
-		wmKeyUp         = 0x0101
-		wmSysKeyDown    = 0x0104
-		wmSysKeyUp      = 0x0105
-		wmQuit          = 0x0012
-		vkTab           = 0x09
-		vkShift         = 0x10
-		vkControl       = 0x11
-		vkEscape        = 0x1B
-		vkD             = 0x44
-		vkLWin          = 0x5B
-		vkRWin          = 0x5C
-		vkLMenu         = 0xA4
-		vkRMenu         = 0xA5
-		vkMenu          = 0x12
-		vkDummyMask     = 0xE8 // Unassigned VK used to suppress Start Menu when swallowing Win+D
-		keyeventfKeyUp  = 0x0002
-		llkhfAltDown    = 0x20
-		llkhfInjected   = 0x10
-	)
-
-	altTabActive := false
-	lwinDown := false
-	rwinDown := false
-	var hookHandle uintptr
-
-	cb := syscall.NewCallback(func(nCode int, wParam uintptr, lParam uintptr) uintptr {
-		if nCode >= 0 && lParam != 0 {
-			info := (*kbdLLHookStruct)(unsafe.Pointer(lParam))
-			isDown := wParam == wmKeyDown || wParam == wmSysKeyDown
-			isUp := wParam == wmKeyUp || wParam == wmSysKeyUp
-			injected := (info.Flags & llkhfInjected) != 0
-
-			// Track Win key state reliably
-			if !injected {
-				if info.VkCode == vkLWin {
-					lwinDown = isDown
-				} else if info.VkCode == vkRWin {
-					rwinDown = isDown
-				}
-			}
-
-			// 1. Replace Win+D with instant return to Luma OS Home Desktop!
-			if !injected && isDown && info.VkCode == vkD && isWinDToLumaEnabled() {
-				winHeld := lwinDown || rwinDown
-				if !winHeld {
-					lw, _, _ := procGetAsyncKeyState.Call(vkLWin)
-					rw, _, _ := procGetAsyncKeyState.Call(vkRWin)
-					winHeld = (lw&0x8000) != 0 || (rw&0x8000) != 0
-				}
-				if winHeld && (info.Flags&llkhfAltDown) == 0 {
-					ctrlState, _, _ := procGetAsyncKeyState.Call(vkControl)
-					shiftState, _, _ := procGetAsyncKeyState.Call(vkShift)
-					if (ctrlState&0x8000) == 0 && (shiftState&0x8000) == 0 {
-						// Suppress Start Menu popup on Win key release using standard dummy VK pulse
-						go func() {
-							defer func() { _ = recover() }()
-							_, _, _ = procKeybdEvent.Call(vkDummyMask, 0, 0, 0)
-							_, _, _ = procKeybdEvent.Call(vkDummyMask, 0, keyeventfKeyUp, 0)
-							if lumaHwnd != 0 {
-								forceBringLumaToFront(lumaHwnd, false)
-							}
-							safeWebViewEval(wv, stopCh, `window.dispatchEvent(new CustomEvent('luma-win-d-home'));`)
-						}()
-						return 1 // Swallow native Windows Win+D!
-					}
-				}
-			}
-
-			// 2. Replace Alt+Tab with Luma OS Glassmorphic Switcher ABOVE ALL WINDOWS (Chrome, Telegram, Games)
-			if !injected && isCustomAltTabEnabled() {
-				if info.VkCode == vkTab && isDown && (info.Flags&llkhfAltDown) != 0 {
-					ctrlState, _, _ := procGetAsyncKeyState.Call(vkControl)
-					if (ctrlState & 0x8000) == 0 {
-						shiftState, _, _ := procGetAsyncKeyState.Call(vkShift)
-						reverse := (shiftState & 0x8000) != 0
-						fgHwnd, _, _ := procGetFg.Call()
-						fromExternal := lumaHwnd != 0 && fgHwnd != lumaHwnd
-						altTabActive = true
-						go func(rev, ext bool) {
-							defer func() { _ = recover() }()
-							if lumaHwnd != 0 {
-								forceBringLumaToFront(lumaHwnd, true)
-							}
-							js := fmt.Sprintf(`window.dispatchEvent(new CustomEvent('luma-alt-tab',{detail:{reverse:%v,fromExternal:%v}}));`, rev, ext)
-							safeWebViewEval(wv, stopCh, js)
-						}(reverse, fromExternal)
-						return 1 // Swallow native Windows Alt+Tab cleanly!
-					}
-				}
-
-				// Cancel Alt+Tab cleanly on Escape while Alt is held
-				if altTabActive && isDown && info.VkCode == vkEscape {
-					altTabActive = false
-					go func() {
-						defer func() { _ = recover() }()
-						releaseAltTabTopmost()
-						safeWebViewEval(wv, stopCh, `window.dispatchEvent(new CustomEvent('luma-alt-tab-cancel'));`)
-					}()
-					return 1
-				}
-
-				// Commit selected window when Alt key is released
-				if isUp && altTabActive && (info.VkCode == vkLMenu || info.VkCode == vkRMenu || info.VkCode == vkMenu) {
-					altTabActive = false
-					go func() {
-						defer func() { _ = recover() }()
-						safeWebViewEval(wv, stopCh, `window.dispatchEvent(new CustomEvent('luma-alt-tab-commit'));`)
-					}()
-				}
-			}
-		}
-		ret, _, _ := procCallNextHookEx.Call(hookHandle, uintptr(nCode), wParam, lParam)
-		return ret
-	})
-
-	tid, _, _ := procGetCurrentThreadId.Call()
-	h, _, _ := procSetWindowsHookExW.Call(whKeyboardLL, cb, 0, 0)
+	tid, _, _ := procHookGetCurrentThreadId.Call()
+	h, _, _ := procHookSetWindowsHookExW.Call(hkWhKeyboardLL, kbdLLHookCallback, 0, 0)
 	if h == 0 {
 		return
 	}
-	hookHandle = h
-	defer procUnhookWindowsHookEx.Call(hookHandle)
+	kbdHookStateMu.Lock()
+	kbdHookHandle = h
+	kbdHookStateMu.Unlock()
+	defer func() {
+		_, _, _ = procHookUnhookWindowsHookEx.Call(h)
+		kbdHookStateMu.Lock()
+		kbdHookHandle = 0
+		kbdHookWebView = nil
+		kbdHookStateMu.Unlock()
+	}()
 
 	go func() {
 		<-stopCh
 		if tid != 0 {
-			_, _, _ = procPostThreadMessageW.Call(tid, wmQuit, 0, 0)
+			_, _, _ = procHookPostThreadMessageW.Call(tid, hkWmQuit, 0, 0)
 		}
 	}()
 
 	var msg winMsgStruct
 	for {
-		ret, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
+		ret, _, _ := procHookGetMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
 		if int32(ret) <= 0 {
 			break
 		}

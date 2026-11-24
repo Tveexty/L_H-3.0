@@ -62,6 +62,8 @@ type ProcessMetric struct {
 
 type HostWindowItem struct {
 	PID          int     `json:"pid"`
+	Hwnd         uint64  `json:"hwnd,omitempty"`
+	Topmost      bool    `json:"topmost,omitempty"`
 	Name         string  `json:"name"`
 	FriendlyName string  `json:"friendly_name,omitempty"`
 	Title        string  `json:"title"`

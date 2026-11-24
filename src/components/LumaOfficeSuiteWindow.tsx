@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft, Download, FileSpreadsheet, FileText, FolderOpen, Moon, Presentation,
-  Printer, Save, Search, Sparkles, Sun, Table2,
+  ArrowLeft, Copy, Download, ExternalLink, FileSpreadsheet, FileText, FolderOpen, Moon, Presentation,
+  Printer, Save, Search, Send, Sparkles, Sun, Table2, X,
 } from 'lucide-react';
 import {
   DocComment, EXCEL_TEMPLATES, OfficeAppMode, OfficeSheet, OfficeSlide,
@@ -60,6 +60,104 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
   const [slides, setSlides] = useState<OfficeSlide[]>(PPT_TEMPLATES[0].slides);
   const [activeSlideIdx, setActiveSlideIdx] = useState(0);
   const [busy, setBusy] = useState(false);
+
+  // Luma AI 3.8 FlashLite Office Assistant Drawer state
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiReply, setAiReply] = useState('');
+  const [aiSources, setAiSources] = useState<{ title: string; url: string; provider: string }[]>([]);
+
+  const runOfficeAI38 = async (action: string, customPrompt?: string) => {
+    setAiOpen(true);
+    setAiBusy(true);
+    const appKey = mode === 'docs' ? 'word' : mode === 'sheets' ? 'excel' : 'powerpoint';
+    let content = '';
+    if (mode === 'docs') {
+      content = docHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
+    } else if (mode === 'sheets') {
+      const sh = sheets[activeSheetIdx] || sheets[0];
+      content = JSON.stringify(sh?.cells || {}).slice(0, 3000);
+    } else {
+      const sl = slides[activeSlideIdx] || slides[0];
+      const elemsText = (sl?.elements || []).map((el) => el.text || '').filter(Boolean).join('\n');
+      content = `${sl?.title || ''}\n${elemsText}\n${sl?.notes || ''}`.trim();
+    }
+    try {
+      const r = await fetch('/api/kernel/ai/assist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          app: appKey,
+          action,
+          content,
+          prompt: (customPrompt ?? aiPrompt).trim(),
+          filename: docTitle,
+        }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        setAiReply(String(d.reply || ''));
+        setAiSources(Array.isArray(d.sources) ? d.sources : []);
+      }
+    } catch {
+      setAiReply('Не удалось связаться с Luma AI 3.8 FlashLite.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const applyAIResultToOffice = () => {
+    if (!aiReply.trim()) return;
+    if (mode === 'docs') {
+      const htmlBlock = `<p>${aiReply.replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br/>')}</p>`;
+      setDocHtml((prev) => prev + htmlBlock);
+      onNotify?.('Luma AI 3.8 · Word', 'Ответ вставлен в конец документа', 'ok');
+    } else if (mode === 'slides') {
+      const nowId = Date.now();
+      const slideTitle = aiPrompt.trim() || `AI 3.8 · ${docTitle}`;
+      const newSlide: OfficeSlide = {
+        id: `sl_ai_${nowId}`,
+        title: slideTitle,
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #0c4a6e 100%)',
+        transition: 'fade',
+        notes: aiReply,
+        elements: [
+          {
+            id: `el_ai_title_${nowId}`,
+            type: 'text',
+            x: 6,
+            y: 8,
+            w: 88,
+            h: 16,
+            text: slideTitle,
+            fontSize: 30,
+            bold: true,
+            color: '#f8fafc',
+            align: 'left',
+          },
+          {
+            id: `el_ai_body_${nowId}`,
+            type: 'text',
+            x: 6,
+            y: 28,
+            w: 88,
+            h: 62,
+            text: aiReply.slice(0, 700),
+            fontSize: 16,
+            color: '#e2e8f0',
+            align: 'left',
+          },
+        ],
+      };
+      setSlides((prev) => [...prev, newSlide]);
+      setActiveSlideIdx(slides.length);
+      onNotify?.('Luma AI 3.8 · PowerPoint', 'Добавлен новый слайд с тезисами AI 3.8', 'ok');
+    } else {
+      navigator.clipboard?.writeText(aiReply).catch(() => {});
+      onNotify?.('Luma AI 3.8 · Excel', 'Формулы и рекомендации скопированы в буфер обмена', 'ok');
+    }
+  };
 
   // Tell Me quick search in the title bar
   const [tellMeQuery, setTellMeQuery] = useState('');
@@ -390,6 +488,19 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
 
           <button
             type="button"
+            onClick={() => setAiOpen((v) => !v)}
+            title="Помощник Luma AI 3.8 FlashLite (тексты, формулы Excel, слайды PowerPoint)"
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition ${
+              aiOpen
+                ? 'bg-white text-sky-700 shadow'
+                : 'bg-white/20 hover:bg-white/30 text-white'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" /> AI 3.8
+          </button>
+
+          <button
+            type="button"
             onClick={() => setOfficeDark((v) => !v)}
             title={officeDark ? 'Светлая классическая тема Office' : 'Тёмная тема Office'}
             className="p-1.5 rounded hover:bg-white/15 cursor-pointer"
@@ -398,6 +509,132 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Luma AI 3.8 FlashLite Side Assistant Drawer for Word / Excel / PowerPoint */}
+      {aiOpen && (
+        <div
+          className={`fixed sm:absolute right-3 top-12 bottom-3 w-80 sm:w-96 z-[60] rounded-2xl border shadow-2xl flex flex-col overflow-hidden backdrop-blur-2xl ${
+            officeDark ? 'bg-slate-950/96 border-sky-400/30 text-slate-100' : 'bg-white/97 border-slate-300 text-slate-900'
+          }`}
+        >
+          <div className="px-3.5 py-2.5 border-b border-black/10 flex items-center justify-between bg-gradient-to-r from-sky-600 to-indigo-600 text-white">
+            <div className="flex items-center gap-1.5 text-xs font-black">
+              <Sparkles className="w-3.5 h-3.5" />
+              Luma AI 3.8 · {brand.short}
+            </div>
+            <button type="button" onClick={() => setAiOpen(false)} className="p-1 rounded hover:bg-white/15 cursor-pointer">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className={`p-2.5 border-b flex flex-wrap gap-1.5 ${officeDark ? 'border-white/10' : 'border-slate-200'}`}>
+            {(mode === 'docs'
+              ? [
+                  { id: 'improve', label: 'Улучшить текст' },
+                  { id: 'summarize', label: 'Краткая выжимка' },
+                  { id: 'generate', label: 'Дополнить фактами' },
+                ]
+              : mode === 'sheets'
+              ? [
+                  { id: 'formula', label: 'Подобрать формулу fx' },
+                  { id: 'analyze', label: 'Анализ таблицы' },
+                  { id: 'explain', label: 'Объяснить расчёт' },
+                ]
+              : [
+                  { id: 'slide', label: 'Тезисы слайда' },
+                  { id: 'improve', label: 'Усилить выступление' },
+                  { id: 'summarize', label: 'Заметки докладчика' },
+                ]
+            ).map((btn) => (
+              <button
+                key={btn.id}
+                type="button"
+                disabled={aiBusy}
+                onClick={() => void runOfficeAI38(btn.id)}
+                className={`px-2 py-1 rounded-lg text-[10px] font-bold border cursor-pointer ${
+                  officeDark
+                    ? 'bg-sky-500/15 border-sky-400/30 text-sky-300 hover:bg-sky-500/25'
+                    : 'bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100'
+                }`}
+              >
+                {btn.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 text-xs space-y-2.5">
+            {aiBusy ? (
+              <div className="text-sky-500 animate-pulse">Luma AI 3.8 анализирует {brand.short} и проверяет источники…</div>
+            ) : aiReply ? (
+              <>
+                <div className="whitespace-pre-wrap leading-relaxed">{aiReply}</div>
+                {aiSources.length > 0 && (
+                  <div className="pt-2 border-t border-slate-500/20 space-y-1">
+                    <div className="text-[10px] font-mono uppercase text-sky-500 font-bold">Проверенные источники</div>
+                    <div className="flex flex-wrap gap-1">
+                      {aiSources.map((s, idx) => (
+                        <a
+                          key={`${s.url}_${idx}`}
+                          href={s.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2 py-0.5 rounded bg-sky-500/15 border border-sky-400/30 text-[10px] text-sky-500 hover:underline inline-flex items-center gap-1 max-w-full truncate"
+                        >
+                          <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                          <span className="truncate">{s.provider}: {s.title}</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={applyAIResultToOffice}
+                    className="flex-1 py-1.5 px-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold cursor-pointer"
+                  >
+                    {mode === 'docs' ? 'Вставить в Word' : mode === 'slides' ? 'Добавить как слайд' : 'Копировать для Excel'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(aiReply).catch(() => {});
+                      onNotify?.('Luma AI 3.8', 'Ответ скопирован', 'ok');
+                    }}
+                    className={`p-1.5 rounded-lg border cursor-pointer ${officeDark ? 'border-white/15 hover:bg-white/10' : 'border-slate-300 hover:bg-slate-100'}`}
+                    title="Копировать ответ"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="opacity-65">
+                Выберите действие выше или введите задачу для <b>{brand.name}</b> — Luma AI 3.8 FlashLite поможет с текстом, формулами или слайдами с проверенными источниками.
+              </div>
+            )}
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (aiPrompt.trim()) void runOfficeAI38('ask', aiPrompt);
+            }}
+            className={`p-2 border-t flex gap-1.5 ${officeDark ? 'border-white/10' : 'border-slate-200'}`}
+          >
+            <input
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              placeholder={`Спросить AI 3.8 для ${brand.short}…`}
+              className={`flex-1 px-2.5 py-1.5 rounded-xl border text-xs outline-none ${officeDark ? 'bg-slate-900 border-white/10' : 'bg-slate-50 border-slate-300'}`}
+            />
+            <button
+              type="submit"
+              disabled={aiBusy || !aiPrompt.trim()}
+              className="px-2.5 py-1.5 rounded-xl bg-sky-600 text-white cursor-pointer disabled:opacity-40"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* AUTHENTIC MS OFFICE «ФАЙЛ» BACKSTAGE VIEW */}
       {backstageOpen ? (
@@ -587,7 +824,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
 
             {backstageTab === 'info' && (
               <div className="space-y-3 max-w-xl text-xs leading-relaxed">
-                <h2 className="text-xl font-bold">Luma Office Studio 1.5.4 (Carbon)</h2>
+                <h2 className="text-xl font-bold">Luma Office Studio 1.6 (Nitrogen · AI 3.8)</h2>
                 <p>Классический понятный интерфейс Microsoft Word, Excel и PowerPoint с группировкой инструментов на ленте Ribbon, строкой быстрого поиска команд и автосохранением.</p>
                 <ul className="list-disc pl-5 space-y-1 opacity-85">
                   <li><strong>Word:</strong> 7 вкладок ленты, сетка таблиц 10×8, Формат по образцу, безопасный поиск/замена по текстовым узлам, кликабельная навигация по заголовкам, уравнения и символы, линейка, проверка типографики, озвучка текста и примечания.</li>
