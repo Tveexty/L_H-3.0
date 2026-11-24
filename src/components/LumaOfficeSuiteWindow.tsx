@@ -34,7 +34,7 @@ const TELL_ME_ACTIONS: { label: string; keywords: string; mode: OfficeAppMode; c
   { label: 'Автоматическое оглавление (Word)', keywords: 'оглавление содержание toc', mode: 'docs', cmd: 'toc' },
   { label: 'Проверка правописания и типографики (Word)', keywords: 'правописание ошибки spell проверка', mode: 'docs', cmd: 'spell' },
   { label: 'Добавить примечание (Word)', keywords: 'примечание комментарий comment', mode: 'docs', cmd: 'comment' },
-  { label: 'Вставить формулу fx (Excel · 55+)', keywords: 'формула сумма впр если fx', mode: 'sheets', cmd: 'formula' },
+  { label: 'Вставить формулу fx (Excel · 140+)', keywords: 'формула сумма впр если fx', mode: 'sheets', cmd: 'formula' },
   { label: 'Построить диаграмму (Excel)', keywords: 'диаграмма график chart bar pie', mode: 'sheets', cmd: 'chart' },
   { label: 'Включить автофильтр (Excel)', keywords: 'фильтр автофильтр filter', mode: 'sheets', cmd: 'filter' },
   { label: 'Создать сводную таблицу (Excel)', keywords: 'сводная таблица pivot', mode: 'sheets', cmd: 'pivot' },
@@ -539,7 +539,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
             {backstageTab === 'save' && (
               <div className="space-y-4 max-w-2xl">
                 <h2 className="text-xl font-bold">Сохранить как · {docTitle}</h2>
-                <p className="text-xs opacity-70">Нативный Go-конвертер LumaCore 1.4.6 создаёт настоящие файлы Microsoft Office без облака и сторонних программ.</p>
+                <p className="text-xs opacity-70">Нативный Go-конвертер LumaCore 1.4.7 создаёт настоящие файлы Microsoft Office без облака и сторонних программ.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {(mode === 'docs'
                     ? [
@@ -587,12 +587,12 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
 
             {backstageTab === 'info' && (
               <div className="space-y-3 max-w-xl text-xs leading-relaxed">
-                <h2 className="text-xl font-bold">Luma Office Studio 1.5.3 (Carbon)</h2>
+                <h2 className="text-xl font-bold">Luma Office Studio 1.5.4 (Carbon)</h2>
                 <p>Классический понятный интерфейс Microsoft Word, Excel и PowerPoint с группировкой инструментов на ленте Ribbon, строкой быстрого поиска команд и автосохранением.</p>
                 <ul className="list-disc pl-5 space-y-1 opacity-85">
-                  <li><strong>Word:</strong> 7 вкладок ленты, сетка таблиц 10×8, Формат по образцу, уравнения и символы, линейка, навигация по заголовкам, проверка типографики, озвучка текста и примечания.</li>
-                  <li><strong>Excel:</strong> 55+ формул на русском и английском (`СУММ`, `ВПР`, `ЕСЛИ`, `СЧЁТЕСЛИ`, `ПЛТ`, `МЕДИАНА`), маркер автозаполнения (Fill Handle), условное форматирование, сводные таблицы, 6 типов графиков и строка состояния `Среднее · Количество · Сумма`.</li>
-                  <li><strong>PowerPoint:</strong> 8 вкладок ленты, 15+ фигур, SmartArt, живые диаграммы и таблицы, рисование пером/маркером на слайдах, 12 тем, 10 переходов, 10 анимаций и режим докладчика `F5` с лазерной указкой.</li>
+                  <li><strong>Word:</strong> 7 вкладок ленты, сетка таблиц 10×8, Формат по образцу, безопасный поиск/замена по текстовым узлам, кликабельная навигация по заголовкам, уравнения и символы, линейка, проверка типографики, озвучка текста и примечания.</li>
+                  <li><strong>Excel:</strong> 140+ формул на русском и английском (`СУММ`, `ВПР`, `ГПР`, `ПРОСМОТРX`, `ЕСЛИМН`, `СЧЁТЕСЛИМН`, `ПЛТ`, `ЧПС`, `МЕДИАНА`, `КОРРЕЛ`, `ПРЕОБР`), поиск формул `fx`, навигация стрелками и быстрый ввод с клавиатуры, `Ctrl+Z`, маркер автозаполнения, сводные таблицы и 6 типов графиков.</li>
+                  <li><strong>PowerPoint:</strong> 8 вкладок ленты, 15+ фигур, редактируемый SmartArt и диаграммы, рисование пером/маркером, 12 тем, 10 живых переходов слайдов, 12 настоящих CSS-анимаций объектов с порядком показа, `Ctrl+Z`, `Delete` и режим докладчика `F5`.</li>
                 </ul>
               </div>
             )}

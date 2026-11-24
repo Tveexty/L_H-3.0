@@ -9,49 +9,67 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf16"
 	"unsafe"
 )
 
-// ==================== LUMA OS 1.5.3 (CARBON) WINDOWS 4-LAYER GUARANTEED NOTIFICATION ENGINE ====================
-// Layer 1: Share-safe Win32 CreateFileW (FILE_SHARE_READ|WRITE|DELETE) WPN DB + WAL live reader (immune to NTFS ModTime lag!)
-// Layer 2: Live on-screen Windows Toast Banner + Native Messenger Popup (Telegram Qt, WhatsApp, Discord, Viber) detector
-// Layer 3: Strict Positive Unread-Count Delta detector (NEVER spams boot totals like 3048413 — ONLY fires on +1 real incoming!)
-// Layer 4: Fresh Telegram/Messenger avatar cache resolver
+// ==================== LUMA OS 1.5.4 (CARBON) FROM-SCRATCH REAL NOTIFICATION ENGINE (WINDOWS) ====================
+// Zero muted-channel spam! Zero generic "+4 нажмите чтобы посмотреть"!
+// ONLY real incoming notifications with actual WHO (sender), WHAT (message body), and WHEN (timestamp):
+//   Engine 1: Share-safe Win32 CreateFileW (FILE_SHARE_READ|WRITE|DELETE) WPN DB + WAL direct XML reader
+//             (immune to NTFS cached ModTime lag; parses real FILETIME timestamps & avatars).
+//   Engine 2: Pure-Go COM UIAutomationCore (IUIAutomation) live on-screen Windows Toast Banner reader
+//             (reads exact sender & message text directly off ShellExperienceHost / native popups in real time!).
 
 var (
 	notifKernel32        = syscall.NewLazyDLL("kernel32.dll")
 	notifUser32          = syscall.NewLazyDLL("user32.dll")
+	notifOle32           = syscall.NewLazyDLL("ole32.dll")
+	notifOleAut32        = syscall.NewLazyDLL("oleaut32.dll")
 	notifProcOpenProc    = notifKernel32.NewProc("OpenProcess")
 	notifProcCloseHandle = notifKernel32.NewProc("CloseHandle")
 	notifProcQueryFullPN = notifKernel32.NewProc("QueryFullProcessImageNameW")
 	notifProcEnumWindows = notifUser32.NewProc("EnumWindows")
-	notifProcEnumChild   = notifUser32.NewProc("EnumChildWindows")
 	notifProcIsVis       = notifUser32.NewProc("IsWindowVisible")
 	notifProcGetWinText  = notifUser32.NewProc("GetWindowTextW")
 	notifProcGetClass    = notifUser32.NewProc("GetClassNameW")
 	notifProcGetRect     = notifUser32.NewProc("GetWindowRect")
-	notifProcGetLong     = notifUser32.NewProc("GetWindowLongW")
 	notifProcGetWinPID   = notifUser32.NewProc("GetWindowThreadProcessId")
-	notifProcGetSysMet   = notifUser32.NewProc("GetSystemMetrics")
+	notifProcCoInitEx    = notifOle32.NewProc("CoInitializeEx")
+	notifProcCoUninit    = notifOle32.NewProc("CoUninitialize")
+	notifProcCoCreate    = notifOle32.NewProc("CoCreateInstance")
+	notifProcSysFreeStr  = notifOleAut32.NewProc("SysFreeString")
+	notifProcSysStrLen   = notifOleAut32.NewProc("SysStringLen")
 )
 
 const (
-	notifFileShareAll       = syscall.FILE_SHARE_READ | syscall.FILE_SHARE_WRITE | syscall.FILE_SHARE_DELETE
-	notifProcessQueryLimit  = 0x1000
-	notifGwlExStyle         = ^uintptr(19) // -20
-	notifWsExTopmost        = 0x00000008
-	notifWsExToolWindow     = 0x00000080
-	notifWsExNoActivate     = 0x08000000
+	notifFileShareAll      = syscall.FILE_SHARE_READ | syscall.FILE_SHARE_WRITE | syscall.FILE_SHARE_DELETE
+	notifProcessQueryLimit = 0x1000
+	coinitMultithreaded    = 0x0
+	clsctxInprocServer     = 0x1
+	treeScopeSubtree       = 0x4
 )
 
-// winReadFileShareSafe reads up to maxBytes from the end of a file even while Windows WpnUserService
-// actively holds and writes to wpndatabase.db / wpndatabase.db-wal!
+type comGUID struct {
+	Data1 uint32
+	Data2 uint16
+	Data3 uint16
+	Data4 [8]byte
+}
+
+var (
+	// CLSID_CUIAutomation {ff48dba4-60ef-4201-aa87-54103eef594e}
+	clsidCUIAutomation = comGUID{0xff48dba4, 0x60ef, 0x4201, [8]byte{0xaa, 0x87, 0x54, 0x10, 0x3e, 0xef, 0x59, 0x4e}}
+	// IID_IUIAutomation {30cbe57d-d9d0-452a-ab13-7ac5ac4825ee}
+	iidIUIAutomation = comGUID{0x30cbe57d, 0xd9d0, 0x452a, [8]byte{0xab, 0x13, 0x7a, 0xc5, 0xac, 0x48, 0x25, 0xee}}
+)
+
+// winReadFileShareSafe reads up to maxBytes from the end of a file even while WpnUserService holds it open.
 func winReadFileShareSafe(path string, maxBytes int64) ([]byte, int64, string, error) {
 	pPtr, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
@@ -86,12 +104,7 @@ func winReadFileShareSafe(path string, maxBytes int64) ([]byte, int64, string, e
 		readLen = maxBytes
 	}
 	if offset > 0 {
-		high := int32(offset >> 32)
-		low := int32(offset & 0xFFFFFFFF)
-		_, err = syscall.Seek(h, offset, 0)
-		if err != nil {
-			_ = high
-			_ = low
+		if _, err = syscall.Seek(h, offset, 0); err != nil {
 			return nil, size, "", err
 		}
 	}
@@ -111,7 +124,6 @@ func winReadFileShareSafe(path string, maxBytes int64) ([]byte, int64, string, e
 		total += int(n)
 	}
 	data := buf[:total]
-	// Fast content fingerprint (size + first 4KB + last 16KB) — completely immune to Windows NTFS cached ModTime!
 	hSum := sha256.New()
 	_, _ = fmt.Fprintf(hSum, "%d:", size)
 	if len(data) > 4096 {
@@ -119,27 +131,11 @@ func winReadFileShareSafe(path string, maxBytes int64) ([]byte, int64, string, e
 	} else {
 		hSum.Write(data)
 	}
-	if len(data) > 16384 {
-		hSum.Write(data[len(data)-16384:])
+	if len(data) > 24576 {
+		hSum.Write(data[len(data)-24576:])
 	}
-	return data, size, hex.EncodeToString(hSum.Sum(nil)[:10]), nil
+	return data, size, hex.EncodeToString(hSum.Sum(nil)[:12]), nil
 }
-
-type winPopupState struct {
-	mu                sync.Mutex
-	seenPopups        map[uintptr]time.Time
-	unreadBaseline    map[string]int // appKey -> last observed unread count
-	baselineBootUntil time.Time
-	lastMessengerList []string
-}
-
-var globalWinPopupState = &winPopupState{
-	seenPopups:        map[uintptr]time.Time{},
-	unreadBaseline:    map[string]int{},
-	baselineBootUntil: time.Now().Add(4 * time.Second),
-}
-
-var unreadCountTitleRe = regexp.MustCompile(`(?:\((\d{1,7})\)|\[(\d{1,7})\])`)
 
 func winProcessBaseName(pid uint32) string {
 	if pid == 0 {
@@ -156,8 +152,7 @@ func winProcessBaseName(pid uint32) string {
 	if ok == 0 || sz == 0 {
 		return ""
 	}
-	full := syscall.UTF16ToString(buf[:sz])
-	return strings.ToLower(filepath.Base(full))
+	return strings.ToLower(filepath.Base(syscall.UTF16ToString(buf[:sz])))
 }
 
 func winGetText(hwnd uintptr) string {
@@ -178,22 +173,124 @@ func winGetClass(hwnd uintptr) string {
 	return strings.TrimSpace(syscall.UTF16ToString(buf[:n]))
 }
 
-func winCollectChildTexts(parent uintptr) []string {
-	var out []string
+func comVtableCall(obj uintptr, methodIdx uintptr, args ...uintptr) uintptr {
+	if obj == 0 {
+		return 0x80004003 // E_POINTER
+	}
+	vtable := *(*uintptr)(unsafe.Pointer(obj))
+	if vtable == 0 {
+		return 0x80004003
+	}
+	fnPtr := *(*uintptr)(unsafe.Pointer(vtable + methodIdx*unsafe.Sizeof(uintptr(0))))
+	if fnPtr == 0 {
+		return 0x80004003
+	}
+	callArgs := make([]uintptr, 0, len(args)+1)
+	callArgs = append(callArgs, obj)
+	callArgs = append(callArgs, args...)
+	r1, _, _ := syscall.SyscallN(fnPtr, callArgs...)
+	return r1
+}
+
+func comRelease(obj uintptr) {
+	if obj != 0 {
+		comVtableCall(obj, 2) // IUnknown::Release
+	}
+}
+
+func bstrToGoString(bstr uintptr) string {
+	if bstr == 0 {
+		return ""
+	}
+	defer notifProcSysFreeStr.Call(bstr)
+	n, _, _ := notifProcSysStrLen.Call(bstr)
+	if n == 0 || n > 4096 {
+		return ""
+	}
+	slice := unsafe.Slice((*uint16)(unsafe.Pointer(bstr)), int(n))
+	return strings.TrimSpace(string(utf16.Decode(slice)))
+}
+
+// uiaExtractVisibleTexts walks a live Windows Toast Banner or native popup HWND via IUIAutomation
+// and returns every distinct non-empty text node (e.g. ["Telegram", "Максим", "Привет, пошли гулять!"])
+// WITHOUT ever emitting synthetic/generic "+4" placeholders!
+func uiaExtractVisibleTexts(uia uintptr, trueCond uintptr, hwnd uintptr) []string {
+	if uia == 0 || trueCond == 0 || hwnd == 0 {
+		return nil
+	}
+	var rootElem uintptr
+	// IUIAutomation::ElementFromHandle is vtable index 6
+	hr := comVtableCall(uia, 6, hwnd, uintptr(unsafe.Pointer(&rootElem)))
+	if int32(hr) < 0 || rootElem == 0 {
+		return nil
+	}
+	defer comRelease(rootElem)
+
+	var elemArray uintptr
+	// IUIAutomationElement::FindAll is vtable index 6
+	hr = comVtableCall(rootElem, 6, treeScopeSubtree, trueCond, uintptr(unsafe.Pointer(&elemArray)))
+	if int32(hr) < 0 || elemArray == 0 {
+		return nil
+	}
+	defer comRelease(elemArray)
+
+	var count int32
+	// IUIAutomationElementArray::get_Length is vtable index 3
+	hr = comVtableCall(elemArray, 3, uintptr(unsafe.Pointer(&count)))
+	if int32(hr) < 0 || count <= 0 {
+		return nil
+	}
+	if count > 48 {
+		count = 48
+	}
+
+	var texts []string
 	seen := map[string]bool{}
-	cb := syscall.NewCallback(func(child uintptr, _ uintptr) uintptr {
-		t := winGetText(child)
-		if len(t) >= 2 && len(t) <= 240 && !seen[t] {
-			seen[t] = true
-			out = append(out, t)
+	for i := int32(0); i < count; i++ {
+		var el uintptr
+		// IUIAutomationElementArray::GetElement is vtable index 4
+		hr = comVtableCall(elemArray, 4, uintptr(i), uintptr(unsafe.Pointer(&el)))
+		if int32(hr) < 0 || el == 0 {
+			continue
 		}
-		if len(out) >= 8 {
-			return 0
+		var bstr uintptr
+		// IUIAutomationElement::get_CurrentName is vtable index 23
+		hr = comVtableCall(el, 23, uintptr(unsafe.Pointer(&bstr)))
+		comRelease(el)
+		if int32(hr) < 0 || bstr == 0 {
+			continue
 		}
-		return 1
-	})
-	_, _, _ = notifProcEnumChild.Call(parent, cb, 0)
-	return out
+		txt := bstrToGoString(bstr)
+		if len(txt) < 1 || len(txt) > 320 {
+			continue
+		}
+		low := strings.ToLower(txt)
+		// Skip UI chrome buttons on Windows toast banners
+		if low == "закрыть" || low == "close" || low == "dismiss" || low == "отклонить" ||
+			low == "параметры" || low == "settings" || low == "ответить" || low == "reply" ||
+			low == "отправить" || low == "send" || low == "новое уведомление" || low == "new notification" ||
+			low == "notification" || low == "уведомление" || low == "больше параметров" || low == "more options" ||
+			low == "перейти к параметрам" || low == "go to settings" || low == "прочитать" || low == "mark as read" ||
+			low == "отключить звук" || low == "mute" || strings.HasPrefix(low, "введите ответ") || strings.HasPrefix(low, "type a reply") {
+			continue
+		}
+		if !seen[txt] {
+			seen[txt] = true
+			texts = append(texts, txt)
+		}
+	}
+	return texts
+}
+
+type winNotifRuntimeState struct {
+	mu                sync.Mutex
+	runningMessengers []string
+	uiaActive         bool
+	seenUIAHashes     map[string]time.Time
+}
+
+var globalWinNotifState = &winNotifRuntimeState{
+	seenUIAHashes: map[string]time.Time{},
 }
 
 func winMessengerFromExe(exe string) (string, string) {
@@ -225,14 +322,11 @@ func winMessengerFromExe(exe string) (string, string) {
 
 func winLatestTelegramAvatar() string {
 	appData := os.Getenv("APPDATA")
-	localAppData := os.Getenv("LOCALAPPDATA")
 	candidates := []string{
 		filepath.Join(appData, "Telegram Desktop", "tdata", "user_data", "cache"),
-		filepath.Join(appData, "Telegram Desktop", "tdata", "user_data", "media_cache"),
 		filepath.Join(appData, "AyuGram Desktop", "tdata", "user_data", "cache"),
-		filepath.Join(localAppData, "Temp"),
 	}
-	cutoff := time.Now().Add(-20 * time.Second)
+	cutoff := time.Now().Add(-15 * time.Second)
 	var newestPath string
 	var newestTime time.Time
 	for _, root := range candidates {
@@ -246,9 +340,6 @@ func winLatestTelegramAvatar() string {
 			}
 			low := strings.ToLower(e.Name())
 			if !strings.HasSuffix(low, ".png") && !strings.HasSuffix(low, ".jpg") && !strings.HasSuffix(low, ".jpeg") {
-				continue
-			}
-			if root == filepath.Join(localAppData, "Temp") && !strings.Contains(low, "tg") && !strings.Contains(low, "telegram") && !strings.Contains(low, "avatar") {
 				continue
 			}
 			info, err := e.Info()
@@ -275,40 +366,26 @@ func winLatestTelegramAvatar() string {
 	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw)
 }
 
-// winScanLivePopupsAndDeltas runs every ~650ms on Windows:
-//   1. Detects native Telegram/WhatsApp/Discord/Viber custom popup windows (even when "Use Windows notifications" is OFF!)
-//   2. Detects strict positive unread-badge DELTAS (+1, +2) AFTER startup calibration — NEVER spamming existing totals!
-func (b *OSNotificationBridge) winScanLivePopupsAndDeltas() {
-	scrW, _, _ := notifProcGetSysMet.Call(0)
-	scrH, _, _ := notifProcGetSysMet.Call(1)
-	if scrW == 0 {
-		scrW = 1920
-	}
-	if scrH == 0 {
-		scrH = 1080
-	}
+type notifCandWin struct {
+	hwnd        uintptr
+	exe         string
+	title       string
+	cls         string
+	isWinToast  bool
+	knownApp    string
+	knownAppKey string
+}
 
-	type winSnap struct {
-		hwnd  uintptr
-		pid   uint32
-		exe   string
-		title string
-		cls   string
-		ex    uintptr
-		rect  winRect
-	}
-
-	var snaps []winSnap
-	cb := syscall.NewCallback(func(hwnd uintptr, _ uintptr) uintptr {
+var (
+	notifEnumMu      sync.Mutex
+	notifEnumCands   []notifCandWin
+	notifEnumRunning map[string]bool
+	// Package-level singleton callback — created ONCE ever!
+	// Calling syscall.NewCallback inside a periodic loop exhausts Go's 2000-slot Windows callback table
+	// and causes a hard fatal crash every ~15-30 minutes!
+	notifEnumWinCb = syscall.NewCallback(func(hwnd uintptr, _ uintptr) uintptr {
 		vis, _, _ := notifProcIsVis.Call(hwnd)
 		if vis == 0 {
-			return 1
-		}
-		var r winRect
-		_, _, _ = notifProcGetRect.Call(hwnd, uintptr(unsafe.Pointer(&r)))
-		w := r.Right - r.Left
-		h := r.Bottom - r.Top
-		if w < 120 || h < 36 {
 			return 1
 		}
 		var pid uint32
@@ -317,191 +394,210 @@ func (b *OSNotificationBridge) winScanLivePopupsAndDeltas() {
 		if exe == "" {
 			return 1
 		}
-		appName, _ := winMessengerFromExe(exe)
-		isToastHost := strings.Contains(exe, "shellexperiencehost") || strings.Contains(exe, "experiencehost")
-		if appName == "" && !isToastHost {
+		appName, appKey := winMessengerFromExe(exe)
+		if appKey != "" {
+			notifEnumRunning[appKey] = true
+		}
+
+		var r winRect
+		_, _, _ = notifProcGetRect.Call(hwnd, uintptr(unsafe.Pointer(&r)))
+		w := r.Right - r.Left
+		h := r.Bottom - r.Top
+		if w < 150 || w > 640 || h < 45 || h > 420 {
 			return 1
 		}
-		ex, _, _ := notifProcGetLong.Call(hwnd, notifGwlExStyle)
-		snaps = append(snaps, winSnap{
-			hwnd:  hwnd,
-			pid:   pid,
-			exe:   exe,
-			title: winGetText(hwnd),
-			cls:   winGetClass(hwnd),
-			ex:    ex,
-			rect:  r,
-		})
+
+		cls := winGetClass(hwnd)
+		title := winGetText(hwnd)
+		lowTitle := strings.ToLower(title)
+		lowCls := strings.ToLower(cls)
+
+		isWinToast := (strings.Contains(exe, "shellexperiencehost") || strings.Contains(exe, "experiencehost")) &&
+			(strings.Contains(lowCls, "corewindow") || strings.Contains(lowTitle, "уведомлен") || strings.Contains(lowTitle, "notification"))
+		isMsgPopup := appKey != "" && (strings.Contains(lowCls, "popup") || strings.Contains(lowCls, "toolsavebits") || h <= 240)
+
+		if isWinToast || isMsgPopup {
+			notifEnumCands = append(notifEnumCands, notifCandWin{
+				hwnd:        hwnd,
+				exe:         exe,
+				title:       title,
+				cls:         cls,
+				isWinToast:  isWinToast,
+				knownApp:    appName,
+				knownAppKey: appKey,
+			})
+		}
 		return 1
 	})
-	_, _, _ = notifProcEnumWindows.Call(cb, 0)
+)
 
+// startWinLiveUIAToastWatcher runs on a dedicated COM MTA thread, inspecting ONLY live Windows Toast Banners
+// (ShellExperienceHost / Windows.UI.Core.CoreWindow) and messenger popups that expose REAL sender + message text!
+// ZERO muted-channel unread counter deltas! ZERO generic "+4" placeholders! ZERO callback leaks!
+func (b *OSNotificationBridge) startWinLiveUIAToastWatcher() {
+	go func() {
+		defer func() { _ = recover() }()
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+
+		_, _, _ = notifProcCoInitEx.Call(0, coinitMultithreaded)
+		defer notifProcCoUninit.Call()
+
+		var uia uintptr
+		hr, _, _ := notifProcCoCreate.Call(
+			uintptr(unsafe.Pointer(&clsidCUIAutomation)),
+			0,
+			clsctxInprocServer,
+			uintptr(unsafe.Pointer(&iidIUIAutomation)),
+			uintptr(unsafe.Pointer(&uia)),
+		)
+		var trueCond uintptr
+		if int32(hr) >= 0 && uia != 0 {
+			defer comRelease(uia)
+			// IUIAutomation::CreateTrueCondition is vtable index 21
+			hr2 := comVtableCall(uia, 21, uintptr(unsafe.Pointer(&trueCond)))
+			if int32(hr2) >= 0 && trueCond != 0 {
+				defer comRelease(trueCond)
+				globalWinNotifState.mu.Lock()
+				globalWinNotifState.uiaActive = true
+				globalWinNotifState.mu.Unlock()
+			}
+		}
+
+		ticker := time.NewTicker(450 * time.Millisecond)
+		defer ticker.Stop()
+		for range ticker.C {
+			func() {
+				defer func() { _ = recover() }()
+				b.winScanLiveToastBanners(uia, trueCond)
+			}()
+		}
+	}()
+}
+
+func (b *OSNotificationBridge) winScanLiveToastBanners(uia, trueCond uintptr) {
+	notifEnumMu.Lock()
+	notifEnumCands = notifEnumCands[:0]
+	notifEnumRunning = map[string]bool{}
+	_, _, _ = notifProcEnumWindows.Call(notifEnumWinCb, 0)
+	cands := make([]notifCandWin, len(notifEnumCands))
+	copy(cands, notifEnumCands)
+	running := make([]string, 0, len(notifEnumRunning))
+	for k := range notifEnumRunning {
+		running = append(running, k)
+	}
+	notifEnumMu.Unlock()
+
+	globalWinNotifState.mu.Lock()
+	globalWinNotifState.runningMessengers = running
 	now := time.Now()
-	runningApps := map[string]bool{}
-	maxUnreadByApp := map[string]int{}
-	appDisplay := map[string]string{}
-
-	globalWinPopupState.mu.Lock()
-	// Expire old popup HWNDs after 12 seconds so repeated new popups on recycled HWNDs still register
-	for k, ts := range globalWinPopupState.seenPopups {
-		if now.Sub(ts) > 12*time.Second {
-			delete(globalWinPopupState.seenPopups, k)
+	for k, ts := range globalWinNotifState.seenUIAHashes {
+		if now.Sub(ts) > 5*time.Minute {
+			delete(globalWinNotifState.seenUIAHashes, k)
 		}
 	}
-	booting := now.Before(globalWinPopupState.baselineBootUntil)
-	globalWinPopupState.mu.Unlock()
+	globalWinNotifState.mu.Unlock()
 
-	for _, s := range snaps {
-		appName, appKey := winMessengerFromExe(s.exe)
-		w := s.rect.Right - s.rect.Left
-		h := s.rect.Bottom - s.rect.Top
+	if uia == 0 || trueCond == 0 || len(cands) == 0 {
+		return
+	}
 
-		if appKey != "" {
-			runningApps[appKey] = true
-			appDisplay[appKey] = appName
+	for _, c := range cands {
+		texts := uiaExtractVisibleTexts(uia, trueCond, c.hwnd)
+		if len(texts) < 2 {
+			// STRICT 1.5.4 RULE: NEVER emit a notification without REAL sender + REAL message text!
+			continue
+		}
 
-			// Check if this is a NATIVE MESSENGER POPUP TOAST (e.g. Telegram Desktop's own Qt popup in bottom-right corner!)
-			isTopmostOrTool := (s.ex&notifWsExTopmost) != 0 || (s.ex&notifWsExToolWindow) != 0 || (s.ex&notifWsExNoActivate) != 0
-			isPopupSize := w >= 160 && w <= 560 && h >= 44 && h <= 260
-			isQtPopup := strings.Contains(strings.ToLower(s.cls), "toolsavebits") || strings.Contains(strings.ToLower(s.cls), "popup")
-			nearEdge := s.rect.Right >= int32(scrW)-220 || s.rect.Bottom >= int32(scrH)-320 || s.rect.Top <= 220
+		appName := c.knownApp
+		appKey := c.knownAppKey
+		joined := strings.Join(texts, " ")
+		if appKey == "" {
+			appName, appKey = detectMessengerApp(joined)
+		}
 
-			if isPopupSize && (isTopmostOrTool || isQtPopup) && nearEdge {
-				globalWinPopupState.mu.Lock()
-				_, already := globalWinPopupState.seenPopups[s.hwnd]
-				if !already {
-					globalWinPopupState.seenPopups[s.hwnd] = now
-				}
-				globalWinPopupState.mu.Unlock()
-
-				if !already && !booting {
-					// Give WPN DB 650ms head start so if Windows Toast XML has the full message text, we don't duplicate!
-					snapCopy := s
-					go func() {
-						time.Sleep(650 * time.Millisecond)
-						if b.hasRecentFromApp(appKey, 4500*time.Millisecond) {
-							return
-						}
-						childTexts := winCollectChildTexts(snapCopy.hwnd)
-						sender := appName
-						body := "Новое входящее сообщение · Нажмите, чтобы открыть"
-						if len(childTexts) >= 2 {
-							sender = childTexts[0]
-							body = childTexts[1]
-						} else if len(childTexts) == 1 && !strings.EqualFold(childTexts[0], appName) {
-							body = childTexts[0]
-						} else if snapCopy.title != "" && !strings.EqualFold(snapCopy.title, appName) && !strings.Contains(strings.ToLower(snapCopy.title), "notification") {
-							body = snapCopy.title
-						}
-						avatar := ""
-						if appKey == "telegram" {
-							avatar = winLatestTelegramAvatar()
-						}
-						b.pushLiveDetected(OSNotificationItem{
-							ID:        fmt.Sprintf("pop_%d", time.Now().UnixNano()),
-							App:       appName,
-							AppKey:    appKey,
-							Sender:    truncateUTF8(sender, 64),
-							Title:     truncateUTF8(sender, 96),
-							Body:      truncateUTF8(body, 260),
-							AvatarURL: avatar,
-							Direction: "incoming",
-							Level:     "info",
-							Source:    "native_popup",
-							Time:      time.Now().Format("15:04"),
-							Timestamp: time.Now().UnixMilli(),
-						})
-					}()
-				}
-			}
-
-			// Track main window unread count ONLY for strict positive DELTA (+1/+2), NEVER emitting raw totals!
-			if m := unreadCountTitleRe.FindStringSubmatch(s.title); len(m) >= 3 {
-				numStr := m[1]
-				if numStr == "" {
-					numStr = m[2]
-				}
-				if cnt, err := strconv.Atoi(numStr); err == nil && cnt >= 0 {
-					if cnt > maxUnreadByApp[appKey] {
-						maxUnreadByApp[appKey] = cnt
-					}
-				}
-			} else if w > 500 && h > 350 {
-				// Main window open with 0 unread badge
-				if _, ok := maxUnreadByApp[appKey]; !ok {
-					maxUnreadByApp[appKey] = 0
-				}
+		// Parse [AppName?, Sender, MessageBody, ExtraChat?] cleanly
+		idx := 0
+		if len(texts) >= 3 {
+			firstApp, firstKey := detectMessengerApp(texts[0])
+			if firstKey != "system" && len(texts[0]) <= 36 {
+				appName, appKey = firstApp, firstKey
+				idx = 1
 			}
 		}
-	}
-
-	// Update running messengers cache (used to enrich unknown WPN toasts!)
-	var runningList []string
-	for k := range runningApps {
-		runningList = append(runningList, k)
-	}
-	globalWinPopupState.mu.Lock()
-	globalWinPopupState.lastMessengerList = runningList
-
-	// Compute strict positive unread deltas (e.g. 3048413 -> 3048414 = delta +1!)
-	type deltaAlert struct {
-		appKey  string
-		appName string
-		delta   int
-	}
-	var deltas []deltaAlert
-	for appKey, cnt := range maxUnreadByApp {
-		prev, hasPrev := globalWinPopupState.unreadBaseline[appKey]
-		globalWinPopupState.unreadBaseline[appKey] = cnt
-		if !booting && hasPrev && cnt > prev {
-			d := cnt - prev
-			if d > 0 && d <= 200 {
-				deltas = append(deltas, deltaAlert{
-					appKey:  appKey,
-					appName: appDisplay[appKey],
-					delta:   d,
-				})
-			}
+		if idx+1 >= len(texts) {
+			continue
 		}
-	}
-	globalWinPopupState.mu.Unlock()
+		rawTitle := strings.TrimSpace(texts[idx])
+		body := strings.TrimSpace(texts[idx+1])
+		chat := ""
+		if idx+2 < len(texts) && len(texts[idx+2]) < 64 && !strings.EqualFold(texts[idx+2], rawTitle) {
+			chat = strings.TrimSpace(texts[idx+2])
+		}
 
-	for _, da := range deltas {
-		alert := da
-		go func() {
-			// Wait 1100ms so WPN DB (full text + avatar) or native popup watcher always takes priority!
-			time.Sleep(1100 * time.Millisecond)
-			if b.hasRecentFromApp(alert.appKey, 5500*time.Millisecond) {
-				return
-			}
-			body := "Новое входящее сообщение · Нажмите, чтобы открыть"
-			if alert.delta > 1 {
-				body = fmt.Sprintf("Новые входящие сообщения (+%d) · Нажмите, чтобы открыть", alert.delta)
-			}
-			avatar := ""
-			if alert.appKey == "telegram" {
-				avatar = winLatestTelegramAvatar()
-			}
-			b.pushLiveDetected(OSNotificationItem{
-				ID:        fmt.Sprintf("dlt_%d", time.Now().UnixNano()),
-				App:       alert.appName,
-				AppKey:    alert.appKey,
-				Sender:    alert.appName,
-				Title:     alert.appName,
-				Body:      body,
-				AvatarURL: avatar,
-				Direction: "incoming",
-				Level:     "info",
-				Source:    "unread_delta",
-				Time:      time.Now().Format("15:04"),
-				Timestamp: time.Now().UnixMilli(),
-			})
-		}()
+		if rawTitle == "" || body == "" {
+			continue
+		}
+		if !isIncomingUserMessage(rawTitle, body, joined) {
+			continue
+		}
+		if appKey == "system" {
+			appName, appKey = "Сообщение", "message"
+		}
+
+		sender, parsedChat := splitSenderAndChat(rawTitle)
+		if chat == "" {
+			chat = parsedChat
+		}
+		fp := hashToastFingerprint(appKey, sender, body)
+
+		globalWinNotifState.mu.Lock()
+		_, seen := globalWinNotifState.seenUIAHashes[fp]
+		if !seen {
+			globalWinNotifState.seenUIAHashes[fp] = now
+		}
+		globalWinNotifState.mu.Unlock()
+		if seen {
+			continue
+		}
+
+		avatar := ""
+		if appKey == "telegram" {
+			avatar = winLatestTelegramAvatar()
+		}
+
+		displayTitle := sender
+		if chat != "" && !strings.Contains(sender, "→") {
+			displayTitle = sender + " → " + chat
+		}
+
+		b.pushUniqueRealMessage(OSNotificationItem{
+			ID:        fmt.Sprintf("uia_%d", time.Now().UnixNano()),
+			App:       appName,
+			AppKey:    appKey,
+			Sender:    truncateUTF8(sender, 64),
+			Chat:      truncateUTF8(chat, 64),
+			Title:     truncateUTF8(displayTitle, 96),
+			Body:      truncateUTF8(body, 320),
+			AvatarURL: avatar,
+			Direction: "incoming",
+			Level:     "info",
+			Source:    "live_toast_uia",
+			Time:      now.Format("15:04"),
+			DateLabel: now.Format("02.01.2006"),
+			Timestamp: now.UnixMilli(),
+		})
 	}
 }
 
 func winGetRunningMessengers() []string {
-	globalWinPopupState.mu.Lock()
-	defer globalWinPopupState.mu.Unlock()
-	return append([]string{}, globalWinPopupState.lastMessengerList...)
+	globalWinNotifState.mu.Lock()
+	defer globalWinNotifState.mu.Unlock()
+	return append([]string{}, globalWinNotifState.runningMessengers...)
+}
+
+func winIsUIAActive() bool {
+	globalWinNotifState.mu.Lock()
+	defer globalWinNotifState.mu.Unlock()
+	return globalWinNotifState.uiaActive
 }

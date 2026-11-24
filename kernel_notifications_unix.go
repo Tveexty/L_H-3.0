@@ -44,12 +44,14 @@ func winReadFileShareSafe(path string, maxBytes int64) ([]byte, int64, string, e
 	} else {
 		h.Write(data)
 	}
-	if len(data) > 16384 {
-		h.Write(data[len(data)-16384:])
+	if len(data) > 24576 {
+		h.Write(data[len(data)-24576:])
 	}
-	return data, size, hex.EncodeToString(h.Sum(nil)[:10]), nil
+	return data, size, hex.EncodeToString(h.Sum(nil)[:12]), nil
 }
 
-func (b *OSNotificationBridge) winScanLivePopupsAndDeltas() {}
+func (b *OSNotificationBridge) startWinLiveUIAToastWatcher() {}
 
 func winGetRunningMessengers() []string { return nil }
+
+func winIsUIAActive() bool { return false }

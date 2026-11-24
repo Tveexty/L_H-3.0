@@ -3,8 +3,8 @@ import {
   AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowRight, ArrowUp, BarChart3,
   Bold, ChevronLeft, ChevronRight, Circle, Copy, Eraser, Grid, Highlighter,
   Image as ImageIcon, Italic, Layers, Layout, Maximize2, MessageSquare, PenTool,
-  Play, Plus, RotateCw, Sparkles, Square, Star, Table2, Trash2, Triangle, Type,
-  Underline, X,
+  Play, Plus, RotateCw, Sparkles, Square, Star, Table2, Trash2, Type,
+  Underline, Undo2, X,
 } from 'lucide-react';
 import {
   OfficeSlide, OfficeSlideElement, RibbonBigBtn, RibbonGroup, RibbonSmallBtn,
@@ -24,6 +24,87 @@ export interface LumaPowerPointEditorProps {
 }
 
 const PPT_ORANGE = '#B7472A';
+
+const PPT_KEYFRAMES_CSS = `
+@keyframes lumaPptAppear { 0% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes lumaPptFadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes lumaPptFlyLeft { 0% { opacity: 0; transform: translateX(-115%); } 100% { opacity: 1; transform: translateX(0); } }
+@keyframes lumaPptFlyRight { 0% { opacity: 0; transform: translateX(115%); } 100% { opacity: 1; transform: translateX(0); } }
+@keyframes lumaPptFlyUp { 0% { opacity: 0; transform: translateY(115%); } 100% { opacity: 1; transform: translateY(0); } }
+@keyframes lumaPptFlyDown { 0% { opacity: 0; transform: translateY(-115%); } 100% { opacity: 1; transform: translateY(0); } }
+@keyframes lumaPptFloatIn { 0% { opacity: 0; transform: translateY(28px) scale(0.95); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes lumaPptZoomIn { 0% { opacity: 0; transform: scale(0.22); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes lumaPptBounce {
+  0% { opacity: 0; transform: translateY(-48px) scale(0.84); }
+  48% { opacity: 1; transform: translateY(8px) scale(1.04); }
+  72% { transform: translateY(-10px) scale(0.98); }
+  88% { transform: translateY(3px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes lumaPptPulse {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.12); }
+  68% { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+@keyframes lumaPptSpin { 0% { opacity: 0; transform: rotate(-360deg) scale(0.35); } 100% { opacity: 1; transform: rotate(0deg) scale(1); } }
+@keyframes lumaPptSway {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(-6deg); }
+  55% { transform: rotate(5deg); }
+  80% { transform: rotate(-2.5deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes lumaTrFade { 0% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes lumaTrPush { 0% { opacity: 0.3; transform: translateX(38%); } 100% { opacity: 1; transform: translateX(0); } }
+@keyframes lumaTrWipe { 0% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 0 0 0); } }
+@keyframes lumaTrSlide { 0% { opacity: 0; transform: translateY(28px); } 100% { opacity: 1; transform: translateY(0); } }
+@keyframes lumaTrZoom { 0% { opacity: 0; transform: scale(0.84); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes lumaTrFlip { 0% { opacity: 0; transform: perspective(1200px) rotateY(75deg); } 100% { opacity: 1; transform: perspective(1200px) rotateY(0deg); } }
+@keyframes lumaTrBlinds { 0% { opacity: 0.2; clip-path: inset(50% 0 50% 0); } 100% { opacity: 1; clip-path: inset(0 0 0 0); } }
+@keyframes lumaTrFlash { 0% { opacity: 0.25; filter: brightness(2.6); } 100% { opacity: 1; filter: brightness(1); } }
+@keyframes lumaTrMorph { 0% { opacity: 0.35; transform: scale(0.95); filter: blur(4px); } 100% { opacity: 1; transform: scale(1); filter: blur(0); } }
+`;
+
+function getElementAnimStyle(anim?: SlideAnimKind, delaySec = 0): React.CSSProperties {
+  if (!anim || anim === 'none') return {};
+  const map: Record<Exclude<SlideAnimKind, 'none'>, string> = {
+    appear: 'lumaPptAppear 0.16s ease-out',
+    fade_in: 'lumaPptFadeIn 0.65s ease-out',
+    fly_left: 'lumaPptFlyLeft 0.62s cubic-bezier(0.22,1,0.36,1)',
+    fly_right: 'lumaPptFlyRight 0.62s cubic-bezier(0.22,1,0.36,1)',
+    fly_up: 'lumaPptFlyUp 0.62s cubic-bezier(0.22,1,0.36,1)',
+    fly_down: 'lumaPptFlyDown 0.62s cubic-bezier(0.22,1,0.36,1)',
+    float_in: 'lumaPptFloatIn 0.72s ease-out',
+    zoom_in: 'lumaPptZoomIn 0.56s cubic-bezier(0.16,1,0.3,1)',
+    bounce: 'lumaPptBounce 0.82s ease',
+    pulse: 'lumaPptPulse 0.75s ease-in-out',
+    spin: 'lumaPptSpin 0.72s cubic-bezier(0.22,1,0.36,1)',
+    sway: 'lumaPptSway 0.8s ease-in-out',
+  };
+  const spec = map[anim];
+  if (!spec) return {};
+  return {
+    animation: `${spec} ${delaySec.toFixed(2)}s both`,
+  };
+}
+
+function getSlideTransitionStyle(transition?: SlideTransitionKind, durationSec = 0.55): React.CSSProperties {
+  if (!transition || transition === 'none') return {};
+  const dur = Math.max(0.2, Math.min(2.0, durationSec));
+  const map: Record<Exclude<SlideTransitionKind, 'none'>, string> = {
+    fade: `lumaTrFade ${dur}s ease-out both`,
+    push: `lumaTrPush ${dur}s cubic-bezier(0.22,1,0.36,1) both`,
+    wipe: `lumaTrWipe ${dur}s ease-out both`,
+    slide: `lumaTrSlide ${dur}s cubic-bezier(0.22,1,0.36,1) both`,
+    zoom: `lumaTrZoom ${dur}s cubic-bezier(0.16,1,0.3,1) both`,
+    flip: `lumaTrFlip ${dur}s cubic-bezier(0.22,1,0.36,1) both`,
+    blinds: `lumaTrBlinds ${dur}s ease-out both`,
+    flash: `lumaTrFlash ${dur}s ease-out both`,
+    morph: `lumaTrMorph ${dur}s ease-out both`,
+  };
+  return { animation: map[transition] };
+}
 
 const SLIDE_LAYOUTS: { id: string; name: string; build: () => OfficeSlideElement[] }[] = [
   {
@@ -104,10 +185,13 @@ const ANIMATIONS: { id: SlideAnimKind; label: string }[] = [
   { id: 'fly_left', label: 'Вылет слева' },
   { id: 'fly_right', label: 'Вылет справа' },
   { id: 'fly_up', label: 'Вылет снизу' },
+  { id: 'fly_down', label: 'Вылет сверху' },
+  { id: 'float_in', label: 'Всплытие' },
   { id: 'zoom_in', label: 'Масштаб' },
   { id: 'bounce', label: 'Отскок' },
   { id: 'pulse', label: 'Пульсация' },
   { id: 'spin', label: 'Вращение' },
+  { id: 'sway', label: 'Качание' },
 ];
 
 function renderShapeClipPath(shape?: SlideShapeKind): React.CSSProperties {
@@ -149,6 +233,9 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
   const [layoutPickerOpen, setLayoutPickerOpen] = useState(false);
   const [shapesPickerOpen, setShapesPickerOpen] = useState(false);
   const [animPreviewTick, setAnimPreviewTick] = useState(0);
+  const [singlePreviewElId, setSinglePreviewElId] = useState<string | null>(null);
+  const [transitionPreviewTick, setTransitionPreviewTick] = useState(0);
+  const [undoStack, setUndoStack] = useState<OfficeSlide[][]>([]);
 
   // Freehand drawing tool state
   const [drawTool, setDrawTool] = useState<'select' | 'pen' | 'highlighter' | 'eraser'>('select');
@@ -169,6 +256,22 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
   const imgInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedEl = slide?.elements.find((e) => e.id === selectedElId) || null;
+
+  const pushUndoSnapshot = () => {
+    setUndoStack((prev) => {
+      const snap = JSON.parse(JSON.stringify(slides)) as OfficeSlide[];
+      return [...prev.slice(-24), snap];
+    });
+  };
+
+  const handleUndo = () => {
+    setUndoStack((prev) => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      onChangeSlides(last);
+      return prev.slice(0, -1);
+    });
+  };
 
   useEffect(() => {
     if (!presenting) {
@@ -195,6 +298,34 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
     };
   }, [presenting, slides.length]);
 
+  // Editor hotkeys: F5 / Shift+F5 slideshow, Delete selected object, Ctrl+Z Undo
+  useEffect(() => {
+    if (presenting) return;
+    const onEditorKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const inField = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if (e.key === 'F5') {
+        e.preventDefault();
+        startSlideshow(e.shiftKey ? activeSlideIdx : 0, false);
+        return;
+      }
+      if (inField) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedElId && !editingElId) {
+        e.preventDefault();
+        updateSlide((s) => ({ ...s, elements: s.elements.filter((x) => x.id !== selectedElId) }));
+        setSelectedElId(null);
+      }
+    };
+    window.addEventListener('keydown', onEditorKey);
+    return () => window.removeEventListener('keydown', onEditorKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presenting, activeSlideIdx, selectedElId, editingElId, slides]);
+
   useEffect(() => {
     if (!tellMeCommand) return;
     const c = tellMeCommand.cmd;
@@ -205,16 +336,17 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tellMeCommand]);
 
-  const updateSlide = (updater: (s: OfficeSlide) => OfficeSlide) => {
+  const updateSlide = (updater: (s: OfficeSlide) => OfficeSlide, recordUndo = true) => {
+    if (recordUndo) pushUndoSnapshot();
     onChangeSlides(slides.map((s, i) => (i === activeSlideIdx ? updater(s) : s)));
   };
 
-  const updateSelectedEl = (patch: Partial<OfficeSlideElement>) => {
+  const updateSelectedEl = (patch: Partial<OfficeSlideElement>, recordUndo = true) => {
     if (!selectedElId) return;
     updateSlide((s) => ({
       ...s,
       elements: s.elements.map((el) => (el.id === selectedElId ? { ...el, ...patch } : el)),
-    }));
+    }), recordUndo);
   };
 
   const addElement = (el: OfficeSlideElement) => {
@@ -310,7 +442,12 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
     const startY = e.clientY;
     const origX = el.x;
     const origY = el.y;
+    let moved = false;
     const onMove = (ev: MouseEvent) => {
+      if (!moved) {
+        moved = true;
+        pushUndoSnapshot();
+      }
       const dxPct = ((ev.clientX - startX) / rect.width) * 100;
       const dyPct = ((ev.clientY - startY) / rect.height) * 100;
       let nx = Math.max(-10, Math.min(95, origX + dxPct));
@@ -321,7 +458,7 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
       updateSlide((s) => ({
         ...s,
         elements: s.elements.map((item) => (item.id === el.id ? { ...item, x: nx, y: ny } : item)),
-      }));
+      }), false);
     };
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
@@ -338,7 +475,12 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
     const startX = e.clientX;
     const startY = e.clientY;
     const { x: ox, y: oy, w: ow, h: oh } = el;
+    let resized = false;
     const onMove = (ev: MouseEvent) => {
+      if (!resized) {
+        resized = true;
+        pushUndoSnapshot();
+      }
       const dx = ((ev.clientX - startX) / rect.width) * 100;
       const dy = ((ev.clientY - startY) / rect.height) * 100;
       let x = ox, y = oy, w = ow, h = oh;
@@ -349,7 +491,7 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
       updateSlide((s) => ({
         ...s,
         elements: s.elements.map((item) => (item.id === el.id ? { ...item, x, y, w, h } : item)),
-      }));
+      }), false);
     };
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
@@ -401,7 +543,7 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
     updateSlide((s) => ({
       ...s,
       drawings: (s.drawings || []).map((st) => (st.id === sid ? { ...st, points: [...st.points, { x: px, y: py }] } : st)),
-    }));
+    }), false);
   };
 
   // Element renderer (reused in Main Canvas, Thumbnails, and Fullscreen Slideshow!)
@@ -557,108 +699,139 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
     { id: 'view', label: 'Вид' },
   ];
 
-  const renderSlideCanvas = (targetSlide: OfficeSlide, interactive: boolean) => (
-    <div
-      ref={interactive ? canvasRef : undefined}
-      onMouseDown={interactive ? handleCanvasMouseDown : undefined}
-      onMouseMove={interactive ? handleCanvasMouseMove : undefined}
-      onMouseUp={() => { drawingActiveRef.current = null; }}
-      style={{
-        background: targetSlide.background,
-        aspectRatio: aspect === '16:9' ? '16 / 9' : '4 / 3',
-        cursor: interactive && drawTool !== 'select' ? 'crosshair' : 'default',
-      }}
-      className="relative w-full max-w-[920px] shadow-[0_12px_40px_rgba(0,0,0,0.28)] rounded-[3px] overflow-hidden select-none"
-    >
-      {/* Alignment Guides */}
-      {interactive && showGuides && (
-        <div className="pointer-events-none absolute inset-0 z-10">
-          <div className="absolute inset-y-0 left-1/2 w-px border-l border-dashed border-[#B7472A]/50" />
-          <div className="absolute inset-x-0 top-1/2 h-px border-t border-dashed border-[#B7472A]/50" />
-        </div>
-      )}
+  const renderSlideCanvas = (targetSlide: OfficeSlide, interactive: boolean, slideKeySuffix = '') => {
+    const playTransition = !interactive || transitionPreviewTick > 0;
+    const transitionStyle = playTransition
+      ? getSlideTransitionStyle(targetSlide.transition, targetSlide.transitionDuration || 0.55)
+      : {};
+    const slideAnimKey = interactive
+      ? `edit_${targetSlide.id}_tr${transitionPreviewTick}`
+      : `show_${targetSlide.id}_${slideKeySuffix}`;
 
-      {/* Slide Elements */}
-      {targetSlide.elements.map((el) => {
-        const isSel = interactive && el.id === selectedElId;
-        return (
-          <div
-            key={`${el.id}_${animPreviewTick}`}
-            onMouseDown={(e) => interactive && startDragEl(e, el)}
-            onDoubleClick={(e) => {
-              if (!interactive) return;
-              e.stopPropagation();
-              setSelectedElId(el.id);
-              if (el.type === 'text' || el.type === 'shape' || el.type === 'wordart') setEditingElId(el.id);
-            }}
-            style={{
-              left: `${el.x}%`,
-              top: `${el.y}%`,
-              width: `${el.w}%`,
-              height: `${el.h}%`,
-              opacity: el.opacity ?? 1,
-              transform: el.rotate ? `rotate(${el.rotate}deg)` : undefined,
-            }}
-            className={`absolute ${interactive ? 'cursor-move' : ''} ${
-              isSel ? 'ring-2 ring-[#B7472A] z-20' : 'z-10'
-            } ${el.anim && el.anim !== 'none' ? 'animate-in fade-in duration-300' : ''}`}
-          >
-            {renderElementBody(el, interactive)}
-
-            {/* Animation order badge when on Animations tab */}
-            {interactive && tab === 'animations' && el.anim && el.anim !== 'none' && (
-              <span className="absolute -top-2.5 -left-2.5 w-5 h-5 rounded-full bg-[#B7472A] text-white text-[10px] font-bold flex items-center justify-center shadow">
-                {el.animOrder || 1}
-              </span>
-            )}
-
-            {/* 6 Resize Handles like real MS PowerPoint */}
-            {isSel && (
-              <>
-                {(['nw', 'ne', 'sw', 'se', 'e', 's'] as const).map((h) => {
-                  const posCls =
-                    h === 'nw' ? '-top-1.5 -left-1.5 cursor-nwse-resize' :
-                    h === 'ne' ? '-top-1.5 -right-1.5 cursor-nesw-resize' :
-                    h === 'sw' ? '-bottom-1.5 -left-1.5 cursor-nesw-resize' :
-                    h === 'se' ? '-bottom-1.5 -right-1.5 cursor-nwse-resize' :
-                    h === 'e' ? 'top-1/2 -right-1.5 -translate-y-1/2 cursor-ew-resize' :
-                    '-bottom-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize';
-                  return (
-                    <span
-                      key={h}
-                      onMouseDown={(ev) => startResizeEl(ev, el, h)}
-                      className={`absolute w-2.5 h-2.5 rounded-full bg-white border-2 border-[#B7472A] shadow z-30 ${posCls}`}
-                    />
-                  );
-                })}
-              </>
-            )}
+    return (
+      <div
+        key={slideAnimKey}
+        ref={interactive ? canvasRef : undefined}
+        onMouseDown={interactive ? handleCanvasMouseDown : undefined}
+        onMouseMove={interactive ? handleCanvasMouseMove : undefined}
+        onMouseUp={() => { drawingActiveRef.current = null; }}
+        style={{
+          background: targetSlide.background,
+          aspectRatio: aspect === '16:9' ? '16 / 9' : '4 / 3',
+          cursor: interactive && drawTool !== 'select' ? 'crosshair' : 'default',
+          ...transitionStyle,
+        }}
+        className="relative w-full max-w-[920px] shadow-[0_12px_40px_rgba(0,0,0,0.28)] rounded-[3px] overflow-hidden select-none"
+      >
+        {/* Alignment Guides */}
+        {interactive && showGuides && (
+          <div className="pointer-events-none absolute inset-0 z-10">
+            <div className="absolute inset-y-0 left-1/2 w-px border-l border-dashed border-[#B7472A]/50" />
+            <div className="absolute inset-x-0 top-1/2 h-px border-t border-dashed border-[#B7472A]/50" />
           </div>
-        );
-      })}
+        )}
 
-      {/* Freehand Vector Drawings Layer */}
-      {(targetSlide.drawings || []).length > 0 && (
-        <svg viewBox="0 0 1000 562" className="pointer-events-none absolute inset-0 w-full h-full z-25">
-          {targetSlide.drawings!.map((st) => (
-            <polyline
-              key={st.id}
-              fill="none"
-              stroke={st.color}
-              strokeWidth={st.width}
-              strokeOpacity={st.opacity}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              points={st.points.map((p) => `${p.x},${p.y}`).join(' ')}
-            />
-          ))}
-        </svg>
-      )}
-    </div>
-  );
+        {/* Slide Elements */}
+        {targetSlide.elements.map((el) => {
+          const isSel = interactive && el.id === selectedElId;
+          const hasAnim = Boolean(el.anim && el.anim !== 'none');
+          const shouldAnimate =
+            hasAnim &&
+            (!interactive ||
+              (animPreviewTick > 0 && (!singlePreviewElId || singlePreviewElId === el.id)));
+          const orderIdx = Math.max(1, el.animOrder || 1);
+          const delaySec =
+            singlePreviewElId === el.id
+              ? 0
+              : Math.max(0, (el.animDelay ?? (orderIdx - 1) * 0.32));
+          const innerAnimStyle = shouldAnimate ? getElementAnimStyle(el.anim, delaySec) : {};
+          const innerAnimKey = shouldAnimate
+            ? `${el.id}_anim_${interactive ? animPreviewTick : slideKeySuffix}`
+            : `${el.id}_static`;
+
+          return (
+            <div
+              key={el.id}
+              onMouseDown={(e) => interactive && startDragEl(e, el)}
+              onDoubleClick={(e) => {
+                if (!interactive) return;
+                e.stopPropagation();
+                setSelectedElId(el.id);
+                if (el.type === 'text' || el.type === 'shape' || el.type === 'wordart') setEditingElId(el.id);
+              }}
+              style={{
+                left: `${el.x}%`,
+                top: `${el.y}%`,
+                width: `${el.w}%`,
+                height: `${el.h}%`,
+                opacity: el.opacity ?? 1,
+                transform: el.rotate ? `rotate(${el.rotate}deg)` : undefined,
+              }}
+              className={`absolute ${interactive ? 'cursor-move' : ''} ${
+                isSel ? 'ring-2 ring-[#B7472A] z-20' : 'z-10'
+              }`}
+            >
+              {/* Separate inner wrapper keeps @keyframes transform independent of outer rotate() */}
+              <div key={innerAnimKey} style={innerAnimStyle} className="w-full h-full">
+                {renderElementBody(el, interactive)}
+              </div>
+
+              {/* Animation order badge when on Animations tab */}
+              {interactive && tab === 'animations' && hasAnim && (
+                <span className="absolute -top-2.5 -left-2.5 w-5 h-5 rounded-full bg-[#B7472A] text-white text-[10px] font-bold flex items-center justify-center shadow z-30">
+                  {orderIdx}
+                </span>
+              )}
+
+              {/* 6 Resize Handles like real MS PowerPoint */}
+              {isSel && (
+                <>
+                  {(['nw', 'ne', 'sw', 'se', 'e', 's'] as const).map((h) => {
+                    const posCls =
+                      h === 'nw' ? '-top-1.5 -left-1.5 cursor-nwse-resize' :
+                      h === 'ne' ? '-top-1.5 -right-1.5 cursor-nesw-resize' :
+                      h === 'sw' ? '-bottom-1.5 -left-1.5 cursor-nesw-resize' :
+                      h === 'se' ? '-bottom-1.5 -right-1.5 cursor-nwse-resize' :
+                      h === 'e' ? 'top-1/2 -right-1.5 -translate-y-1/2 cursor-ew-resize' :
+                      '-bottom-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize';
+                    return (
+                      <span
+                        key={h}
+                        onMouseDown={(ev) => startResizeEl(ev, el, h)}
+                        className={`absolute w-2.5 h-2.5 rounded-full bg-white border-2 border-[#B7472A] shadow z-30 ${posCls}`}
+                      />
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Freehand Vector Drawings Layer */}
+        {(targetSlide.drawings || []).length > 0 && (
+          <svg viewBox="0 0 1000 562" className="pointer-events-none absolute inset-0 w-full h-full z-[25]">
+            {targetSlide.drawings!.map((st) => (
+              <polyline
+                key={st.id}
+                fill="none"
+                stroke={st.color}
+                strokeWidth={st.width}
+                strokeOpacity={st.opacity}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                points={st.points.map((p) => `${p.x},${p.y}`).join(' ')}
+              />
+            ))}
+          </svg>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col flex-1 min-h-0 select-none">
+      <style>{PPT_KEYFRAMES_CSS}</style>
       <input ref={imgInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
 
       {/* AUTHENTIC MS POWERPOINT RIBBON TABS */}
@@ -698,7 +871,15 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
       <div className={`flex items-stretch overflow-x-auto border-b px-1.5 py-0.5 ${ribbonBg}`}>
         {tab === 'home' && (
           <>
-            <RibbonGroup label="Слайды" isDark={officeDark}>
+            <RibbonGroup label="Отмена и Слайды" isDark={officeDark}>
+              <RibbonBigBtn
+                icon={<Undo2 className="w-5 h-5 text-sky-600" />}
+                label="Отменить"
+                disabled={undoStack.length === 0}
+                accent={PPT_ORANGE}
+                isDark={officeDark}
+                onClick={handleUndo}
+              />
               <RibbonBigBtn icon={<Plus className="w-5 h-5 text-[#B7472A]" />} label="Создать слайд" accent={PPT_ORANGE} isDark={officeDark} onClick={() => setLayoutPickerOpen((v) => !v)} />
               <div className="flex flex-col gap-0.5">
                 <RibbonSmallBtn icon={<Layout className="w-3.5 h-3.5" />} label="Макеты" active={layoutPickerOpen} accent={PPT_ORANGE} isDark={officeDark} onClick={() => setLayoutPickerOpen((v) => !v)} />
@@ -893,7 +1074,15 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
 
         {tab === 'transitions' && (
           <>
-            <RibbonGroup label="Переход к этому слайду" isDark={officeDark}>
+            <RibbonGroup label="Просмотр" isDark={officeDark}>
+              <RibbonBigBtn
+                icon={<Play className="w-5 h-5 text-emerald-600" />}
+                label="Просмотр"
+                isDark={officeDark}
+                onClick={() => setTransitionPreviewTick((v) => v + 1)}
+              />
+            </RibbonGroup>
+            <RibbonGroup label="Переход к этому слайду (10 эффектов)" isDark={officeDark}>
               <div className="flex items-center gap-1">
                 {TRANSITIONS.map((trItem) => (
                   <RibbonBigBtn
@@ -903,18 +1092,35 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
                     active={slide.transition === trItem.id}
                     accent={PPT_ORANGE}
                     isDark={officeDark}
-                    onClick={() => updateSlide((s) => ({ ...s, transition: trItem.id }))}
+                    onClick={() => {
+                      updateSlide((s) => ({ ...s, transition: trItem.id }));
+                      setTransitionPreviewTick((v) => v + 1);
+                    }}
                   />
                 ))}
               </div>
             </RibbonGroup>
             <RibbonGroup label="Время" isDark={officeDark}>
+              <div className="flex flex-col gap-1 px-1">
+                <label className="text-[10px] opacity-75">Длит. (сек):</label>
+                <select
+                  value={slide.transitionDuration || 0.55}
+                  onChange={(e) => {
+                    updateSlide((s) => ({ ...s, transitionDuration: Number(e.target.value) }));
+                    setTransitionPreviewTick((v) => v + 1);
+                  }}
+                  className={`h-6 px-1.5 rounded border text-[11px] outline-none ${officeDark ? 'bg-[#1e1e1e] border-white/15' : 'bg-white border-[#C8C6C4]'}`}
+                >
+                  {[0.3, 0.55, 0.8, 1.2, 1.6].map((d) => <option key={d} value={d}>{d} с</option>)}
+                </select>
+              </div>
               <RibbonBigBtn
                 icon={<Copy className="w-4 h-4" />}
                 label="Ко всем слайдам"
                 isDark={officeDark}
                 onClick={() => {
-                  onChangeSlides(slides.map((s) => ({ ...s, transition: slide.transition })));
+                  pushUndoSnapshot();
+                  onChangeSlides(slides.map((s) => ({ ...s, transition: slide.transition, transitionDuration: slide.transitionDuration })));
                   onNotify?.('Переходы', 'Переход применён ко всем слайдам', 'ok');
                 }}
               />
@@ -923,21 +1129,74 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
         )}
 
         {tab === 'animations' && (
-          <RibbonGroup label="Анимация выделенного объекта" isDark={officeDark}>
-            <RibbonBigBtn icon={<Play className="w-5 h-5 text-emerald-600" />} label="Просмотр" isDark={officeDark} onClick={() => setAnimPreviewTick((v) => v + 1)} />
-            {ANIMATIONS.map((an) => (
+          <>
+            <RibbonGroup label="Просмотр" isDark={officeDark}>
               <RibbonBigBtn
-                key={an.id}
-                icon={<Star className="w-4 h-4 text-emerald-500" />}
-                label={an.label}
-                disabled={!selectedEl}
-                active={selectedEl?.anim === an.id}
-                accent={PPT_ORANGE}
+                icon={<Play className="w-5 h-5 text-emerald-600" />}
+                label="Воспроизвести"
                 isDark={officeDark}
-                onClick={() => updateSelectedEl({ anim: an.id, animOrder: selectedEl?.animOrder || 1 })}
+                onClick={() => {
+                  setSinglePreviewElId(null);
+                  setAnimPreviewTick((v) => v + 1);
+                }}
               />
-            ))}
-          </RibbonGroup>
+            </RibbonGroup>
+            <RibbonGroup label={selectedEl ? 'Анимация выделенного объекта (12 эффектов)' : 'Кликните объект на слайде для анимации'} isDark={officeDark}>
+              {ANIMATIONS.map((an) => (
+                <RibbonBigBtn
+                  key={an.id}
+                  icon={<Star className="w-4 h-4 text-emerald-500" />}
+                  label={an.label}
+                  disabled={!selectedEl}
+                  active={selectedEl?.anim === an.id}
+                  accent={PPT_ORANGE}
+                  isDark={officeDark}
+                  onClick={() => {
+                    if (!selectedEl) return;
+                    const maxOrder = slide.elements.reduce((acc, x) => Math.max(acc, x.anim && x.anim !== 'none' ? (x.animOrder || 1) : 0), 0);
+                    const nextOrder = an.id === 'none' ? undefined : (selectedEl.animOrder || maxOrder + 1);
+                    updateSelectedEl({ anim: an.id, animOrder: nextOrder });
+                    setSinglePreviewElId(selectedEl.id);
+                    setAnimPreviewTick((v) => v + 1);
+                  }}
+                />
+              ))}
+            </RibbonGroup>
+            <RibbonGroup label="Порядок показа" isDark={officeDark}>
+              <div className="flex flex-col gap-1 px-1">
+                <div className="flex items-center gap-1 text-[10px]">
+                  <span className="opacity-70">Порядок:</span>
+                  <select
+                    disabled={!selectedEl || !selectedEl.anim || selectedEl.anim === 'none'}
+                    value={selectedEl?.animOrder || 1}
+                    onChange={(e) => {
+                      updateSelectedEl({ animOrder: Number(e.target.value) });
+                      setSinglePreviewElId(null);
+                      setAnimPreviewTick((v) => v + 1);
+                    }}
+                    className={`h-5 px-1 rounded border text-[10px] outline-none ${officeDark ? 'bg-[#1e1e1e] border-white/15' : 'bg-white border-[#C8C6C4]'}`}
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>#{n}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-center gap-1 text-[10px]">
+                  <span className="opacity-70">Задержка:</span>
+                  <select
+                    disabled={!selectedEl || !selectedEl.anim || selectedEl.anim === 'none'}
+                    value={selectedEl?.animDelay ?? 0}
+                    onChange={(e) => {
+                      updateSelectedEl({ animDelay: Number(e.target.value) });
+                      setSinglePreviewElId(null);
+                      setAnimPreviewTick((v) => v + 1);
+                    }}
+                    className={`h-5 px-1 rounded border text-[10px] outline-none ${officeDark ? 'bg-[#1e1e1e] border-white/15' : 'bg-white border-[#C8C6C4]'}`}
+                  >
+                    {[0, 0.25, 0.5, 0.8, 1.2, 1.8].map((d) => <option key={d} value={d}>{d} с</option>)}
+                  </select>
+                </div>
+              </div>
+            </RibbonGroup>
+          </>
         )}
 
         {tab === 'slideshow' && (
@@ -957,6 +1216,62 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
           </RibbonGroup>
         )}
       </div>
+
+      {/* INLINE QUICK EDITOR FOR SELECTED SMARTART OR CHART ELEMENT */}
+      {selectedEl && selectedEl.type === 'smartart' && (
+        <div className={`px-4 py-1.5 border-b flex flex-wrap items-center gap-2 text-xs ${officeDark ? 'bg-[#1E1E1E] border-white/10 text-zinc-100' : 'bg-[#FFF7ED] border-[#FED7AA] text-slate-900'}`}>
+          <span className="font-bold text-[#B7472A]">SmartArt:</span>
+          <select
+            value={selectedEl.smartArtLayout || 'process'}
+            onChange={(e) => updateSelectedEl({ smartArtLayout: e.target.value as OfficeSlideElement['smartArtLayout'] })}
+            className={`px-2 py-0.5 rounded border text-xs outline-none ${officeDark ? 'bg-black/30 border-white/15' : 'bg-white border-zinc-300'}`}
+          >
+            <option value="process">Процесс →</option>
+            <option value="hierarchy">Список / Иерархия</option>
+            <option value="matrix">Матрица 2×2</option>
+            <option value="pyramid">Пирамида</option>
+          </select>
+          <span className="opacity-70">Пункты (через «;»):</span>
+          <input
+            value={(selectedEl.smartArtItems || []).join('; ')}
+            onChange={(e) =>
+              updateSelectedEl({
+                smartArtItems: e.target.value.split(';').map((s) => s.trim()).filter(Boolean),
+              })
+            }
+            className={`flex-1 min-w-[200px] px-2 py-0.5 rounded border text-xs outline-none ${officeDark ? 'bg-black/30 border-white/15' : 'bg-white border-zinc-300'}`}
+          />
+        </div>
+      )}
+
+      {selectedEl && selectedEl.type === 'chart' && (
+        <div className={`px-4 py-1.5 border-b flex flex-wrap items-center gap-2 text-xs ${officeDark ? 'bg-[#1E1E1E] border-white/10 text-zinc-100' : 'bg-[#EFF6FF] border-[#BFDBFE] text-slate-900'}`}>
+          <span className="font-bold text-sky-600">Диаграмма:</span>
+          <input
+            value={selectedEl.chartTitle || ''}
+            onChange={(e) => updateSelectedEl({ chartTitle: e.target.value })}
+            placeholder="Заголовок..."
+            className={`w-36 px-2 py-0.5 rounded border text-xs outline-none ${officeDark ? 'bg-black/30 border-white/15' : 'bg-white border-zinc-300'}`}
+          />
+          <span className="opacity-70">Данные («Метка:Число» через «;»):</span>
+          <input
+            value={(selectedEl.chartData || []).map((d) => `${d.label}:${d.value}`).join('; ')}
+            onChange={(e) => {
+              const parsed = e.target.value
+                .split(';')
+                .map((p) => p.trim())
+                .filter(Boolean)
+                .map((p) => {
+                  const [lbl, valStr] = p.split(':');
+                  const num = Number((valStr || '0').trim().replace(',', '.'));
+                  return { label: (lbl || '').trim() || 'Item', value: Number.isNaN(num) ? 0 : num };
+                });
+              if (parsed.length > 0) updateSelectedEl({ chartData: parsed });
+            }}
+            className={`flex-1 min-w-[220px] px-2 py-0.5 rounded border font-mono text-xs outline-none ${officeDark ? 'bg-black/30 border-white/15' : 'bg-white border-zinc-300'}`}
+          />
+        </div>
+      )}
 
       {/* SLIDE LAYOUTS PICKER POPOVER */}
       {layoutPickerOpen && (
@@ -1106,7 +1421,7 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
       {presenting && (
         <div
           onMouseMove={(e) => setLaserPos({ x: e.clientX, y: e.clientY })}
-          className="fixed inset-0 z-[1300] bg-black text-white flex flex-col"
+          className="fixed inset-0 z-[9800] bg-black text-white flex flex-col"
         >
           <div className="flex-1 min-h-0 flex items-center justify-center p-4 gap-4 relative overflow-hidden">
             {screenMask !== 'none' ? (
@@ -1119,7 +1434,7 @@ export const LumaPowerPointEditor: React.FC<LumaPowerPointEditorProps> = ({
             ) : null}
 
             <div className={`${presenterView ? 'w-2/3' : 'w-full'} h-full flex items-center justify-center`}>
-              {renderSlideCanvas(slides[presentIdx] || slides[0], false)}
+              {renderSlideCanvas(slides[presentIdx] || slides[0], false, String(presentIdx))}
             </div>
 
             {presenterView && (

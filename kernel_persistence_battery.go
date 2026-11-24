@@ -155,10 +155,14 @@ func (b *BatteryTracker) saveLocked() {
 }
 
 func (b *BatteryTracker) loop() {
+	defer func() { _ = recover() }()
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
-		b.recordSample()
+		func() {
+			defer func() { _ = recover() }()
+			b.recordSample()
+		}()
 	}
 }
 

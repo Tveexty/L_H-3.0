@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -521,9 +522,15 @@ func (p *platformProbe) hasActiveMediaOrBrowserWindow() bool {
 	return false
 }
 
-// backgroundLoop (LumaCore 1.4): 100% pure Win32 syscalls for CPU, GPU Chip+VRAM, Network, Adaptive Keyboard & Open Windows (<0.05% CPU, 0% WMI!),
-// with adaptive pacing when host CPU > 80% and smart 30s SMTC media polling ONLY when Dynamic Island is active AND a player/browser is open!
+// backgroundLoop (LumaCore 1.4.7): 100% pure Win32 syscalls for CPU, GPU Chip+VRAM, Network, Adaptive Keyboard & Open Windows (<0.05% CPU, 0% WMI!),
+// with panic-proof ticks, adaptive pacing when host CPU > 80%, and single-flight 30s SMTC media polling!
 func (p *platformProbe) backgroundLoop() {
+	defer func() { _ = recover() }()
+	safeCall := func(fn func()) {
+		defer func() { _ = recover() }()
+		fn()
+	}
+
 	cpuNetTicker := time.NewTicker(1 * time.Second)
 	kbdTicker := time.NewTicker(120 * time.Millisecond)
 	winTicker := time.NewTicker(1600 * time.Millisecond)
@@ -533,34 +540,39 @@ func (p *platformProbe) backgroundLoop() {
 	defer winTicker.Stop()
 	defer mediaTicker.Stop()
 
-	p.refreshOpenWindows()
-	p.pollActiveKbdFast()
-	p.sampleGpuTelemetryNative()
+	safeCall(p.refreshOpenWindows)
+	safeCall(p.pollActiveKbdFast)
+	safeCall(p.sampleGpuTelemetryNative)
 
+	var mediaInFlight int32
 	tickCount := 0
 	for {
 		select {
 		case <-cpuNetTicker.C:
 			tickCount++
-			p.sampleCPUTimes()
-			p.pollNetworkNative()
+			safeCall(p.sampleCPUTimes)
+			safeCall(p.pollNetworkNative)
 			p.mu.RLock()
 			highLoad := p.cpuPercent >= 80
 			p.mu.RUnlock()
 			// Adaptive GPU pacing: every 1s normally, every 2s under heavy gaming/render load
 			if !highLoad || tickCount%2 == 0 {
-				p.sampleGpuTelemetryNative()
+				safeCall(p.sampleGpuTelemetryNative)
 			}
 		case <-kbdTicker.C:
-			p.pollActiveKbdFast()
+			safeCall(p.pollActiveKbdFast)
 		case <-winTicker.C:
-			p.refreshOpenWindows()
+			safeCall(p.refreshOpenWindows)
 		case <-mediaTicker.C:
 			p.mu.RLock()
 			allowMedia := p.mediaPollEnabled
 			p.mu.RUnlock()
-			if allowMedia && p.hasActiveMediaOrBrowserWindow() {
-				go p.pollMediaAndNetwork()
+			if allowMedia && p.hasActiveMediaOrBrowserWindow() && atomic.CompareAndSwapInt32(&mediaInFlight, 0, 1) {
+				go func() {
+					defer atomic.StoreInt32(&mediaInFlight, 0)
+					defer func() { _ = recover() }()
+					p.pollMediaAndNetwork()
+				}()
 			}
 		}
 	}

@@ -2,12 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 )
 
-// ==================== LUMA OS 1.5.3 (CARBON) IDLE SLEEP & SCREEN-OFF POWER ENGINE ====================
+// ==================== LUMA OS 1.5.4 (CARBON) IDLE SLEEP + BATTERY CHARGE LIMIT (BATTERY CARE) ENGINE ====================
 
 type IdleSleepConfig struct {
 	DisplayOffACMin     int  `json:"display_off_ac_min"`     // 0 = Never
@@ -29,10 +30,31 @@ type IdleSleepResponse struct {
 	Message         string          `json:"message,omitempty"`
 }
 
+// ChargeLimitConfig controls laptop Battery Care (e.g., cap charging at 60% / 80% / 85% / 90% / 100%)
+type ChargeLimitConfig struct {
+	Enabled        bool `json:"enabled"`
+	LimitPercent   int  `json:"limit_percent"` // 50..100
+	NotifyAtLimit  bool `json:"notify_at_limit"`
+	AutoEcoAtLimit bool `json:"auto_eco_at_limit"`
+}
+
+type ChargeLimitResponse struct {
+	OK              bool              `json:"ok"`
+	Config          ChargeLimitConfig `json:"config"`
+	BatteryPresent  bool              `json:"battery_present"`
+	BatteryPercent  int               `json:"battery_percent"`
+	BatteryCharging bool              `json:"battery_charging"`
+	LimitReached    bool              `json:"limit_reached"`
+	HardwareNote    string            `json:"hardware_note"`
+	Message         string            `json:"message,omitempty"`
+}
+
 type IdleSleepManager struct {
-	mu      sync.Mutex
-	cfgPath string
-	cfg     IdleSleepConfig
+	mu            sync.Mutex
+	cfgPath       string
+	chargeCfgPath string
+	cfg           IdleSleepConfig
+	chargeCfg     ChargeLimitConfig
 }
 
 func defaultIdleSleepConfig() IdleSleepConfig {
@@ -48,12 +70,22 @@ func defaultIdleSleepConfig() IdleSleepConfig {
 	}
 }
 
+func defaultChargeLimitConfig() ChargeLimitConfig {
+	return ChargeLimitConfig{
+		Enabled:        false,
+		LimitPercent:   80,
+		NotifyAtLimit:  true,
+		AutoEcoAtLimit: true,
+	}
+}
+
 func NewIdleSleepManager(vfsRoot string) *IdleSleepManager {
 	m := &IdleSleepManager{
-		cfgPath: filepath.Join(vfsRoot, "power_idle_sleep.json"),
-		cfg:     defaultIdleSleepConfig(),
+		cfgPath:       filepath.Join(vfsRoot, "power_idle_sleep.json"),
+		chargeCfgPath: filepath.Join(vfsRoot, "power_charge_limit.json"),
+		cfg:           defaultIdleSleepConfig(),
+		chargeCfg:     defaultChargeLimitConfig(),
 	}
-	// First load real OS values if available (Windows powrprof.dll), then overlay persisted Luma settings
 	if osCfg, ok := platformReadIdleSleepConfig(); ok {
 		m.cfg.DisplayOffACMin = osCfg.DisplayOffACMin
 		m.cfg.SleepACMin = osCfg.SleepACMin
@@ -65,6 +97,12 @@ func NewIdleSleepManager(vfsRoot string) *IdleSleepManager {
 		var saved IdleSleepConfig
 		if json.Unmarshal(raw, &saved) == nil {
 			m.cfg = clampIdleSleepConfig(saved)
+		}
+	}
+	if raw, err := os.ReadFile(m.chargeCfgPath); err == nil {
+		var saved ChargeLimitConfig
+		if json.Unmarshal(raw, &saved) == nil {
+			m.chargeCfg = clampChargeLimitConfig(saved)
 		}
 	}
 	if m.cfg.KeepAwake {
@@ -88,6 +126,16 @@ func clampIdleSleepConfig(c IdleSleepConfig) IdleSleepConfig {
 	c.DisplayOffDCMin = clamp(c.DisplayOffDCMin, 720)
 	c.SleepDCMin = clamp(c.SleepDCMin, 720)
 	c.HibernateAfterMin = clamp(c.HibernateAfterMin, 1440)
+	return c
+}
+
+func clampChargeLimitConfig(c ChargeLimitConfig) ChargeLimitConfig {
+	if c.LimitPercent < 50 {
+		c.LimitPercent = 50
+	}
+	if c.LimitPercent > 100 {
+		c.LimitPercent = 100
+	}
 	return c
 }
 
@@ -125,4 +173,43 @@ func (m *IdleSleepManager) Update(next IdleSleepConfig, acOnline bool) IdleSleep
 		PlatformApplied: applied,
 		Message:         msg,
 	}
+}
+
+func (m *IdleSleepManager) ChargeStatus(hw HostHardwareSnapshot) ChargeLimitResponse {
+	m.mu.Lock()
+	cfg := m.chargeCfg
+	m.mu.Unlock()
+	reached := cfg.Enabled && hw.BatteryPresent && hw.BatteryCharging && hw.BatteryPercent >= cfg.LimitPercent
+	note := "Умный контроль заряда Luma активен — предупредит и включит бережный режим при достижении лимита"
+	if hw.BatteryPresent {
+		note = fmt.Sprintf("Защита АКБ до %d%% — увеличивает ресурс батареи до 2.4×", cfg.LimitPercent)
+	}
+	return ChargeLimitResponse{
+		OK:              true,
+		Config:          cfg,
+		BatteryPresent:  hw.BatteryPresent,
+		BatteryPercent:  hw.BatteryPercent,
+		BatteryCharging: hw.BatteryCharging,
+		LimitReached:    reached,
+		HardwareNote:    note,
+	}
+}
+
+func (m *IdleSleepManager) UpdateChargeLimit(next ChargeLimitConfig, hw HostHardwareSnapshot) ChargeLimitResponse {
+	next = clampChargeLimitConfig(next)
+	m.mu.Lock()
+	m.chargeCfg = next
+	if raw, err := json.MarshalIndent(next, "", "  "); err == nil {
+		_ = os.MkdirAll(filepath.Dir(m.chargeCfgPath), 0o700)
+		_ = os.WriteFile(m.chargeCfgPath, raw, 0o600)
+	}
+	m.mu.Unlock()
+
+	resp := m.ChargeStatus(hw)
+	if next.Enabled {
+		resp.Message = fmt.Sprintf("Режим сбережения батареи включён: лимит %d%%", next.LimitPercent)
+	} else {
+		resp.Message = "Ограничение заряда отключено (заряд до 100%)"
+	}
+	return resp
 }

@@ -1,13 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlignCenter, AlignLeft, AlignRight, ArrowDownAZ, ArrowUpZA, BarChart3, Bold,
   Columns, Copy, Eraser, Filter, Italic, Lock, MessageSquare, PieChart, Plus,
-  Rows, Sigma, Sparkles, Table2, Trash2, TrendingUp, Underline, Unlock, WrapText, X,
+  Rows, Search, Sigma, Sparkles, Table2, Trash2, TrendingUp, Underline, Undo2, Unlock, WrapText, X,
 } from 'lucide-react';
 import {
-  CellMeta, colIndexToLetter, evaluateExcelFormula, ExcelChartDef,
+  CellMeta, colIndexToLetter, ExcelChartDef,
   formatExcelDisplayValue, makeCellKey, OfficeSheet, RibbonBigBtn, RibbonGroup, RibbonSmallBtn,
 } from './officeTypes';
+import { evaluateFullExcelFormula, FormulaCatalogItem, FULL_EXCEL_FORMULA_CATALOG } from './excelFormulas';
 
 export type ExcelRibbonTab = 'home' | 'insert' | 'page' | 'formulas' | 'data' | 'review' | 'view';
 
@@ -26,25 +27,8 @@ const EXCEL_GREEN = '#107C41';
 const FILL_COLORS = ['#FFFFFF', '#E6F4EA', '#DBEAFE', '#FEF3C7', '#FEE2E2', '#F3E8FF', '#107C41', '#185ABD', '#1F2937'];
 const FONT_COLORS = ['#111827', '#107C41', '#185ABD', '#B91C1C', '#B45309', '#6D28D9', '#FFFFFF'];
 
-const FORMULA_LIBRARY: { cat: string; name: string; template: string; desc: string }[] = [
-  { cat: 'Основные', name: 'СУММ / SUM', template: '=СУММ(B2:B7)', desc: 'Складывает числа в диапазоне' },
-  { cat: 'Основные', name: 'СРЗНАЧ / AVERAGE', template: '=СРЗНАЧ(B2:B7)', desc: 'Среднее арифметическое диапазона' },
-  { cat: 'Основные', name: 'МИН / MIN', template: '=МИН(B2:B7)', desc: 'Минимальное значение' },
-  { cat: 'Основные', name: 'МАКС / MAX', template: '=МАКС(B2:B7)', desc: 'Максимальное значение' },
-  { cat: 'Основные', name: 'СЧЁТ / COUNT', template: '=СЧЁТ(B2:B7)', desc: 'Количество чисел в диапазоне' },
-  { cat: 'Логика', name: 'ЕСЛИ / IF', template: '=ЕСЛИ(C2<=B2;"В норме";"Превышение")', desc: 'Условие: если истина / иначе' },
-  { cat: 'Логика', name: 'СЧЁТЕСЛИ / COUNTIF', template: '=СЧЁТЕСЛИ(B2:B7;">10000")', desc: 'Подсчёт ячеек по условию' },
-  { cat: 'Логика', name: 'СУММЕСЛИ / SUMIF', template: '=СУММЕСЛИ(A2:A7;"Продукты*";C2:C7)', desc: 'Сумма ячеек по условию' },
-  { cat: 'Логика', name: 'ЕСЛИОШИБКА / IFERROR', template: '=ЕСЛИОШИБКА(C2/B2;0)', desc: 'Заменяет ошибку значением' },
-  { cat: 'Поиск', name: 'ВПР / VLOOKUP', template: '=ВПР(A2;A2:D7;3;0)', desc: 'Вертикальный поиск в таблице' },
-  { cat: 'Поиск', name: 'ИНДЕКС / INDEX', template: '=ИНДЕКС(A2:C7;2;2)', desc: 'Значение по номеру строки и столбца' },
-  { cat: 'Поиск', name: 'ПОИСКПОЗ / MATCH', template: '=ПОИСКПОЗ("Транспорт";A2:A7;0)', desc: 'Позиция элемента в диапазоне' },
-  { cat: 'Финансы', name: 'ПЛТ / PMT', template: '=-ПЛТ(0.16/12;24;500000)', desc: 'Ежемесячный платёж по кредиту' },
-  { cat: 'Финансы', name: 'БС / FV', template: '=-БС(0.12/12;36;10000;0)', desc: 'Будущая стоимость вклада' },
-  { cat: 'Статистика', name: 'МЕДИАНА / MEDIAN', template: '=МЕДИАНА(B2:B7)', desc: 'Медиана выборки' },
-  { cat: 'Статистика', name: 'СТАНДОТКЛОН / STDEV', template: '=СТАНДОТКЛОН(B2:B7)', desc: 'Стандартное отклонение' },
-  { cat: 'Текст/Дата', name: 'СЦЕПИТЬ / CONCAT', template: '=СЦЕПИТЬ(A2;" — ";B2)', desc: 'Объединяет несколько строк' },
-  { cat: 'Текст/Дата', name: 'СЕГОДНЯ / TODAY', template: '=СЕГОДНЯ()', desc: 'Текущая дата' },
+const FORMULA_CATEGORIES: ('Все' | FormulaCatalogItem['cat'])[] = [
+  'Все', 'Математика', 'Статистика', 'Логика', 'Поиск', 'Финансы', 'Текст', 'Дата и время', 'Инженерные',
 ];
 
 type CondFmtMode = 'none' | 'databars' | 'colorscale' | 'duplicates' | 'gt_avg';
@@ -74,8 +58,12 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
   const [filterCol, setFilterCol] = useState(0);
   const [filterText, setFilterText] = useState('');
   const [fxWizardOpen, setFxWizardOpen] = useState(false);
+  const [fxSearch, setFxSearch] = useState('');
+  const [fxCategory, setFxCategory] = useState<'Все' | FormulaCatalogItem['cat']>('Все');
   const [zoom, setZoom] = useState(100);
   const [clipboardRange, setClipboardRange] = useState<{ cells: Record<string, string>; w: number; h: number } | null>(null);
+  const [undoStack, setUndoStack] = useState<OfficeSheet[][]>([]);
+  const gridWrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!tellMeCommand) return;
@@ -87,7 +75,24 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tellMeCommand]);
 
-  const updateSheet = (updater: (s: OfficeSheet) => OfficeSheet) => {
+  const pushUndoSnapshot = () => {
+    setUndoStack((prev) => {
+      const snap = JSON.parse(JSON.stringify(sheets)) as OfficeSheet[];
+      return [...prev.slice(-24), snap];
+    });
+  };
+
+  const handleUndo = () => {
+    setUndoStack((prev) => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      onChangeSheets(last);
+      return prev.slice(0, -1);
+    });
+  };
+
+  const updateSheet = (updater: (s: OfficeSheet) => OfficeSheet, recordUndo = true) => {
+    if (recordUndo) pushUndoSnapshot();
     onChangeSheets(sheets.map((s, i) => (i === activeSheetIdx ? updater(s) : s)));
   };
 
@@ -118,7 +123,7 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
       ? activeKey
       : `${makeCellKey(selBounds.c1, selBounds.r1)}:${makeCellKey(selBounds.c2, selBounds.r2)}`;
 
-  const setCellRaw = (key: string, val: string) => {
+  const setCellRaw = (key: string, val: string, recordUndo = true) => {
     if (sheet.protected) {
       onNotify?.('Excel · Защита листа', 'Лист защищён. Снимите защиту на вкладке «Рецензирование».', 'warn');
       return;
@@ -128,7 +133,7 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
       if (val === '') delete nextCells[key];
       else nextCells[key] = val;
       return { ...s, cells: nextCells };
-    });
+    }, recordUndo);
   };
 
   const applyStyleToSelection = (patch: Partial<CellMeta>) => {
@@ -142,14 +147,28 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
     });
   };
 
-  // Evaluate all displayed values once per render for speed & conditional formatting
+  // Evaluate all displayed values once per render using the full 140+ RU+EN Excel formula engine
   const evaluatedMap = useMemo(() => {
     const map: Record<string, string> = {};
     for (const [k, raw] of Object.entries(sheet.cells)) {
-      map[k] = raw.trim().startsWith('=') ? evaluateExcelFormula(raw, sheet.cells) : raw;
+      map[k] = raw.trim().startsWith('=') ? evaluateFullExcelFormula(raw, sheet.cells) : raw;
     }
     return map;
   }, [sheet.cells]);
+
+  const filteredFormulaCatalog = useMemo(() => {
+    const q = fxSearch.trim().toLowerCase();
+    return FULL_EXCEL_FORMULA_CATALOG.filter((f) => {
+      if (fxCategory !== 'Все' && f.cat !== fxCategory) return false;
+      if (!q) return true;
+      return (
+        f.ru.toLowerCase().includes(q) ||
+        f.en.toLowerCase().includes(q) ||
+        f.desc.toLowerCase().includes(q) ||
+        f.cat.toLowerCase().includes(q)
+      );
+    });
+  }, [fxSearch, fxCategory]);
 
   // Live Excel Status Bar stats for currently selected range (Average / Count / Sum!)
   const selectionStats = useMemo(() => {
@@ -474,7 +493,15 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
       <div className={`flex items-stretch overflow-x-auto border-b px-1.5 py-0.5 ${ribbonBg}`}>
         {tab === 'home' && (
           <>
-            <RibbonGroup label="Буфер обмена" isDark={officeDark}>
+            <RibbonGroup label="Буфер и Отмена" isDark={officeDark}>
+              <RibbonBigBtn
+                icon={<Undo2 className="w-5 h-5 text-sky-600" />}
+                label="Отменить"
+                disabled={undoStack.length === 0}
+                accent={EXCEL_GREEN}
+                isDark={officeDark}
+                onClick={handleUndo}
+              />
               <RibbonBigBtn
                 icon={<Copy className="w-5 h-5 text-[#107C41]" />}
                 label="Копировать"
@@ -653,13 +680,13 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
 
         {tab === 'formulas' && (
           <>
-            <RibbonGroup label="Библиотека функций (55+)" isDark={officeDark}>
+            <RibbonGroup label="Библиотека функций (140+)" isDark={officeDark}>
               <RibbonBigBtn icon={<span className="font-serif italic font-black text-lg text-[#107C41]">fx</span>} label="Вставить функцию" active={fxWizardOpen} accent={EXCEL_GREEN} isDark={officeDark} onClick={() => setFxWizardOpen((v) => !v)} />
               <RibbonBigBtn icon={<Sigma className="w-5 h-5 text-[#107C41]" />} label="СУММ" isDark={officeDark} onClick={() => runAutoSum('СУММ')} />
               <RibbonBigBtn icon={<span className="font-mono text-xs font-bold">AVG</span>} label="СРЗНАЧ" isDark={officeDark} onClick={() => runAutoSum('СРЗНАЧ')} />
               <RibbonBigBtn icon={<span className="font-mono text-xs font-bold">MAX</span>} label="МАКС" isDark={officeDark} onClick={() => runAutoSum('МАКС')} />
               <RibbonBigBtn icon={<span className="font-mono text-xs font-bold">MIN</span>} label="МИН" isDark={officeDark} onClick={() => runAutoSum('МИН')} />
-              <RibbonBigBtn icon={<Sparkles className="w-5 h-5 text-violet-500" />} label="ЕСЛИ / ВПР" isDark={officeDark} onClick={() => setFxWizardOpen(true)} />
+              <RibbonBigBtn icon={<Sparkles className="w-5 h-5 text-violet-500" />} label="Все 140+ формул" isDark={officeDark} onClick={() => setFxWizardOpen(true)} />
             </RibbonGroup>
             <RibbonGroup label="Зависимости" isDark={officeDark}>
               <RibbonBigBtn
@@ -769,17 +796,49 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
         )}
       </div>
 
-      {/* FORMULA WIZARD POPOVER */}
+      {/* SEARCHABLE 140+ FORMULA WIZARD POPOVER */}
       {fxWizardOpen && (
         <div className={`px-4 py-2.5 border-b text-xs space-y-2 ${officeDark ? 'bg-[#1E1E1E] border-white/10 text-zinc-100' : 'bg-[#F0FDF4] border-[#BBF7D0] text-slate-900'}`}>
-          <div className="flex items-center justify-between">
-            <span className="font-bold text-[#107C41]">Мастер функций Excel (55+ формул на русском и английском) — кликните для вставки в {activeKey}</span>
-            <button type="button" onClick={() => setFxWizardOpen(false)} className="cursor-pointer"><X className="w-3.5 h-3.5" /></button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-bold text-[#107C41]">
+              Мастер функций Excel (140+ формул RU + EN) — вставка в {activeKey}
+            </span>
+            <div className="flex items-center gap-2">
+              <div className={`flex items-center gap-1.5 px-2 py-1 rounded border ${officeDark ? 'bg-black/30 border-white/15' : 'bg-white border-emerald-300'}`}>
+                <Search className="w-3.5 h-3.5 opacity-60" />
+                <input
+                  value={fxSearch}
+                  onChange={(e) => setFxSearch(e.target.value)}
+                  placeholder="Поиск (ВПР, ПЛТ, XLOOKUP, КОРРЕЛ...)"
+                  className="bg-transparent outline-none text-[11px] w-52"
+                />
+              </div>
+              <button type="button" onClick={() => setFxWizardOpen(false)} className="cursor-pointer p-1 hover:bg-black/10 rounded"><X className="w-3.5 h-3.5" /></button>
+            </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5">
-            {FORMULA_LIBRARY.map((f) => (
+          <div className="flex flex-wrap items-center gap-1">
+            {FORMULA_CATEGORIES.map((cat) => (
               <button
-                key={f.name}
+                key={cat}
+                type="button"
+                onClick={() => setFxCategory(cat)}
+                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold cursor-pointer transition ${
+                  fxCategory === cat
+                    ? 'bg-[#107C41] text-white'
+                    : officeDark
+                    ? 'bg-white/10 text-zinc-300 hover:bg-white/15'
+                    : 'bg-white text-slate-700 border border-emerald-200 hover:bg-emerald-50'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+            <span className="ml-auto text-[10px] opacity-65">Показано: {filteredFormulaCatalog.length}</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5 max-h-48 overflow-y-auto pr-1">
+            {filteredFormulaCatalog.map((f) => (
+              <button
+                key={`${f.cat}_${f.ru}_${f.en}`}
                 type="button"
                 onClick={() => {
                   setCellRaw(activeKey, f.template);
@@ -789,7 +848,7 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
                   officeDark ? 'bg-white/5 border-white/12 hover:border-emerald-400' : 'bg-white border-emerald-200 hover:border-[#107C41]'
                 }`}
               >
-                <div className="font-mono font-bold text-[10px] text-[#107C41]">{f.name}</div>
+                <div className="font-mono font-bold text-[10px] text-[#107C41] truncate">{f.ru} / {f.en}</div>
                 <div className="text-[9px] opacity-70 truncate">{f.desc}</div>
               </button>
             ))}
@@ -831,7 +890,7 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
           <button
             type="button"
             onClick={() => setFxWizardOpen((v) => !v)}
-            title="Вставить функцию (55+ формул)"
+            title="Вставить функцию (140+ формул RU + EN)"
             className={`px-2 py-1 rounded border font-serif italic font-black text-sm cursor-pointer ${officeDark ? 'border-white/15 hover:bg-white/10 text-emerald-400' : 'border-[#C8C6C4] hover:bg-[#E6F4EA] text-[#107C41]'}`}
           >
             fx
@@ -843,9 +902,10 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
               if (e.key === 'Enter') {
                 setSelStart((s) => ({ ...s, row: Math.min(sheet.rows - 1, s.row + 1) }));
                 setSelEnd((s) => ({ ...s, row: Math.min(sheet.rows - 1, s.row + 1) }));
+                gridWrapRef.current?.focus({ preventScroll: true });
               }
             }}
-            placeholder="Введите значение или формулу, например: =СУММ(B2:B7) или =ВПР(...)"
+            placeholder="Введите значение или любую из 140+ формул: =СУММ(B2:B7), =ВПР(...), =ПРОСМОТРX(...), =ПЛТ(...)"
             className={`flex-1 px-2.5 py-1 rounded border font-mono text-xs outline-none ${
               officeDark ? 'bg-[#141414] border-white/15 text-white focus:border-[#107C41]' : 'bg-white border-[#C8C6C4] focus:border-[#107C41]'
             }`}
@@ -855,7 +915,74 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
 
       {/* MAIN SPREADSHEET GRID + LIVE CHARTS DOCK */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        <div className={`flex-1 min-w-0 overflow-auto ${officeDark ? 'bg-[#18181A]' : 'bg-white'}`}>
+        <div
+          ref={gridWrapRef}
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (editingCell) return;
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+              e.preventDefault();
+              handleUndo();
+              return;
+            }
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+              e.preventDefault();
+              const dr = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+              const dc = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+              if (e.shiftKey) {
+                setSelEnd((cur) => ({
+                  col: Math.max(0, Math.min(sheet.cols - 1, cur.col + dc)),
+                  row: Math.max(0, Math.min(sheet.rows - 1, cur.row + dr)),
+                }));
+              } else {
+                const next = {
+                  col: Math.max(0, Math.min(sheet.cols - 1, selStart.col + dc)),
+                  row: Math.max(0, Math.min(sheet.rows - 1, selStart.row + dr)),
+                };
+                setSelStart(next);
+                setSelEnd(next);
+              }
+              return;
+            }
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              const nextCol = Math.max(0, Math.min(sheet.cols - 1, selStart.col + (e.shiftKey ? -1 : 1)));
+              setSelStart({ col: nextCol, row: selStart.row });
+              setSelEnd({ col: nextCol, row: selStart.row });
+              return;
+            }
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              const nextRow = Math.max(0, Math.min(sheet.rows - 1, selStart.row + (e.shiftKey ? -1 : 1)));
+              setSelStart({ col: selStart.col, row: nextRow });
+              setSelEnd({ col: selStart.col, row: nextRow });
+              return;
+            }
+            if (e.key === 'F2') {
+              e.preventDefault();
+              setEditingCell(activeKey);
+              return;
+            }
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+              e.preventDefault();
+              if (!sheet.protected) {
+                updateSheet((s) => {
+                  const nc = { ...s.cells };
+                  selectedKeys.forEach((k) => delete nc[k]);
+                  return { ...s, cells: nc };
+                });
+              }
+              return;
+            }
+            // Instant type-to-edit just like real MS Excel!
+            if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+              e.preventDefault();
+              setCellRaw(activeKey, e.key);
+              setEditingCell(activeKey);
+            }
+          }}
+          className={`flex-1 min-w-0 overflow-auto outline-none ${officeDark ? 'bg-[#18181A]' : 'bg-white'}`}
+        >
           <table
             style={{ fontSize: `${Math.round((12 * zoom) / 100)}px` }}
             className="border-collapse table-fixed"
@@ -876,6 +1003,7 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
                         onClick={() => {
                           setSelStart({ col: c, row: 0 });
                           setSelEnd({ col: c, row: sheet.rows - 1 });
+                          gridWrapRef.current?.focus({ preventScroll: true });
                         }}
                         className={`relative h-6 border text-[11px] font-semibold cursor-pointer select-none ${
                           colActive
@@ -896,7 +1024,7 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
                             const origW = wPx;
                             const onMove = (ev: MouseEvent) => {
                               const nextW = Math.max(54, Math.min(360, origW + (ev.clientX - startX)));
-                              updateSheet((s) => ({ ...s, colWidths: { ...(s.colWidths || {}), [c]: nextW } }));
+                              updateSheet((s) => ({ ...s, colWidths: { ...(s.colWidths || {}), [c]: nextW } }), false);
                             };
                             const onUp = () => {
                               window.removeEventListener('mousemove', onMove);
@@ -921,6 +1049,7 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
                       onClick={() => {
                         setSelStart({ col: 0, row: r });
                         setSelEnd({ col: sheet.cols - 1, row: r });
+                        gridWrapRef.current?.focus({ preventScroll: true });
                       }}
                       className={`w-10 h-6 border text-center text-[10px] font-mono cursor-pointer ${
                         r >= selBounds.r1 && r <= selBounds.r2
@@ -971,6 +1100,7 @@ export const LumaExcelEditor: React.FC<LumaExcelEditorProps> = ({
                           setSelStart({ col: c, row: r });
                           setSelEnd({ col: c, row: r });
                           setDraggingSel(true);
+                          gridWrapRef.current?.focus({ preventScroll: true });
                         }}
                         onMouseEnter={() => {
                           if (fillDragging) performFillTo(c, r);

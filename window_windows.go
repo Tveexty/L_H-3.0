@@ -410,7 +410,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.5.3 (Carbon)",
+			Title:  "Luma OS 1.5.4 (Carbon)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,
@@ -658,11 +658,34 @@ type winMsgStruct struct {
 	PtY     int32
 }
 
-// startWin32AltTabHook (LumaCore 1.4.6): Ultra-fast non-blocking WH_KEYBOARD_LL hook that:
+// safeWebViewEval guards WebView2 Dispatch against shutdown races and panics.
+func safeWebViewEval(wv webview2.WebView, stopCh <-chan struct{}, js string) {
+	defer func() { _ = recover() }()
+	if wv == nil {
+		return
+	}
+	select {
+	case <-stopCh:
+		return
+	default:
+	}
+	wv.Dispatch(func() {
+		defer func() { _ = recover() }()
+		select {
+		case <-stopCh:
+			return
+		default:
+		}
+		wv.Eval(js)
+	})
+}
+
+// startWin32AltTabHook (LumaCore 1.4.7): Ultra-fast non-blocking WH_KEYBOARD_LL hook that:
 //   1. Replaces Windows Alt+Tab with Luma OS's glassmorphic switcher GUARANTEED ON TOP OF ALL WINDOWS (Chrome, Telegram, games).
 //   2. Replaces Win+D with instant return to Luma OS Home Desktop (never minimizing Luma OS to bare Windows desktop!).
 // Never blocks Ctrl+Alt+Del / Ctrl+Shift+Esc and always unhooks cleanly on shutdown.
 func startWin32AltTabHook(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan struct{}) {
+	defer func() { _ = recover() }()
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -735,14 +758,13 @@ func startWin32AltTabHook(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan s
 					if (ctrlState&0x8000) == 0 && (shiftState&0x8000) == 0 {
 						// Suppress Start Menu popup on Win key release using standard dummy VK pulse
 						go func() {
+							defer func() { _ = recover() }()
 							_, _, _ = procKeybdEvent.Call(vkDummyMask, 0, 0, 0)
 							_, _, _ = procKeybdEvent.Call(vkDummyMask, 0, keyeventfKeyUp, 0)
 							if lumaHwnd != 0 {
 								forceBringLumaToFront(lumaHwnd, false)
 							}
-							wv.Dispatch(func() {
-								wv.Eval(`window.dispatchEvent(new CustomEvent('luma-win-d-home'));`)
-							})
+							safeWebViewEval(wv, stopCh, `window.dispatchEvent(new CustomEvent('luma-win-d-home'));`)
 						}()
 						return 1 // Swallow native Windows Win+D!
 					}
@@ -760,13 +782,12 @@ func startWin32AltTabHook(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan s
 						fromExternal := lumaHwnd != 0 && fgHwnd != lumaHwnd
 						altTabActive = true
 						go func(rev, ext bool) {
+							defer func() { _ = recover() }()
 							if lumaHwnd != 0 {
 								forceBringLumaToFront(lumaHwnd, true)
 							}
 							js := fmt.Sprintf(`window.dispatchEvent(new CustomEvent('luma-alt-tab',{detail:{reverse:%v,fromExternal:%v}}));`, rev, ext)
-							wv.Dispatch(func() {
-								wv.Eval(js)
-							})
+							safeWebViewEval(wv, stopCh, js)
 						}(reverse, fromExternal)
 						return 1 // Swallow native Windows Alt+Tab cleanly!
 					}
@@ -776,10 +797,9 @@ func startWin32AltTabHook(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan s
 				if altTabActive && isDown && info.VkCode == vkEscape {
 					altTabActive = false
 					go func() {
+						defer func() { _ = recover() }()
 						releaseAltTabTopmost()
-						wv.Dispatch(func() {
-							wv.Eval(`window.dispatchEvent(new CustomEvent('luma-alt-tab-cancel'));`)
-						})
+						safeWebViewEval(wv, stopCh, `window.dispatchEvent(new CustomEvent('luma-alt-tab-cancel'));`)
 					}()
 					return 1
 				}
@@ -788,9 +808,8 @@ func startWin32AltTabHook(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan s
 				if isUp && altTabActive && (info.VkCode == vkLMenu || info.VkCode == vkRMenu || info.VkCode == vkMenu) {
 					altTabActive = false
 					go func() {
-						wv.Dispatch(func() {
-							wv.Eval(`window.dispatchEvent(new CustomEvent('luma-alt-tab-commit'));`)
-						})
+						defer func() { _ = recover() }()
+						safeWebViewEval(wv, stopCh, `window.dispatchEvent(new CustomEvent('luma-alt-tab-commit'));`)
 					}()
 				}
 			}
@@ -823,8 +842,9 @@ func startWin32AltTabHook(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan s
 	}
 }
 
-// startWin32AltRListener (LumaCore 1.4.5): Ultra-low-CPU Alt+R hook + instant (<35ms) Win32 HKL push on Alt+Shift / Win+Space!
+// startWin32AltRListener (LumaCore 1.4.7): Ultra-low-CPU Alt+R hook + instant (<35ms) Win32 HKL push on Alt+Shift / Win+Space!
 func startWin32AltRListener(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan struct{}) {
+	defer func() { _ = recover() }()
 	procGetAsyncKeyState := user32WinDLL.NewProc("GetAsyncKeyState")
 	procGetFg := user32WinDLL.NewProc("GetForegroundWindow")
 	procIsChild := user32WinDLL.NewProc("IsChild")
@@ -842,39 +862,38 @@ func startWin32AltRListener(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan
 		case <-stopCh:
 			return
 		case <-timer.C:
-			// Instant active keyboard layout push (<40ms latency whenever user presses Alt+Shift / Ctrl+Shift / Win+Space!)
-			tag, short := readActiveWin32KeyboardFast()
-			if tag != "" && tag != lastKbdTag {
-				lastKbdTag = tag
-				js := fmt.Sprintf(`window.dispatchEvent(new CustomEvent('luma-kbd-changed',{detail:{tag:%q,short:%q}}));`, tag, short)
-				wv.Dispatch(func() {
-					wv.Eval(js)
-				})
-			}
+			func() {
+				defer func() { _ = recover() }()
+				// Instant active keyboard layout push (<40ms latency whenever user presses Alt+Shift / Ctrl+Shift / Win+Space!)
+				tag, short := readActiveWin32KeyboardFast()
+				if tag != "" && tag != lastKbdTag {
+					lastKbdTag = tag
+					js := fmt.Sprintf(`window.dispatchEvent(new CustomEvent('luma-kbd-changed',{detail:{tag:%q,short:%q}}));`, tag, short)
+					safeWebViewEval(wv, stopCh, js)
+				}
 
-			fg, _, _ := procGetFg.Call()
-			isOurs := fg == lumaHwnd
-			if !isOurs && fg != 0 && lumaHwnd != 0 {
-				child, _, _ := procIsChild.Call(lumaHwnd, fg)
-				isOurs = child != 0
-			}
-			if !isOurs {
-				wasPressed = false
-				timer.Reset(110 * time.Millisecond)
-				continue
-			}
+				fg, _, _ := procGetFg.Call()
+				isOurs := fg == lumaHwnd
+				if !isOurs && fg != 0 && lumaHwnd != 0 {
+					child, _, _ := procIsChild.Call(lumaHwnd, fg)
+					isOurs = child != 0
+				}
+				if !isOurs {
+					wasPressed = false
+					timer.Reset(110 * time.Millisecond)
+					return
+				}
 
-			altState, _, _ := procGetAsyncKeyState.Call(vkMenu)
-			rState, _, _ := procGetAsyncKeyState.Call(vkR)
-			ctrlState, _, _ := procGetAsyncKeyState.Call(vkCtrl)
-			pressed := (altState&0x8000) != 0 && (rState&0x8000) != 0 && (ctrlState&0x8000) == 0
-			if pressed && !wasPressed {
-				wv.Dispatch(func() {
-					wv.Eval(`window.dispatchEvent(new CustomEvent('luma-toggle-spotlight'));`)
-				})
-			}
-			wasPressed = pressed
-			timer.Reset(40 * time.Millisecond)
+				altState, _, _ := procGetAsyncKeyState.Call(vkMenu)
+				rState, _, _ := procGetAsyncKeyState.Call(vkR)
+				ctrlState, _, _ := procGetAsyncKeyState.Call(vkCtrl)
+				pressed := (altState&0x8000) != 0 && (rState&0x8000) != 0 && (ctrlState&0x8000) == 0
+				if pressed && !wasPressed {
+					safeWebViewEval(wv, stopCh, `window.dispatchEvent(new CustomEvent('luma-toggle-spotlight'));`)
+				}
+				wasPressed = pressed
+				timer.Reset(40 * time.Millisecond)
+			}()
 		}
 	}
 }

@@ -48,9 +48,9 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.5.3"
+	KernelVersion       = "1.5.4"
 	KernelCodename      = "Carbon"
-	KernelEngineVersion = "1.4.6"
+	KernelEngineVersion = "1.4.7"
 	SecurityCoreVersion = "2.0"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
@@ -941,23 +941,61 @@ func main() {
 		_ = json.NewEncoder(w).Encode(picked)
 	})
 
-	// Real Host Open Windows (displayed live on Luma OS Taskbar!)
+	startForegroundMRUTracker()
+
+	// Real Host Open Windows (MRU-sorted for Alt+Tab & displayed live on Luma OS Taskbar!)
 	mux.HandleFunc("/api/kernel/windows", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		wins := kernel.probe.ListOpenWindows()
 		if wins == nil {
 			wins = []HostWindowItem{}
 		}
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "windows": wins})
+		mru := getWindowMRUSnapshot()
+		sort.SliceStable(wins, func(i, j int) bool {
+			return mru[wins[i].PID] > mru[wins[j].PID]
+		})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "windows": wins, "mru": mru})
 	})
 
-	// Bring a real OS application window to the foreground from Luma Taskbar / Task Manager
+	// Live Window Thumbnail Previews for Alt+Tab (PrintWindow PW_RENDERFULLCONTENT — Chrome, Telegram, Games!)
+	mux.HandleFunc("/api/kernel/windows/previews", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		wins := kernel.probe.ListOpenWindows()
+		previews := map[string]string{}
+		for i, hw := range wins {
+			if i >= 12 {
+				break
+			}
+			if hw.IsSelf || hw.PID <= 0 {
+				continue
+			}
+			if dataURI := captureHostWindowPreview(hw.PID); dataURI != "" {
+				previews[strconv.Itoa(hw.PID)] = dataURI
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":       true,
+			"previews": previews,
+			"mru":      getWindowMRUSnapshot(),
+		})
+	})
+
+	mux.HandleFunc("/api/kernel/windows/preview", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		pid, _ := strconv.Atoi(r.URL.Query().Get("pid"))
+		dataURI := captureHostWindowPreview(pid)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "pid": pid, "preview": dataURI})
+	})
+
+	// Bring a real OS application window to the foreground from Luma Taskbar / Alt+Tab / Task Manager
 	mux.HandleFunc("/api/kernel/windows/focus", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		var payload struct {
 			PID int `json:"pid"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&payload)
+		releaseAltTabTopmost()
+		recordWindowMRU(payload.PID)
 		err := kernel.probe.FocusWindow(payload.PID)
 		if err != nil {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
@@ -2993,6 +3031,22 @@ func main() {
 		_ = json.NewEncoder(w).Encode(idleSleepMgr.Status(acOnline))
 	})
 
+	mux.HandleFunc("/api/kernel/power/charge-limit", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		hw := kernel.SystemSnapshot()
+		if r.Method == http.MethodPost {
+			var req ChargeLimitConfig
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(idleSleepMgr.UpdateChargeLimit(req, hw))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(idleSleepMgr.ChargeStatus(hw))
+	})
+
 	mux.HandleFunc("/api/kernel/capture/list", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -3004,12 +3058,12 @@ func main() {
 		})
 	})
 
-	// Serve standalone executable download for LumaOS_1.5.3.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.5.4.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.3.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.4.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -3017,12 +3071,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.3.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.4.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.5.4.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.3.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.2.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.1.exe", serveExe)
@@ -3083,8 +3138,8 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.5.3 (CARBON · C-6) — LUMACORE 1.4.6 & LUMASHIELD 2.0")
-	log.Printf("  - Topmost Alt+Tab & Win+D Home, 4-Layer Messenger Bridge, Office Pro, Idle Sleep")
+	log.Printf("  LUMA OS 1.5.4 (CARBON · C-6) — LUMACORE 1.4.7 & LUMASHIELD 2.0")
+	log.Printf("  - Notification Shade, Live MRU Alt+Tab, Dual-Pane Explorer, 140+ Excel Formulas, Battery Care")
 	log.Printf("  - Desktop Environment:          http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:    http://%s/api/kernel/status", addr)

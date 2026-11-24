@@ -133,7 +133,7 @@ function generateStrongPassword(): string {
 }
 
 /**
- * Luma OS 1.5.3 (Carbon) — Crash-Proof, Zero-Freeze Private Desktop Overlay.
+ * Luma OS 1.5.4 (Carbon) — Crash-Proof, Zero-Freeze Private Desktop Overlay.
  * Fixes the 1.5.1 hang bug: exit is ALWAYS immediate and non-blocking, every network call has a
  * strict AbortController timeout with safe fallback, and Esc / Esc×2 / Ctrl+Alt+Esc always work.
  */
@@ -578,7 +578,7 @@ export const LumaPrivateVaultOverlay: React.FC<LumaPrivateVaultOverlayProps> = (
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold tracking-tight">Суперконфиденциальность · Carbon Vault 1.5.3</span>
+              <span className="text-sm font-bold tracking-tight">Суперконфиденциальность · Carbon Vault 1.5.4</span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-400/30">
                 AES-256-GCM
               </span>

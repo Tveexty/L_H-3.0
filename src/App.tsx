@@ -161,6 +161,7 @@ import {
   LumaCarbonControlHub,
   SystemFeaturesMap,
 } from './components/LumaCarbonControlHub';
+import { LumaNotificationShade, ShadeNotificationItem } from './components/LumaNotificationShade';
 import { LumaClockRenderer } from './components/LumaClockRenderer';
 import { LumaCodeStudioWindow } from './components/LumaCodeStudioWindow';
 import { CustomUserWidgetSpec, LumaCustomWidgetBuilder } from './components/LumaCustomWidgetBuilder';
@@ -722,11 +723,20 @@ export default function App() {
   const locale = getLangLocale(lang);
   const t = (key: string, fallback?: string) => tr(lang, key, fallback);
 
-  // --- Native Custom Alt+Tab Window Switcher (Topmost Over ALL Windows) & Win+D Home State (1.5.3) ---
+  // --- Native Custom Alt+Tab Window Switcher (MRU + Live Previews) & Win+D Home State (1.5.4) ---
   const [altTabOpen, setAltTabOpen] = useState(false);
   const [altTabIdx, setAltTabIdx] = useState(0);
   const [altTabFromExternal, setAltTabFromExternal] = useState(false);
-  const [incomingBanner, setIncomingBanner] = useState<CarbonNotificationItem | null>(null);
+  const [notifShadeOpen, setNotifShadeOpen] = useState(false);
+  const [windowMruMap, setWindowMruMap] = useState<Record<string, number>>(() => ({
+    luma_home_desktop: Date.now() - 5000,
+  }));
+  const [hostWindowPreviews, setHostWindowPreviews] = useState<Record<number, string>>({});
+  const touchWindowMru = useCallback((key: string) => {
+    const now = Date.now();
+    setWindowMruMap((prev) => ({ ...prev, [key]: now }));
+  }, []);
+  const [incomingBanner, setIncomingBanner] = useState<ShadeNotificationItem | null>(null);
   const incomingBannerTimerRef = useRef<number | null>(null);
   const osNotifBootedRef = useRef<boolean>(false);
   const winDSavedOpenRef = useRef<DexWinId[]>([]);
@@ -934,23 +944,17 @@ export default function App() {
       privateVault: true,
     };
   });
-  const [hubNotifications, setHubNotifications] = useState<CarbonNotificationItem[]>([
+  const [hubNotifications, setHubNotifications] = useState<ShadeNotificationItem[]>([
     {
-      id: 'notif_carbon_welcome',
+      id: 'notif_carbon_welcome_154',
       source: 'system',
-      sender: 'Luma OS 1.5.3 Carbon',
-      title: 'Добро пожаловать в Carbon 1.5.3!',
-      body: 'Ядро 1.4.6 · Zero-Freeze запись · Cut/Code/Office Studio Pro · Luma AI 3.0 · Свой Alt+Tab · 100% перевод.',
+      appName: 'Luma OS 1.5.4',
+      sender: 'Luma OS 1.5.4 Carbon',
+      title: 'Добро пожаловать в Carbon 1.5.4!',
+      body: 'Ядро 1.4.7 · Чистая Шторка уведомлений (Alt+N) · Alt+Tab с MRU и живыми превью · Многошторочный Проводник · 140+ формул Excel · Battery Care.',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-      unread: true,
-    },
-    {
-      id: 'notif_tg_ready',
-      source: 'telegram',
-      sender: 'Telegram / Мессенджеры',
-      title: 'Живой мост уведомлений активен',
-      body: 'Сообщения из Telegram, Discord, WhatsApp, VK и Windows автоматически приходят в Центр и на Dynamic Island.',
-      time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+      dateLabel: 'Сегодня',
+      timestamp: Date.now(),
       unread: true,
     },
   ]);
@@ -1268,11 +1272,13 @@ export default function App() {
     if (id === 'settings' && tab) setSettingsTab(tab);
     zCounterRef.current += 1;
     const nextZ = zCounterRef.current;
+    touchWindowMru(`luma_${id}`);
     setWindows((prev) => ({
       ...prev,
       [id]: { open: true, minimized: false, z: nextZ, desktop: activeDesktop },
     }));
     setControlCenterOpen(false);
+    setNotifShadeOpen(false);
     setStartMenuOpen(false);
     setTaskListOpen(false);
     setMultitaskingOpen(false);
@@ -1472,7 +1478,7 @@ export default function App() {
           total_bytes: 23.4 * 1024 * 1024,
           speed_mbps: 24.2,
           target_version: '1.5 (Carbon · C-6)',
-          message: 'Загрузка образа LumaOS_1.5.3.exe (LumaCore 1.5 + LumaShield 1.5)...',
+          message: 'Загрузка образа LumaOS_1.5.4.exe (LumaCore 1.5 + LumaShield 1.5)...',
         },
       },
       {
@@ -1707,6 +1713,7 @@ export default function App() {
   const focusWindow = (id: DexWinId) => {
     zCounterRef.current += 1;
     const nextZ = zCounterRef.current;
+    touchWindowMru(`luma_${id}`);
     setWindows((prev) => ({ ...prev, [id]: { ...prev[id], z: nextZ } }));
   };
 
@@ -1719,6 +1726,7 @@ export default function App() {
   };
 
   const showDesktop = () => {
+    touchWindowMru('luma_home_desktop');
     setWindows((prev) => {
       const next = { ...prev };
       (Object.keys(next) as DexWinId[]).forEach((k) => {
@@ -1727,6 +1735,7 @@ export default function App() {
       return next;
     });
     setControlCenterOpen(false);
+    setNotifShadeOpen(false);
     setStartMenuOpen(false);
     setTaskbarCtxMenu(null);
   };
@@ -2375,6 +2384,14 @@ export default function App() {
         toggleSpotlightSafe();
         return;
       }
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyN' || e.keyCode === 78 || keyLow === 'n' || keyLow === 'т')) {
+        e.preventDefault();
+        e.stopPropagation();
+        setNotifShadeOpen((v) => !v);
+        setControlCenterOpen(false);
+        setCarbonHubOpen(false);
+        return;
+      }
       if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyD' || e.keyCode === 68 || keyLow === 'd' || keyLow === 'в')) {
         e.preventDefault();
         e.stopPropagation();
@@ -2382,7 +2399,8 @@ export default function App() {
         return;
       }
       if (e.key === 'Escape') {
-        if (rollbackConfirm) setRollbackConfirm(null);
+        if (notifShadeOpen) setNotifShadeOpen(false);
+        else if (rollbackConfirm) setRollbackConfirm(null);
         else if (multitaskingOpen) setMultitaskingOpen(false);
         else if (taskbarCtxMenu) setTaskbarCtxMenu(null);
         else if (editingApp) setEditingApp(null);
@@ -2412,6 +2430,7 @@ export default function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    notifShadeOpen,
     rollbackConfirm,
     multitaskingOpen,
     taskbarCtxMenu,
@@ -2925,28 +2944,58 @@ export default function App() {
       const d = await r.json();
       if (Array.isArray(d?.windows)) {
         setHostWindows(d.windows);
+        setWindowMruMap((prev) => {
+          let changed = false;
+          const next = { ...prev };
+          for (const hw of d.windows as HostWindowInfo[]) {
+            if (hw.mru && hw.mru > 0) {
+              const k = `host_${hw.pid}`;
+              if (!next[k] || hw.mru > next[k]) {
+                next[k] = hw.mru;
+                changed = true;
+              }
+            }
+          }
+          return changed ? next : prev;
+        });
       }
     } catch {
       // ignore offline
     }
   };
 
+  const fetchHostWindowPreviews = useCallback(async () => {
+    try {
+      const r = await fetch('/api/kernel/windows/previews');
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d?.previews && typeof d.previews === 'object') {
+        const mapped: Record<number, string> = {};
+        for (const [pidStr, dataUrl] of Object.entries(d.previews as Record<string, string>)) {
+          const p = Number(pidStr);
+          if (p > 0 && typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+            mapped[p] = dataUrl;
+          }
+        }
+        setHostWindowPreviews((prev) => ({ ...prev, ...mapped }));
+      }
+    } catch {
+      // ignore offline
+    }
+  }, []);
+
   const handleFocusHostWindow = async (pid: number) => {
     setTaskbarHostWinPid(null);
     setTaskListOpen(false);
+    touchWindowMru(`host_${pid}`);
     try {
-      const r = await fetch('/api/kernel/windows/focus', {
+      await fetch('/api/kernel/windows/focus', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pid }),
       });
-      if (r.ok) {
-        const d = await r.json();
-        const win = hostWindows.find((w) => w.pid === pid);
-        pushToast('Окно ОС', d?.detail || `Переключено на ${win?.title || win?.name || `PID ${pid}`}`, 'info');
-      }
     } catch {
-      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.5.3.exe', 'info');
+      // silent window switching — no intrusive toast
     }
   };
 
@@ -2975,7 +3024,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Окна ОС', 'Доступно при запуске LumaOS_1.5.3.exe', 'info');
+      pushToast('Окна ОС', 'Доступно при запуске LumaOS_1.5.4.exe', 'info');
     }
   };
 
@@ -3013,7 +3062,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('2 окна рядом', 'Доступно при запуске LumaOS_1.5.3.exe', 'info');
+      pushToast('2 окна рядом', 'Доступно при запуске LumaOS_1.5.4.exe', 'info');
     }
   };
 
@@ -3103,7 +3152,7 @@ export default function App() {
     }
   }, []);
 
-  // --- 4-Layer Guaranteed Telegram, WhatsApp, Discord, VK, Viber & Windows Notification Poller (1.5.3) ---
+  // --- Clean Zero-Spam Messenger Notification Poller (1.5.4: WHO, WHAT & WHEN — No Muted Channel "+4"!) ---
   useEffect(() => {
     let active = true;
     const playIncomingChime = () => {
@@ -3151,22 +3200,25 @@ export default function App() {
           return;
         }
 
-        const fresh: CarbonNotificationItem[] = [];
+        const fresh: ShadeNotificationItem[] = [];
         let maxTs = since;
         for (const item of list) {
           const id = String(item.id || '');
           if (!id || seenOsNotifIdsRef.current.has(id)) continue;
           seenOsNotifIdsRef.current.add(id);
-          const ts = Number(item.timestamp || 0);
+          const ts = Number(item.timestamp || 0) || Date.now();
           if (ts > maxTs) maxTs = ts;
           fresh.push({
             id,
             source: mapAppKeyToSource(item.app_key || item.app || ''),
+            appName: item.app || undefined,
             sender: item.sender || item.title || item.app || 'Сообщение',
             chat: item.chat || undefined,
             title: item.title || item.app || 'Новое сообщение',
             body: item.body || '',
-            time: item.time || new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+            time: item.time || new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+            dateLabel: item.date_label || 'Сегодня',
+            timestamp: ts,
             avatarUrl: item.avatar_url || undefined,
             unread: true,
           });
@@ -3177,7 +3229,7 @@ export default function App() {
         osNotifBootedRef.current = true;
 
         if (fresh.length > 0 && active) {
-          setHubNotifications((prev) => [...fresh, ...prev].slice(0, 60));
+          setHubNotifications((prev) => [...fresh, ...prev].slice(0, 120));
           const latest = fresh[0];
           const isBrandNew = wasBooted || Date.now() - maxTs < 15000;
           if (!dndEnabled && isBrandNew) {
@@ -3187,7 +3239,7 @@ export default function App() {
               latest.body || latest.title || 'Новое сообщение',
               latest.source
             );
-            // 2. Crisp floating incoming messenger card (impossible to miss even if Control Hub / Island is closed!)
+            // 2. Crisp floating incoming messenger card
             setIncomingBanner(latest);
             if (incomingBannerTimerRef.current) window.clearTimeout(incomingBannerTimerRef.current);
             incomingBannerTimerRef.current = window.setTimeout(() => {
@@ -3206,7 +3258,7 @@ export default function App() {
     void pollOsNotifications();
     const timer = window.setInterval(() => {
       void pollOsNotifications();
-    }, 1200);
+    }, 1000);
 
     return () => {
       active = false;
@@ -3233,46 +3285,68 @@ export default function App() {
     return () => window.removeEventListener('luma-custom-sys-action', onCustomAction);
   }, []);
 
-  // --- Native Custom Alt+Tab (Topmost Over ALL Windows) + Win+D Return to Luma OS Home (1.5.3) ---
+  // --- Native Custom Alt+Tab (True MRU Order + Live Window Previews) + Win+D Return to Luma OS Home (1.5.4) ---
   const altTabEntries: AltTabEntry[] = useMemo(() => {
     const lumaTitles: Partial<Record<DexWinId, string>> = {
       apps: 'Приложения', explorer: 'Проводник', taskmgr: 'Диспетчер задач', terminal: 'Терминал',
-      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.4.6', settings: 'Настройки', plugins: 'Расширения',
+      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.4.7', settings: 'Настройки', plugins: 'Расширения',
       island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma AI 3.0', utilities: 'Службы ОС',
       calculator: 'Калькулятор', calendar: 'Календарь', trash: 'Корзина', scenarios: 'Сценарии',
       code_studio: 'Code Studio Pro', cut_studio: 'Cut Studio Pro', office: 'Luma Office Pro',
     };
-    const homeEntry: AltTabEntry = {
+    const homeEntry: AltTabEntry & { _mru: number } = {
       key: 'luma_home_desktop',
       kind: 'home',
       id: 'home',
       title: 'Главная · Luma OS',
       subtitle: 'Рабочий стол и виджеты (Win+D)',
       active: true,
+      _mru: windowMruMap['luma_home_desktop'] || 1,
     };
-    const openLuma: AltTabEntry[] = (Object.keys(windows) as DexWinId[])
+    const openLuma: (AltTabEntry & { _mru: number })[] = (Object.keys(windows) as DexWinId[])
       .filter((id) => windows[id]?.open)
-      .sort((a, b) => (windows[b]?.z || 0) - (windows[a]?.z || 0))
-      .map((id) => ({
-        key: `luma_${id}`,
-        kind: 'luma',
-        id,
-        title: lumaTitles[id] || id,
-        subtitle: windows[id].minimized ? 'Свёрнуто · Luma OS' : 'Активно · Luma OS',
-        minimized: windows[id].minimized,
-        active: !windows[id].minimized,
-      }));
-    const openHost: AltTabEntry[] = hostWindows.map((hw) => ({
-      key: `host_${hw.pid}`,
-      kind: 'host',
-      id: String(hw.pid),
-      pid: hw.pid,
-      title: hw.friendly_name || hw.title || hw.name,
-      subtitle: hw.name || `PID ${hw.pid}`,
-      iconUrl: hw.icon_url,
-    }));
-    return [homeEntry, ...openLuma, ...openHost];
-  }, [windows, hostWindows]);
+      .map((id) => {
+        const key = `luma_${id}`;
+        return {
+          key,
+          kind: 'luma',
+          id,
+          title: lumaTitles[id] || id,
+          subtitle: windows[id].minimized ? 'Свёрнуто · Luma OS' : 'Активно · Luma OS',
+          minimized: windows[id].minimized,
+          active: !windows[id].minimized,
+          _mru: windowMruMap[key] || (windows[id]?.z || 0) * 1000,
+        };
+      });
+    const openHost: (AltTabEntry & { _mru: number })[] = hostWindows.map((hw) => {
+      const key = `host_${hw.pid}`;
+      return {
+        key,
+        kind: 'host',
+        id: String(hw.pid),
+        pid: hw.pid,
+        title: hw.friendly_name || hw.title || hw.name,
+        subtitle: hw.name || `PID ${hw.pid}`,
+        iconUrl: hw.icon_url,
+        previewUrl: hostWindowPreviews[hw.pid],
+        _mru: Math.max(windowMruMap[key] || 0, hw.mru || 0),
+      };
+    });
+
+    // Strict MRU sort: whichever window was opened or used MOST RECENTLY always moves to the front!
+    const allSorted = [...openLuma, ...openHost, homeEntry].sort((a, b) => b._mru - a._mru);
+    return allSorted.map(({ _mru: _ignored, ...entry }) => entry);
+  }, [windows, hostWindows, windowMruMap, hostWindowPreviews]);
+
+  // Periodically refresh live PrintWindow thumbnails while Alt+Tab is open
+  useEffect(() => {
+    if (!altTabOpen) return;
+    void fetchHostWindowPreviews();
+    const id = window.setInterval(() => {
+      void fetchHostWindowPreviews();
+    }, 2200);
+    return () => window.clearInterval(id);
+  }, [altTabOpen, fetchHostWindowPreviews]);
 
   const altTabEntriesRef = useRef<AltTabEntry[]>(altTabEntries);
   altTabEntriesRef.current = altTabEntries;
@@ -3287,6 +3361,8 @@ export default function App() {
       setAltTabFromExternal(false);
       setSpotlightOpen(false);
       setCarbonHubOpen(false);
+      setNotifShadeOpen(false);
+      touchWindowMru('luma_home_desktop');
       void fetch('/api/kernel/alt-tab/release', { method: 'POST' }).catch(() => {});
 
       setWindows((prev) => {
@@ -3309,9 +3385,8 @@ export default function App() {
         }
         return prev;
       });
-      triggerIslandPulse('Luma OS · Главный экран', 'Возврат в систему (Win + D)', 'system');
     },
-    [triggerIslandPulse]
+    [touchWindowMru]
   );
 
   const cancelAltTab = useCallback(() => {
@@ -3339,6 +3414,7 @@ export default function App() {
       } else if (item.pid) {
         // Release temporary topmost FIRST so Chrome / Telegram / Steam smoothly rises to foreground!
         const targetPid = item.pid;
+        touchWindowMru(`host_${targetPid}`);
         void fetch('/api/kernel/alt-tab/release', { method: 'POST' })
           .catch(() => {})
           .finally(() => {
@@ -3347,19 +3423,20 @@ export default function App() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [returnToLumaHome]
+    [returnToLumaHome, touchWindowMru]
   );
 
   useEffect(() => {
     const stepSwitcher = (reverse: boolean, fromExternal = false) => {
       void pollHostWindows();
+      void fetchHostWindowPreviews();
       const list = altTabEntriesRef.current;
       const len = Math.max(1, list.length);
       if (!altTabOpenRef.current) {
         setAltTabOpen(true);
         setAltTabFromExternal(fromExternal);
-        // When summoned from an external Windows app (e.g. Chrome), immediately highlight Card #0 «Главная · Luma OS»!
-        setAltTabIdx(fromExternal ? 0 : len > 1 ? (reverse ? len - 1 : 1) : 0);
+        // Classic MRU Alt+Tab: item #0 is the current most-recent window, so first tap highlights #1 (previous window)!
+        setAltTabIdx(len > 1 ? (reverse ? len - 1 : 1) : 0);
       } else {
         setAltTabIdx((cur) => (cur + (reverse ? -1 : 1) + len) % len);
       }
@@ -3787,7 +3864,7 @@ export default function App() {
         pushToast('Питание', d?.detail || `Выполнено: ${action}`, 'info');
       }
     } catch {
-      pushToast('Питание', 'Доступно при запуске LumaOS_1.5.3.exe', 'info');
+      pushToast('Питание', 'Доступно при запуске LumaOS_1.5.4.exe', 'info');
     }
   };
 
@@ -3820,7 +3897,7 @@ export default function App() {
         pushToast('Режим оболочки Windows', 'Параметры применены к системе', 'success');
       }
     } catch {
-      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.5.3.exe)', 'info');
+      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.5.4.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -4192,8 +4269,6 @@ export default function App() {
     setApps((prev) => prev.map((a) => (a.id === app.id ? { ...a, isRunning: true } : a)));
     setTaskbarAppMenuId(null);
     setTaskListOpen(false);
-    pushToast('Активная задача', `${app.name} выведено на передний план`, 'info');
-    triggerIslandPulse('Активное окно', app.name, 'app');
   };
 
   const handleStopApp = (appId: string) => {
@@ -4263,7 +4338,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.5.3.exe', 'info');
+      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.5.4.exe', 'info');
     }
   };
 
@@ -5714,12 +5789,12 @@ export default function App() {
                   Диспетчер задач
                 </button>
                 <a
-                  href="/LumaOS_1.5.3.exe"
-                  download="LumaOS_1.5.3.exe"
+                  href="/LumaOS_1.5.4.exe"
+                  download="LumaOS_1.5.4.exe"
                   className="px-3.5 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  LumaOS_1.5.3.exe
+                  LumaOS_1.5.4.exe
                 </a>
               </div>
             </div>
@@ -6017,7 +6092,7 @@ export default function App() {
           <DexWindow
             id="code_studio"
             title="Luma Code Studio Pro"
-            subtitle="IDE 1.5.3 · Live диагностика ошибок · Pro Терминал · Автосохранение"
+            subtitle="IDE 1.5.4 · Live диагностика ошибок · Pro Терминал · Автосохранение"
             icon={<Code2 className="w-4 h-4" />}
             isDark={isDark}
             designStyle={designStyle}
@@ -6110,7 +6185,7 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.5.3 (Carbon · C-6 · Kernel 1.4.6)"
+          subtitle="Luma OS 1.5.4 (Carbon · C-6 · Kernel 1.4.7)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -6942,7 +7017,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.5.3.exe).
+                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.5.4.exe).
                   </div>
                 </div>
               )}
@@ -9027,18 +9102,18 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.5.3 (CARBON · C-6)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.5.4 (CARBON · C-6)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.4.6 · LumaShield 2.0 · Luma AI 3.0 · Office / Code / Cut Studio Pro
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.4.7 · LumaShield 2.0 · Luma AI 3.0 · Office / Code / Cut Studio Pro
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.5.3.exe"
-                      download="LumaOS_1.5.3.exe"
+                      href="/LumaOS_1.5.4.exe"
+                      download="LumaOS_1.5.4.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.5.3.exe
+                      LumaOS_1.5.4.exe
                     </a>
                   </div>
 
@@ -9075,14 +9150,14 @@ export default function App() {
                       <div
                         key={ver}
                         className={`p-4 rounded-xl border space-y-2 ${
-                          ver === '1.5.3 (Carbon)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
+                          ver === '1.5.4 (Carbon)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-mono font-bold">
                             Версия {ver}
                           </span>
-                          {ver === '1.5.3 (Carbon)' && <StatusPill active={true} />}
+                          {ver === '1.5.4 (Carbon)' && <StatusPill active={true} />}
                         </div>
                         <ul className="space-y-1 text-xs leading-relaxed">
                           {items.map((line, i) => (
@@ -10126,7 +10201,7 @@ export default function App() {
           onMouseEnter={openTaskbarHover}
           onClick={openTaskbarHover}
           title="Наведите курсор, чтобы показать панель задач"
-          className={`fixed z-[55] flex items-center justify-center cursor-pointer transition-opacity ${
+          className={`fixed z-[8950] flex items-center justify-center cursor-pointer transition-opacity ${
             taskbarPosition === 'left'
               ? 'left-0 inset-y-0 w-3 justify-start pl-0.5'
               : taskbarPosition === 'right'
@@ -10151,7 +10226,7 @@ export default function App() {
           onMouseEnter={openTaskbarHover}
           onMouseLeave={scheduleTaskbarHoverClose}
           style={{ width: `${taskbarSizePx}px` }}
-          className={`fixed inset-y-0 z-50 flex flex-col items-center justify-between py-2.5 gap-2 transition-transform duration-200 ease-out ${
+          className={`fixed inset-y-0 z-[8900] flex flex-col items-center justify-between py-2.5 gap-2 transition-transform duration-200 ease-out ${
             taskbarPosition === 'right' ? 'right-0 border-l' : 'left-0 border-r'
           } ${
             isTaskbarShown
@@ -10508,7 +10583,29 @@ export default function App() {
 
             <button
               onClick={() => {
+                setNotifShadeOpen((v) => !v);
+                setControlCenterOpen(false);
+                setCarbonHubOpen(false);
+                setStartMenuOpen(false);
+                setTaskbarHostWinPid(null);
+              }}
+              title="Шторка уведомлений (Alt+N)"
+              className={`relative w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center cursor-pointer ${
+                notifShadeOpen ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] text-[var(--luma-accent)]' : btnCls
+              }`}
+            >
+              <Bell className="w-3.5 h-3.5" />
+              {hubNotifications.filter((n) => n.unread).length > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-cyan-500 text-black text-[9px] font-mono font-black flex items-center justify-center">
+                  {Math.min(99, hubNotifications.filter((n) => n.unread).length)}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => {
                 setControlCenterOpen((v) => !v);
+                setNotifShadeOpen(false);
                 setStartMenuOpen(false);
                 setSysFolderOpen(false);
                 setKbdPopoverOpen(false);
@@ -10568,7 +10665,7 @@ export default function App() {
           onMouseEnter={openTaskbarHover}
           onMouseLeave={scheduleTaskbarHoverClose}
           style={{ height: `${taskbarSizePx}px` }}
-          className={`fixed z-50 flex items-center justify-between px-2.5 gap-2 transition-[transform,background,border-color] duration-200 ease-out ${
+          className={`fixed z-[8900] flex items-center justify-between px-2.5 gap-2 transition-[transform,background,border-color] duration-200 ease-out ${
             isPixel
               ? taskbarPosition === 'top'
                 ? 'top-2 inset-x-3 rounded-full border shadow-xl'
@@ -11148,10 +11245,37 @@ export default function App() {
               <span>{liveKbdShort || kbdLayouts?.active?.short || 'RUS'}</span>
             </button>
 
+            {/* Full Notification Shade Bell Trigger (Alt+N) */}
+            <button
+              onClick={() => {
+                setNotifShadeOpen((v) => !v);
+                setControlCenterOpen(false);
+                setCarbonHubOpen(false);
+                setStartMenuOpen(false);
+                setSysFolderOpen(false);
+                setKbdPopoverOpen(false);
+                setTaskListOpen(false);
+                setTaskbarAppMenuId(null);
+                setTaskbarHostWinPid(null);
+              }}
+              title="Шторка уведомлений: кто, что и когда написал (Alt+N)"
+              className={`relative h-8 px-2.5 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center gap-1.5 text-[11px] font-mono cursor-pointer transition ${
+                notifShadeOpen ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] text-[var(--luma-accent)]' : btnCls
+              }`}
+            >
+              {dndEnabled ? <BellOff className="w-3.5 h-3.5 text-amber-400" /> : <Bell className="w-3.5 h-3.5 text-cyan-400" />}
+              {hubNotifications.filter((n) => n.unread).length > 0 && (
+                <span className="min-w-[17px] h-[17px] px-1 rounded-full bg-cyan-500 text-black text-[9px] font-black flex items-center justify-center">
+                  {Math.min(99, hubNotifications.filter((n) => n.unread).length)}
+                </span>
+              )}
+            </button>
+
             {/* System Tray Control Center Trigger */}
             <button
               onClick={() => {
                 setControlCenterOpen((v) => !v);
+                setNotifShadeOpen(false);
                 setStartMenuOpen(false);
                 setSysFolderOpen(false);
                 setKbdPopoverOpen(false);
@@ -11220,7 +11344,7 @@ export default function App() {
       {dualTaskbarMode && (
         <header
           onClick={(e) => e.stopPropagation()}
-          className={`fixed top-0 inset-x-0 h-11 z-[74] px-3 border-b flex items-center justify-between gap-2 select-none ${taskbarGlassCls}`}
+          className={`fixed top-0 inset-x-0 h-11 z-[8900] px-3 border-b flex items-center justify-between gap-2 select-none ${taskbarGlassCls}`}
         >
           {/* Top-Left: Start, Search, Desktops & Carbon System Tools */}
           <div className="flex items-center gap-1.5 min-w-0">
@@ -11229,8 +11353,9 @@ export default function App() {
                 setStartMenuOpen((v) => !v);
                 setControlCenterOpen(false);
                 setCarbonHubOpen(false);
+                setNotifShadeOpen(false);
               }}
-              title="Пуск (Luma OS 1.5 Carbon)"
+              title="Пуск (Luma OS 1.5.4 Carbon)"
               className={`h-8 px-2.5 rounded-xl flex items-center gap-1.5 text-xs font-bold cursor-pointer transition ${
                 startMenuOpen ? 'bg-[var(--luma-accent)] text-white' : btnCls + ' border'
               }`}
@@ -11285,7 +11410,7 @@ export default function App() {
             )}
           </div>
 
-          {/* Top-Right: Live Telemetry, Keyboard Layout, Control Center, Carbon Hub (Tab), Calendar Clock */}
+          {/* Top-Right: Live Telemetry, Keyboard Layout, Notification Shade, Control Center, Carbon Hub (Tab), Calendar Clock */}
           <div className="flex items-center gap-1.5 shrink-0">
             {liveSystem && (
               <button
@@ -11304,8 +11429,27 @@ export default function App() {
             </button>
             <button
               onClick={() => {
+                setNotifShadeOpen((v) => !v);
+                setControlCenterOpen(false);
+                setCarbonHubOpen(false);
+              }}
+              title="Шторка уведомлений (Alt+N)"
+              className={`h-8 px-2.5 rounded-xl border flex items-center gap-1.5 text-[11px] font-mono font-bold cursor-pointer ${
+                notifShadeOpen ? 'bg-cyan-500 border-cyan-400 text-black' : btnCls
+              }`}
+            >
+              {dndEnabled ? <BellOff className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5 text-cyan-400" />}
+              {hubNotifications.filter((n) => n.unread).length > 0 && (
+                <span className="px-1.5 rounded-full bg-cyan-500/25 text-cyan-300 text-[9px]">
+                  {Math.min(99, hubNotifications.filter((n) => n.unread).length)}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => {
                 setControlCenterOpen((v) => !v);
                 setCarbonHubOpen(false);
+                setNotifShadeOpen(false);
               }}
               className={`h-8 px-2.5 rounded-xl border flex items-center gap-1.5 text-[11px] font-mono cursor-pointer ${btnCls}`}
             >
@@ -11317,6 +11461,7 @@ export default function App() {
               onClick={() => {
                 setCarbonHubOpen((v) => !v);
                 setControlCenterOpen(false);
+                setNotifShadeOpen(false);
               }}
               title="Панель управления Carbon + Центр уведомлений (Tab)"
               className={`h-8 px-2.5 rounded-xl border flex items-center gap-1.5 text-[11px] font-mono font-bold cursor-pointer ${
@@ -11325,11 +11470,6 @@ export default function App() {
             >
               <Sliders className="w-3.5 h-3.5" />
               <span>TAB</span>
-              {hubNotifications.length > 0 && (
-                <span className="px-1.5 rounded-full bg-cyan-500/25 text-cyan-300 text-[9px]">
-                  {hubNotifications.length}
-                </span>
-              )}
             </button>
             <button
               onClick={() => openWindow('calendar')}
@@ -11355,7 +11495,7 @@ export default function App() {
         <SmartContextMenu
           x={trayItemCtxMenu.x}
           y={trayItemCtxMenu.y}
-          zIndex={85}
+          zIndex={9600}
           onClick={(e) => e.stopPropagation()}
           className={`luma-animate-in w-56 border p-1.5 shadow-2xl text-xs ${popoverShellCls}`}
         >
@@ -11414,7 +11554,7 @@ export default function App() {
         <SmartContextMenu
           x={taskbarCtxMenu.x}
           y={taskbarCtxMenu.y}
-          zIndex={80}
+          zIndex={9600}
           onClick={(e) => e.stopPropagation()}
           className={`luma-animate-in w-64 border p-1.5 shadow-2xl text-xs ${popoverShellCls}`}
         >
@@ -11550,7 +11690,7 @@ export default function App() {
       {sysFolderOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`luma-animate-in fixed z-[60] w-80 border p-3.5 space-y-3 text-xs shadow-2xl ${popoverShellCls} ${
+          className={`luma-animate-in fixed z-[9500] w-80 border p-3.5 space-y-3 text-xs shadow-2xl ${popoverShellCls} ${
             taskbarPosition === 'left'
               ? 'top-1/2 -translate-y-1/2 left-[68px]'
               : taskbarPosition === 'right'
@@ -11630,7 +11770,7 @@ export default function App() {
       {kbdPopoverOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`luma-animate-in fixed z-[60] w-80 border p-3.5 space-y-3 text-xs shadow-2xl ${popoverShellCls} ${
+          className={`luma-animate-in fixed z-[9500] w-80 border p-3.5 space-y-3 text-xs shadow-2xl ${popoverShellCls} ${
             taskbarPosition === 'left'
               ? 'bottom-16 left-[68px]'
               : taskbarPosition === 'right'
@@ -11772,7 +11912,7 @@ export default function App() {
         return (
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`luma-animate-in fixed z-50 w-80 border p-3.5 space-y-3 text-xs ${popoverShellCls} ${
+            className={`luma-animate-in fixed z-[9500] w-80 border p-3.5 space-y-3 text-xs ${popoverShellCls} ${
               taskbarPosition === 'left'
                 ? 'top-1/2 -translate-y-1/2 left-[68px]'
                 : taskbarPosition === 'right'
@@ -11881,7 +12021,7 @@ export default function App() {
         return (
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`luma-animate-in fixed z-50 w-72 border p-3.5 space-y-3 text-xs ${popoverShellCls} ${
+            className={`luma-animate-in fixed z-[9500] w-72 border p-3.5 space-y-3 text-xs ${popoverShellCls} ${
               taskbarPosition === 'left'
                 ? 'top-1/2 -translate-y-1/2 left-[68px]'
                 : taskbarPosition === 'right'
@@ -11952,7 +12092,7 @@ export default function App() {
         return (
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`luma-animate-in fixed z-50 w-96 max-w-[calc(100vw-24px)] border p-4 space-y-3 text-xs ${popoverShellCls} ${
+            className={`luma-animate-in fixed z-[9500] w-96 max-w-[calc(100vw-24px)] border p-4 space-y-3 text-xs ${popoverShellCls} ${
               taskbarPosition === 'left'
                 ? 'bottom-16 left-[72px]'
                 : taskbarPosition === 'right'
@@ -12141,7 +12281,7 @@ export default function App() {
       {startMenuOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`luma-animate-in fixed z-50 w-[465px] max-w-[calc(100vw-24px)] border p-4 space-y-3.5 ${popoverShellCls} ${
+          className={`luma-animate-in fixed z-[9500] w-[465px] max-w-[calc(100vw-24px)] border p-4 space-y-3.5 ${popoverShellCls} ${
             taskbarPosition === 'left'
               ? 'top-3 left-[72px]'
               : taskbarPosition === 'right'
@@ -12412,7 +12552,7 @@ export default function App() {
               setControlCenterOpen(false);
             }, 280);
           }}
-          className={`luma-animate-in fixed z-50 w-80 max-h-[84vh] overflow-y-auto border p-4 space-y-3.5 ${popoverShellCls} ${
+          className={`luma-animate-in fixed z-[9500] w-80 max-h-[84vh] overflow-y-auto border p-4 space-y-3.5 ${popoverShellCls} ${
             taskbarPosition === 'left'
               ? 'bottom-3 left-[68px]'
               : taskbarPosition === 'right'
@@ -12427,7 +12567,7 @@ export default function App() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.5.3 (CARBON)</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.5.4 (CARBON)</span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>
               {liveSystem?.location?.city || 'LOCAL'}
             </span>
@@ -13197,17 +13337,75 @@ export default function App() {
         }}
         onDismissNotification={(id) => setHubNotifications((prev) => prev.filter((n) => n.id !== id))}
         onAddNotification={(n) => {
+          const now = Date.now();
           setHubNotifications((prev) => [
             {
               ...n,
-              id: `hn_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-              time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+              id: `hn_${now}_${Math.random().toString(36).slice(2, 5)}`,
+              time: new Date(now).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+              dateLabel: 'Сегодня',
+              timestamp: now,
+              unread: true,
             },
-            ...prev.slice(0, 49),
+            ...prev.slice(0, 119),
           ]);
           if (!dndEnabled) {
             triggerIslandPulse(`${n.sender}: ${n.title}`, n.body, n.source);
           }
+        }}
+        onOpenFullShade={() => setNotifShadeOpen(true)}
+      />
+
+      {/* ==================== LUMA OS 1.5.4 FULL NOTIFICATION SHADE («ШТОРКА УВЕДОМЛЕНИЙ» · ALT+N) ==================== */}
+      <LumaNotificationShade
+        open={notifShadeOpen}
+        isDark={isDark}
+        notifications={hubNotifications}
+        dndEnabled={dndEnabled}
+        onToggleDnd={() => setDndEnabled((v) => !v)}
+        onClose={() => setNotifShadeOpen(false)}
+        onClearAll={() => {
+          setHubNotifications([]);
+          void fetch('/api/kernel/notifications/os', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'clear' }),
+          }).catch(() => {});
+        }}
+        onMarkAllRead={() => {
+          setHubNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+        }}
+        onDismiss={(id) => {
+          setHubNotifications((prev) => prev.filter((n) => n.id !== id));
+        }}
+        onOpenMessenger={(item) => {
+          setHubNotifications((prev) => prev.map((n) => (n.id === item.id ? { ...n, unread: false } : n)));
+          setNotifShadeOpen(false);
+          const src = item.source;
+          const match = hostWindows.find((hw) => {
+            const txt = `${hw.name} ${hw.title} ${hw.friendly_name || ''}`.toLowerCase();
+            if (src === 'telegram') return txt.includes('telegram') || txt.includes('ayugram');
+            if (src === 'whatsapp') return txt.includes('whatsapp');
+            if (src === 'discord') return txt.includes('discord');
+            if (src === 'browser') return txt.includes('chrome') || txt.includes('edge') || txt.includes('yandex') || txt.includes('firefox') || txt.includes('opera');
+            return false;
+          });
+          if (match?.pid) {
+            void handleFocusHostWindow(match.pid);
+          }
+        }}
+        onSendTest={() => {
+          void fetch('/api/kernel/notifications/os', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              app: 'Telegram',
+              sender: 'Дмитрий',
+              chat: 'Личный чат',
+              title: 'Дмитрий',
+              body: 'Привет! Погнали тестить Luma OS 1.5.4 — шторка уведомлений работает мгновенно и без мусорных +4.',
+            }),
+          }).catch(() => {});
         }}
       />
 
@@ -13227,10 +13425,10 @@ export default function App() {
             if (match?.pid) {
               void handleFocusHostWindow(match.pid);
             } else {
-              setCarbonHubOpen(true);
+              setNotifShadeOpen(true);
             }
           }}
-          className={`fixed top-14 right-4 z-[1220] w-[340px] max-w-[calc(100vw-2rem)] rounded-2xl border p-3.5 shadow-[0_24px_64px_rgba(0,0,0,0.55)] backdrop-blur-2xl cursor-pointer transition-all animate-in slide-in-from-right-6 fade-in duration-200 ${
+          className={`fixed top-14 right-4 z-[9620] w-[340px] max-w-[calc(100vw-2rem)] rounded-2xl border p-3.5 shadow-[0_24px_64px_rgba(0,0,0,0.55)] backdrop-blur-2xl cursor-pointer transition-all animate-in slide-in-from-right-6 fade-in duration-200 ${
             isDark
               ? 'bg-[#0d121d]/95 border-white/18 text-white hover:border-[var(--luma-accent)]'
               : 'bg-white/95 border-slate-300 text-slate-900 hover:border-[var(--luma-accent)]'

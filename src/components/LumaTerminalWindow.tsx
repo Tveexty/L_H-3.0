@@ -105,7 +105,7 @@ function createTab(idx: number): TermTab {
     cwd: '~',
     history: [],
     lines: [
-      { id: 1, kind: 'accent', text: 'LUMA OS 1.5.3 (CARBON · C-6) · LUMACORE 1.4.6 · LUMASHIELD 2.0 TERMINAL [IPC :49215]' },
+      { id: 1, kind: 'accent', text: 'LUMA OS 1.5.4 (CARBON · C-6) · LUMACORE 1.4.7 · LUMASHIELD 2.0 TERMINAL [IPC :49215]' },
       { id: 2, kind: 'out', text: 'Команды: help, neofetch, sys, top, ip, tcp, battery, wireless, scan, hosts, trash, dpi, uuid, hash, base64, gc, matrix, sh <cmd>.' },
     ],
   };
@@ -231,7 +231,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
       appendToTab(
         tid,
         [
-          'LUMA PRO TERMINAL 1.5.3 — СПРАВОЧНИК КОМАНД (50+):',
+          'LUMA PRO TERMINAL 1.5.4 — СПРАВОЧНИК КОМАНД (50+):',
           '  ── СИСТЕМА И ЖЕЛЕЗО ────────────────────────────────────────────────',
           '  neofetch               — паспорт системы, железо и версии ядер',
           '  sys / disks / loc      — CPU, GPU, RAM, диски, авто-регион',
@@ -273,12 +273,12 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         [
           `  ██╗     ██╗   ██╗███╗   ███╗ █████╗      luma@${hostName}`,
           `  ██║     ██║   ██║████╗ ████║██╔══██╗     ──────────────────────────`,
-          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.5.3 Carbon (${os})`,
+          `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.5.4 Carbon (${os})`,
           `  ██║     ██║   ██║██║╚██╔╝██║██╔══██║     STYLE   : ${designStyle === 'nothing' ? 'КЛАССИЧЕСКИЙ' : 'МОДЕРН'} · TASKBAR ${taskbarPosition.toUpperCase()}`,
           `  ███████╗╚██████╔╝██║ ╚═╝ ██║██║  ██║     CPU     : ${cpu}`,
           `  ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝     GPU     : ${gpu}`,
           `                                           RAM     : ${ram}`,
-          `  KERNEL : LumaCore ${liveSystem?.kernel_engine_version || '1.4.6'} · Shield 2.0     REGION  : ${loc}`,
+          `  KERNEL : LumaCore ${liveSystem?.kernel_engine_version || '1.4.7'} · Shield 2.0     REGION  : ${loc}`,
         ].join('\n'),
         'accent'
       );

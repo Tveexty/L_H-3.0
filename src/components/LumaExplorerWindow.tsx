@@ -4,6 +4,7 @@ import {
   ArrowRight,
   ArrowUp,
   ClipboardPaste,
+  Columns,
   Copy,
   Download,
   ExternalLink,
@@ -178,6 +179,47 @@ export const LumaExplorerWindow: React.FC<{
   const [isSearchResults, setIsSearchResults] = useState<boolean>(false);
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [clipboard, setClipboard] = useState<{ mode: 'copy' | 'cut'; paths: string[] } | null>(null);
+  const [extraShutters, setExtraShutters] = useState<{ id: string; initialPath: string }[]>([]);
+  const [mainDropActive, setMainDropActive] = useState<boolean>(false);
+  const [shutterRefreshTick, setShutterRefreshTick] = useState<number>(0);
+
+  const transferFilesToDir = async (sourcePaths: string[], destDir: string, mode: 'move' | 'copy') => {
+    const clean = sourcePaths.filter(Boolean);
+    if (clean.length === 0 || !destDir) return;
+    let okCount = 0;
+    let lastErr = '';
+    for (const src of clean) {
+      const base = src.split(/[\\/]/).filter(Boolean).pop() || '';
+      if (!base) continue;
+      const sep = destDir.includes('\\') && !destDir.includes('/') ? '\\' : '/';
+      const dest = destDir.endsWith(sep) ? `${destDir}${base}` : `${destDir}${sep}${base}`;
+      if (src === dest) continue;
+      try {
+        const res = await fetch('/api/kernel/fs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: mode, path: src, dest }),
+        });
+        const data = await res.json();
+        if (data?.ok) okCount++;
+        else lastErr = data?.error || 'Ошибка операции';
+      } catch {
+        lastErr = 'Нет связи с ядром';
+      }
+    }
+    if (okCount > 0) {
+      onPushToast(
+        'Проводник',
+        mode === 'move' ? `Перемещено объектов: ${okCount}` : `Скопировано объектов: ${okCount}`,
+        'success'
+      );
+      setShutterRefreshTick((t) => t + 1);
+      // Refresh primary pane
+      void fetchDirectory(activeTab.path, false);
+    } else if (lastErr) {
+      onPushToast('Проводник', lastErr, 'warning');
+    }
+  };
   const [preview, setPreview] = useState<{
     entry: ExplorerEntry;
     kind: 'text' | 'image';
@@ -761,6 +803,25 @@ export const LumaExplorerWindow: React.FC<{
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Open Multiple Side-by-Side Shutters for Easy Drag & Drop Moving Between Folders! */}
+          <button
+            type="button"
+            disabled={extraShutters.length >= 2}
+            onClick={() => {
+              const defaultNext = quickFolders.find((q) => q.path !== activeTab.path)?.path || activeTab.path || '~';
+              setExtraShutters((prev) => [...prev, { id: `sh_${Date.now()}`, initialPath: defaultNext }]);
+            }}
+            title="Открыть дополнительную шторку рядом для удобного перетаскивания файлов между папками (до 3 шторок)"
+            className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1.5 cursor-pointer transition disabled:opacity-40 ${
+              extraShutters.length > 0
+                ? 'border-[var(--luma-accent)] bg-[var(--luma-accent)] text-white shadow-sm'
+                : btnCls
+            }`}
+          >
+            <Columns className="w-3.5 h-3.5" />
+            <span>+ Шторка ({extraShutters.length + 1}/3)</span>
+          </button>
+
           {/* Pin Current Folder to Sidebar Favorites */}
           <button
             onClick={togglePinCurrentFolder}
@@ -929,8 +990,31 @@ export const LumaExplorerWindow: React.FC<{
           </div>
         </aside>
 
-        {/* Center File List */}
-        <div className="flex-1 min-w-0 overflow-y-auto p-3">
+        {/* Center File List (Primary Shutter — supports Drag & Drop from any other shutter!) */}
+        <div
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes('application/x-luma-fs')) {
+              e.preventDefault();
+              setMainDropActive(true);
+            }
+          }}
+          onDragLeave={() => setMainDropActive(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setMainDropActive(false);
+            const raw = e.dataTransfer.getData('application/x-luma-fs');
+            if (!raw) return;
+            try {
+              const paths = JSON.parse(raw) as string[];
+              void transferFilesToDir(paths, activeTab.path, e.ctrlKey || e.altKey ? 'copy' : 'move');
+            } catch {
+              /* ignore */
+            }
+          }}
+          className={`flex-1 min-w-0 overflow-y-auto p-3 transition ${
+            mainDropActive ? 'ring-2 ring-inset ring-[var(--luma-accent)] bg-[var(--luma-accent)]/10' : ''
+          }`}
+        >
           {errorMsg ? (
             <div className={`p-6 rounded-xl border text-center space-y-2 ${surfaceCls}`}>
               <div className="font-bold text-[var(--luma-accent)]">{errorMsg}</div>
@@ -974,6 +1058,12 @@ export const LumaExplorerWindow: React.FC<{
                   return (
                     <div
                       key={entry.path}
+                      draggable
+                      onDragStart={(e) => {
+                        const dragList = sel ? selectedPaths : [entry.path];
+                        e.dataTransfer.setData('application/x-luma-fs', JSON.stringify(dragList));
+                        e.dataTransfer.effectAllowed = 'copyMove';
+                      }}
                       onClick={(e) => {
                         if (e.ctrlKey || e.metaKey) {
                           setSelectedPaths((p) => (p.includes(entry.path) ? p.filter((x) => x !== entry.path) : [...p, entry.path]));
@@ -1144,6 +1234,26 @@ export const LumaExplorerWindow: React.FC<{
             </div>
           </aside>
         )}
+
+        {/* Extra Side-by-Side Folder Shutters (Multi-Pane Drag & Drop File Transfer!) */}
+        {extraShutters.map((sh, idx) => (
+          <ExplorerShutterPane
+            key={sh.id}
+            shutterNumber={idx + 2}
+            initialPath={sh.initialPath}
+            quickFolders={quickFolders}
+            drives={drives}
+            isDark={isDark}
+            surfaceCls={surfaceCls}
+            btnCls={btnCls}
+            mutedCls={mutedCls}
+            primarySelectedPaths={selectedPaths}
+            primaryDirPath={activeTab.path}
+            refreshTick={shutterRefreshTick}
+            onTransfer={(paths, destDir, mode) => void transferFilesToDir(paths, destDir, mode)}
+            onClose={() => setExtraShutters((prev) => prev.filter((x) => x.id !== sh.id))}
+          />
+        ))}
       </div>
 
       {/* 5. WINDOWS STATUS BAR */}
@@ -1152,6 +1262,7 @@ export const LumaExplorerWindow: React.FC<{
           <span>Элементов: {visibleEntries.length}</span>
           <span>Скрытых в папке: {hiddenCount}</span>
           {selectedPaths.length > 0 && <span className="text-[var(--luma-accent)] font-bold">Выбрано: {selectedPaths.length}</span>}
+          {extraShutters.length > 0 && <span className="text-emerald-400 font-bold">Шторок: {extraShutters.length + 1} (перетащите файл для переноса)</span>}
         </div>
         <span className="truncate max-w-[320px]">{isSearchResults ? `Поиск: «${searchQuery}»` : activeTab.path}</span>
       </div>
@@ -1164,7 +1275,7 @@ export const LumaExplorerWindow: React.FC<{
             left: Math.min(ctxMenu.x, window.innerWidth - 220),
             top: Math.min(ctxMenu.y, window.innerHeight - 280),
           }}
-          className={`fixed z-[85] w-52 border p-1.5 space-y-0.5 text-xs ${popoverShellCls}`}
+          className={`fixed z-[9500] w-52 border p-1.5 space-y-0.5 text-xs ${popoverShellCls}`}
         >
           <button
             onClick={() => {
@@ -1283,3 +1394,237 @@ export const LumaExplorerWindow: React.FC<{
     </div>
   );
 };
+
+const ExplorerShutterPane: React.FC<{
+  shutterNumber: number;
+  initialPath: string;
+  quickFolders: QuickFolder[];
+  drives: LiveDiskMetric[];
+  isDark: boolean;
+  surfaceCls: string;
+  btnCls: string;
+  mutedCls: string;
+  primarySelectedPaths: string[];
+  primaryDirPath: string;
+  refreshTick: number;
+  onTransfer: (paths: string[], destDir: string, mode: 'move' | 'copy') => void;
+  onClose: () => void;
+}> = ({
+  shutterNumber,
+  initialPath,
+  quickFolders,
+  drives,
+  isDark,
+  surfaceCls,
+  btnCls,
+  mutedCls,
+  primarySelectedPaths,
+  primaryDirPath,
+  refreshTick,
+  onTransfer,
+  onClose,
+}) => {
+  const [curPath, setCurPath] = useState(initialPath || '~');
+  const [parentDir, setParentDir] = useState('');
+  const [items, setItems] = useState<ExplorerEntry[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [dropHover, setDropHover] = useState(false);
+
+  const loadDir = async (p: string) => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/api/kernel/fs?path=${encodeURIComponent(p)}`);
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.ok) {
+          setCurPath(d.path || p);
+          setParentDir(d.parent || '');
+          setItems(Array.isArray(d.entries) ? d.entries : []);
+          setSelected([]);
+        }
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadDir(curPath);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTick]);
+
+  return (
+    <div
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('application/x-luma-fs')) {
+          e.preventDefault();
+          setDropHover(true);
+        }
+      }}
+      onDragLeave={() => setDropHover(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDropHover(false);
+        const raw = e.dataTransfer.getData('application/x-luma-fs');
+        if (!raw) return;
+        try {
+          const paths = JSON.parse(raw) as string[];
+          onTransfer(paths, curPath, e.ctrlKey || e.altKey ? 'copy' : 'move');
+        } catch {
+          /* ignore */
+        }
+      }}
+      className={`w-[340px] lg:w-[390px] shrink-0 border-l flex flex-col min-h-0 transition ${
+        isDark ? 'border-white/10 bg-black/20' : 'border-zinc-900/10 bg-zinc-50/80'
+      } ${dropHover ? 'ring-2 ring-inset ring-[var(--luma-accent)] bg-[var(--luma-accent)]/12' : ''}`}
+    >
+      {/* Shutter Header */}
+      <div className={`px-2.5 py-2 border-b space-y-1.5 shrink-0 ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
+        <div className="flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="px-1.5 py-0.5 rounded bg-[var(--luma-accent)]/20 text-[var(--luma-accent)] text-[10px] font-bold shrink-0">
+              Шторка {shutterNumber}
+            </span>
+            <button
+              type="button"
+              disabled={!parentDir}
+              onClick={() => parentDir && void loadDir(parentDir)}
+              title="На уровень вверх"
+              className={`p-1 rounded border cursor-pointer disabled:opacity-35 ${btnCls}`}
+            >
+              <ArrowUp className="w-3 h-3" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadDir(curPath)}
+              title="Обновить"
+              className={`p-1 rounded border cursor-pointer ${btnCls}`}
+            >
+              <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            title="Закрыть шторку"
+            className="p-1 rounded hover:bg-rose-500/20 text-rose-400 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Quick Folder / Drive Switcher */}
+        <select
+          value={curPath}
+          onChange={(e) => void loadDir(e.target.value)}
+          className={`w-full px-2 py-1 rounded-lg border text-[11px] font-mono outline-none ${btnCls}`}
+        >
+          <option value={curPath}>{curPath}</option>
+          {quickFolders.map((q) => (
+            <option key={q.path} value={q.path}>
+              {q.name} ({q.path})
+            </option>
+          ))}
+          {drives.map((d) => {
+            const mp = d.mount.endsWith(':') ? d.mount + '\\' : d.mount;
+            return (
+              <option key={d.mount} value={mp}>
+                Диск {d.mount}
+              </option>
+            );
+          })}
+        </select>
+
+        {/* 1-Click Transfer Buttons */}
+        <div className="flex flex-wrap items-center gap-1 text-[10px]">
+          <button
+            type="button"
+            disabled={primarySelectedPaths.length === 0}
+            onClick={() => onTransfer(primarySelectedPaths, curPath, 'move')}
+            className="flex-1 py-1 px-2 rounded-lg bg-[var(--luma-accent)] text-white font-bold disabled:opacity-35 cursor-pointer truncate"
+            title="Переместить выбранные из основной панели сюда"
+          >
+            Переместить сюда ({primarySelectedPaths.length}) →
+          </button>
+          <button
+            type="button"
+            disabled={primarySelectedPaths.length === 0}
+            onClick={() => onTransfer(primarySelectedPaths, curPath, 'copy')}
+            className={`py-1 px-2 rounded-lg border font-semibold disabled:opacity-35 cursor-pointer ${btnCls}`}
+            title="Копировать выбранные сюда"
+          >
+            Копир.
+          </button>
+          {selected.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onTransfer(selected, primaryDirPath, 'move')}
+              className="py-1 px-2 rounded-lg bg-emerald-600 text-white font-bold cursor-pointer"
+              title="Переместить выбранные из этой шторки в основную панель"
+            >
+              ← В основную ({selected.length})
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Drop Hint */}
+      {dropHover && (
+        <div className="px-3 py-1.5 bg-[var(--luma-accent)]/20 text-[var(--luma-accent)] text-[11px] font-bold text-center">
+          Отпустите, чтобы переместить сюда (Ctrl — копировать)
+        </div>
+      )}
+
+      {/* Shutter Entries List */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1">
+        {items.length === 0 ? (
+          <div className={`py-10 text-center text-[11px] font-mono ${mutedCls}`}>
+            {loading ? 'Загрузка...' : 'Пустая папка — перетащите файлы сюда'}
+          </div>
+        ) : (
+          items.map((entry) => {
+            const isSel = selected.includes(entry.path);
+            return (
+              <div
+                key={entry.path}
+                draggable
+                onDragStart={(e) => {
+                  const list = isSel ? selected : [entry.path];
+                  e.dataTransfer.setData('application/x-luma-fs', JSON.stringify(list));
+                  e.dataTransfer.effectAllowed = 'copyMove';
+                }}
+                onClick={(e) => {
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelected((p) => (p.includes(entry.path) ? p.filter((x) => x !== entry.path) : [...p, entry.path]));
+                  } else {
+                    setSelected([entry.path]);
+                  }
+                }}
+                onDoubleClick={() => {
+                  if (entry.is_dir) void loadDir(entry.path);
+                }}
+                className={`px-2 py-1.5 rounded-lg border flex items-center justify-between gap-2 text-xs cursor-pointer transition ${
+                  isSel
+                    ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                    : `${surfaceCls} hover:border-[var(--luma-accent)]/40`
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {getFileIcon(entry, 'w-3.5 h-3.5 shrink-0')}
+                  <span className="truncate font-medium">{entry.name}</span>
+                </div>
+                <span className={`text-[10px] font-mono shrink-0 ${mutedCls}`}>
+                  {entry.is_dir ? 'Папка' : formatBytesRu(entry.size)}
+                </span>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+};
+

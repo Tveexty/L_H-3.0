@@ -259,28 +259,65 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
   };
 
   const runFindReplace = (replaceAll: boolean) => {
-    if (!findTerm.trim()) return;
-    const escaped = findTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(escaped, replaceAll ? 'gi' : 'i');
-    const count = (docHtml.match(new RegExp(escaped, 'gi')) || []).length;
-    if (count === 0) {
-      onNotify?.('Поиск', `Фрагмент «${findTerm}» не найден`, 'warn');
+    const q = findTerm;
+    if (!q.trim()) return;
+    const container = document.createElement('div');
+    container.innerHTML = editorRef.current ? editorRef.current.innerHTML : docHtml;
+
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const countRe = new RegExp(escaped, 'gi');
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+    let cur = walker.nextNode();
+    while (cur) {
+      textNodes.push(cur as Text);
+      cur = walker.nextNode();
+    }
+
+    let totalMatches = 0;
+    for (const tn of textNodes) {
+      const m = (tn.nodeValue || '').match(countRe);
+      if (m) totalMatches += m.length;
+    }
+
+    if (totalMatches === 0) {
+      onNotify?.('Поиск', `Фрагмент «${q}» не найден`, 'warn');
       return;
     }
+
     if (replaceTerm !== '' || replaceAll) {
-      const next = docHtml.replace(re, replaceTerm);
+      let replacedCount = 0;
+      for (const tn of textNodes) {
+        const val = tn.nodeValue || '';
+        if (!val) continue;
+        if (replaceAll) {
+          const matches = val.match(countRe);
+          if (matches && matches.length > 0) {
+            replacedCount += matches.length;
+            tn.nodeValue = val.replace(countRe, () => replaceTerm);
+          }
+        } else if (replacedCount === 0) {
+          const singleRe = new RegExp(escaped, 'i');
+          if (singleRe.test(val)) {
+            tn.nodeValue = val.replace(singleRe, () => replaceTerm);
+            replacedCount = 1;
+            break;
+          }
+        }
+      }
+      const next = container.innerHTML;
       if (editorRef.current) editorRef.current.innerHTML = next;
       lastExternalHtmlRef.current = next;
       onChangeDocHtml(next);
-      onNotify?.('Замена', replaceAll ? `Заменено совпадений: ${count}` : 'Заменено 1 совпадение', 'ok');
+      onNotify?.('Замена', replaceAll ? `Заменено совпадений: ${replacedCount}` : 'Заменено 1 совпадение', 'ok');
     } else {
-      onNotify?.('Поиск', `Найдено совпадений: ${count}`, 'info');
+      onNotify?.('Поиск', `Найдено совпадений: ${totalMatches}`, 'info');
     }
   };
 
   const runSpellCheck = () => {
     const tmp = document.createElement('div');
-    tmp.innerHTML = docHtml;
+    tmp.innerHTML = editorRef.current ? editorRef.current.innerHTML : docHtml;
     const text = tmp.textContent || '';
     const issues: string[] = [];
     if (/  +/.test(text)) issues.push('Обнаружены двойные пробелы — рекомендуется автоочистка.');
@@ -292,14 +329,26 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
   };
 
   const autoFixTypography = () => {
-    let next = docHtml
-      .replace(/ {2,}/g, ' ')
-      .replace(/ ([.,!?;:])/g, '$1')
-      .replace(/ - /g, ' — ');
+    const container = document.createElement('div');
+    container.innerHTML = editorRef.current ? editorRef.current.innerHTML : docHtml;
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      const val = node.nodeValue || '';
+      if (val) {
+        node.nodeValue = val
+          .replace(/ {2,}/g, ' ')
+          .replace(/ ([.,!?;:])/g, '$1')
+          .replace(/ - /g, ' — ')
+          .replace(/"([^"]+)"/g, '«$1»');
+      }
+      node = walker.nextNode();
+    }
+    const next = container.innerHTML;
     if (editorRef.current) editorRef.current.innerHTML = next;
     lastExternalHtmlRef.current = next;
     onChangeDocHtml(next);
-    setSpellIssues(['Типографика, пробелы и длинные тире «—» приведены к стандарту!']);
+    setSpellIssues(['Типографика, кавычки «ёлочки», пробелы и длинные тире «—» приведены к стандарту!']);
     onNotify?.('Word · Правописание', 'Типографика документа улучшена', 'ok');
   };
 
@@ -464,7 +513,20 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
                     onChange={(e) => {
                       const px = Number(e.target.value);
                       setFontSizePx(px);
-                      insertHtml(`<span style="font-size:${px}px">${window.getSelection()?.toString() || '&nbsp;'}</span>`);
+                      const sel = window.getSelection();
+                      if (sel && !sel.isCollapsed && editorRef.current?.contains(sel.anchorNode)) {
+                        const range = sel.getRangeAt(0);
+                        const span = document.createElement('span');
+                        span.style.fontSize = `${px}px`;
+                        try {
+                          range.surroundContents(span);
+                        } catch {
+                          const frag = range.extractContents();
+                          span.appendChild(frag);
+                          range.insertNode(span);
+                        }
+                        syncFromDom();
+                      }
                     }}
                     className={`h-6 px-1 rounded border text-[11px] w-14 outline-none ${
                       officeDark ? 'bg-[#1e1e1e] border-white/15 text-white' : 'bg-white border-[#C8C6C4]'
@@ -472,8 +534,50 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
                   >
                     {FONT_SIZES.map((s) => <option key={s.label} value={s.px}>{s.label}</option>)}
                   </select>
-                  <RibbonSmallBtn icon={<span className="font-bold text-xs">А↑</span>} isDark={officeDark} title="Увеличить размер" onClick={() => setFontSizePx((v) => Math.min(64, v + 2))} />
-                  <RibbonSmallBtn icon={<span className="font-bold text-[10px]">А↓</span>} isDark={officeDark} title="Уменьшить размер" onClick={() => setFontSizePx((v) => Math.max(10, v - 2))} />
+                  <RibbonSmallBtn
+                    icon={<span className="font-bold text-xs">А↑</span>}
+                    isDark={officeDark}
+                    title="Увеличить размер"
+                    onClick={() => {
+                      const nextPx = Math.min(64, fontSizePx + 2);
+                      setFontSizePx(nextPx);
+                      const sel = window.getSelection();
+                      if (sel && !sel.isCollapsed && editorRef.current?.contains(sel.anchorNode)) {
+                        const range = sel.getRangeAt(0);
+                        const span = document.createElement('span');
+                        span.style.fontSize = `${nextPx}px`;
+                        try {
+                          range.surroundContents(span);
+                        } catch {
+                          span.appendChild(range.extractContents());
+                          range.insertNode(span);
+                        }
+                        syncFromDom();
+                      }
+                    }}
+                  />
+                  <RibbonSmallBtn
+                    icon={<span className="font-bold text-[10px]">А↓</span>}
+                    isDark={officeDark}
+                    title="Уменьшить размер"
+                    onClick={() => {
+                      const nextPx = Math.max(10, fontSizePx - 2);
+                      setFontSizePx(nextPx);
+                      const sel = window.getSelection();
+                      if (sel && !sel.isCollapsed && editorRef.current?.contains(sel.anchorNode)) {
+                        const range = sel.getRangeAt(0);
+                        const span = document.createElement('span');
+                        span.style.fontSize = `${nextPx}px`;
+                        try {
+                          range.surroundContents(span);
+                        } catch {
+                          span.appendChild(range.extractContents());
+                          range.insertNode(span);
+                        }
+                        syncFromDom();
+                      }
+                    }}
+                  />
                   <RibbonSmallBtn icon={<span className="text-[11px] font-bold">АА</span>} isDark={officeDark} title="ВСЕ ПРОПИСНЫЕ" onClick={() => changeCase('upper')} />
                   <RibbonSmallBtn icon={<span className="text-[11px]">аа</span>} isDark={officeDark} title="все строчные" onClick={() => changeCase('lower')} />
                   <RibbonSmallBtn icon={<RemoveFormatting className="w-3.5 h-3.5 text-rose-500" />} isDark={officeDark} title="Очистить форматирование" onClick={() => exec('removeFormat')} />
@@ -852,7 +956,7 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
                 label="Список литературы"
                 isDark={officeDark}
                 onClick={() =>
-                  insertHtml('<h2>Список использованной литературы</h2><ol><li>ГОСТ Р 7.0.5–2008. Библиографическая ссылка.</li><li>Документация Luma OS 1.5.3 Carbon.</li></ol>')
+                  insertHtml('<h2>Список использованной литературы</h2><ol><li>ГОСТ Р 7.0.5–2008. Библиографическая ссылка.</li><li>Документация Luma OS 1.5.4 Carbon.</li></ol>')
                 }
               />
             </RibbonGroup>
@@ -1058,6 +1162,18 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
               stats.headings.map((h) => (
                 <div
                   key={h.id}
+                  onClick={() => {
+                    const hs = editorRef.current?.querySelectorAll('h1, h2, h3');
+                    const target = hs?.[h.id] as HTMLElement | undefined;
+                    if (target) {
+                      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      const prevBg = target.style.backgroundColor;
+                      target.style.backgroundColor = 'rgba(24,90,189,0.18)';
+                      window.setTimeout(() => {
+                        target.style.backgroundColor = prevBg;
+                      }, 900);
+                    }
+                  }}
                   style={{ paddingLeft: `${(h.level - 1) * 12}px` }}
                   className="py-1 px-1.5 rounded hover:bg-[#185ABD]/10 cursor-pointer truncate font-medium"
                 >
@@ -1147,7 +1263,7 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
             {/* Footer */}
             {(footerText || showPageNum) && (
               <div className="mt-8 pt-2 border-t border-slate-200 text-[11px] text-slate-400 flex items-center justify-between">
-                <span>{footerText || 'Luma Word 1.5.3'}</span>
+                <span>{footerText || 'Luma Word 1.5.4'}</span>
                 {showPageNum && <span>Страница 1 из {stats.pages}</span>}
               </div>
             )}

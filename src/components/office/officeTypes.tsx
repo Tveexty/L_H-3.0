@@ -29,6 +29,8 @@ export type SlideAnimKind =
   | 'fly_left'
   | 'fly_right'
   | 'fly_up'
+  | 'fly_down'
+  | 'float_in'
   | 'zoom_in'
   | 'spin'
   | 'bounce'
@@ -1044,7 +1046,7 @@ export const PPT_TEMPLATES: { id: string; name: string; desc: string; slides: Of
         elements: [
           {
             id: 'e1', type: 'text', x: 7, y: 20, w: 86, h: 24,
-            text: 'Luma Office Studio 1.5.3', fontSize: 44, bold: true, align: 'center', color: '#ffffff', anim: 'fade_in', animOrder: 1,
+            text: 'Luma Office Studio 1.5.4', fontSize: 44, bold: true, align: 'center', color: '#ffffff', anim: 'fade_in', animOrder: 1,
           },
           {
             id: 'e2', type: 'text', x: 14, y: 48, w: 72, h: 16,

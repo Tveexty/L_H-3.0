@@ -214,7 +214,7 @@ export const SCENARIO_ACTIONS: { id: ScenarioActionType; label: string; hint: st
   { id: 'take_screenshot', label: 'Сделать компактный скриншот', hint: 'Сохранит в ~/Pictures/LumaCaptures', defaultParam: '', needsParam: false },
   { id: 'start_recording', label: 'Начать Zero-Freeze запись экрана', hint: 'Сохранит AVI в ~/Videos/LumaRecordings', defaultParam: '', needsParam: false },
   { id: 'optimize_ram', label: 'Очистить и оптимизировать RAM', hint: 'Вызовет LumaCore GC оптимизацию', defaultParam: '', needsParam: false },
-  { id: 'notify', label: 'Показать уведомление (Остров)', hint: 'Текст уведомления', defaultParam: 'Сценарий Luma 1.5.3 выполнен!', needsParam: true },
+  { id: 'notify', label: 'Показать уведомление (Остров)', hint: 'Текст уведомления', defaultParam: 'Сценарий Luma 1.5.4 выполнен!', needsParam: true },
   { id: 'toggle_island', label: 'Dynamic Island', hint: 'on или off', defaultParam: 'on', needsParam: true },
   { id: 'toggle_dual_bar', label: 'Двойная панель задач', hint: 'on или off', defaultParam: 'on', needsParam: true },
   { id: 'lock_screen', label: 'Заблокировать экран ПК', hint: '', defaultParam: '', needsParam: false },

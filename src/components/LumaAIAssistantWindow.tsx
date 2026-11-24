@@ -58,7 +58,7 @@ export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
     models: ['luma-lang-3.0', 'luma-code-3.0', 'luma-hybrid-3.0'],
     defaultBaseUrl: 'internal://luma-ai-3.0',
     needsKey: false,
-    hint: 'Умный движок уровня Chrome AI Overview в ядре LumaCore 1.4.6: живой двух-источниковый веб-синтез (Wikipedia + DuckDuckGo), переводчик, суммаризация текста, кредитный калькулятор, сравнения A vs B, инженерные гайды и Code 3.0.',
+    hint: 'Умный движок уровня Chrome AI Overview в ядре LumaCore 1.4.7: живой двух-источниковый веб-синтез (Wikipedia + DuckDuckGo), переводчик, суммаризация текста, кредитный калькулятор, сравнения A vs B, инженерные гайды и Code 3.0.',
   },
   {
     id: 'gemini',
@@ -169,7 +169,7 @@ export const DEFAULT_LUMA_AI_CONFIG: LumaAIConfig = {
   models: {},
   baseUrls: {},
   systemPrompt:
-    'Ты — встроенный системный ИИ-ассистент Luma AI 3.0 в Luma OS 1.5.3 (Carbon · Kernel 1.4.6). Отвечай чётко, умно, структурированно и на языке пользователя.',
+    'Ты — встроенный системный ИИ-ассистент Luma AI 3.0 в Luma OS 1.5.4 (Carbon · Kernel 1.4.7). Отвечай чётко, умно, структурированно и на языке пользователя.',
   temperature: 0.7,
   includeSystemContext: true,
 };

@@ -69,14 +69,23 @@ func NewSecurityKernel() *SecurityKernel {
 }
 
 func (s *SecurityKernel) realtimeGuardLoop() {
+	defer func() { _ = recover() }()
 	ticker := time.NewTicker(45 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
+		func() {
+			defer func() { _ = recover() }()
+			s.realtimeGuardTick()
+		}()
+	}
+}
+
+func (s *SecurityKernel) realtimeGuardTick() {
 		s.mu.RLock()
 		enabled := s.realtimeGuardEnabled
 		s.mu.RUnlock()
 		if !enabled {
-			continue
+			return
 		}
 		home, _ := os.UserHomeDir()
 		dirs := []string{filepath.Join(os.TempDir(), "LumaShield_Test")}
@@ -126,7 +135,6 @@ func (s *SecurityKernel) realtimeGuardLoop() {
 				}
 			}
 		}
-	}
 }
 
 func (s *SecurityKernel) SetRealtimeGuard(enabled bool) bool {
