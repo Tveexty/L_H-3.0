@@ -1,59 +1,59 @@
 <div align="center">
 
-<img src="public/luma-carbon-hero.jpg" alt="Luma OS 1.5.1 (Carbon · C-6 · 4K UHD)" width="100%" style="border-radius: 18px;" />
+<img src="public/luma-carbon-hero.jpg" alt="Luma OS 1.5.2 (Carbon · C-6 · 4K UHD)" width="100%" style="border-radius: 18px;" />
 
 <br />
 
-# Luma OS 1.5.1 — **Carbon · C-6**
+# Luma OS 1.5.2 — **Carbon · C-6**
 
-**Флагманская настольная операционная среда для Windows 10 / 11 на ядре `LumaCore 1.6.1`, антивирусе `LumaShield 2.0`, встроенном `Luma Office Studio` и `Luma AI 2.0`**
+**Флагманская настольная операционная среда для Windows 10 / 11 на ядре `LumaCore 1.4.5`, антивирусе `LumaShield 2.0`, обновлённых студиях `Cut Studio`, `Code Studio`, `Office Studio` и `Luma AI 3.0`**
 
 <p>
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.5.1"><img src="https://img.shields.io/badge/Release-v1.5.1%20(Carbon%20·%20C--6)-06b6d4?style=for-the-badge" alt="Release v1.5.1" /></a>
-  <img src="https://img.shields.io/badge/Kernel-LumaCore%201.6.1%20(Zero--WMI)-10b981?style=for-the-badge" alt="LumaCore 1.6.1" />
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.5.2"><img src="https://img.shields.io/badge/Release-v1.5.2%20(Carbon%20·%20C--6)-06b6d4?style=for-the-badge" alt="Release v1.5.2" /></a>
+  <img src="https://img.shields.io/badge/Kernel-LumaCore%201.4.5%20(Zero--WMI)-10b981?style=for-the-badge" alt="LumaCore 1.4.5" />
   <img src="https://img.shields.io/badge/Security-LumaShield%202.0%20(175%2B%20Rules)-f43f5e?style=for-the-badge" alt="LumaShield 2.0" />
-  <img src="https://img.shields.io/badge/Office-Docs%20·%20Sheets%20·%20Slides-3b82f6?style=for-the-badge" alt="Luma Office Studio" />
-  <img src="https://img.shields.io/badge/AI-Luma%20AI%202.0%20Offline-8b5cf6?style=for-the-badge" alt="Luma AI 2.0" />
+  <img src="https://img.shields.io/badge/Studios-Cut%20·%20Code%20·%20Office%20Pro-3b82f6?style=for-the-badge" alt="Studios Pro" />
+  <img src="https://img.shields.io/badge/AI-Luma%20AI%203.0%20Overview-8b5cf6?style=for-the-badge" alt="Luma AI 3.0" />
   <img src="https://img.shields.io/badge/Wallpapers-4K%20UHD%203840×2160-f59e0b?style=for-the-badge" alt="4K UHD Wallpapers" />
 </p>
 
 <h3>
-  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.5.1.exe">⬇️ Скачать LumaOS_1.5.1.exe (Portable · 1 файл · 0 зависимостей)</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.5.2.exe">⬇️ Скачать LumaOS_1.5.2.exe (Portable · 1 файл · 0 зависимостей)</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.5.1">📦 Страница релиза v1.5.1</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.5.2">📦 Страница релиза v1.5.2</a>
 </h3>
 
 </div>
 
 ---
 
-## Что нового в **Luma OS 1.5.1 (Carbon · C-6)**
+## Что нового в **Luma OS 1.5.2 (Carbon · C-6 · Ядро `1.4.5`)**
 
-| Модуль | Ключевые улучшения обновления 1.5.1 |
+| Модуль | Ключевые улучшения и исправления обновления 1.5.2 |
 | :--- | :--- |
-| **Luma Office Studio (Word · Excel · PowerPoint)** | Полноценный встроенный офисный пакет на нативном Go-движке (`archive/zip` + `encoding/xml`): **без ошибок открывает реальные `.pptx` (с изображениями, фигурами, текстом, таблицами и заметками), `.docx`, `.xlsx`, `.odp`, `.odt`, `.ods`, `.csv`, `.md`, `.html`, `.rtf`, `.txt`, `.json`** и сохраняет/экспортирует в **любой формат** (`.pptx`, `.docx`, `.xlsx`, `.pdf`, `.png`, `.html`, `.md`, `.csv`, `.tsv`, `.rtf`, `.txt`, `.json`). Поддерживает формулы (`SUM`, `AVG`, `MIN`, `MAX`, `IF`, `COUNT`, `ROUND`), SVG-диаграммы и режим показа слайдов `F5` с лазерной указкой. |
-| **Надёжные уведомления Telegram / Мессенджеров + Резинка Dynamic Island** | Двухуровневый мост уведомлений ОС: прямое чтение Windows WPN `wpndatabase.db` + `WAL` и отслеживание счётчиков непрочитанных окон **Telegram, Discord, WhatsApp, Viber, VK, Slack, Teams, Steam**. При каждом новом сообщении **Dynamic Island** плавно растягивается с **упругим «эффектом резины»** и сразу же сжимается обратно. |
-| **Luma AI 2.0 (`Luma Lang 2.0` + `Luma Code 2.0`)** | Обновлённые встроенные офлайн-модели: многоходовая память диалога, статический код-ревьюер и отладчик, решатель квадратных уравнений, ассистент деловых писем/планов/чеклистов и **45+ инженерных рецептов** без API-ключей и интернета. |
-| **4K UHD обои (`3840×2160`) без «мыла»** | Все 3 фирменных обоев Carbon пересобраны в кристально чётком **4K UHD (`3840×2160`, 4:4:4 JPEG)** при полном сохранении всей галереи обоев прошлых версий. |
-| **Панель управления Carbon Pro + чистый трей-центр** | Новые настройки прямо в Панели управления (`Tab` / правый верхний угол): **Ночной свет** (слайдер защиты глаз), **Игровой режим** (CPU/RAM Boost), **Mute микрофона**, 3-позиционный **План питания**, палитра акцентных цветов, переключатель **вывода и ввода звука**, кнопка **«Свернуть / Развернуть» Центр уведомлений** и **автозакрытие при отводе курсора**. Из нижнего окна трея убраны лишние кнопки (*Заблокировать, Сон, Корзина, EXE*) и настройки панели задач (теперь только в *Настройки → Панель задач*). |
-| **Супер-антивирус `LumaShield 2.0` (175+ правил)** | Расширенная база из **175+ сигнатур**: щит от стилеров **Telegram `tdata`, Discord, браузеров и криптокошельков**, проверка **ZIP-архивов и Office VBA-макросов (`vbaProject.bin`)**, проверка любого отдельного файла перетаскиванием (`Drag & Drop`) и экспорт полного отчёта аудита в `.md`. |
-| **Точный Таймер + Умные ПКМ-меню (`SmartContextMenu`)** | Исправлено отображение секунд в виджете Таймера (`tabular-nums` `MM:SS` без обрезания + пресеты `5 / 15 / 25 / 45м` + режим Секундомера). Все контекстные меню ПКМ (панель задач, трей, рабочий стол, виджеты, ярлыки) автоматически удерживаются внутри экрана и никогда не выходят за его границы. |
-| **Luma Code Studio Pro** | Чистый старт с пустого файла `untitled.txt` **без автозагрузки системных файлов** (проводник открывает только выбранную пользователем папку/файл), живая подсветка синтаксиса, миникарта кода, автозакрытие скобок и автоотступ, **Command Palette (`Ctrl+Shift+P`)**, сниппеты, форматтер и «Сохранить как». |
-| **Luma Cut Studio Pro** | Выбор кодека (**VP9 / VP8 / H.264 / AV1**), разрешения (**480p / 720p / 1080p**), FPS (**24 / 30 / 60**), битрейта (**2–16 Мбит/с**), **8 переходов**, **6 Ken Burns анимаций**, **8 анимаций титров**, **12 кино-LUT**, эффекты **Film Grain / VHS / Chromatic / 21:9**, стикеры, плавное затухание звука, **Undo/Redo** и снимок кадра в PNG. |
-| **Календарь Pro · Корзина Pro · Терминал (+20 команд)** | **Календарь**: почасовой таймлайн Дня (`07:00–23:00`), категории, быстрый ввод `15:30 Встреча`, статистика выполнения и живые напоминания. **Корзина**: мультивыбор, фильтры категорий, сортировка, встроенный предпросмотр файла, загрузка перетаскиванием и автоочистка. **Терминал**: +20 новых системных команд (`ip`, `tcp`, `battery`, `wireless`, `scan`, `hosts`, `trash`, `dpi`, `uptime`, `uuid`, `hash`, `base64`, `hex`, `date`, `matrix`, `gc`, `notify` и др.). |
+| **Zero-Freeze запись экрана (`LumaCore 1.4.5`)** | Полностью исправлен критический баг зависания ПК при запуске записи экрана: внедрён нативный фоновый Go AVI-рекордер (`~/Videos/LumaRecordings`) без блокировки WebView2/Topmost, безопасное снятие Topmost для резервного захвата и мгновенная остановка по **`Ctrl + Shift + S`**. |
+| **Чистые входящие сообщения Telegram / WhatsApp / Discord** | Убран спам со счётчиками непрочитанных (`3048413 непрочит.`). Мост Windows WPN DB/WAL теперь фильтрует только **реальные входящие сообщения от пользователей**, извлекает **круглые аватарки**, имя отправителя, чат (`Отправитель → Чат`) и текст сообщения. |
+| **Luma Cut Studio Pro (CapCut-класса)** | Все 6 категорий видеомонтажа: многодорожечный таймлайн (**V1, V2 PiP с Blend Modes, T1, A1 + бит-маркеры**), маски (круг/сердце/звезда/градиент) и **Хромакей**, **ключевые кадры**, кривые скорости, реверс, стоп-кадр, стабилизация и трекинг; **12 LUT + кривые RGB + ретушь лица/тела + стилизация (Anime/3D/Sketch) + AI Upscale**; библиотека музыки/SFX без авторских прав, извлечение аудио, диктофон озвучки, фильтры голоса и **Seed Audio (Текст→SFX)**; автосубтитры + перевод + TTS + **рисование кистью на видео** + AI-стикеры; **EditPilot (ИИ-монтаж текстом)**, генераторы сцен/арта, Сценарий→Видео, Long→Shorts 9:16, цифровой аватар (Lip-Sync); **Design Studio** (обложки YouTube/баннеры/постеры/мемы), конвертер и экспорт транскрипта (`.srt`/`.txt`). |
+| **Luma Code Studio Pro (IDE)** | **Исправлена потеря кода при сворачивании** (свёрнутые окна студий не размонтируются + автосохранение сессии в реальном времени), добавлена **live-диагностика ошибок кода** (красные маркеры строк + кликабельная панель «Проблемы» с переходом к строке) и **Pro многовкладочный Терминал** с историей команд (`↑/↓`), `Ctrl+/`, и Drag-and-Drop файлов. |
+| **Luma Office Studio Pro (Word · Excel · PowerPoint)** | Многовкладочная лента **Ribbon** как в Microsoft Office: **Word** (стили, шрифты, колонки, поля, ориентация, водяные знаки, колонтитулы, авто-оглавление, комментарии, поиск/замена); **Excel** (**35+ формул** `SUM`, `AVERAGE`, `IF`, `VLOOKUP`, `COUNTIF`, `SUMIF`, `MEDIAN`, `STDEV`, `ROUND`, `CONCAT`..., границы, объединение, закрепление шапки, условное форматирование, автофильтр и **6 типов графиков**); **PowerPoint** (макеты, **12+ фигур**, SmartArt, графики, таблицы, анимации объектов, переходы и **режим показа F5 с лазером, пером и маркером**). |
+| **Luma AI 3.0 (`Luma Lang 3.0` + `Luma Code 3.0`)** | Уровень качества Chrome AI Overview: живой двух-источниковый веб-синтез (**Wikipedia + DuckDuckGo Instant Overview**), переводчик текста, суммаризатор/корректор, финансовый и кредитный калькулятор, динамические сравнения `A vs B` и практические гайды по ПК. |
+| **Свой `Alt+Tab` внутри Luma OS** | Нативный перехватчик Win32 `WH_KEYBOARD_LL` заменяет стандартный `Alt+Tab` Windows фирменным HUD-переключателем Luma OS — мгновенно переключает между встроенными окнами Luma и открытыми программами Windows (Chrome, Telegram, Steam и др.). |
+| **100% полный перевод интерфейса и виджетов** | Реактивный движок локализации `LumaAutoTranslator` переводит **абсолютно все виджеты, окна, студии, меню, подсказки и кнопки** при смене языка ОС без остатков непереведённого текста. |
+| **Конструктор виджетов Pro (115+ опций) & Сценарии Pro** | **Конструктор виджетов**: выбор и запуск любого установленного приложения с ПК (с родной иконкой!), окна Luma, сайта, команды терминала, цепочек макросов, мини-кнопок, фото, градиентов, свечения, живой телеметрии и HTTP API. **Сценарии**: 17 триггеров, условия «И», 22 действия, цепочки шагов и 12 шаблонов. |
+| **Стабильность, Каталог виджетов и Безрамочные Арт-виджеты** | **Исправлено зависание Приватного рабочего стола** (мгновенный неблокирующий выход `Esc` / `Ctrl+Alt+Esc` и таймауты сети); каталог виджетов объединён по семействам (**все Часы в Часах, вся Батарея/Периферия в Питании, вся Погода в Погоде, весь Календарь в Календаре**); убраны толстые тёмные рамки и обрезание на арт-виджетах с картинками. |
 
 ---
 
-## Галерея 4K UHD обоев **Carbon 1.5.1**
+## Галерея 4K UHD обоев **Carbon**
 
-> Все 4K обои встроены в `LumaOS_1.5.1.exe` и дополняют полную накопительную коллекцию предыдущих версий (`Boron 1.4`, `Beryllium 1.3.1`, `Lithium 1.2`, `Obsidian Silk`, `Helium 1.1` + 10 живых CSS-обоев).
+> Все 4K обои встроены в `LumaOS_1.5.2.exe` и дополняют полную накопительную коллекцию предыдущих версий (`Boron 1.4`, `Beryllium 1.3.1`, `Lithium 1.2`, `Obsidian Silk`, `Helium 1.1` + 10 живых CSS-обоев).
 
 <table>
   <tr>
     <td width="33%" align="center">
-      <img src="public/luma-carbon-hero.jpg" alt="Carbon 1.5.1 4K UHD Monolith" width="100%" />
+      <img src="public/luma-carbon-hero.jpg" alt="Carbon 4K UHD Monolith" width="100%" />
       <br />
-      <b>Carbon 1.5.1 — 4K UHD Monolith</b>
+      <b>Carbon — 4K UHD Monolith</b>
     </td>
     <td width="33%" align="center">
       <img src="public/luma-carbon-weave.jpg" alt="Carbon Weave 4K UHD" width="100%" />
@@ -70,17 +70,17 @@
 
 ---
 
-## Новые API ядра `LumaCore 1.6.1`
+## API ядра `LumaCore 1.4.5`
 
 | Метод и эндпоинт | Назначение |
 | :--- | :--- |
-| `POST /api/kernel/office/import` | Нативный импорт `.pptx` (с `ppt/media/*` картинками), `.docx`, `.xlsx`, `.odp`, `.odt`, `.ods`, `.csv`, `.md`, `.html`, `.rtf`, `.txt`, `.json` |
-| `POST /api/kernel/office/export` | Нативный экспорт в `.pptx`, `.docx`, `.xlsx`, `.html`, `.md`, `.csv`, `.tsv`, `.rtf`, `.txt`, `.json` |
-| `GET / POST / DELETE /api/kernel/notifications/os` | Живой мост уведомлений Windows WPN + Telegram / Discord / WhatsApp / VK / Viber |
-| `POST /api/kernel/security/scan-file` | Проверка отдельного файла / ZIP / Office VBA макросов через `LumaShield 2.0` |
-| `GET /api/kernel/security/report` | Экспорт полного Markdown-отчёта аудита безопасности `LumaShield 2.0` |
-| `GET / POST /api/kernel/trash` | Корзина Pro (`preview`, `bulk_restore`, `bulk_delete`, `upload`, `auto_clean`, `empty`) |
-| `GET / POST /api/kernel/vault/*` | Суперконфиденциальность (`AES-256-GCM` изолированный стол) |
+| `POST /api/kernel/capture/native-record/start\|stop` · `GET .../status` | Нативный Zero-Freeze AVI-рекордер экрана в фоне (`~/Videos/LumaRecordings`) |
+| `POST /api/kernel/capture/prepare` | Безопасное временное снятие Topmost для системных диалогов захвата |
+| `POST /api/kernel/alt-tab/toggle` | Управление нативным перехватчиком `Alt+Tab` внутри Luma OS |
+| `GET / POST / DELETE /api/kernel/notifications/os` | Чистый мост входящих сообщений Telegram / WhatsApp / Discord / VK с аватарками |
+| `POST /api/kernel/ai/chat` | Движок **Luma AI 3.0** (`Luma Lang 3.0` + `Luma Code 3.0` + Веб-синтез) |
+| `POST /api/kernel/office/import` · `export` | Нативный импорт/экспорт `.pptx`, `.docx`, `.xlsx`, `.odp`, `.odt`, `.ods`, `.csv`, `.md`, `.html`, `.rtf`, `.txt` |
+| `POST /api/kernel/security/scan-file` · `GET .../report` | Антивирус `LumaShield 2.0` (175+ правил, проверка архивов, VBA-макросов и отчёт `.md`) |
 | `GET /api/kernel/wireless/batteries?refresh=1` | Сканер Bluetooth, BLE и 2.4GHz мышек **IO (Nova SE)**, **Ajazz**, **Ardor Gaming**, **Logitech**, **Razer** и др. |
 
 ---
@@ -89,13 +89,14 @@
 
 | Комбинация | Действие |
 | :--- | :--- |
+| `Alt + Tab` (или `Alt + Q`) | **Переключатель окон Luma OS** (встроенные окна + живые программы Windows) |
 | `Tab` (или правый верхний угол) | **Панель управления Carbon (`1/4 × 1/2`)** + сворачиваемый Центр уведомлений |
-| `Alt + R` / `Ctrl + K` | **Luma Search** — мгновенный поиск приложений ПК, Office Studio, настроек, служб и веба |
-| `Ctrl + Shift + P` (в Code Studio) | Command Palette (форматирование, сниппеты, поиск, превью) |
-| `F5` (в Office Slides) | Полноэкранный показ презентации с переходами и лазерной указкой |
-| `Esc × 2` (внутри сейфа) | Экстренная блокировка **Суперконфиденциальности** |
+| `Ctrl + Shift + S` | Мгновенная остановка Zero-Freeze записи экрана |
+| `Alt + R` / `Ctrl + K` | **Luma Search** — мгновенный поиск приложений ПК, студий, настроек, служб и веба |
+| `Ctrl + Shift + P` / `Ctrl + /` | Command Palette и комментирование строк в **Code Studio Pro** |
+| `F5` (в Office Slides) | Полноэкранный показ презентации с лазером, пером и маркером |
+| `Esc` / `Ctrl + Alt + Esc` | Мгновенный выход и блокировка **Приватного рабочего стола** |
 | `Alt + Shift` / `Win + Space` | Мгновенная смена раскладки клавиатуры |
-| `Alt + W` / `Alt + D` / `F11` | Обзор окон / Показать рабочий стол / Полный экран |
 | `Ctrl + Alt + Shift + W` | Экстренное восстановление системной панели задач Windows |
 
 ---
@@ -106,7 +107,8 @@
 
 | Версия | Кодовое имя | Ядро / Защита | Прямая ссылка |
 | :--- | :--- | :--- | :--- |
-| **1.5.1 (Актуальная)** | **Carbon · C-6** | `LumaCore 1.6.1` · `LumaShield 2.0` · `Office Studio` · `AI 2.0` | [**LumaOS_1.5.1.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.5.1.exe) |
+| **1.5.2 (Актуальная)** | **Carbon · C-6** | `LumaCore 1.4.5` · `LumaShield 2.0` · `Studios Pro` · `AI 3.0` | [**LumaOS_1.5.2.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.5.2.exe) |
+| **1.5.1** | Carbon · C-6 | `LumaCore 1.6.1` · `LumaShield 2.0` · `Office Studio` | [LumaOS_1.5.1.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.5.1.exe) |
 | **1.5** | Carbon · C-6 | `LumaCore 1.6` · `LumaShield 1.6` · `AES-256 Vault` | [LumaOS_1.5.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.5.exe) |
 | **1.4** | Boron · B-5 | `LumaCore 1.5` · `LumaShield 1.5` · `SDK v3.0` | [LumaOS_1.4.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.4.exe) |
 | **1.3.1** | Beryllium · Be-4 | `LumaCore 1.4` · `LumaShield 1.4` | [LumaOS_1.3.1.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.3.1.exe) |
@@ -126,5 +128,5 @@
 ```bash
 npm install
 npm run build
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui" -o LumaOS_1.5.1.exe .
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui" -o LumaOS_1.5.2.exe .
 ```

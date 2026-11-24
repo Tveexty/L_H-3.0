@@ -54,9 +54,11 @@ export interface CarbonNotificationItem {
   id: string;
   source: 'telegram' | 'discord' | 'whatsapp' | 'browser' | 'system';
   sender: string;
+  chat?: string;
   title: string;
   body: string;
   time: string;
+  avatarUrl?: string;
   unread?: boolean;
 }
 
@@ -107,18 +109,18 @@ export const ALL_HUB_TILES: { id: ControlHubTileId; label: string; desc: string 
   { id: 'night_light', label: 'Ночной свет', desc: 'Защита глаз от синего' },
   { id: 'gaming_boost', label: 'Игровой режим', desc: 'Приоритет CPU / RAM' },
   { id: 'mic_mute', label: 'Микрофон', desc: 'Быстрый Mute микрофона' },
-  { id: 'office', label: 'Office Studio', desc: 'Word · Excel · PowerPoint' },
+  { id: 'office', label: 'Office Studio', desc: 'Word · Excel · PowerPoint Pro' },
   { id: 'security', label: 'LumaShield 2.0', desc: 'Антивирус и аудит' },
   { id: 'screenshot', label: 'Скриншот', desc: 'Компактный JPEG (~120 КБ)' },
-  { id: 'recorder', label: 'Запись экрана', desc: 'Компактный WebM VP9' },
+  { id: 'recorder', label: 'Запись экрана', desc: 'Zero-Freeze AVI · без зависаний' },
   { id: 'vault', label: 'Конфиденциальность', desc: 'Приватный стол AES-256' },
-  { id: 'scenarios', label: 'Сценарии', desc: 'Если → То автоматизация' },
+  { id: 'scenarios', label: 'Сценарии', desc: 'Если + И → Цепочка действий' },
   { id: 'mouse_dpi', label: 'DPI мыши', desc: 'Скорость и чувствительность' },
   { id: 'island', label: 'Dynamic Island', desc: 'Живой остров сверху' },
   { id: 'dual_bar', label: 'Двойная панель', desc: 'Верх: утилиты, Низ: окна' },
   { id: 'trash', label: 'Корзина', desc: 'Удалённые файлы Luma' },
-  { id: 'code_studio', label: 'Code Studio', desc: 'Редактор кода (IDE)' },
-  { id: 'cut_studio', label: 'Cut Studio', desc: 'Видеоредактор Pro' },
+  { id: 'code_studio', label: 'Code Studio', desc: 'IDE + Диагностика + Терминал' },
+  { id: 'cut_studio', label: 'Cut Studio', desc: 'Видеоредактор CapCut-класса' },
   { id: 'power_saver', label: 'Энергосбережение', desc: 'План питания ОС' },
   { id: 'features_mgr', label: 'Функции ОС', desc: 'Вкл/Выкл модулей системы' },
 ];
@@ -152,12 +154,12 @@ export interface SystemFeaturesMap {
 }
 
 export const SYSTEM_FEATURE_META: { key: keyof SystemFeaturesMap; label: string; desc: string }[] = [
-  { key: 'ai', label: 'Luma AI 2.0 Ассистент', desc: 'Luma Lang 2.0 + Luma Code 2.0' },
+  { key: 'ai', label: 'Luma AI 3.0 Ассистент', desc: 'Luma Lang 3.0 + Luma Code 3.0 + Веб-синтез' },
   { key: 'dynamicIsland', label: 'Dynamic Island', desc: 'Остров с резиновой анимацией уведомлений' },
   { key: 'calendar', label: 'Календарь и задачи', desc: 'День/Неделя/Месяц/Повестка и напоминания' },
-  { key: 'scenarios', label: 'Сценарии (Автоматизация)', desc: 'Правила «Если действие → результат»' },
-  { key: 'codeStudio', label: 'Luma Code Studio', desc: 'IDE с подсветкой синтаксиса и миникартой' },
-  { key: 'cutStudio', label: 'Luma Cut Studio', desc: 'Видеоредактор с кодеками и анимациями' },
+  { key: 'scenarios', label: 'Сценарии (Автоматизация)', desc: 'Правила «Если + Условие → Цепочка действий»' },
+  { key: 'codeStudio', label: 'Luma Code Studio', desc: 'IDE с live-диагностикой ошибок и Pro терминалом' },
+  { key: 'cutStudio', label: 'Luma Cut Studio', desc: 'Видеомонтаж, маски, AI, озвучка, Design Studio' },
   { key: 'trash', label: 'Корзина Luma OS', desc: 'Корзина с превью и автоочисткой' },
   { key: 'wirelessScanner', label: 'Сканер BT / 2.4GHz', desc: 'Заряд мышек IO, Ajazz, Ardor, наушников' },
   { key: 'privateVault', label: 'Суперконфиденциальность', desc: 'Изолированный приватный рабочий стол' },
@@ -301,8 +303,9 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   const [audioCollapsed, setAudioCollapsed] = useState(true);
   const [notifTab, setNotifTab] = useState<'all' | 'telegram' | 'system'>('all');
 
-  // Auto-close on mouse leave (with 280ms grace delay; paused during Edit Mode or Features Manager)
+  // Auto-close on mouse leave (paused during Edit Mode, Features Manager, or Screen Picker)
   const leaveTimerRef = useRef<number | null>(null);
+  const pickingScreenRef = useRef(false);
   const handleHubMouseEnter = () => {
     if (leaveTimerRef.current) {
       window.clearTimeout(leaveTimerRef.current);
@@ -310,7 +313,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
     }
   };
   const handleHubMouseLeave = () => {
-    if (editMode || showFeaturesModal) return;
+    if (editMode || showFeaturesModal || pickingScreenRef.current) return;
     if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current);
     leaveTimerRef.current = window.setTimeout(() => {
       onClose();
@@ -322,15 +325,21 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
     };
   }, []);
 
-  // Compact Screen Recorder & Screenshot state
+  // Zero-Freeze Native AVI Screen Recorder + Safe Fallback Screenshot state
   const [recording, setRecording] = useState(false);
+  const [recordingMode, setRecordingMode] = useState<'native' | 'browser'>('native');
   const [recSeconds, setRecSeconds] = useState(0);
-  const [recBitrateMbps, setRecBitrateMbps] = useState<1.2 | 2.5 | 5>(1.2);
+  const [recBitrateMbps, setRecBitrateMbps] = useState<1.2 | 2.5 | 5>(2.5);
   const [captureBanner, setCaptureBanner] = useState('');
   const [lastCapturePath, setLastCapturePath] = useState('');
   const mediaRecRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const recordingModeRef = useRef<'native' | 'browser'>('native');
+
+  useEffect(() => {
+    recordingModeRef.current = recordingMode;
+  }, [recordingMode]);
 
   useEffect(() => {
     try {
@@ -355,6 +364,25 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       // ignore
     }
   }, [notifCollapsed]);
+
+  // Sync native recorder state on mount (in case recording continues across hub close/open)
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/kernel/capture/native-record/status')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive || !d) return;
+        if (d.running || d.recording) {
+          setRecordingMode('native');
+          setRecording(true);
+          if (typeof d.elapsed_sec === 'number') setRecSeconds(Math.round(d.elapsed_sec));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!recording) return;
@@ -385,44 +413,91 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
         return;
       }
       if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 15 }, audio: false });
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        await video.play();
-        await new Promise((r) => setTimeout(r, 150));
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
-        canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
-        stream.getTracks().forEach((tr) => tr.stop());
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-        const saveRes = await fetch('/api/kernel/capture/screenshot', {
+        pickingScreenRef.current = true;
+        await fetch('/api/kernel/capture/prepare', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ base64_data: dataUrl, ext: 'jpg' }),
-        });
-        const saved = await saveRes.json();
-        if (saved?.ok && saved.file) {
-          const kb = Math.max(1, Math.round((saved.file.size_bytes || 0) / 1024));
-          setLastCapturePath(saved.file.path || '');
-          setCaptureBanner(`Скриншот сохранён: ${saved.file.name} (${kb} КБ)`);
-          onAddNotification({
-            source: 'system',
-            sender: 'Luma Захват',
-            title: 'Скриншот сохранён',
-            body: `${saved.file.name} (${kb} КБ)`,
-            unread: true,
+          body: JSON.stringify({ suspend: true }),
+        }).catch(() => {});
+        try {
+          const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 15 }, audio: false });
+          const video = document.createElement('video');
+          video.srcObject = stream;
+          await video.play();
+          await new Promise((r) => setTimeout(r, 150));
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth || 1280;
+          canvas.height = video.videoHeight || 720;
+          canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
+          stream.getTracks().forEach((tr) => tr.stop());
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+          const saveRes = await fetch('/api/kernel/capture/screenshot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ base64_data: dataUrl, ext: 'jpg' }),
           });
-          return;
+          const saved = await saveRes.json();
+          if (saved?.ok && saved.file) {
+            const kb = Math.max(1, Math.round((saved.file.size_bytes || 0) / 1024));
+            setLastCapturePath(saved.file.path || '');
+            setCaptureBanner(`Скриншот сохранён: ${saved.file.name} (${kb} КБ)`);
+            onAddNotification({
+              source: 'system',
+              sender: 'Luma Захват',
+              title: 'Скриншот сохранён',
+              body: `${saved.file.name} (${kb} КБ)`,
+              unread: true,
+            });
+            return;
+          }
+        } finally {
+          pickingScreenRef.current = false;
+          fetch('/api/kernel/capture/prepare', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ suspend: false }),
+          }).catch(() => {});
         }
       }
       setCaptureBanner('Не удалось захватить экран в текущем режиме браузера');
     } catch {
+      pickingScreenRef.current = false;
+      fetch('/api/kernel/capture/prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suspend: false }),
+      }).catch(() => {});
       setCaptureBanner('Захват экрана отменён пользователем');
     }
   }, [onAddNotification]);
 
-  const stopRecording = useCallback(() => {
+  const stopRecording = useCallback(async () => {
+    if (recordingModeRef.current === 'native') {
+      setRecording(false);
+      setCaptureBanner('Сохраняю AVI-видео...');
+      try {
+        const res = await fetch('/api/kernel/capture/native-record/stop', { method: 'POST' });
+        const data = await res.json();
+        if (data?.ok && data.file) {
+          const mb = ((data.file.size_bytes || 0) / (1024 * 1024)).toFixed(2);
+          setLastCapturePath(data.file.path || '');
+          setCaptureBanner(`Видео сохранено: ${data.file.name} (${mb} МБ · ${data.frames || 0} кадр.)`);
+          onAddNotification({
+            source: 'system',
+            sender: 'Luma Запись экрана',
+            title: 'Запись экрана сохранена (Zero-Freeze)',
+            body: `${data.file.name} (${mb} МБ) → ~/Videos/LumaRecordings`,
+            unread: true,
+          });
+        } else {
+          setCaptureBanner(data?.error || 'Запись остановлена');
+        }
+      } catch {
+        setCaptureBanner('Запись остановлена');
+      }
+      return;
+    }
+
     try {
       mediaRecRef.current?.stop();
     } catch {
@@ -434,15 +509,71 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       // ignore
     }
     setRecording(false);
-  }, []);
+  }, [onAddNotification]);
+
+  // Global Ctrl+Shift+S emergency/quick stop hotkey while recording
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyS') {
+        e.preventDefault();
+        void stopRecording();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [recording, stopRecording]);
 
   const startRecording = useCallback(async () => {
+    // 1) PRIMARY (Windows / Native Kernel 1.4.5): Zero-Freeze pure-Go GDI background AVI recorder!
+    // Never invokes WebView2 getDisplayMedia modal, so HWND_TOPMOST can NEVER deadlock the desktop!
+    setCaptureBanner('Запускаю Zero-Freeze запись экрана...');
+    try {
+      const fps = recBitrateMbps === 5 ? 18 : recBitrateMbps === 2.5 ? 12 : 8;
+      const maxWidth = recBitrateMbps === 5 ? 1600 : recBitrateMbps === 2.5 ? 1280 : 960;
+      const quality = recBitrateMbps === 5 ? 82 : recBitrateMbps === 2.5 ? 72 : 60;
+      const nativeRes = await fetch('/api/kernel/capture/native-record/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fps, max_width: maxWidth, quality }),
+      });
+      const nativeData = await nativeRes.json().catch(() => ({}));
+      if (nativeRes.ok && nativeData?.ok) {
+        setRecordingMode('native');
+        recordingModeRef.current = 'native';
+        setRecSeconds(0);
+        setRecording(true);
+        setCaptureBanner(`Идёт Zero-Freeze запись (${fps} FPS · Ctrl+Shift+S — стоп)`);
+        return;
+      }
+    } catch {
+      // Fallback to safe browser MediaRecorder below
+    }
+
+    // 2) SAFE BROWSER FALLBACK (with HWND_TOPMOST suspension so picker is NEVER trapped behind Luma!)
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-      setCaptureBanner('Запись экрана требует разрешения захвата экрана');
+      setCaptureBanner('Запись экрана недоступна в headless-режиме (работает в Windows EXE)');
       return;
     }
+
+    pickingScreenRef.current = true;
+    await fetch('/api/kernel/capture/prepare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ suspend: true }),
+    }).catch(() => {});
+
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 24 }, audio: false });
+      pickingScreenRef.current = false;
+      fetch('/api/kernel/capture/prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suspend: false }),
+      }).catch(() => {});
+
+      setRecordingMode('browser');
+      recordingModeRef.current = 'browser';
       streamRef.current = stream;
       chunksRef.current = [];
       const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
@@ -500,12 +631,18 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
           setCaptureBanner(`Запись завершена (${mb} МБ)`);
         }
       };
-      stream.getVideoTracks()[0]?.addEventListener('ended', () => stopRecording());
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => void stopRecording());
       setRecSeconds(0);
       setRecording(true);
       rec.start(1000);
-      setCaptureBanner(`Идёт компактная запись (${recBitrateMbps} Мбит/с)...`);
+      setCaptureBanner(`Идёт запись (${recBitrateMbps} Мбит/с · Ctrl+Shift+S — стоп)`);
     } catch {
+      pickingScreenRef.current = false;
+      fetch('/api/kernel/capture/prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suspend: false }),
+      }).catch(() => {});
       setCaptureBanner('Запись экрана отменена');
     }
   }, [recBitrateMbps, onAddNotification, stopRecording]);
@@ -542,9 +679,10 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       <div className="fixed top-3 right-4 z-[980] flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-600/95 text-white text-xs font-semibold shadow-2xl border border-rose-300/40 backdrop-blur-xl">
         <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
         <span className="font-mono">REC {mm}:{ss}</span>
+        <span className="text-[9px] opacity-75 hidden sm:inline">Ctrl+Shift+S</span>
         <button
-          onClick={stopRecording}
-          className="ml-1 px-2 py-0.5 rounded-full bg-black/30 hover:bg-black/50 flex items-center gap-1 text-[10px]"
+          onClick={() => void stopRecording()}
+          className="ml-1 px-2 py-0.5 rounded-full bg-black/30 hover:bg-black/50 flex items-center gap-1 text-[10px] cursor-pointer"
         >
           <Square size={9} fill="currentColor" /> Стоп
         </button>
@@ -644,9 +782,9 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       case 'recorder':
         icon = recording ? <Square size={14} fill="currentColor" /> : <Video size={14} />;
         label = recording ? `Стоп ${String(Math.floor(recSeconds / 60)).padStart(2, '0')}:${String(recSeconds % 60).padStart(2, '0')}` : 'Запись';
-        sub = `${recBitrateMbps} Мбит/с`;
+        sub = recording ? 'Ctrl+Shift+S' : 'Zero-Freeze AVI';
         active = recording;
-        onClick = () => (recording ? stopRecording() : void startRecording());
+        onClick = () => (recording ? void stopRecording() : void startRecording());
         break;
       case 'vault':
         icon = <Shield size={14} />;
@@ -788,17 +926,20 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
         body: JSON.stringify({
           action: 'test',
           app: 'Telegram',
-          title: 'Telegram · Новое сообщение',
-          body: 'Привет! Уведомления Telegram и мессенджеров работают в Luma OS 1.5.1 Carbon!',
+          sender: 'жук❤️',
+          chat: 'Личные сообщения',
+          title: 'жук❤️',
+          body: '10.00? 👋',
           level: 'info',
         }),
       });
     } catch {
       onAddNotification({
         source: 'telegram',
-        sender: 'Telegram',
-        title: 'Новое сообщение',
-        body: 'Уведомления Telegram работают в Luma OS 1.5.1 Carbon!',
+        sender: 'жук❤️',
+        chat: 'Личные сообщения',
+        title: 'жук❤️',
+        body: '10.00? 👋',
         unread: true,
       });
     }
@@ -825,7 +966,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
           <div className={`px-3.5 py-2.5 border-b flex items-center justify-between gap-2 shrink-0 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]" />
-              <span className="text-xs font-bold tracking-tight truncate">Панель управления 1.5.1</span>
+              <span className="text-xs font-bold tracking-tight truncate">Панель управления 1.5.2</span>
               <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-md border ${isDark ? 'bg-white/[0.06] border-white/10 text-white/60' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
                 TAB
               </span>
@@ -858,7 +999,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             {showFeaturesModal ? (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-cyan-400">Менеджер функций Luma OS 1.5.1</span>
+                  <span className="text-[11px] font-bold text-cyan-400">Менеджер функций Luma OS 1.5.2</span>
                   <button onClick={() => setShowFeaturesModal(false)} className="text-[10px] px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/15">Назад</button>
                 </div>
                 {SYSTEM_FEATURE_META.map((feat) => {
@@ -1107,7 +1248,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
           </div>
         </div>
 
-        {/* LOWER HALF: Collapsible Unified Notification Center (Telegram + Discord + WhatsApp + Windows OS) */}
+        {/* LOWER HALF: Collapsible Unified Notification Center (Incoming Messenger Messages + OS) */}
         <div
           className={`pointer-events-auto rounded-3xl border backdrop-blur-2xl flex flex-col overflow-hidden transition-all duration-200 luma-anim-harmony7 ${glassSurface} ${
             notifCollapsed ? 'shrink-0' : 'flex-1 min-h-[190px]'
@@ -1127,7 +1268,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                 </span>
               )}
               <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-400/25 hidden sm:inline">
-                TG/OS Live
+                Входящие Live
               </span>
             </button>
             <div className="flex items-center gap-1 shrink-0">
@@ -1138,9 +1279,9 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                     className={`px-2 py-0.5 rounded-lg text-[10px] border transition cursor-pointer ${
                       isDark ? 'bg-sky-500/15 border-sky-400/25 text-sky-300 hover:bg-sky-500/25' : 'bg-sky-50 border-sky-200 text-sky-700'
                     }`}
-                    title="Проверить доставку уведомления Telegram + эффект резины на Острове"
+                    title="Проверить входящее сообщение Telegram + эффект резины на Острове"
                   >
-                    <Send size={9} className="inline mr-1" /> TG
+                    <Send size={9} className="inline mr-1" /> Тест
                   </button>
                   {notifications.length > 0 && (
                     <button onClick={onClearNotifications} className={`text-[10px] px-1.5 py-0.5 rounded-lg cursor-pointer ${subText} hover:text-rose-400`}>
@@ -1168,7 +1309,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                 {(
                   [
                     ['all', 'Все'],
-                    ['telegram', 'Telegram / Мессенджеры'],
+                    ['telegram', 'Сообщения (TG / WA / DC)'],
                     ['system', 'Система'],
                   ] as const
                 ).map(([k, lbl]) => (
@@ -1188,43 +1329,107 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                 ))}
               </div>
 
-              <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
+              <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
                 {filteredNotifs.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center py-5">
+                  <div className="h-full flex flex-col items-center justify-center text-center py-4 px-2">
                     <Bell size={22} className="opacity-25 mb-1.5" />
-                    <div className={`text-xs font-medium ${subText}`}>Уведомлений пока нет</div>
-                    <div className={`text-[10px] opacity-60 mt-0.5 ${subText}`}>
-                      Telegram, Discord, WhatsApp, VK и системные события приходят сюда автоматически
+                    <div className={`text-xs font-medium ${subText}`}>Входящих сообщений пока нет</div>
+                    <div className={`text-[10px] opacity-65 mt-1 leading-relaxed ${subText}`}>
+                      Показываются только реальные входящие сообщения от пользователей Telegram, WhatsApp, Discord и VK.
+                      <br />
+                      Совет: включите «Нативные уведомления Windows» в настройках Telegram Desktop.
                     </div>
                   </div>
                 ) : (
-                  filteredNotifs.map((n) => (
-                    <div
-                      key={n.id}
-                      className={`group p-2.5 rounded-2xl border transition relative ${
-                        isDark ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08]' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <button onClick={() => onDismissNotification(n.id)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-0.5 rounded-md hover:bg-white/15 cursor-pointer">
-                        <X size={11} />
-                      </button>
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        {n.source === 'telegram' ? (
-                          <Send size={11} className="text-sky-400" />
-                        ) : n.source === 'discord' ? (
-                          <MessageCircle size={11} className="text-indigo-400" />
-                        ) : n.source === 'whatsapp' ? (
-                          <MessageCircle size={11} className="text-emerald-400" />
-                        ) : (
-                          <Download size={11} className="text-cyan-400" />
-                        )}
-                        <span className="text-[10px] font-bold text-cyan-400">{n.sender}</span>
-                        <span className={`text-[9px] font-mono ml-auto pr-4 ${subText}`}>{n.time}</span>
+                  filteredNotifs.map((n) => {
+                    const isMessenger = n.source === 'telegram' || n.source === 'whatsapp' || n.source === 'discord';
+                    const avatarGrad =
+                      n.source === 'telegram'
+                        ? 'from-sky-500 to-blue-600'
+                        : n.source === 'whatsapp'
+                        ? 'from-emerald-500 to-green-600'
+                        : n.source === 'discord'
+                        ? 'from-indigo-500 to-violet-600'
+                        : 'from-cyan-500 to-teal-600';
+                    const initial = (n.sender || n.title || 'L').trim().slice(0, 2).toUpperCase();
+                    const showSubtitle =
+                      n.title &&
+                      n.title.trim().toLowerCase() !== (n.sender || '').trim().toLowerCase() &&
+                      !n.title.toLowerCase().includes('новое сообщение');
+
+                    return (
+                      <div
+                        key={n.id}
+                        className={`group p-2.5 rounded-2xl border transition relative flex items-start gap-2.5 ${
+                          isDark ? 'bg-white/[0.05] border-white/10 hover:bg-white/[0.09]' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <button
+                          onClick={() => onDismissNotification(n.id)}
+                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-0.5 rounded-md hover:bg-white/15 cursor-pointer"
+                        >
+                          <X size={11} />
+                        </button>
+
+                        {/* Circular Sender Avatar + Messenger Corner Badge (matches image_2.png style) */}
+                        <div className="relative shrink-0 mt-0.5">
+                          {n.avatarUrl ? (
+                            <img
+                              src={n.avatarUrl}
+                              alt=""
+                              className="w-9 h-9 rounded-full object-cover border border-white/20 shadow"
+                            />
+                          ) : (
+                            <div
+                              className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarGrad} text-white font-bold text-xs flex items-center justify-center shadow`}
+                            >
+                              {isMessenger ? initial : <Download size={14} />}
+                            </div>
+                          )}
+                          <span
+                            className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 ${
+                              isDark ? 'border-[#0c0e14]' : 'border-white'
+                            } flex items-center justify-center ${
+                              n.source === 'telegram'
+                                ? 'bg-sky-500 text-white'
+                                : n.source === 'whatsapp'
+                                ? 'bg-emerald-500 text-white'
+                                : n.source === 'discord'
+                                ? 'bg-indigo-500 text-white'
+                                : 'bg-cyan-500 text-white'
+                            }`}
+                          >
+                            {n.source === 'telegram' ? (
+                              <Send size={8} />
+                            ) : n.source === 'whatsapp' || n.source === 'discord' ? (
+                              <MessageCircle size={8} />
+                            ) : (
+                              <Bell size={8} />
+                            )}
+                          </span>
+                        </div>
+
+                        {/* Sender → Chat + Message Body */}
+                        <div className="min-w-0 flex-1 pr-3">
+                          <div className="flex items-center justify-between gap-1.5">
+                            <div className="text-[11px] font-bold truncate leading-tight">
+                              <span>{n.sender || n.title}</span>
+                              {n.chat && n.chat !== n.sender && (
+                                <span className={`font-normal ml-1 ${subText}`}>→ {n.chat}</span>
+                              )}
+                            </div>
+                            <span className={`text-[9px] font-mono shrink-0 ${subText}`}>{n.time}</span>
+                          </div>
+                          {showSubtitle && (
+                            <div className="text-[10px] font-semibold text-cyan-400 truncate mt-0.5">{n.title}</div>
+                          )}
+                          <div className={`text-[11px] leading-snug mt-0.5 break-words ${isDark ? 'text-white/85' : 'text-slate-700'}`}>
+                            {n.body}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-[11px] font-semibold leading-snug">{n.title}</div>
-                      <div className={`text-[10px] leading-relaxed mt-0.5 ${subText}`}>{n.body}</div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </>

@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -409,7 +410,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.5.1 (Carbon)",
+			Title:  "Luma OS 1.5.2 (Carbon)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,
@@ -452,9 +453,10 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		})();
 	`)
 
-	// Native Win32 hotkey + instant keyboard layout push monitor (0 extra goroutines, 4us GetKeyboardLayout!)
+	// Native Win32 hotkey + instant keyboard layout push monitor + Luma Alt+Tab Switcher Hook!
 	stopHotkeys := make(chan struct{})
 	go startWin32AltRListener(w, hwnd, stopHotkeys)
+	go startWin32AltTabHook(w, hwnd, stopHotkeys)
 
 	// Apply persisted shell mode (fullscreen, hide Windows taskbar, reserve work area)
 	if cfg.HideWindowsTaskbar {
@@ -476,7 +478,163 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 	return true
 }
 
-// startWin32AltRListener (LumaCore 1.4): Ultra-low-CPU Alt+R hook + instant (<35ms) Win32 HKL push on Alt+Shift / Win+Space!
+var (
+	customAltTabMu      sync.Mutex
+	customAltTabEnabled = true
+)
+
+func setCustomAltTabEnabled(enabled bool) {
+	customAltTabMu.Lock()
+	customAltTabEnabled = enabled
+	customAltTabMu.Unlock()
+}
+
+func isCustomAltTabEnabled() bool {
+	customAltTabMu.Lock()
+	defer customAltTabMu.Unlock()
+	return customAltTabEnabled
+}
+
+// suspendWindowTopmost temporarily clears HWND_TOPMOST before browser pickers / screen recording
+// so Windows capture dialogs NEVER get trapped behind Luma OS!
+func suspendWindowTopmost(suspend bool) {
+	nativeWinMu.Lock()
+	wv := nativeWebView
+	restoreTop := activeShellCfg.AlwaysOnTop
+	nativeWinMu.Unlock()
+	if wv == nil {
+		return
+	}
+	wv.Dispatch(func() {
+		hwnd := uintptr(wv.Window())
+		if hwnd == 0 {
+			return
+		}
+		insertAfter := hwndNoTopmost
+		if !suspend && restoreTop {
+			insertAfter = hwndTopmost
+		}
+		_, _, _ = procSetWindowPos.Call(hwnd, insertAfter, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoOwnerZOrder)
+	})
+}
+
+type kbdLLHookStruct struct {
+	VkCode      uint32
+	ScanCode    uint32
+	Flags       uint32
+	Time        uint32
+	DwExtraInfo uintptr
+}
+
+type winMsgStruct struct {
+	Hwnd    uintptr
+	Message uint32
+	WParam  uintptr
+	LParam  uintptr
+	Time    uint32
+	PtX     int32
+	PtY     int32
+}
+
+// startWin32AltTabHook (LumaCore 1.4.5): Lightweight WH_KEYBOARD_LL hook that replaces Windows Alt+Tab
+// with Luma OS's own glassmorphic switcher (covering BOTH Luma windows AND Windows apps like Chrome!).
+// Never blocks Ctrl+Alt+Del / Ctrl+Shift+Esc and always unhooks cleanly on shutdown.
+func startWin32AltTabHook(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan struct{}) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	procSetWindowsHookExW := user32WinDLL.NewProc("SetWindowsHookExW")
+	procUnhookWindowsHookEx := user32WinDLL.NewProc("UnhookWindowsHookEx")
+	procCallNextHookEx := user32WinDLL.NewProc("CallNextHookEx")
+	procGetMessageW := user32WinDLL.NewProc("GetMessageW")
+	procPostThreadMessageW := user32WinDLL.NewProc("PostThreadMessageW")
+	procGetAsyncKeyState := user32WinDLL.NewProc("GetAsyncKeyState")
+	procSetFg := user32WinDLL.NewProc("SetForegroundWindow")
+	procShowWin := user32WinDLL.NewProc("ShowWindow")
+	kernel32Local := syscall.NewLazyDLL("kernel32.dll")
+	procGetCurrentThreadId := kernel32Local.NewProc("GetCurrentThreadId")
+
+	const (
+		whKeyboardLL = 13
+		wmKeyDown    = 0x0100
+		wmKeyUp      = 0x0101
+		wmSysKeyDown = 0x0104
+		wmSysKeyUp   = 0x0105
+		wmQuit       = 0x0012
+		vkTab        = 0x09
+		vkShift      = 0x10
+		vkControl    = 0x11
+		vkLMenu      = 0xA4
+		vkRMenu      = 0xA5
+		vkMenu       = 0x12
+		llkhfAltDown = 0x20
+		swRestore    = 9
+	)
+
+	altTabActive := false
+	var hookHandle uintptr
+
+	cb := syscall.NewCallback(func(nCode int, wParam uintptr, lParam uintptr) uintptr {
+		if nCode >= 0 && lParam != 0 && isCustomAltTabEnabled() {
+			info := (*kbdLLHookStruct)(unsafe.Pointer(lParam))
+			isDown := wParam == wmKeyDown || wParam == wmSysKeyDown
+			isUp := wParam == wmKeyUp || wParam == wmSysKeyUp
+
+			if info.VkCode == vkTab && isDown && (info.Flags&llkhfAltDown) != 0 {
+				ctrlState, _, _ := procGetAsyncKeyState.Call(vkControl)
+				if (ctrlState & 0x8000) == 0 {
+					shiftState, _, _ := procGetAsyncKeyState.Call(vkShift)
+					reverse := (shiftState & 0x8000) != 0
+					altTabActive = true
+					// Bring Luma OS window cleanly into view so our glassmorphic switcher is immediately visible
+					if lumaHwnd != 0 {
+						_, _, _ = procShowWin.Call(lumaHwnd, swRestore)
+						_, _, _ = procSetFg.Call(lumaHwnd)
+					}
+					js := fmt.Sprintf(`window.dispatchEvent(new CustomEvent('luma-alt-tab',{detail:{reverse:%v}}));`, reverse)
+					wv.Dispatch(func() {
+						wv.Eval(js)
+					})
+					return 1 // Swallow native Windows Alt+Tab cleanly!
+				}
+			}
+
+			if isUp && altTabActive && (info.VkCode == vkLMenu || info.VkCode == vkRMenu || info.VkCode == vkMenu) {
+				altTabActive = false
+				wv.Dispatch(func() {
+					wv.Eval(`window.dispatchEvent(new CustomEvent('luma-alt-tab-commit'));`)
+				})
+			}
+		}
+		ret, _, _ := procCallNextHookEx.Call(hookHandle, uintptr(nCode), wParam, lParam)
+		return ret
+	})
+
+	tid, _, _ := procGetCurrentThreadId.Call()
+	h, _, _ := procSetWindowsHookExW.Call(whKeyboardLL, cb, 0, 0)
+	if h == 0 {
+		return
+	}
+	hookHandle = h
+	defer procUnhookWindowsHookEx.Call(hookHandle)
+
+	go func() {
+		<-stopCh
+		if tid != 0 {
+			_, _, _ = procPostThreadMessageW.Call(tid, wmQuit, 0, 0)
+		}
+	}()
+
+	var msg winMsgStruct
+	for {
+		ret, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
+		if int32(ret) <= 0 {
+			break
+		}
+	}
+}
+
+// startWin32AltRListener (LumaCore 1.4.5): Ultra-low-CPU Alt+R hook + instant (<35ms) Win32 HKL push on Alt+Shift / Win+Space!
 func startWin32AltRListener(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan struct{}) {
 	procGetAsyncKeyState := user32WinDLL.NewProc("GetAsyncKeyState")
 	procGetFg := user32WinDLL.NewProc("GetForegroundWindow")

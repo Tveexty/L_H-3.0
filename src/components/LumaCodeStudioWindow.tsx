@@ -11,7 +11,6 @@ import {
   Search,
   RefreshCw,
   ChevronRight,
-  ChevronDown,
   Eye,
   WrapText,
   ZoomIn,
@@ -24,6 +23,11 @@ import {
   Code2,
   Map as MapIcon,
   Wand2,
+  AlertCircle,
+  AlertTriangle,
+  Maximize2,
+  Minimize2,
+  Trash2,
 } from 'lucide-react';
 
 interface FsEntryItem {
@@ -36,16 +40,34 @@ interface FsEntryItem {
 interface EditorTab {
   id: string;
   name: string;
-  path: string; // empty = unsaved scratch file
+  path: string;
   content: string;
   dirty: boolean;
   language: string;
+}
+
+interface CodeDiagnostic {
+  line: number;
+  col: number;
+  severity: 'error' | 'warning';
+  message: string;
+  source: string;
+}
+
+interface TerminalSessionTab {
+  id: string;
+  name: string;
+  shell: 'auto' | 'powershell' | 'bash';
+  lines: string[];
+  history: string[];
 }
 
 interface LumaCodeStudioWindowProps {
   isDark: boolean;
   onNotify?: (title: string, msg: string, kind?: 'info' | 'success' | 'warn') => void;
 }
+
+const SESSION_STORAGE_KEY = 'luma_code_studio_session_v152';
 
 const LANGUAGES = [
   'plaintext', 'javascript', 'typescript', 'python', 'go', 'html', 'css',
@@ -57,19 +79,19 @@ const CODE_SNIPPETS: { label: string; lang: string; file: string; code: string }
     label: 'JavaScript · Async Fetch',
     lang: 'javascript',
     file: 'fetch_demo.js',
-    code: `async function loadStatus() {\n  const res = await fetch('/api/kernel/status');\n  const data = await res.json();\n  console.log('Luma OS:', data.version, data.codename);\n}\nloadStatus();\n`,
+    code: `async function loadStatus() {\n  const res = await fetch('/api/kernel/status');\n  const data = await res.json();\n  console.log('Luma OS:', data.version, 'Kernel:', data.kernel_engine_version);\n}\nloadStatus();\n`,
   },
   {
     label: 'Python · FastAPI Server',
     lang: 'python',
     file: 'server.py',
-    code: `from fastapi import FastAPI\n\napp = FastAPI(title="Luma API")\n\n@app.get("/health")\nasync def health():\n    return {"ok": True, "os": "Luma 1.5.1"}\n`,
+    code: `from fastapi import FastAPI\n\napp = FastAPI(title="Luma API")\n\n@app.get("/health")\nasync def health():\n    return {"ok": True, "os": "Luma 1.5.2", "kernel": "1.4.5"}\n`,
   },
   {
     label: 'HTML5 · Glass Card',
     lang: 'html',
     file: 'index.html',
-    code: `<!doctype html>\n<html lang="ru">\n<head>\n  <meta charset="utf-8" />\n  <style>\n    body { margin:0; height:100vh; display:grid; place-items:center; background:#090b10; color:#fff; font-family:system-ui; }\n    .card { padding:28px 36px; border-radius:20px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.15); }\n  </style>\n</head>\n<body>\n  <div class="card"><h2>Luma Code Studio 1.5.1</h2><p>Живой HTML-предпросмотр</p></div>\n</body>\n</html>\n`,
+    code: `<!doctype html>\n<html lang="ru">\n<head>\n  <meta charset="utf-8" />\n  <style>\n    body { margin:0; height:100vh; display:grid; place-items:center; background:#090b10; color:#fff; font-family:system-ui; }\n    .card { padding:28px 36px; border-radius:20px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.15); }\n  </style>\n</head>\n<body>\n  <div class="card"><h2>Luma Code Studio 1.5.2</h2><p>Живой HTML-предпросмотр + Автосохранение</p></div>\n</body>\n</html>\n`,
   },
   {
     label: 'Go · HTTP JSON Handler',
@@ -97,6 +119,202 @@ function detectLanguage(filename: string): string {
   return map[ext] || 'plaintext';
 }
 
+// Live multi-language syntax & static error diagnostics analyzer
+function analyzeCodeDiagnostics(code: string, lang: string): CodeDiagnostic[] {
+  const diags: CodeDiagnostic[] = [];
+  if (!code.trim() || lang === 'plaintext' || lang === 'markdown') return diags;
+  const lines = code.split('\n');
+
+  // 1) JSON exact parser
+  if (lang === 'json') {
+    try {
+      JSON.parse(code);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      let line = 1;
+      let col = 1;
+      const posM = /position\s+(\d+)/i.exec(msg);
+      if (posM) {
+        const idx = Number(posM[1]);
+        const up = code.slice(0, idx).split('\n');
+        line = up.length;
+        col = up[up.length - 1].length + 1;
+      } else {
+        const lineM = /line\s+(\d+)/i.exec(msg);
+        if (lineM) line = Number(lineM[1]);
+      }
+      diags.push({ line, col, severity: 'error', message: `JSON: ${msg}`, source: 'json-lint' });
+    }
+    return diags;
+  }
+
+  // 2) Balanced brackets & unclosed strings check (works for JS/TS/Go/Python/CSS/Rust/C++/C#)
+  const openStack: { ch: string; line: number; col: number }[] = [];
+  const pairs: Record<string, string> = { '(': ')', '{': '}', '[': ']' };
+  const closeToOpen: Record<string, string> = { ')': '(', '}': '{', ']': '[' };
+
+  for (let li = 0; li < lines.length; li++) {
+    const ln = lines[li];
+    let inStr: string | null = null;
+    let esc = false;
+    for (let ci = 0; ci < ln.length; ci++) {
+      const ch = ln[ci];
+      if (inStr) {
+        if (esc) {
+          esc = false;
+        } else if (ch === '\\') {
+          esc = true;
+        } else if (ch === inStr) {
+          inStr = null;
+        }
+        continue;
+      }
+      // Line comment skip
+      if (ch === '/' && ln[ci + 1] === '/') break;
+      if (ch === '#' && (lang === 'python' || lang === 'bash' || lang === 'powershell')) break;
+      if (ch === '"' || ch === "'") {
+        inStr = ch;
+        continue;
+      }
+      if (pairs[ch]) {
+        openStack.push({ ch, line: li + 1, col: ci + 1 });
+      } else if (closeToOpen[ch]) {
+        const top = openStack[openStack.length - 1];
+        if (!top || top.ch !== closeToOpen[ch]) {
+          diags.push({
+            line: li + 1,
+            col: ci + 1,
+            severity: 'error',
+            message: `Лишняя или несогласованная закрывающая скобка '${ch}'`,
+            source: 'syntax',
+          });
+        } else {
+          openStack.pop();
+        }
+      }
+    }
+    if (inStr) {
+      diags.push({
+        line: li + 1,
+        col: Math.max(1, ln.lastIndexOf(inStr) + 1),
+        severity: 'error',
+        message: `Незакрытая строковая кавычка ${inStr}`,
+        source: 'syntax',
+      });
+    }
+  }
+  for (const rem of openStack.slice(0, 6)) {
+    diags.push({
+      line: rem.line,
+      col: rem.col,
+      severity: 'error',
+      message: `Незакрытая скобка '${rem.ch}' (ожидается '${pairs[rem.ch]}')`,
+      source: 'syntax',
+    });
+  }
+
+  // 3) JavaScript / TypeScript real syntax parser + best-practice warnings
+  if (lang === 'javascript' || lang === 'typescript') {
+    if (lang === 'javascript' && diags.length === 0) {
+      try {
+        // Strip ES import/export keywords lightly for syntax-only validation
+        const checkable = code
+          .replace(/^\s*import\s+.*$/gm, '')
+          .replace(/^\s*export\s+(default\s+)?/gm, '');
+        // eslint-disable-next-line no-new-func
+        new Function(checkable);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        diags.push({
+          line: Math.min(lines.length, Math.max(1, lines.findIndex((l) => l.trim().length > 0) + 1)),
+          col: 1,
+          severity: 'error',
+          message: `JS SyntaxError: ${msg}`,
+          source: 'js-engine',
+        });
+      }
+    }
+    lines.forEach((ln, idx) => {
+      const trimmed = ln.trim();
+      if (/[^=!<>]==[^=]/.test(trimmed) && !trimmed.startsWith('//')) {
+        diags.push({
+          line: idx + 1,
+          col: ln.indexOf('==') + 1,
+          severity: 'warning',
+          message: "Используйте строгое сравнение '===' вместо '=='",
+          source: 'lint',
+        });
+      }
+      if (/\bvar\s+\w+/.test(trimmed) && !trimmed.startsWith('//')) {
+        diags.push({
+          line: idx + 1,
+          col: ln.indexOf('var') + 1,
+          severity: 'warning',
+          message: "Рекомендуется 'const' или 'let' вместо устаревшего 'var'",
+          source: 'lint',
+        });
+      }
+    });
+  }
+
+  // 4) Python block colon & indentation diagnostics
+  if (lang === 'python') {
+    lines.forEach((ln, idx) => {
+      const noComment = ln.replace(/#.*$/, '').trimEnd();
+      const trimmed = noComment.trim();
+      if (/^(def|class|if|elif|else|for|while|try|except|finally|with)\b/.test(trimmed) && !trimmed.endsWith(':') && !trimmed.endsWith('\\')) {
+        diags.push({
+          line: idx + 1,
+          col: noComment.length + 1,
+          severity: 'error',
+          message: `Python: ожидается двоеточие ':' в конце заголовка блока`,
+          source: 'py-lint',
+        });
+      }
+      if (/^\t+ +|^ +\t+/.test(ln)) {
+        diags.push({
+          line: idx + 1,
+          col: 1,
+          severity: 'warning',
+          message: 'Смешаны табуляция и пробелы в отступе (IndentationWarning)',
+          source: 'py-lint',
+        });
+      }
+    });
+  }
+
+  // 5) HTML unclosed tags check
+  if (lang === 'html') {
+    const voidTags = new Set(['meta', 'link', 'img', 'br', 'hr', 'input', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr', '!doctype']);
+    const tagStack: { tag: string; line: number }[] = [];
+    const tagRe = /<\/?([a-zA-Z!][\w-]*)[^>]*?(\/?)>/g;
+    lines.forEach((ln, idx) => {
+      let m: RegExpExecArray | null;
+      while ((m = tagRe.exec(ln)) !== null) {
+        const full = m[0];
+        const name = m[1].toLowerCase();
+        const selfClose = m[2] === '/';
+        if (voidTags.has(name) || selfClose || full.startsWith('<!--')) continue;
+        if (full.startsWith('</')) {
+          const top = tagStack[tagStack.length - 1];
+          if (!top || top.tag !== name) {
+            diags.push({ line: idx + 1, col: m.index + 1, severity: 'error', message: `HTML: неожиданный закрывающий тег </${name}>`, source: 'html-lint' });
+          } else {
+            tagStack.pop();
+          }
+        } else {
+          tagStack.push({ tag: name, line: idx + 1 });
+        }
+      }
+    });
+    for (const rem of tagStack.slice(0, 5)) {
+      diags.push({ line: rem.line, col: 1, severity: 'warning', message: `HTML: незакрытый тег <${rem.tag}>`, source: 'html-lint' });
+    }
+  }
+
+  return diags.slice(0, 40);
+}
+
 // Fast zero-dependency syntax highlighter producing safe HTML spans
 function highlightCodeHTML(code: string, lang: string, isDark: boolean): string {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -108,7 +326,7 @@ function highlightCodeHTML(code: string, lang: string, isDark: boolean): string 
     'async', 'await', 'import', 'export', 'from', 'default', 'class', 'extends', 'new', 'try', 'catch', 'finally', 'throw',
     'def', 'elif', 'pass', 'with', 'as', 'lambda', 'yield', 'True', 'False', 'None', 'in', 'not', 'and', 'or', 'print',
     'package', 'func', 'type', 'struct', 'interface', 'go', 'defer', 'chan', 'select', 'map', 'range', 'nil',
-    'fn', 'pub', 'mut', 'impl', 'match', 'use', 'mod', 'enum', 'trait', 'let', 'true', 'false', 'null', 'undefined',
+    'fn', 'pub', 'mut', 'impl', 'match', 'use', 'mod', 'enum', 'trait', 'true', 'false', 'null', 'undefined',
     'SELECT', 'FROM', 'WHERE', 'GROUP', 'BY', 'ORDER', 'LIMIT', 'WITH', 'JOIN', 'LEFT', 'INNER', 'CREATE', 'TABLE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'DELETE', 'AS', 'DESC', 'ASC',
     'public', 'private', 'static', 'void', 'int', 'string', 'bool', 'float', 'double', 'auto', 'namespace', 'using', 'include',
   ]);
@@ -147,11 +365,11 @@ function highlightCodeHTML(code: string, lang: string, isDark: boolean): string 
 
 const INITIAL_EMPTY_TAB: EditorTab = {
   id: 'tab_empty_1',
-  name: 'untitled.txt',
+  name: 'untitled.js',
   path: '',
   content: '',
   dirty: false,
-  language: 'plaintext',
+  language: 'javascript',
 };
 
 const AUTO_CLOSE_PAIRS: Record<string, string> = {
@@ -163,19 +381,38 @@ const AUTO_CLOSE_PAIRS: Record<string, string> = {
   '`': '`',
 };
 
-export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
-  isDark,
-  onNotify,
-}) => {
-  // Clean empty startup: ONE empty file & NO system files exposed until user explicitly opens a folder/file!
-  const [tabs, setTabs] = useState<EditorTab[]>([INITIAL_EMPTY_TAB]);
-  const [activeTabId, setActiveTabId] = useState<string>(INITIAL_EMPTY_TAB.id);
+function loadSavedSession(): { tabs: EditorTab[]; activeTabId: string; fontSize: number; wordWrap: boolean } | null {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.tabs) && parsed.tabs.length > 0) {
+      return {
+        tabs: parsed.tabs,
+        activeTabId: typeof parsed.activeTabId === 'string' ? parsed.activeTabId : parsed.tabs[0].id,
+        fontSize: typeof parsed.fontSize === 'number' ? parsed.fontSize : 13,
+        wordWrap: Boolean(parsed.wordWrap),
+      };
+    }
+  } catch {
+    // ignore corrupt storage
+  }
+  return null;
+}
+
+export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({ isDark, onNotify }) => {
+  const saved = useMemo(() => loadSavedSession(), []);
+
+  const [tabs, setTabs] = useState<EditorTab[]>(() => saved?.tabs || [INITIAL_EMPTY_TAB]);
+  const [activeTabId, setActiveTabId] = useState<string>(() => saved?.activeTabId || INITIAL_EMPTY_TAB.id);
   const [workspaceOpened, setWorkspaceOpened] = useState(false);
   const [currentDir, setCurrentDir] = useState<string>('');
   const [entries, setEntries] = useState<FsEntryItem[]>([]);
   const [loadingFs, setLoadingFs] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [showTerminal, setShowTerminal] = useState(false);
+  const [showBottomDock, setShowBottomDock] = useState(true);
+  const [dockExpanded, setDockExpanded] = useState(false);
+  const [bottomTab, setBottomTab] = useState<'terminal' | 'problems' | 'output'>('terminal');
   const [showMinimap, setShowMinimap] = useState(true);
   const [showHtmlPreview, setShowHtmlPreview] = useState(false);
   const [showFind, setShowFind] = useState(false);
@@ -186,28 +423,68 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
   const [folderPathInput, setFolderPathInput] = useState('');
   const [findQuery, setFindQuery] = useState('');
   const [replaceQuery, setReplaceQuery] = useState('');
-  const [fontSize, setFontSize] = useState(13);
-  const [wordWrap, setWordWrap] = useState(false);
+  const [fontSize, setFontSize] = useState(() => saved?.fontSize || 13);
+  const [wordWrap, setWordWrap] = useState(() => saved?.wordWrap || false);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
-  const [terminalLogs, setTerminalLogs] = useState<string[]>([
-    'Luma Code Studio 1.5.1 Pro — Чистое рабочее пространство. Откройте файл или начните писать код.',
+  const [outputLogs, setOutputLogs] = useState<string[]>([
+    'Luma Code Studio 1.5.2 Pro · Автосохранение сессии включено (код сохраняется даже при сворачивании и перезапуске).',
   ]);
+  const [termSessions, setTermSessions] = useState<TerminalSessionTab[]>([
+    {
+      id: 'term_1',
+      name: 'Терминал 1',
+      shell: 'auto',
+      lines: ['Luma Integrated Pro Terminal · Введите команду ОС (node -v, python --version, git status, ls/dir)...'],
+      history: [],
+    },
+  ]);
+  const [activeTermId, setActiveTermId] = useState('term_1');
   const [termCmd, setTermCmd] = useState('');
+  const [historyIdx, setHistoryIdx] = useState(-1);
   const [statusToast, setStatusToast] = useState('');
   const [creatingFile, setCreatingFile] = useState(false);
   const [newFileName, setNewFileName] = useState('');
+  const [dragOver, setDragOver] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightRef = useRef<HTMLPreElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
   const browserFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const activeTab = useMemo(
-    () => tabs.find((t) => t.id === activeTabId) || tabs[0],
-    [tabs, activeTabId]
-  );
+  const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId) || tabs[0], [tabs, activeTabId]);
+  const activeTerm = useMemo(() => termSessions.find((t) => t.id === activeTermId) || termSessions[0], [termSessions, activeTermId]);
 
-  // Listen for global Ctrl+Shift+P Command Palette
+  // Auto-persist session to localStorage so minimizing or reopening NEVER loses code!
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        SESSION_STORAGE_KEY,
+        JSON.stringify({ tabs, activeTabId, fontSize, wordWrap })
+      );
+    } catch {
+      // ignore quota errors
+    }
+  }, [tabs, activeTabId, fontSize, wordWrap]);
+
+  // Live diagnostics
+  const diagnostics = useMemo(
+    () => analyzeCodeDiagnostics(activeTab?.content || '', activeTab?.language || 'plaintext'),
+    [activeTab?.content, activeTab?.language]
+  );
+  const errorCount = useMemo(() => diagnostics.filter((d) => d.severity === 'error').length, [diagnostics]);
+  const warnCount = useMemo(() => diagnostics.filter((d) => d.severity === 'warning').length, [diagnostics]);
+  const diagByLine = useMemo(() => {
+    const map = new Map<number, CodeDiagnostic>();
+    for (const d of diagnostics) {
+      const prev = map.get(d.line);
+      if (!prev || (prev.severity === 'warning' && d.severity === 'error')) {
+        map.set(d.line, d);
+      }
+    }
+    return map;
+  }, [diagnostics]);
+
+  // Global shortcuts inside Code Studio (Ctrl+Shift+P palette, Ctrl+` terminal)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
@@ -224,6 +501,26 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
     setStatusToast(msg);
     setTimeout(() => setStatusToast((cur) => (cur === msg ? '' : cur)), 2400);
   };
+
+  const jumpToLine = useCallback(
+    (line: number, col = 1) => {
+      const ta = textareaRef.current;
+      if (!ta || !activeTab) return;
+      const arr = activeTab.content.split('\n');
+      const targetLine = Math.max(1, Math.min(arr.length, line));
+      let offset = 0;
+      for (let i = 0; i < targetLine - 1; i++) offset += arr[i].length + 1;
+      offset += Math.min(Math.max(0, col - 1), arr[targetLine - 1]?.length || 0);
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = offset;
+      const approxLineHeight = fontSize * 1.6;
+      ta.scrollTop = Math.max(0, (targetLine - 4) * approxLineHeight);
+      if (highlightRef.current) highlightRef.current.scrollTop = ta.scrollTop;
+      if (gutterRef.current) gutterRef.current.scrollTop = ta.scrollTop;
+      setCursorPos({ line: targetLine, col });
+    },
+    [activeTab, fontSize]
+  );
 
   const loadDirectory = useCallback(async (dirPath: string) => {
     setLoadingFs(true);
@@ -259,7 +556,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
         return;
       }
     } catch {
-      // fallback to manual path input
+      // fallback
     }
     setFolderPathPrompt(true);
   };
@@ -275,7 +572,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
         dirty: false,
         language: detectLanguage(file.name),
       };
-      setTabs((prev) => (prev.length === 1 && !prev[0].content && prev[0].name === 'untitled.txt' ? [newTab] : [...prev, newTab]));
+      setTabs((prev) => (prev.length === 1 && !prev[0].content && prev[0].name.startsWith('untitled') ? [newTab] : [...prev, newTab]));
       setActiveTabId(newTab.id);
       flashToast(`Открыт файл: ${file.name}`);
     };
@@ -308,7 +605,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
           dirty: false,
           language: detectLanguage(entry.name),
         };
-        setTabs((prev) => (prev.length === 1 && !prev[0].content && prev[0].name === 'untitled.txt' ? [newTab] : [...prev, newTab]));
+        setTabs((prev) => (prev.length === 1 && !prev[0].content && prev[0].name.startsWith('untitled') ? [newTab] : [...prev, newTab]));
         setActiveTabId(newTab.id);
       }
     } catch {
@@ -333,18 +630,20 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
         flashToast('JSON отформатирован');
         return;
       } catch {
-        flashToast('Ошибка синтаксиса JSON');
+        flashToast('Ошибка синтаксиса JSON — смотрите панель «Проблемы»');
+        setShowBottomDock(true);
+        setBottomTab('problems');
         return;
       }
     }
-    // Generic clean indentation + trailing whitespace trim
-    const cleaned = activeTab.content
-      .split('\n')
-      .map((l) => l.replace(/\s+$/, ''))
-      .join('\n')
-      .trimEnd() + '\n';
+    const cleaned =
+      activeTab.content
+        .split('\n')
+        .map((l) => l.replace(/\s+$/, ''))
+        .join('\n')
+        .trimEnd() + '\n';
     updateActiveContent(cleaned);
-    flashToast('Код очищен и выровнен');
+    flashToast('Код отформатирован');
   };
 
   const handleDownloadFile = () => {
@@ -379,9 +678,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
       });
       const data = await res.json();
       if (data?.ok) {
-        setTabs((prev) =>
-          prev.map((t) => (t.id === activeTab.id ? { ...t, path: data.path || targetPath, dirty: false } : t))
-        );
+        setTabs((prev) => prev.map((t) => (t.id === activeTab.id ? { ...t, path: data.path || targetPath, dirty: false } : t)));
         flashToast(`Сохранено: ${activeTab.name}`);
         if (workspaceOpened && currentDir) void loadDirectory(currentDir);
         onNotify?.('Luma Code Studio', `Файл «${activeTab.name}» сохранён`, 'success');
@@ -395,13 +692,14 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
 
   const handleRunCode = useCallback(async () => {
     if (!activeTab) return;
-    setShowTerminal(true);
+    setShowBottomDock(true);
+    setBottomTab('output');
     const lang = activeTab.language;
     const stamp = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     if (lang === 'html') {
       setShowHtmlPreview(true);
-      setTerminalLogs((prev) => [...prev, `[${stamp}] ▶ Открыт живой HTML-предпросмотр (${activeTab.name})`]);
+      setOutputLogs((prev) => [...prev, `[${stamp}] ▶ Открыт живой HTML-предпросмотр (${activeTab.name})`]);
       return;
     }
 
@@ -417,9 +715,9 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
         const fn = new Function('console', activeTab.content);
         const res = fn(fakeConsole);
         if (res !== undefined) captured.push(`=> ${String(res)}`);
-        setTerminalLogs((prev) => [...prev, `[${stamp}] ▶ run ${activeTab.name}`, ...(captured.length ? captured : ['(Успешно выполнено без вывода)'])]);
+        setOutputLogs((prev) => [...prev, `[${stamp}] ▶ run ${activeTab.name}`, ...(captured.length ? captured : ['(Успешно выполнено без вывода)'])]);
       } catch (err) {
-        setTerminalLogs((prev) => [...prev, `[${stamp}] ✖ Error: ${err instanceof Error ? err.message : String(err)}`]);
+        setOutputLogs((prev) => [...prev, `[${stamp}] ✖ Error: ${err instanceof Error ? err.message : String(err)}`]);
       }
       return;
     }
@@ -430,7 +728,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
       else if (lang === 'go') cmd = `go run "${activeTab.path}"`;
       else if (lang === 'bash') cmd = `bash "${activeTab.path}"`;
       else cmd = `echo "Файл ${activeTab.name} (${activeTab.content.length} байт)"`;
-      setTerminalLogs((prev) => [...prev, `[${stamp}] $ ${cmd}`]);
+      setOutputLogs((prev) => [...prev, `[${stamp}] $ ${cmd}`]);
       try {
         const res = await fetch('/api/kernel/exec', {
           method: 'POST',
@@ -439,36 +737,62 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
         });
         const data = await res.json();
         const out = [data.stdout, data.stderr].filter(Boolean).join('\n');
-        setTerminalLogs((prev) => [...prev, out || `(Код возврата: ${data.exit_code ?? 0})`]);
+        setOutputLogs((prev) => [...prev, out || `(Код возврата: ${data.exit_code ?? 0})`]);
       } catch {
-        setTerminalLogs((prev) => [...prev, '✖ Не удалось выполнить команду через ядро ОС']);
+        setOutputLogs((prev) => [...prev, '✖ Не удалось выполнить команду через ядро ОС']);
       }
     } else {
-      setTerminalLogs((prev) => [...prev, `[${stamp}] ℹ Сохраните файл в открытую папку или переключите язык на JavaScript/HTML для мгновенного запуска`]);
+      setOutputLogs((prev) => [...prev, `[${stamp}] ℹ Сохраните файл в открытую папку или выберите JavaScript/HTML для запуска без файла`]);
     }
   }, [activeTab]);
 
-  const handleExecTerminal = async () => {
-    const cmd = termCmd.trim();
-    if (!cmd) return;
-    setTermCmd('');
-    setTerminalLogs((prev) => [...prev, `$ ${cmd}`]);
+  const handleExecTerminal = async (overrideCmd?: string) => {
+    const cmd = (overrideCmd ?? termCmd).trim();
+    if (!cmd || !activeTerm) return;
+    if (!overrideCmd) setTermCmd('');
+    setHistoryIdx(-1);
+
+    if (cmd === 'clear' || cmd === 'cls') {
+      setTermSessions((prev) => prev.map((s) => (s.id === activeTerm.id ? { ...s, lines: [] } : s)));
+      return;
+    }
+
+    const prefix = activeTerm.shell === 'powershell' ? 'PS>' : '$';
+    setTermSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeTerm.id
+          ? { ...s, lines: [...s.lines, `${prefix} ${cmd}`], history: [cmd, ...s.history.slice(0, 49)] }
+          : s
+      )
+    );
+
     try {
+      const fullCmd = currentDir ? `cd "${currentDir}" && ${cmd}` : cmd;
       const res = await fetch('/api/kernel/exec', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: cmd }),
+        body: JSON.stringify({ command: fullCmd }),
       });
       const data = await res.json();
-      const out = [data.stdout, data.stderr].filter(Boolean).join('\n');
-      setTerminalLogs((prev) => [...prev, out || `(exit ${data.exit_code ?? 0})`]);
+      const out = [data.stdout, data.stderr].filter(Boolean).join('\n') || `(exit ${data.exit_code ?? 0})`;
+      setTermSessions((prev) => prev.map((s) => (s.id === activeTerm.id ? { ...s, lines: [...s.lines, out] } : s)));
     } catch {
-      setTerminalLogs((prev) => [...prev, 'Ошибка выполнения команды']);
+      setTermSessions((prev) => prev.map((s) => (s.id === activeTerm.id ? { ...s, lines: [...s.lines, '✖ Ошибка выполнения команды'] } : s)));
     }
   };
 
+  const addTerminalSession = () => {
+    const id = `term_${Date.now()}`;
+    const num = termSessions.length + 1;
+    setTermSessions((prev) => [
+      ...prev,
+      { id, name: `Терминал ${num}`, shell: 'auto', lines: [`Новая сессия Терминал ${num} готова.`], history: [] },
+    ]);
+    setActiveTermId(id);
+  };
+
   const handleCreateNewTab = (fnameOverride?: string, contentOverride = '', langOverride?: string) => {
-    const fname = (fnameOverride ?? newFileName).trim() || `untitled_${tabs.length + 1}.txt`;
+    const fname = (fnameOverride ?? newFileName).trim() || `untitled_${tabs.length + 1}.js`;
     const newTab: EditorTab = {
       id: `tab_${Date.now()}`,
       name: fname,
@@ -477,7 +801,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
       dirty: Boolean(contentOverride),
       language: langOverride || detectLanguage(fname),
     };
-    setTabs((prev) => (prev.length === 1 && !prev[0].content && prev[0].name === 'untitled.txt' && contentOverride ? [newTab] : [...prev, newTab]));
+    setTabs((prev) => (prev.length === 1 && !prev[0].content && prev[0].name.startsWith('untitled') && contentOverride ? [newTab] : [...prev, newTab]));
     setActiveTabId(newTab.id);
     setNewFileName('');
     setCreatingFile(false);
@@ -530,6 +854,20 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
       setShowFind((v) => !v);
       return;
     }
+    // Ctrl+/ Toggle Line Comment
+    if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+      e.preventDefault();
+      const start = el.selectionStart;
+      const arr = activeTab.content.split('\n');
+      const lineIdx = activeTab.content.slice(0, start).split('\n').length - 1;
+      const prefix = activeTab.language === 'python' || activeTab.language === 'bash' ? '# ' : '// ';
+      const cur = arr[lineIdx] || '';
+      arr[lineIdx] = cur.trimStart().startsWith(prefix.trim())
+        ? cur.replace(prefix.trim() + ' ', '').replace(prefix.trim(), '')
+        : prefix + cur;
+      updateActiveContent(arr.join('\n'));
+      return;
+    }
     if (e.key === 'Tab') {
       e.preventDefault();
       e.stopPropagation();
@@ -542,7 +880,6 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
       });
       return;
     }
-    // Auto-indent on Enter
     if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
       const start = el.selectionStart;
       const before = activeTab.content.slice(0, start);
@@ -562,7 +899,6 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
       }
       return;
     }
-    // Auto-close brackets & quotes
     if (!e.ctrlKey && !e.metaKey && !e.altKey && AUTO_CLOSE_PAIRS[e.key]) {
       const closeCh = AUTO_CLOSE_PAIRS[e.key];
       const start = el.selectionStart;
@@ -592,15 +928,16 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
       { label: 'Открыть файл с компьютера', action: () => browserFileInputRef.current?.click() },
       { label: 'Форматировать / выровнять код', action: handleFormatCode },
       { label: 'Запустить код (Ctrl+Enter)', action: () => void handleRunCode() },
+      { label: 'Показать Проблемы и ошибки кода', action: () => { setShowBottomDock(true); setBottomTab('problems'); } },
+      { label: 'Открыть встроенный Pro Терминал', action: () => { setShowBottomDock(true); setBottomTab('terminal'); } },
       { label: 'Скачать / Сохранить как', action: handleDownloadFile },
       { label: 'Переключить миникарту', action: () => setShowMinimap((v) => !v) },
-      { label: 'Переключить терминал', action: () => setShowTerminal((v) => !v) },
       { label: 'Открыть HTML-предпросмотр', action: () => setShowHtmlPreview((v) => !v) },
-      { label: 'Закрыть папку проекта (очистить проводник)', action: () => { setWorkspaceOpened(false); setEntries([]); setCurrentDir(''); } },
+      ...tabs.map((t) => ({ label: `Перейти к вкладке: ${t.name}`, action: () => setActiveTabId(t.id) })),
     ];
     const q = paletteQuery.trim().toLowerCase();
     return q ? all.filter((c) => c.label.toLowerCase().includes(q)) : all;
-  }, [paletteQuery]);
+  }, [paletteQuery, tabs]);
 
   const goParentDir = () => {
     if (!currentDir || currentDir === '/' || currentDir.length <= 3) return;
@@ -611,7 +948,19 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
   };
 
   return (
-    <div className={`h-full flex flex-col select-text relative ${isDark ? 'bg-[#0d1017] text-slate-100' : 'bg-[#f8fafc] text-slate-900'}`}>
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const f = e.dataTransfer.files?.[0];
+        if (f) handleOpenBrowserFile(f);
+      }}
+      className={`h-full flex flex-col select-text relative ${isDark ? 'bg-[#0d1017] text-slate-100' : 'bg-[#f8fafc] text-slate-900'} ${
+        dragOver ? 'ring-2 ring-inset ring-cyan-400' : ''
+      }`}
+    >
       <input
         ref={browserFileInputRef}
         type="file"
@@ -623,7 +972,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
         }}
       />
 
-      {/* Command Palette Modal (Ctrl+Shift+P) */}
+      {/* Command Palette Modal */}
       {showPalette && (
         <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-12" onClick={() => setShowPalette(false)}>
           <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-white/15 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -640,7 +989,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
                     setShowPalette(false);
                   }
                 }}
-                placeholder="Введите команду (форматировать, открыть, запустить)..."
+                placeholder="Команда или файл (форматировать, терминал, ошибки)..."
                 className="flex-1 bg-transparent text-xs text-white outline-none"
               />
             </div>
@@ -705,12 +1054,26 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
 
         <div className="flex items-center gap-1">
           {statusToast && (
-            <span className="text-[11px] text-emerald-400 flex items-center gap-1 mr-2">
+            <span className="text-[11px] text-emerald-400 flex items-center gap-1 mr-1.5">
               <CheckCircle2 size={12} /> {statusToast}
             </span>
           )}
+          <button
+            onClick={() => { setShowBottomDock(true); setBottomTab('problems'); }}
+            className={`px-2 py-1 rounded-lg text-[10px] font-mono border flex items-center gap-1 cursor-pointer ${
+              errorCount > 0
+                ? 'bg-rose-500/20 border-rose-400/40 text-rose-300'
+                : warnCount > 0
+                ? 'bg-amber-500/20 border-amber-400/40 text-amber-300'
+                : 'bg-emerald-500/12 border-emerald-400/30 text-emerald-300'
+            }`}
+            title="Live диагностика ошибок кода"
+          >
+            <AlertCircle size={11} /> {errorCount}
+            <AlertTriangle size={11} className="ml-0.5" /> {warnCount}
+          </button>
           <button onClick={() => setShowPalette(true)} className={`px-2 py-1 rounded-lg text-[10px] border flex items-center gap-1 cursor-pointer ${isDark ? 'bg-white/[0.04] border-white/10 text-white/65' : 'bg-slate-100 border-slate-200'}`} title="Палитра команд (Ctrl+Shift+P)">
-            <Command size={11} /> Команды
+            <Command size={11} />
           </button>
           <button onClick={() => setShowFind((v) => !v)} className={`p-1.5 rounded-lg border cursor-pointer ${showFind ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-400' : isDark ? 'bg-white/[0.04] border-white/10 text-white/65' : 'bg-slate-100 border-slate-200'}`} title="Поиск (Ctrl+F)">
             <Search size={12} />
@@ -727,8 +1090,8 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
           <button onClick={() => setShowHtmlPreview((v) => !v)} className={`px-2 py-1 rounded-lg text-[11px] flex items-center gap-1 border cursor-pointer ${showHtmlPreview ? 'bg-purple-500/20 border-purple-400/40 text-purple-300' : isDark ? 'bg-white/[0.04] border-white/10 text-white/65' : 'bg-slate-100 border-slate-200'}`}>
             <Eye size={12} /> Превью
           </button>
-          <button onClick={() => setShowTerminal((v) => !v)} className={`px-2 py-1 rounded-lg text-[11px] flex items-center gap-1 border cursor-pointer ${showTerminal ? 'bg-amber-500/20 border-amber-400/40 text-amber-300' : isDark ? 'bg-white/[0.04] border-white/10 text-white/65' : 'bg-slate-100 border-slate-200'}`}>
-            <Terminal size={12} /> Консоль
+          <button onClick={() => { setShowBottomDock((v) => !v); setBottomTab('terminal'); }} className={`px-2 py-1 rounded-lg text-[11px] flex items-center gap-1 border cursor-pointer ${showBottomDock ? 'bg-amber-500/20 border-amber-400/40 text-amber-300' : isDark ? 'bg-white/[0.04] border-white/10 text-white/65' : 'bg-slate-100 border-slate-200'}`}>
+            <Terminal size={12} /> Терминал
           </button>
         </div>
       </div>
@@ -761,7 +1124,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
                 setFolderPathPrompt(false);
               }
             }}
-            placeholder="Введите путь к папке проекта (например: C:\Projects\MyApp или ~/Projects)..."
+            placeholder="Путь к папке проекта (C:\Projects\MyApp или ~/Projects)..."
             autoFocus
             className="flex-1 bg-transparent text-xs outline-none"
           />
@@ -780,7 +1143,6 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
 
       {/* Main Split Area */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Left Clean Explorer Sidebar — NEVER auto-exposes system files until user opens a folder! */}
         {showSidebar && (
           <div className={`w-56 shrink-0 border-r flex flex-col overflow-hidden ${isDark ? 'bg-[#0b0e14] border-white/10' : 'bg-slate-50 border-slate-200'}`}>
             <div className={`px-2.5 py-2 border-b flex items-center justify-between gap-1 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
@@ -802,22 +1164,16 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
                   <Code2 size={20} />
                 </div>
                 <div>
-                  <div className="text-xs font-semibold">Папка не открыта</div>
+                  <div className="text-xs font-semibold">Рабочая область</div>
                   <div className="text-[10px] opacity-55 mt-1 leading-relaxed">
-                    Системные файлы скрыты. Откройте свою папку проекта или отдельный файл.
+                    Откройте папку, выберите файл или перетащите файл прямо в окно редактора.
                   </div>
                 </div>
                 <div className="w-full space-y-1.5">
-                  <button
-                    onClick={() => void handleOpenFolderDialog()}
-                    className="w-full py-1.5 px-3 rounded-xl text-[11px] font-semibold bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-400/35 flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
+                  <button onClick={() => void handleOpenFolderDialog()} className="w-full py-1.5 px-3 rounded-xl text-[11px] font-semibold bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-400/35 flex items-center justify-center gap-1.5 cursor-pointer">
                     <FolderOpen size={13} /> Открыть папку
                   </button>
-                  <button
-                    onClick={() => browserFileInputRef.current?.click()}
-                    className={`w-full py-1.5 px-3 rounded-xl text-[11px] font-medium border flex items-center justify-center gap-1.5 cursor-pointer ${isDark ? 'bg-white/[0.05] border-white/10 hover:bg-white/10' : 'bg-white border-slate-200 hover:bg-slate-100'}`}
-                  >
+                  <button onClick={() => browserFileInputRef.current?.click()} className={`w-full py-1.5 px-3 rounded-xl text-[11px] font-medium border flex items-center justify-center gap-1.5 cursor-pointer ${isDark ? 'bg-white/[0.05] border-white/10 hover:bg-white/10' : 'bg-white border-slate-200 hover:bg-slate-100'}`}>
                     <FileCode2 size={13} /> Открыть файл
                   </button>
                 </div>
@@ -850,7 +1206,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
           </div>
         )}
 
-        {/* Center Editor + Syntax Overlay + Minimap + Optional Preview & Terminal */}
+        {/* Center Editor + Live Diagnostics + Pro Bottom Dock */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Tabs */}
           <div className={`flex items-center overflow-x-auto border-b shrink-0 ${isDark ? 'bg-[#0e121b] border-white/10' : 'bg-slate-100 border-slate-200'}`}>
@@ -868,7 +1224,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
                 >
                   <FileCode2 size={12} />
                   <span>{tab.name}</span>
-                  {tab.dirty && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                  {tab.dirty && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title="Автосохранено в сессии" />}
                   <button onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }} className="ml-1 opacity-50 hover:opacity-100 cursor-pointer"><X size={11} /></button>
                 </div>
               );
@@ -891,23 +1247,43 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
             </div>
           )}
 
-          {/* Code Editor Surface with Synchronized Live Syntax Highlighting + Minimap */}
+          {/* Code Surface with Live Diagnostic Gutter Markers & Line Highlighting */}
           <div className="flex-1 flex min-h-0 overflow-hidden">
             <div className="flex-1 flex min-h-0 overflow-hidden font-mono relative">
-              {/* Line Numbers Gutter */}
+              {/* Line Numbers Gutter with Red/Yellow Diagnostic Markers */}
               <div
                 ref={gutterRef}
-                className={`py-3 px-2.5 text-right select-none shrink-0 border-r overflow-hidden ${isDark ? 'bg-[#0b0e14] border-white/10 text-white/30' : 'bg-slate-100 border-slate-200 text-slate-400'}`}
-                style={{ fontSize, lineHeight: '1.6', minWidth: 44 }}
+                className={`py-3 px-2 text-right select-none shrink-0 border-r overflow-hidden ${isDark ? 'bg-[#0b0e14] border-white/10 text-white/30' : 'bg-slate-100 border-slate-200 text-slate-400'}`}
+                style={{ fontSize, lineHeight: '1.6', minWidth: 52 }}
               >
-                {lines.map((_, i) => (
-                  <div key={i} className={cursorPos.line === i + 1 ? 'text-cyan-400 font-bold' : ''}>
-                    {i + 1}
-                  </div>
-                ))}
+                {lines.map((_, i) => {
+                  const lnNum = i + 1;
+                  const d = diagByLine.get(lnNum);
+                  return (
+                    <div
+                      key={i}
+                      title={d ? `${d.severity === 'error' ? 'Ошибка' : 'Предупреждение'}: ${d.message}` : undefined}
+                      onClick={() => jumpToLine(lnNum, d?.col || 1)}
+                      className={`flex items-center justify-end gap-1 cursor-pointer ${
+                        d?.severity === 'error'
+                          ? 'text-rose-400 font-bold bg-rose-500/15 -mx-2 px-2'
+                          : d?.severity === 'warning'
+                          ? 'text-amber-400 font-bold bg-amber-500/10 -mx-2 px-2'
+                          : cursorPos.line === lnNum
+                          ? 'text-cyan-400 font-bold'
+                          : ''
+                      }`}
+                    >
+                      {d && (
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${d.severity === 'error' ? 'bg-rose-500' : 'bg-amber-400'}`} />
+                      )}
+                      <span>{lnNum}</span>
+                    </div>
+                  );
+                })}
               </div>
 
-              {/* Layered Syntax Highlight Overlay + Transparent Caret Textarea */}
+              {/* Layered Syntax Overlay + Error Line Underlay + Caret Textarea */}
               <div className="flex-1 relative min-w-0 overflow-hidden">
                 <pre
                   ref={highlightRef}
@@ -929,16 +1305,16 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
                   onKeyDown={onEditorKeyDown}
                   spellCheck={false}
                   wrap={wordWrap ? 'soft' : 'off'}
-                  placeholder="Начните писать код здесь или откройте файл..."
+                  placeholder="Начните писать код здесь (автосохранение и подсветка ошибок работают в реальном времени)..."
                   className={`absolute inset-0 w-full h-full p-3 bg-transparent outline-none resize-none font-mono text-transparent ${isDark ? 'caret-cyan-400 selection:bg-cyan-500/30 placeholder:text-white/25' : 'caret-cyan-600 selection:bg-cyan-500/25 placeholder:text-slate-400'} ${wordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre overflow-auto'}`}
                   style={{ fontSize, lineHeight: '1.6', tabSize: 2 }}
                 />
               </div>
 
-              {/* Pro Minimap */}
+              {/* Minimap */}
               {showMinimap && lines.length > 0 && (
                 <div
-                  className={`w-20 shrink-0 border-l p-1.5 overflow-hidden select-none cursor-pointer hidden md:block ${isDark ? 'bg-[#0a0d13] border-white/10 opacity-70' : 'bg-slate-50 border-slate-200 opacity-75'}`}
+                  className={`w-20 shrink-0 border-l p-1.5 overflow-hidden select-none cursor-pointer hidden md:block ${isDark ? 'bg-[#0a0d13] border-white/10 opacity-75' : 'bg-slate-50 border-slate-200 opacity-80'}`}
                   onClick={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
                     const pct = (e.clientY - rect.top) / Math.max(1, rect.height);
@@ -967,31 +1343,158 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
             )}
           </div>
 
-          {/* Integrated Terminal */}
-          {showTerminal && (
-            <div className={`h-36 shrink-0 border-t flex flex-col ${isDark ? 'bg-[#080a0f] border-white/10' : 'bg-slate-900 text-slate-100 border-slate-300'}`}>
-              <div className="px-3 py-1 border-b border-white/10 flex items-center justify-between text-[10px] text-white/60">
-                <span className="flex items-center gap-1.5 font-semibold text-amber-300"><ChevronDown size={11} /> ТЕРМИНАЛ И ВЫВОД</span>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setTerminalLogs([])} className="hover:text-white cursor-pointer">Очистить</button>
-                  <button onClick={() => setShowTerminal(false)} className="hover:text-white cursor-pointer"><X size={11} /></button>
+          {/* Pro Integrated Bottom Dock: Problems · Output · Multi-Tab Terminal */}
+          {showBottomDock && (
+            <div className={`${dockExpanded ? 'h-64' : 'h-40'} shrink-0 border-t flex flex-col transition-all ${isDark ? 'bg-[#080a0f] border-white/10' : 'bg-slate-900 text-slate-100 border-slate-300'}`}>
+              {/* Dock Header Tabs */}
+              <div className="px-3 py-1 border-b border-white/10 flex items-center justify-between gap-2 text-[10px] shrink-0">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setBottomTab('problems')}
+                    className={`px-2 py-0.5 rounded-md font-semibold flex items-center gap-1 cursor-pointer ${
+                      bottomTab === 'problems' ? 'bg-rose-500/20 text-rose-300 border border-rose-400/35' : 'text-white/60 hover:text-white'
+                    }`}
+                  >
+                    <AlertCircle size={10} /> Проблемы ({diagnostics.length})
+                  </button>
+                  <button
+                    onClick={() => setBottomTab('output')}
+                    className={`px-2 py-0.5 rounded-md font-semibold flex items-center gap-1 cursor-pointer ${
+                      bottomTab === 'output' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/35' : 'text-white/60 hover:text-white'
+                    }`}
+                  >
+                    <Play size={10} /> Вывод
+                  </button>
+                  <button
+                    onClick={() => setBottomTab('terminal')}
+                    className={`px-2 py-0.5 rounded-md font-semibold flex items-center gap-1 cursor-pointer ${
+                      bottomTab === 'terminal' ? 'bg-amber-500/20 text-amber-300 border border-amber-400/35' : 'text-white/60 hover:text-white'
+                    }`}
+                  >
+                    <Terminal size={10} /> Терминал ({termSessions.length})
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-white/60">
+                  {bottomTab === 'terminal' && (
+                    <>
+                      <button onClick={() => void handleExecTerminal('git status')} className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 cursor-pointer">git status</button>
+                      <button onClick={() => void handleExecTerminal('node -v')} className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 cursor-pointer">node -v</button>
+                      <button onClick={addTerminalSession} className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 cursor-pointer flex items-center gap-0.5" title="Новая вкладка терминала">
+                        <Plus size={10} /> Сессия
+                      </button>
+                    </>
+                  )}
+                  {bottomTab === 'output' && (
+                    <button onClick={() => setOutputLogs([])} className="hover:text-white cursor-pointer flex items-center gap-0.5"><Trash2 size={10} /> Очистить</button>
+                  )}
+                  <button onClick={() => setDockExpanded((v) => !v)} className="p-0.5 hover:text-white cursor-pointer" title="Выше / Ниже">
+                    {dockExpanded ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+                  </button>
+                  <button onClick={() => setShowBottomDock(false)} className="p-0.5 hover:text-white cursor-pointer"><X size={11} /></button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto px-3 py-1.5 font-mono text-[11px] space-y-0.5 text-emerald-300/90">
-                {terminalLogs.map((l, i) => (
-                  <pre key={i} className="whitespace-pre-wrap break-words m-0">{l}</pre>
-                ))}
-              </div>
-              <div className="px-3 py-1 border-t border-white/10 flex items-center gap-2 font-mono text-[11px]">
-                <span className="text-cyan-400">$</span>
-                <input
-                  value={termCmd}
-                  onChange={(e) => setTermCmd(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && void handleExecTerminal()}
-                  placeholder="Команда ОС (node -v, python --version, git status)..."
-                  className="flex-1 bg-transparent outline-none text-white placeholder:text-white/35"
-                />
-              </div>
+
+              {/* Problems View */}
+              {bottomTab === 'problems' && (
+                <div className="flex-1 overflow-y-auto p-2 space-y-1 font-mono text-[11px]">
+                  {diagnostics.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-emerald-400/80 gap-1.5 text-xs">
+                      <CheckCircle2 size={14} /> Ошибок и предупреждений в «{activeTab?.name}» не обнаружено
+                    </div>
+                  ) : (
+                    diagnostics.map((d, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => jumpToLine(d.line, d.col)}
+                        className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/[0.08] flex items-center justify-between gap-2 transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {d.severity === 'error' ? (
+                            <AlertCircle size={12} className="text-rose-400 shrink-0" />
+                          ) : (
+                            <AlertTriangle size={12} className="text-amber-400 shrink-0" />
+                          )}
+                          <span className={d.severity === 'error' ? 'text-rose-200 truncate' : 'text-amber-200 truncate'}>{d.message}</span>
+                        </div>
+                        <span className="text-[10px] text-white/45 shrink-0">
+                          [{d.source}] Стр {d.line}, Стб {d.col}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* Output View */}
+              {bottomTab === 'output' && (
+                <div className="flex-1 overflow-y-auto px-3 py-1.5 font-mono text-[11px] space-y-0.5 text-emerald-300/90">
+                  {outputLogs.map((l, i) => (
+                    <pre key={i} className="whitespace-pre-wrap break-words m-0">{l}</pre>
+                  ))}
+                </div>
+              )}
+
+              {/* Pro Multi-Tab Terminal View */}
+              {bottomTab === 'terminal' && activeTerm && (
+                <div className="flex-1 flex flex-col min-h-0">
+                  {termSessions.length > 1 && (
+                    <div className="px-2 py-0.5 border-b border-white/10 flex items-center gap-1 overflow-x-auto text-[10px]">
+                      {termSessions.map((ts) => (
+                        <div
+                          key={ts.id}
+                          onClick={() => setActiveTermId(ts.id)}
+                          className={`px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer ${
+                            ts.id === activeTerm.id ? 'bg-amber-500/20 text-amber-200' : 'text-white/50 hover:text-white'
+                          }`}
+                        >
+                          <span>{ts.name}</span>
+                          {termSessions.length > 1 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const next = termSessions.filter((x) => x.id !== ts.id);
+                                setTermSessions(next);
+                                if (activeTermId === ts.id) setActiveTermId(next[0].id);
+                              }}
+                            >
+                              <X size={9} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex-1 overflow-y-auto px-3 py-1.5 font-mono text-[11px] space-y-0.5 text-emerald-300/90">
+                    {activeTerm.lines.map((l, i) => (
+                      <pre key={i} className="whitespace-pre-wrap break-words m-0">{l}</pre>
+                    ))}
+                  </div>
+                  <div className="px-3 py-1 border-t border-white/10 flex items-center gap-2 font-mono text-[11px]">
+                    <span className="text-cyan-400 font-bold">{currentDir ? `${currentDir.split(/[\\/]/).pop()} $` : '$'}</span>
+                    <input
+                      value={termCmd}
+                      onChange={(e) => setTermCmd(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void handleExecTerminal();
+                        else if (e.key === 'ArrowUp' && activeTerm.history.length > 0) {
+                          e.preventDefault();
+                          const nextIdx = Math.min(activeTerm.history.length - 1, historyIdx + 1);
+                          setHistoryIdx(nextIdx);
+                          setTermCmd(activeTerm.history[nextIdx] || '');
+                        } else if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          const nextIdx = historyIdx - 1;
+                          setHistoryIdx(nextIdx);
+                          setTermCmd(nextIdx >= 0 ? activeTerm.history[nextIdx] || '' : '');
+                        }
+                      }}
+                      placeholder="Команда ОС (стрелки ↑↓ история · clear — очистить)..."
+                      className="flex-1 bg-transparent outline-none text-white placeholder:text-white/35"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1000,23 +1503,28 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({
       {/* Pro IDE Status Bar */}
       <div className="px-3 py-1 bg-gradient-to-r from-cyan-700 to-blue-800 text-white text-[10px] font-mono flex items-center justify-between shrink-0 gap-2">
         <div className="flex items-center gap-3">
-          <span className="font-bold">Luma Code Studio 1.5.1 Pro</span>
+          <span className="font-bold">Luma Code Studio 1.5.2 Pro</span>
           <select
             value={activeTab?.language || 'plaintext'}
             onChange={(e) => updateActiveLanguage(e.target.value)}
             className="bg-black/25 rounded px-1.5 py-0.5 outline-none text-[10px] uppercase cursor-pointer"
-            title="Язык подсветки синтаксиса"
           >
             {LANGUAGES.map((l) => (
               <option key={l} value={l} className="bg-zinc-900 text-white">{l.toUpperCase()}</option>
             ))}
           </select>
-          <span>UTF-8</span>
+          <span className="text-emerald-200 hidden sm:inline">● Автосохранение</span>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => { setShowBottomDock(true); setBottomTab('problems'); }}
+            className="hover:underline cursor-pointer"
+          >
+            ✖ {errorCount} ⚠ {warnCount}
+          </button>
           <span>Стр {cursorPos.line}, Стб {cursorPos.col}</span>
           <span>Строк: {lines.length}</span>
-          <span>Ctrl+Shift+P · Ctrl+S · Ctrl+Enter</span>
+          <span className="hidden md:inline">Ctrl+/ · Ctrl+S · Ctrl+Enter</span>
         </div>
       </div>
     </div>

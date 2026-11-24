@@ -1866,6 +1866,122 @@ func (p *platformProbe) CaptureScreenNative() (CaptureMediaFile, error) {
 	}, nil
 }
 
+// SupportsNativeScreenFrame reports that native GDI32 background frame capture is available on Windows.
+func (p *platformProbe) SupportsNativeScreenFrame() bool {
+	return true
+}
+
+// CaptureScreenJPEGFrame captures a single scaled screen frame as JPEG with guaranteed GDI cleanup.
+// Used by Luma OS 1.5.2 Zero-Freeze Native Screen Recorder (no WebView2 getDisplayMedia modal deadlocks!).
+func (p *platformProbe) CaptureScreenJPEGFrame(maxWidth, quality int) ([]byte, int, int, error) {
+	wRaw, _, _ := procProGetSystemMetrics.Call(smCxScreenWin)
+	hRaw, _, _ := procProGetSystemMetrics.Call(smCyScreenWin)
+	w, h := int(wRaw), int(hRaw)
+	if w <= 0 || h <= 0 || w > 7680 || h > 4320 {
+		return nil, 0, 0, fmt.Errorf("invalid screen metrics %dx%d", w, h)
+	}
+
+	hdcScreen, _, _ := procProGetDC.Call(0)
+	if hdcScreen == 0 {
+		return nil, 0, 0, fmt.Errorf("GetDC(0) failed")
+	}
+	defer procProReleaseDC.Call(0, hdcScreen)
+
+	hdcMem, _, _ := procCreateCompatibleDC.Call(hdcScreen)
+	if hdcMem == 0 {
+		return nil, 0, 0, fmt.Errorf("CreateCompatibleDC failed")
+	}
+	defer procDeleteDC.Call(hdcMem)
+
+	hBmp, _, _ := procCreateCompatibleBitmap.Call(hdcScreen, uintptr(w), uintptr(h))
+	if hBmp == 0 {
+		return nil, 0, 0, fmt.Errorf("CreateCompatibleBitmap failed")
+	}
+	defer procDeleteObject.Call(hBmp)
+
+	oldObj, _, _ := procSelectObject.Call(hdcMem, hBmp)
+	defer procSelectObject.Call(hdcMem, oldObj)
+
+	okBlt, _, _ := procBitBlt.Call(
+		hdcMem, 0, 0, uintptr(w), uintptr(h),
+		hdcScreen, 0, 0, gdiSrcCopy,
+	)
+	if okBlt == 0 {
+		return nil, 0, 0, fmt.Errorf("BitBlt failed")
+	}
+
+	var bih bitmapInfoHeader
+	bih.BiSize = uint32(unsafe.Sizeof(bih))
+	bih.BiWidth = int32(w)
+	bih.BiHeight = -int32(h)
+	bih.BiPlanes = 1
+	bih.BiBitCount = 32
+	bih.BiCompression = biRGB
+
+	pixels := make([]byte, w*h*4)
+	lines, _, _ := procGetDIBits.Call(
+		hdcMem,
+		hBmp,
+		0,
+		uintptr(h),
+		uintptr(unsafe.Pointer(&pixels[0])),
+		uintptr(unsafe.Pointer(&bih)),
+		dibRGBColors,
+	)
+	if lines == 0 {
+		return nil, 0, 0, fmt.Errorf("GetDIBits failed")
+	}
+
+	outW, outH := w, h
+	if maxWidth > 0 && w > maxWidth {
+		outW = maxWidth
+		outH = int(float64(h) * float64(maxWidth) / float64(w))
+	}
+	// Ensure even dimensions for broad video player compatibility
+	outW = (outW / 2) * 2
+	outH = (outH / 2) * 2
+	if outW < 320 {
+		outW = 320
+	}
+	if outH < 180 {
+		outH = 180
+	}
+
+	img := image.NewRGBA(image.Rect(0, 0, outW, outH))
+	if outW == w && outH == h {
+		for i := 0; i < len(pixels); i += 4 {
+			img.Pix[i] = pixels[i+2]
+			img.Pix[i+1] = pixels[i+1]
+			img.Pix[i+2] = pixels[i]
+			img.Pix[i+3] = 255
+		}
+	} else {
+		for y := 0; y < outH; y++ {
+			sy := (y * h) / outH
+			rowOff := sy * w * 4
+			dstRow := y * outW * 4
+			for x := 0; x < outW; x++ {
+				sx := (x * w) / outW
+				si := rowOff + sx*4
+				di := dstRow + x*4
+				img.Pix[di] = pixels[si+2]
+				img.Pix[di+1] = pixels[si+1]
+				img.Pix[di+2] = pixels[si]
+				img.Pix[di+3] = 255
+			}
+		}
+	}
+
+	if quality < 45 || quality > 95 {
+		quality = 74
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
+		return nil, 0, 0, err
+	}
+	return buf.Bytes(), outW, outH, nil
+}
+
 // EmptyOSRecycleBinNative empties the Windows system Recycle Bin silently via SHEmptyRecycleBinW.
 func (p *platformProbe) EmptyOSRecycleBinNative() error {
 	if procSHEmptyRecycleBinW.Find() == nil {

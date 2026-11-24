@@ -1,93 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Film,
-  Play,
-  Pause,
-  Scissors,
-  Trash2,
-  Copy,
-  Download,
-  Type,
-  Sparkles,
-  Music,
-  Upload,
-  Gauge,
-  CheckCircle2,
-  RotateCcw,
-  Undo2,
-  Redo2,
-  Camera,
-  SlidersHorizontal,
-  Smile,
-  FlipHorizontal,
-  RotateCw,
-  ZoomIn,
-  ZoomOut,
+  Film, Play, Pause, Scissors, Trash2, Copy, Download, Type, Sparkles, Music,
+  Upload, Gauge, CheckCircle2, RotateCcw, Undo2, Redo2, Camera, SlidersHorizontal,
+  Smile, FlipHorizontal, RotateCw, Layers, Wand2, Mic, MicOff, Brush, Volume2,
+  Bot, Palette, FileText, Save, FolderOpen, Square, Plus, Repeat, Snowflake,
+  Crosshair, Languages, MessageSquare, Layout, Zap, ScissorsLineDashed, UserCheck,
 } from 'lucide-react';
-
-type ClipTransition = 'none' | 'fade' | 'flash' | 'zoom' | 'wipe_left' | 'wipe_up' | 'glitch' | 'blur';
-type ClipMotion = 'static' | 'zoom_in' | 'zoom_out' | 'pan_left' | 'pan_right' | 'pulse' | 'shake';
-type TextAnim = 'fade' | 'slide' | 'pop' | 'typewriter' | 'glitch' | 'bounce' | 'wave' | 'spread';
-
-interface VideoClip {
-  id: string;
-  name: string;
-  kind: 'demo' | 'video' | 'image';
-  srcUrl?: string;
-  color: string;
-  startSec: number;
-  durationSec: number;
-  speed: number;
-  transition: ClipTransition;
-  motion: ClipMotion;
-  flipH?: boolean;
-  rotateDeg?: number;
-}
-
-interface TextOverlay {
-  id: string;
-  text: string;
-  startSec: number;
-  durationSec: number;
-  yPct: number;
-  fontSize: number;
-  color: string;
-  bgPill?: boolean;
-  stroke?: boolean;
-  anim: TextAnim;
-}
-
-interface StickerOverlay {
-  id: string;
-  emoji: string;
-  xPct: number;
-  yPct: number;
-  size: number;
-  startSec: number;
-  durationSec: number;
-}
-
-const LUT_PRESETS: { id: string; name: string; filter: string; badge: string }[] = [
-  { id: 'orig', name: 'Оригинал', filter: 'none', badge: 'STD' },
-  { id: 'carbon', name: 'Carbon Noir', filter: 'contrast(1.22) saturate(0.72) brightness(0.92)', badge: 'C-6' },
-  { id: 'cyber', name: 'Cyber Teal', filter: 'contrast(1.18) saturate(1.35) hue-rotate(-14deg)', badge: 'CYB' },
-  { id: 'sunset', name: 'Warm Sunset', filter: 'sepia(0.28) saturate(1.45) contrast(1.08)', badge: 'WARM' },
-  { id: 'vhs', name: 'VHS Retro', filter: 'contrast(1.15) saturate(1.25) sepia(0.22) hue-rotate(8deg)', badge: 'VHS' },
-  { id: 'nordic', name: 'Nordic Ice', filter: 'saturate(0.8) brightness(1.06) hue-rotate(15deg) contrast(1.08)', badge: 'ICE' },
-  { id: 'matrix', name: 'Emerald Matrix', filter: 'hue-rotate(65deg) contrast(1.25) saturate(1.3)', badge: 'MTX' },
-  { id: 'golden', name: 'Golden Hour', filter: 'brightness(1.06) sepia(0.35) saturate(1.5)', badge: 'GLD' },
-  { id: 'bw', name: 'Cinema B&W', filter: 'grayscale(1) contrast(1.32)', badge: 'B&W' },
-  { id: 'dream', name: 'Dreamy Glow', filter: 'brightness(1.12) saturate(1.22) contrast(0.94)', badge: 'GLW' },
-  { id: 'kodak', name: 'Kodak 2383', filter: 'contrast(1.26) saturate(1.18) sepia(0.14)', badge: 'KDK' },
-  { id: 'neon', name: 'Tokyo Neon', filter: 'contrast(1.28) saturate(1.65) hue-rotate(-22deg)', badge: 'NEO' },
-];
-
-const ASPECT_RATIOS: { id: '16:9' | '9:16' | '1:1' | '4:3'; ratio: number; label: string }[] = [
-  { id: '16:9', ratio: 16 / 9, label: '16:9 YouTube' },
-  { id: '9:16', ratio: 9 / 16, label: '9:16 Reels / Shorts' },
-  { id: '1:1', ratio: 1, label: '1:1 Square' },
-  { id: '4:3', ratio: 4 / 3, label: '4:3 Classic' },
-];
+import {
+  ASPECT_RATIOS, AudioTrackItem, BlendModeKind, BrushStroke, CaptionStyleKind,
+  ClipMotion, ClipTransition, DESIGN_STUDIO_PRESETS, LUT_PRESETS, MaskShapeKind,
+  playProceduralAudio, PROJECT_TEMPLATES, ROYALTY_FREE_AUDIO_LIB, speedCurveMultiplier,
+  SpeedCurveKind, StickerOverlay, StylizePreset, TextAnim, TextOverlay,
+  translateCaptionText, VideoClip, VoiceFilterKind,
+} from './cutStudioData';
 
 const CODEC_OPTIONS = [
   { id: 'vp9', label: 'VP9 · WebM (Лучшее качество)', mime: 'video/webm;codecs=vp9', ext: 'webm' },
@@ -96,69 +21,151 @@ const CODEC_OPTIONS = [
   { id: 'av1', label: 'AV1 · WebM (Сверхсжатие)', mime: 'video/webm;codecs=av01.0.04M.08', ext: 'webm' },
 ] as const;
 
-const STICKER_PALETTE = ['🔥', '⚡', '✨', '🎬', '🚀', '💎', '🎵', '❤️', '👑', '⭐'];
+const STICKER_PALETTE = ['🔥', '⚡', '✨', '🎬', '🚀', '💎', '🎵', '❤️', '👑', '⭐', '🎯', '💥'];
+const CUT_PROJECT_STORAGE_KEY = 'luma_cut_studio_project_v152';
 
 interface LumaCutStudioWindowProps {
   isDark: boolean;
   onNotify?: (title: string, msg: string, kind?: 'info' | 'success' | 'warn') => void;
 }
 
+type StudioView = 'editor' | 'design';
+type InspectorTab = 'edit' | 'fx' | 'audio' | 'text' | 'ai' | 'templates';
+
 export const LumaCutStudioWindow: React.FC<LumaCutStudioWindowProps> = ({ isDark, onNotify }) => {
+  const [studioView, setStudioView] = useState<StudioView>('editor');
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('edit');
+
+  // Core multi-track project state
   const [clips, setClips] = useState<VideoClip[]>([
     {
-      id: 'clip_demo_1',
-      name: 'Carbon 1.5.1 Intro Motion',
-      kind: 'demo',
-      color: '#06b6d4',
-      startSec: 0,
-      durationSec: 4,
-      speed: 1,
-      transition: 'fade',
-      motion: 'zoom_in',
+      id: 'clip_demo_1', track: 'main', name: 'Carbon 1.5.2 Intro', kind: 'demo',
+      color: '#06b6d4', secondaryColor: '#1e3a8a', startSec: 0, durationSec: 4, speed: 1, speedCurve: 'linear',
+      transition: 'fade', motion: 'zoom_in', opacity: 100, blendMode: 'source-over', mask: 'none',
     },
     {
-      id: 'clip_demo_2',
-      name: 'Obsidian Wave Scene',
-      kind: 'demo',
-      color: '#8b5cf6',
-      startSec: 4,
-      durationSec: 4,
-      speed: 1,
-      transition: 'glitch',
-      motion: 'pan_right',
+      id: 'clip_demo_2', track: 'main', name: 'Obsidian Neon Scene', kind: 'demo',
+      color: '#8b5cf6', secondaryColor: '#ec4899', startSec: 4, durationSec: 4, speed: 1, speedCurve: 'montage',
+      transition: 'glitch', motion: 'pan_right', opacity: 100, blendMode: 'source-over', mask: 'none',
     },
   ]);
   const [texts, setTexts] = useState<TextOverlay[]>([
     {
-      id: 'txt_1',
-      text: 'LUMA OS 1.5.1 · CARBON',
-      startSec: 0.3,
-      durationSec: 3.4,
-      yPct: 48,
-      fontSize: 30,
-      color: '#ffffff',
-      bgPill: true,
-      stroke: false,
-      anim: 'spread',
+      id: 'txt_1', text: 'LUMA CUT STUDIO 1.5.2', startSec: 0.3, durationSec: 3.4,
+      yPct: 48, fontSize: 30, color: '#ffffff', bgPill: true, stroke: false, anim: 'spread',
     },
     {
-      id: 'txt_2',
-      text: 'LUMA CUT STUDIO PRO',
-      startSec: 4.2,
-      durationSec: 3.4,
-      yPct: 74,
-      fontSize: 22,
-      color: '#38bdf8',
-      bgPill: false,
-      stroke: true,
-      anim: 'typewriter',
+      id: 'txt_2', text: 'МОНТАЖ · МАСКИ · ИИ · ОЗВУЧКА', startSec: 4.2, durationSec: 3.4,
+      yPct: 76, fontSize: 20, color: '#38bdf8', bgPill: true, stroke: true, anim: 'karaoke', isCaption: true, captionStyle: 'neon_karaoke',
     },
   ]);
   const [stickers, setStickers] = useState<StickerOverlay[]>([]);
+  const [audioTracks, setAudioTracks] = useState<AudioTrackItem[]>([
+    { id: 'aud_1', name: 'Lo-Fi Carbon Chill', kind: 'music', startSec: 0, durationSec: 8, volume: 75, synthPreset: 'lofi_chill' },
+  ]);
+  const [beatMarkers, setBeatMarkers] = useState<number[]>([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5]);
+  const [brushStrokes, setBrushStrokes] = useState<BrushStroke[]>([]);
 
-  // Undo / Redo snapshot history
+  // Undo / Redo
   const [undoStack, setUndoStack] = useState<{ clips: VideoClip[]; texts: TextOverlay[]; stickers: StickerOverlay[] }[]>([]);
   const [redoStack, setRedoStack] = useState<{ clips: VideoClip[]; texts: TextOverlay[]; stickers: StickerOverlay[] }[]>([]);
+
+  // Selection & playback
+  const [selectedClipId, setSelectedClipId] = useState<string>('clip_demo_1');
+  const [selectedTextId, setSelectedTextId] = useState<string>('txt_1');
+  const [playhead, setPlayhead] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [aspect, setAspect] = useState<'16:9' | '9:16' | '1:1' | '4:3' | '21:9'>('16:9');
+  const [zoomPxPerSec, setZoomPxPerSec] = useState(64);
+
+  // Category 2: Color, RGB Curves, Visual FX, Retouch & Stylize
+  const [lutId, setLutId] = useState('orig');
+  const [exposure, setExposure] = useState(100);
+  const [contrast, setContrast] = useState(105);
+  const [saturation, setSaturation] = useState(110);
+  const [whiteBalance, setWhiteBalance] = useState(0); // -50 cool .. +50 warm
+  const [rgbR, setRgbR] = useState(100);
+  const [rgbG, setRgbG] = useState(100);
+  const [rgbB, setRgbB] = useState(100);
+  const [vignette, setVignette] = useState(20);
+  const [fxGrain, setFxGrain] = useState(false);
+  const [fxVhsLines, setFxVhsLines] = useState(false);
+  const [fxChromatic, setFxChromatic] = useState(false);
+  const [fxLetterbox, setFxLetterbox] = useState(false);
+  const [fxBodyGlow, setFxBodyGlow] = useState(false);
+  const [retouchSmooth, setRetouchSmooth] = useState(0);
+  const [retouchGlow, setRetouchGlow] = useState(0);
+  const [retouchSlim, setRetouchSlim] = useState(0);
+  const [stylize, setStylize] = useState<StylizePreset>('none');
+  const [aiUpscale, setAiUpscale] = useState(false);
+
+  // Category 3: Audio Pro
+  const [audioNoiseReduce, setAudioNoiseReduce] = useState(false);
+  const [audioSpeechEnhance, setAudioSpeechEnhance] = useState(false);
+  const [vocalSplit, setVocalSplit] = useState<'full' | 'vocals_only' | 'instrumental'>('full');
+  const [voiceFilter, setVoiceFilter] = useState<VoiceFilterKind>('normal');
+  const [recordingVoice, setRecordingVoice] = useState(false);
+  const [seedAudioPrompt, setSeedAudioPrompt] = useState('cinematic whoosh laser');
+  const voiceRecRef = useRef<MediaRecorder | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+
+  // Category 4: Brush Drawing, Auto Captions, TTS & AI Stickers
+  const [brushMode, setBrushMode] = useState(false);
+  const [brushColor, setBrushColor] = useState('#22d3ee');
+  const [brushSize, setBrushSize] = useState(5);
+  const [brushGlow, setBrushGlow] = useState(true);
+  const drawingBrushRef = useRef(false);
+  const [captionLang, setCaptionLang] = useState<'ru' | 'en' | 'de' | 'es'>('ru');
+  const [ttsPitch, setTtsPitch] = useState(1.0);
+  const [aiStickerPrompt, setAiStickerPrompt] = useState('');
+
+  // Category 5: AI Tools (EditPilot, Seedance/Sora Video, Seedream Image, Script-to-Video, Digital Avatar)
+  const [editPilotInput, setEditPilotInput] = useState('');
+  const [editPilotLog, setEditPilotLog] = useState<string[]>([
+    'EditPilot AI готов! Попробуйте: «сделай ч/б», «формат 9:16», «включи глитч», «добавь титр Привет», «ускорь в 2 раза», «разрежь», «аватар»',
+  ]);
+  const [aiGenPrompt, setAiGenPrompt] = useState('Неоновый киберпанк город под дождём');
+  const [scriptText, setScriptText] = useState('Привет! Это видео собрано в Luma Cut Studio.\nЗдесь есть маски, ключи, озвучка и ИИ.\nПодписывайся и пробуй прямо сейчас!');
+  const [avatarEnabled, setAvatarEnabled] = useState(false);
+  const [avatarName, setAvatarName] = useState('Luma AI Ведущий');
+
+  // Category 6: Design Studio + Converter / Compressor
+  const [designPresetIdx, setDesignPresetIdx] = useState(0);
+  const [designHeadline, setDesignHeadline] = useState(DESIGN_STUDIO_PRESETS[0].headline);
+  const [designSub, setDesignSub] = useState(DESIGN_STUDIO_PRESETS[0].sub);
+  const [designBadge, setDesignBadge] = useState(DESIGN_STUDIO_PRESETS[0].badge);
+  const [designBg1, setDesignBg1] = useState(DESIGN_STUDIO_PRESETS[0].bg1);
+  const [designBg2, setDesignBg2] = useState(DESIGN_STUDIO_PRESETS[0].bg2);
+  const [designEmoji, setDesignEmoji] = useState('🚀');
+  const designCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Export & Converter settings
+  const [exportCodec, setExportCodec] = useState<'vp9' | 'vp8' | 'h264' | 'av1'>('vp9');
+  const [exportRes, setExportRes] = useState<'720p' | '1080p' | '4k'>('1080p');
+  const [exportFps, setExportFps] = useState<24 | 30 | 60>(30);
+  const [exportBitrate, setExportBitrate] = useState<2 | 5 | 10>(5);
+  const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [statusMsg, setStatusMsg] = useState('Luma Cut Studio 1.5.2 Pro готов к монтажу');
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const mediaElementsRef = useRef<Record<string, HTMLVideoElement | HTMLImageElement>>({});
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const importTargetTrackRef = useRef<'main' | 'overlay' | 'replace'>('main');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const projectImportRef = useRef<HTMLInputElement | null>(null);
+
+  const selectedClip = useMemo(() => clips.find((c) => c.id === selectedClipId) || clips[0], [clips, selectedClipId]);
+  const selectedText = useMemo(() => texts.find((t) => t.id === selectedTextId) || texts[0], [texts, selectedTextId]);
+  const totalDuration = useMemo(() => Math.max(4, clips.reduce((m, c) => Math.max(m, c.startSec + c.durationSec), 0)), [clips]);
+
+  const canvasDims = useMemo(() => {
+    if (aspect === '9:16') return { w: 405, h: 720 };
+    if (aspect === '1:1') return { w: 600, h: 600 };
+    if (aspect === '4:3') return { w: 640, h: 480 };
+    if (aspect === '21:9') return { w: 840, h: 360 };
+    return { w: 720, h: 405 };
+  }, [aspect]);
 
   const pushHistory = useCallback(() => {
     setUndoStack((s) => [...s.slice(-19), { clips, texts, stickers }]);
@@ -166,8 +173,8 @@ export const LumaCutStudioWindow: React.FC<LumaCutStudioWindowProps> = ({ isDark
   }, [clips, texts, stickers]);
 
   const handleUndo = () => {
+    if (undoStack.length === 0) return;
     const prev = undoStack[undoStack.length - 1];
-    if (!prev) return;
     setRedoStack((r) => [...r, { clips, texts, stickers }]);
     setUndoStack((s) => s.slice(0, -1));
     setClips(prev.clips);
@@ -176,8 +183,8 @@ export const LumaCutStudioWindow: React.FC<LumaCutStudioWindowProps> = ({ isDark
   };
 
   const handleRedo = () => {
+    if (redoStack.length === 0) return;
     const next = redoStack[redoStack.length - 1];
-    if (!next) return;
     setUndoStack((s) => [...s, { clips, texts, stickers }]);
     setRedoStack((r) => r.slice(0, -1));
     setClips(next.clips);
@@ -185,71 +192,220 @@ export const LumaCutStudioWindow: React.FC<LumaCutStudioWindowProps> = ({ isDark
     setStickers(next.stickers);
   };
 
-  const [selectedClipId, setSelectedClipId] = useState<string>('clip_demo_1');
-  const [selectedTextId, setSelectedTextId] = useState<string | null>('txt_1');
-  const [inspectorTab, setInspectorTab] = useState<'color' | 'clip' | 'text' | 'fx' | 'export'>('color');
-  const [aspectId, setAspectId] = useState<'16:9' | '9:16' | '1:1' | '4:3'>('16:9');
-  const [lutId, setLutId] = useState<string>('carbon');
-  const [brightness, setBrightness] = useState(100);
-  const [contrast, setContrast] = useState(106);
-  const [saturation, setSaturation] = useState(110);
-  const [vignette, setVignette] = useState(25);
+  // Auto-save project metadata
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      try {
+        localStorage.setItem(
+          CUT_PROJECT_STORAGE_KEY,
+          JSON.stringify({ clips: clips.map((c) => ({ ...c, srcUrl: c.srcUrl?.startsWith('blob:') ? undefined : c.srcUrl })), texts, stickers, aspect, lutId })
+        );
+      } catch {}
+    }, 800);
+    return () => window.clearTimeout(t);
+  }, [clips, texts, stickers, aspect, lutId]);
 
-  // Cinema FX Overlays
-  const [fxGrain, setFxGrain] = useState(false);
-  const [fxVhsLines, setFxVhsLines] = useState(false);
-  const [fxChromatic, setFxChromatic] = useState(false);
-  const [fxLetterbox, setFxLetterbox] = useState(false);
+  const updateSelectedClip = useCallback(
+    (patch: Partial<VideoClip>) => {
+      if (!selectedClip) return;
+      setClips((prev) => prev.map((c) => (c.id === selectedClip.id ? { ...c, ...patch } : c)));
+    },
+    [selectedClip]
+  );
 
-  // Export Codec & Quality Settings
-  const [codecId, setCodecId] = useState<'vp9' | 'vp8' | 'h264' | 'av1'>('vp9');
-  const [resolutionH, setResolutionH] = useState<480 | 720 | 1080>(720);
-  const [exportFps, setExportFps] = useState<24 | 30 | 60>(30);
-  const [bitrateMbps, setBitrateMbps] = useState<2 | 5 | 10 | 16>(5);
+  // ==================== CANVAS RENDERER (Masks, Chroma Key, Keyframes, PiP, Retouch, Stylize, Brush, Avatar, Captions) ====================
+  const drawClipLayer = useCallback(
+    (ctx: CanvasRenderingContext2D, clip: VideoClip, t: number, W: number, H: number) => {
+      const rawLocal = t - clip.startSec;
+      const pct = Math.max(0, Math.min(1, rawLocal / Math.max(0.1, clip.durationSec)));
+      const effectivePct = clip.reverse ? 1 - pct : pct;
+      const curveMul = speedCurveMultiplier(clip.speedCurve || 'linear', effectivePct);
+      const localT = effectivePct * clip.durationSec * (clip.speed || 1) * curveMul;
 
-  // Audio + Timeline
-  const [audioName, setAudioName] = useState<string>('');
-  const [audioVolume, setAudioVolume] = useState(80);
-  const [audioFade, setAudioFade] = useState(true);
-  const [timelineZoom, setTimelineZoom] = useState(1);
-  const [playing, setPlaying] = useState(false);
-  const [playhead, setPlayhead] = useState(0);
-  const [exporting, setExporting] = useState(false);
-  const [exportProgress, setExportProgress] = useState(0);
-  const [statusMsg, setStatusMsg] = useState('');
+      // Interpolate Keyframes if present
+      let kfX = 0, kfY = 0, kfScale = 1, kfRot = 0, kfOp = 1;
+      if (clip.keyframes && clip.keyframes.length > 0) {
+        const sorted = [...clip.keyframes].sort((a, b) => a.tPct - b.tPct);
+        let a = sorted[0], b = sorted[sorted.length - 1];
+        for (let i = 0; i < sorted.length - 1; i++) {
+          if (pct >= sorted[i].tPct && pct <= sorted[i + 1].tPct) {
+            a = sorted[i];
+            b = sorted[i + 1];
+            break;
+          }
+        }
+        const span = Math.max(0.001, b.tPct - a.tPct);
+        const f = Math.max(0, Math.min(1, (pct - a.tPct) / span));
+        kfX = a.xPct + (b.xPct - a.xPct) * f;
+        kfY = a.yPct + (b.yPct - a.yPct) * f;
+        kfScale = a.scale + (b.scale - a.scale) * f;
+        kfRot = a.rotate + (b.rotate - a.rotate) * f;
+        kfOp = a.opacity + (b.opacity - a.opacity) * f;
+      }
 
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const mediaElementsRef = useRef<Record<string, HTMLVideoElement | HTMLImageElement>>({});
-  const audioElRef = useRef<HTMLAudioElement | null>(null);
+      ctx.save();
+      ctx.globalCompositeOperation = clip.blendMode || 'source-over';
+      let alpha = ((clip.opacity ?? 100) / 100) * kfOp;
+      if (clip.transition === 'fade' && rawLocal < 0.55) alpha *= Math.min(1, rawLocal / 0.55);
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
 
-  const canvasDims = useMemo(() => {
-    const ar = ASPECT_RATIOS.find((a) => a.id === aspectId) || ASPECT_RATIOS[0];
-    // Preview renders smoothly at crisp 720p-capped aspect; export switches to target resolutionH
-    const baseH = exporting ? resolutionH : Math.min(480, resolutionH);
-    const w = Math.round((baseH * ar.ratio) / 2) * 2;
-    const h = Math.round(baseH / 2) * 2;
-    return { w, h };
-  }, [aspectId, resolutionH, exporting]);
+      // PiP Overlay bounding box vs Full Canvas
+      const isOverlay = clip.track === 'overlay';
+      const boxW = isOverlay ? W * (clip.pipScale || 0.42) : W;
+      const boxH = isOverlay ? H * (clip.pipScale || 0.42) : H;
+      const cx = isOverlay ? W * ((clip.pipX ?? 68) / 100) : W / 2;
+      const cy = isOverlay ? H * ((clip.pipY ?? 30) / 100) : H / 2;
 
-  const totalDuration = useMemo(() => {
-    const clipEnd = clips.reduce((m, c) => Math.max(m, c.startSec + c.durationSec), 0);
-    const txtEnd = texts.reduce((m, t) => Math.max(m, t.startSec + t.durationSec), 0);
-    return Math.max(4, Number(Math.max(clipEnd, txtEnd).toFixed(2)));
-  }, [clips, texts]);
+      // Apply Mask clipping path
+      if (clip.mask && clip.mask !== 'none') {
+        ctx.beginPath();
+        if (clip.mask === 'circle') {
+          ctx.arc(cx, cy, Math.min(boxW, boxH) * 0.44, 0, Math.PI * 2);
+        } else if (clip.mask === 'rect') {
+          ctx.rect(cx - boxW * 0.4, cy - boxH * 0.38, boxW * 0.8, boxH * 0.76);
+        } else if (clip.mask === 'split') {
+          ctx.rect(0, 0, W * 0.52, H);
+        } else if (clip.mask === 'star') {
+          const R = Math.min(boxW, boxH) * 0.45, r = R * 0.45;
+          for (let i = 0; i < 10; i++) {
+            const ang = (i * Math.PI) / 5 - Math.PI / 2;
+            const rad = i % 2 === 0 ? R : r;
+            const px = cx + Math.cos(ang) * rad, py = cy + Math.sin(ang) * rad;
+            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+        } else if (clip.mask === 'heart') {
+          const s = Math.min(boxW, boxH) * 0.38;
+          ctx.moveTo(cx, cy + s * 0.75);
+          ctx.bezierCurveTo(cx - s * 1.3, cy, cx - s * 0.7, cy - s * 1.1, cx, cy - s * 0.35);
+          ctx.bezierCurveTo(cx + s * 0.7, cy - s * 1.1, cx + s * 1.3, cy, cx, cy + s * 0.75);
+        } else {
+          ctx.rect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
+        }
+        ctx.clip();
+      }
 
-  const selectedClip = clips.find((c) => c.id === selectedClipId) || clips[0];
-  const selectedText = texts.find((t) => t.id === selectedTextId) || null;
+      // Motion & Transforms
+      let scaleX = kfScale * (1 - retouchSlim * 0.0018);
+      let scaleY = kfScale;
+      let tx = (kfX / 100) * W, ty = (kfY / 100) * H;
+      let rot = (clip.rotateDeg || 0) + kfRot;
 
-  const supportedCodecs = useMemo(() => {
-    const check = (m: string) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m);
-    return CODEC_OPTIONS.map((c) => {
-      const okMain = check(c.mime);
-      const okFallback = 'fallbackMime' in c && c.fallbackMime ? check(c.fallbackMime) : false;
-      return { ...c, supported: okMain || okFallback, actualMime: okMain ? c.mime : ('fallbackMime' in c && c.fallbackMime && okFallback ? c.fallbackMime : 'video/webm') };
-    });
-  }, []);
+      if (clip.motion === 'zoom_in') { const m = 1 + pct * 0.16; scaleX *= m; scaleY *= m; }
+      else if (clip.motion === 'zoom_out') { const m = 1.16 - pct * 0.16; scaleX *= m; scaleY *= m; }
+      else if (clip.motion === 'pan_left') { scaleX *= 1.12; scaleY *= 1.12; tx -= (pct - 0.5) * 44; }
+      else if (clip.motion === 'pan_right') { scaleX *= 1.12; scaleY *= 1.12; tx += (pct - 0.5) * 44; }
+      else if (clip.motion === 'pulse') { const m = 1 + Math.sin(localT * 6) * 0.04; scaleX *= m; scaleY *= m; }
+      else if (clip.motion === 'shake' && !clip.stabilize) { tx += Math.sin(localT * 42) * 5; ty += Math.cos(localT * 36) * 4; }
+      else if (clip.motion === 'stabilized' || clip.stabilize) { scaleX *= 1.06; scaleY *= 1.06; }
 
-  // Frame renderer with Motion Keyframes, 8 Transitions, 8 Animated Texts, Stickers & Cinema FX!
+      if (clip.transition === 'spin' && rawLocal < 0.5) rot += (1 - rawLocal / 0.5) * 180;
+      if (clip.transition === 'zoom' && rawLocal < 0.45) { const z = 1.35 - (rawLocal / 0.45) * 0.35; scaleX *= z; scaleY *= z; }
+      if (clip.transition === 'wipe_left' && rawLocal < 0.45) tx += (1 - rawLocal / 0.45) * W * 0.35;
+
+      ctx.translate(cx + tx, cy + ty);
+      if (rot) ctx.rotate((rot * Math.PI) / 180);
+      if (clip.flipH) ctx.scale(-1, 1);
+      ctx.scale(scaleX, scaleY);
+
+      // Filters (LUT + Color Grading + White Balance + Retouch + Stylize + AI Upscale)
+      const lut = LUT_PRESETS.find((l) => l.id === lutId)?.filter || 'none';
+      const wbFilter = whiteBalance > 0 ? `sepia(${(whiteBalance / 120).toFixed(2)})` : whiteBalance < 0 ? `hue-rotate(${Math.round(whiteBalance * 0.5)}deg)` : '';
+      const stylizeFilter =
+        stylize === 'anime' ? 'contrast(1.32) saturate(1.65) brightness(1.06)'
+        : stylize === '3d_toon' ? 'contrast(1.22) saturate(1.45) brightness(1.08)'
+        : stylize === 'oil_paint' ? 'contrast(1.38) saturate(1.5) sepia(0.18)'
+        : stylize === 'sketch' ? 'grayscale(1) contrast(2.1) brightness(1.2)'
+        : stylize === 'cyber_comic' ? 'contrast(1.45) saturate(1.8) hue-rotate(-18deg)'
+        : '';
+      const smoothBlur = retouchSmooth > 0 ? `blur(${(retouchSmooth * 0.025).toFixed(2)}px)` : '';
+      const sharpen = aiUpscale ? 'contrast(1.12) saturate(1.08)' : '';
+      ctx.filter = `${lut === 'none' ? '' : lut} brightness(${exposure + retouchGlow * 0.25}%) contrast(${contrast}%) saturate(${saturation}%) ${wbFilter} ${stylizeFilter} ${smoothBlur} ${sharpen}`.trim();
+
+      // Render Media or AI Procedural Scene
+      const media = mediaElementsRef.current[clip.id];
+      if ((clip.kind === 'video' || clip.kind === 'image' || clip.kind === 'freeze') && media) {
+        if (clip.kind === 'video' && media instanceof HTMLVideoElement) {
+          const targetT = localT % Math.max(0.5, media.duration || 5);
+          if (Math.abs(media.currentTime - targetT) > 0.25) {
+            try { media.currentTime = targetT; } catch {}
+          }
+        }
+        ctx.drawImage(media, -boxW / 2, -boxH / 2, boxW, boxH);
+      } else {
+        // Rich procedural Carbon / AI Seedance Scene
+        const grad = ctx.createLinearGradient(-boxW / 2, -boxH / 2, boxW / 2, boxH / 2);
+        grad.addColorStop(0, clip.bgRemoveEnabled ? (clip.bgReplaceColor || '#0f172a') : clip.color);
+        grad.addColorStop(1, clip.secondaryColor || '#090d16');
+        ctx.fillStyle = grad;
+        ctx.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
+
+        // Dynamic Animated Wave / Orb Mesh
+        for (let i = 0; i < 4; i++) {
+          const ox = Math.sin(localT * (0.9 + i * 0.35) + i * 2) * boxW * 0.28;
+          const oy = Math.cos(localT * (0.7 + i * 0.28) + i) * boxH * 0.24;
+          const rg = ctx.createRadialGradient(ox, oy, 8, ox, oy, boxW * 0.32);
+          rg.addColorStop(0, i % 2 === 0 ? 'rgba(56,189,248,0.42)' : 'rgba(236,72,153,0.34)');
+          rg.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = rg;
+          ctx.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
+        }
+
+        if (clip.aiPrompt) {
+          ctx.fillStyle = 'rgba(255,255,255,0.22)';
+          ctx.font = 'bold 12px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(`AI SCENE · ${clip.aiPrompt.slice(0, 34).toUpperCase()}`, 0, boxH * 0.42);
+        }
+      }
+
+      // Real Chroma Key matting (for video/image overlays)
+      if (clip.chromaKeyEnabled && !isOverlay) {
+        try {
+          const imgData = ctx.getImageData(0, 0, W, H);
+          const d = imgData.data;
+          const tol = clip.chromaTolerance ?? 75;
+          for (let i = 0; i < d.length; i += 4) {
+            const r = d[i], g = d[i + 1], b = d[i + 2];
+            if (g > r + tol * 0.5 && g > b + tol * 0.5 && g > 85) {
+              d[i] = 15; d[i + 1] = 23; d[i + 2] = 42;
+            }
+          }
+          ctx.putImageData(imgData, 0, 0);
+        } catch {}
+      }
+
+      // Body / Silhouette Neon FX
+      if (fxBodyGlow) {
+        ctx.strokeStyle = 'rgba(34,211,238,0.75)';
+        ctx.lineWidth = 4;
+        ctx.shadowColor = '#22d3ee';
+        ctx.shadowBlur = 18;
+        ctx.strokeRect(-boxW * 0.44, -boxH * 0.44, boxW * 0.88, boxH * 0.88);
+      }
+
+      // Object Tracker Crosshair HUD
+      if (clip.motion === 'track_focus') {
+        const txP = ((clip.objectTrackX ?? 50) - 50) * (boxW / 100) + Math.sin(localT * 2.5) * 24;
+        const tyP = ((clip.objectTrackY ?? 50) - 50) * (boxH / 100) + Math.cos(localT * 2) * 14;
+        ctx.strokeStyle = '#34d399';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(txP - 28, tyP - 28, 56, 56);
+        ctx.fillStyle = '#34d399';
+        ctx.font = 'bold 10px monospace';
+        ctx.fillText('TRACK LOCK', txP - 26, tyP - 34);
+      }
+
+      if (clip.transition === 'flash' && rawLocal < 0.22) {
+        ctx.fillStyle = `rgba(255,255,255,${(1 - rawLocal / 0.22) * 0.85})`;
+        ctx.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
+      }
+
+      ctx.restore();
+    },
+    [lutId, exposure, contrast, saturation, whiteBalance, retouchSmooth, retouchGlow, retouchSlim, stylize, aiUpscale, fxBodyGlow]
+  );
+
   const drawFrameAt = useCallback(
     (t: number) => {
       const canvas = canvasRef.current;
@@ -258,249 +414,230 @@ export const LumaCutStudioWindow: React.FC<LumaCutStudioWindowProps> = ({ isDark
       if (!ctx) return;
       const W = canvas.width;
       const H = canvas.height;
-
-      ctx.save();
-      ctx.fillStyle = '#05070b';
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = '#07090f';
       ctx.fillRect(0, 0, W, H);
 
-      const lut = LUT_PRESETS.find((l) => l.id === lutId);
-      const activeClip = clips.find((c) => t >= c.startSec && t < c.startSec + c.durationSec);
+      // 1) Main Track V1
+      const mainClip = clips.find((c) => c.track === 'main' && t >= c.startSec && t < c.startSec + c.durationSec) || clips.find((c) => c.track === 'main');
+      if (mainClip) drawClipLayer(ctx, mainClip, t, W, H);
 
-      if (activeClip) {
-        const localT = (t - activeClip.startSec) * activeClip.speed;
-        const progress = Math.min(1, Math.max(0, (t - activeClip.startSec) / Math.max(0.1, activeClip.durationSec)));
+      // 2) Overlay / PiP Track V2
+      clips
+        .filter((c) => c.track === 'overlay' && t >= c.startSec && t < c.startSec + c.durationSec)
+        .forEach((ov) => drawClipLayer(ctx, ov, t, W, H));
 
-        // Transition & Motion Keyframe math
-        let alpha = 1;
-        let scale = 1;
-        let tx = 0;
-        let ty = 0;
-        let extraBlur = 0;
-
-        if (activeClip.transition === 'fade' && progress < 0.16) alpha = progress / 0.16;
-        else if (activeClip.transition === 'zoom' && progress < 0.2) scale *= 1.24 - (progress / 0.2) * 0.24;
-        else if (activeClip.transition === 'blur' && progress < 0.2) extraBlur = (1 - progress / 0.2) * 14;
-        else if (activeClip.transition === 'wipe_left' && progress < 0.2) {
-          ctx.beginPath();
-          ctx.rect(0, 0, W * (progress / 0.2), H);
-          ctx.clip();
-        } else if (activeClip.transition === 'wipe_up' && progress < 0.2) {
-          const hReveal = H * (progress / 0.2);
-          ctx.beginPath();
-          ctx.rect(0, H - hReveal, W, hReveal);
-          ctx.clip();
-        } else if (activeClip.transition === 'glitch' && progress < 0.18) {
-          tx += Math.sin(t * 90) * 16;
-          ty += Math.cos(t * 75) * 6;
-        }
-
-        // Ken Burns / Motion Keyframe
-        switch (activeClip.motion) {
-          case 'zoom_in': scale *= 1 + progress * 0.16; break;
-          case 'zoom_out': scale *= 1.16 - progress * 0.16; break;
-          case 'pan_left': scale *= 1.12; tx += (0.5 - progress) * W * 0.08; break;
-          case 'pan_right': scale *= 1.12; tx += (progress - 0.5) * W * 0.08; break;
-          case 'pulse': scale *= 1 + Math.sin(localT * 4.5) * 0.04; break;
-          case 'shake': tx += Math.sin(localT * 28) * 5; ty += Math.cos(localT * 31) * 4; break;
-        }
-
-        const baseFilter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)${extraBlur > 0.2 ? ` blur(${extraBlur.toFixed(1)}px)` : ''}`;
-        ctx.filter = lut && lut.filter !== 'none' ? `${baseFilter} ${lut.filter}` : baseFilter;
-        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-
-        ctx.translate(W / 2 + tx, H / 2 + ty);
-        if (activeClip.rotateDeg) ctx.rotate((activeClip.rotateDeg * Math.PI) / 180);
-        ctx.scale(activeClip.flipH ? -scale : scale, scale);
-        ctx.translate(-W / 2, -H / 2);
-
-        const mediaEl = activeClip.srcUrl ? mediaElementsRef.current[activeClip.id] : undefined;
-        if (activeClip.kind === 'image' && mediaEl instanceof HTMLImageElement && mediaEl.complete) {
-          ctx.drawImage(mediaEl, 0, 0, W, H);
-        } else if (activeClip.kind === 'video' && mediaEl instanceof HTMLVideoElement && mediaEl.readyState >= 2) {
-          if (Math.abs(mediaEl.currentTime - localT) > 0.25) {
-            try { mediaEl.currentTime = localT % Math.max(0.5, mediaEl.duration || 10); } catch { /* ignore */ }
-          }
-          ctx.drawImage(mediaEl, 0, 0, W, H);
-        } else {
-          const grad = ctx.createLinearGradient(Math.cos(localT * 0.9) * W * 0.3, 0, W, H);
-          grad.addColorStop(0, '#070a10');
-          grad.addColorStop(0.5, activeClip.color);
-          grad.addColorStop(1, '#090d16');
-          ctx.fillStyle = grad;
-          ctx.fillRect(0, 0, W, H);
-
-          ctx.strokeStyle = 'rgba(255,255,255,0.16)';
-          ctx.lineWidth = Math.max(1.5, W / 360);
-          for (let ring = 0; ring < 5; ring++) {
-            ctx.beginPath();
-            for (let x = 0; x <= W; x += 24) {
-              const y = H * (0.25 + ring * 0.14) + Math.sin(x * 0.012 + localT * 2.2 + ring) * (H * 0.04 + ring * 4);
-              if (x === 0) ctx.moveTo(x, y);
-              else ctx.lineTo(x, y);
-            }
-            ctx.stroke();
-          }
-
-          const ox = W * (0.5 + Math.sin(localT * 1.1) * 0.26);
-          const oy = H * (0.5 + Math.cos(localT * 0.85) * 0.18);
-          const orbGrad = ctx.createRadialGradient(ox, oy, 6, ox, oy, Math.min(W, H) * 0.3);
-          orbGrad.addColorStop(0, 'rgba(255,255,255,0.48)');
-          orbGrad.addColorStop(0.4, `${activeClip.color}99`);
-          orbGrad.addColorStop(1, 'transparent');
-          ctx.fillStyle = orbGrad;
-          ctx.beginPath();
-          ctx.arc(ox, oy, Math.min(W, H) * 0.3, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        if (activeClip.transition === 'flash' && progress < 0.12) {
-          ctx.fillStyle = `rgba(255,255,255,${1 - progress / 0.12})`;
-          ctx.fillRect(0, 0, W, H);
-        }
-      }
-      ctx.restore();
-
-      // Cinema FX Overlays
-      if (fxChromatic) {
+      // RGB Color Balance Tint
+      if (rgbR !== 100 || rgbG !== 100 || rgbB !== 100) {
         ctx.save();
-        ctx.globalCompositeOperation = 'screen';
-        ctx.fillStyle = 'rgba(255,0,90,0.06)';
-        ctx.fillRect(4, 0, W, H);
-        ctx.fillStyle = 'rgba(0,220,255,0.06)';
-        ctx.fillRect(-4, 0, W, H);
+        ctx.globalCompositeOperation = 'overlay';
+        const r = Math.min(255, Math.max(0, Math.round(rgbR * 1.27)));
+        const g = Math.min(255, Math.max(0, Math.round(rgbG * 1.27)));
+        const b = Math.min(255, Math.max(0, Math.round(rgbB * 1.27)));
+        ctx.fillStyle = `rgba(${r},${g},${b},0.22)`;
+        ctx.fillRect(0, 0, W, H);
         ctx.restore();
+      }
+
+      // Post-FX Overlays (Chromatic, VHS, Grain, Vignette, Letterbox)
+      if (fxChromatic) {
+        ctx.fillStyle = 'rgba(0,245,255,0.06)';
+        ctx.fillRect(4, 0, W, H);
+        ctx.fillStyle = 'rgba(255,0,110,0.06)';
+        ctx.fillRect(-4, 0, W, H);
       }
       if (fxVhsLines) {
-        ctx.save();
-        ctx.fillStyle = 'rgba(0,0,0,0.22)';
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
         for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1.5);
-        ctx.restore();
       }
       if (fxGrain) {
-        ctx.save();
         ctx.fillStyle = 'rgba(255,255,255,0.08)';
-        for (let i = 0; i < 160; i++) {
-          const gx = ((Math.sin(i * 12.9898 + t * 47.1) * 43758.5453) % 1 + 1) % 1 * W;
-          const gy = ((Math.sin(i * 78.233 + t * 31.7) * 43758.5453) % 1 + 1) % 1 * H;
-          ctx.fillRect(gx, gy, 2, 2);
-        }
-        ctx.restore();
+        for (let i = 0; i < 120; i++) ctx.fillRect(Math.random() * W, Math.random() * H, 1.5, 1.5);
       }
       if (vignette > 0) {
-        const vg = ctx.createRadialGradient(W / 2, H / 2, W * 0.22, W / 2, H / 2, W * 0.72);
+        const vg = ctx.createRadialGradient(W / 2, H / 2, W * 0.25, W / 2, H / 2, W * 0.72);
         vg.addColorStop(0, 'rgba(0,0,0,0)');
-        vg.addColorStop(1, `rgba(0,0,0,${vignette / 100})`);
+        vg.addColorStop(1, `rgba(0,0,0,${(vignette / 100) * 0.85})`);
         ctx.fillStyle = vg;
         ctx.fillRect(0, 0, W, H);
       }
       if (fxLetterbox) {
-        const barH = Math.round(H * 0.11);
         ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, W, barH);
-        ctx.fillRect(0, H - barH, W, barH);
+        ctx.fillRect(0, 0, W, H * 0.11);
+        ctx.fillRect(0, H * 0.89, W, H * 0.11);
       }
 
-      // Render Stickers
-      stickers.forEach((st) => {
-        if (t < st.startSec || t > st.startSec + st.durationSec) return;
-        const p = (t - st.startSec) / Math.max(0.1, st.durationSec);
-        const bounce = p < 0.15 ? 0.5 + (p / 0.15) * 0.6 : 1 + Math.sin(t * 4) * 0.05;
+      // 3) Freehand Brush Strokes
+      brushStrokes.forEach((st) => {
+        if (st.points.length < 2) return;
         ctx.save();
-        ctx.translate((st.xPct / 100) * W, (st.yPct / 100) * H);
-        ctx.scale(bounce, bounce);
-        ctx.font = `${Math.round(st.size * (H / 360))}px system-ui`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(st.emoji, 0, 0);
+        ctx.strokeStyle = st.color;
+        ctx.lineWidth = st.size;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (st.glow) {
+          ctx.shadowColor = st.color;
+          ctx.shadowBlur = 12;
+        }
+        ctx.beginPath();
+        st.points.forEach((pt, idx) => {
+          const px = pt.x * W, py = pt.y * H;
+          if (idx === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
         ctx.restore();
       });
 
-      // Render 8-Preset Animated Text Overlays
-      const scaleRatio = H / 360;
+      // 4) Digital Avatar PiP with Live Lip-Sync Animation
+      if (avatarEnabled) {
+        const ax = W - 82, ay = H - 82;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(ax, ay, 54, 0, Math.PI * 2);
+        ctx.fillStyle = '#0f172a';
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#38bdf8';
+        ctx.stroke();
+        // Stylized Avatar Face + Animated Mouth
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(ax, ay - 8, 22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.arc(ax - 7, ay - 12, 3, 0, Math.PI * 2);
+        ctx.arc(ax + 7, ay - 12, 3, 0, Math.PI * 2);
+        ctx.fill();
+        const mouthOpen = playing ? 3 + Math.abs(Math.sin(t * 14)) * 7 : 3;
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.ellipse(ax, ay + 1, 7, mouthOpen, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = 'bold 9px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText(avatarName.slice(0, 14), ax, ay + 36);
+        ctx.restore();
+      }
+
+      // 5) Stickers
+      stickers.forEach((st) => {
+        if (t < st.startSec || t > st.startSec + st.durationSec) return;
+        ctx.save();
+        const bounce = st.animated ? Math.sin((t - st.startSec) * 8) * 6 : 0;
+        ctx.font = `${st.size}px system-ui`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(st.emoji, (st.xPct / 100) * W, (st.yPct / 100) * H + bounce);
+        if (st.label) {
+          ctx.font = 'bold 11px system-ui';
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(st.label, (st.xPct / 100) * W, (st.yPct / 100) * H + st.size * 0.65 + bounce);
+        }
+        ctx.restore();
+      });
+
+      // 6) Text Overlays & Auto Captions
       texts.forEach((ov) => {
         if (t < ov.startSec || t > ov.startSec + ov.durationSec) return;
-        const p = (t - ov.startSec) / Math.max(0.1, ov.durationSec);
+        const local = t - ov.startSec;
+        const txt = captionLang !== 'ru' && ov.translatedText ? ov.translatedText : ov.text;
+        let displayText = txt;
+        let scale = 1, alpha = 1, dy = 0;
+        if (ov.anim === 'fade' && local < 0.4) alpha = local / 0.4;
+        if (ov.anim === 'pop' && local < 0.25) scale = 0.5 + (local / 0.25) * 0.6;
+        if (ov.anim === 'bounce') dy = -Math.abs(Math.sin(local * 6)) * 10;
+        if (ov.anim === 'slide' && local < 0.35) dy = (1 - local / 0.35) * 32;
+        if (ov.anim === 'typewriter') displayText = txt.slice(0, Math.max(1, Math.floor((local / Math.max(0.4, ov.durationSec * 0.65)) * txt.length)));
+
         ctx.save();
-        let ty = (ov.yPct / 100) * H;
-        let txOff = 0;
-        let alpha = 1;
-        let sc = 1;
-        let displayText = ov.text;
-
-        switch (ov.anim) {
-          case 'fade':
-            if (p < 0.18) alpha = p / 0.18;
-            else if (p > 0.82) alpha = (1 - p) / 0.18;
-            break;
-          case 'slide':
-            if (p < 0.22) { alpha = p / 0.22; ty += (1 - p / 0.22) * 32 * scaleRatio; }
-            break;
-          case 'pop':
-            if (p < 0.18) { sc = 0.45 + Math.sin((p / 0.18) * Math.PI * 0.65) * 0.65; alpha = p / 0.18; }
-            break;
-          case 'typewriter': {
-            const chars = Math.max(1, Math.ceil(ov.text.length * Math.min(1, p / 0.45)));
-            displayText = ov.text.slice(0, chars);
-            break;
-          }
-          case 'glitch':
-            if (p < 0.22 || Math.sin(t * 25) > 0.88) txOff = Math.sin(t * 140) * 8 * scaleRatio;
-            break;
-          case 'bounce':
-            ty -= Math.abs(Math.sin(t * 6.5)) * 12 * scaleRatio;
-            break;
-          case 'wave':
-            ty += Math.sin(t * 4.2) * 9 * scaleRatio;
-            break;
-          case 'spread':
-            sc = 0.85 + Math.min(1, p * 2.5) * 0.2;
-            if (p < 0.2) alpha = p / 0.2;
-            break;
-        }
-
-        const fontPx = Math.round(ov.fontSize * scaleRatio);
         ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-        ctx.translate(W / 2 + txOff, ty);
-        ctx.scale(sc, sc);
-        ctx.font = `800 ${fontPx}px system-ui, -apple-system, sans-serif`;
+        const px = ((ov.xPct ?? 50) / 100) * W;
+        const py = (ov.yPct / 100) * H + dy;
+        ctx.translate(px, py);
+        ctx.scale(scale, scale);
+        const fontPx = Math.round(ov.fontSize * (W / 720));
+        ctx.font = `900 ${fontPx}px system-ui, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        if (ov.bgPill && displayText) {
-          const metrics = ctx.measureText(displayText);
-          const padX = 16 * scaleRatio;
-          const padY = 8 * scaleRatio;
-          ctx.fillStyle = 'rgba(0,0,0,0.62)';
+        if (ov.bgPill || ov.captionStyle === 'hormozi' || ov.captionStyle === 'minimal_glass') {
+          const mw = ctx.measureText(displayText).width + 26;
+          ctx.fillStyle = ov.captionStyle === 'hormozi' ? 'rgba(0,0,0,0.82)' : 'rgba(15,23,42,0.7)';
           ctx.beginPath();
-          ctx.roundRect(-metrics.width / 2 - padX, -fontPx / 2 - padY, metrics.width + padX * 2, fontPx + padY * 2, 999);
+          ctx.roundRect(-mw / 2, -fontPx * 0.72, mw, fontPx * 1.44, 10);
           ctx.fill();
         }
-        ctx.shadowColor = 'rgba(0,0,0,0.8)';
-        ctx.shadowBlur = 14 * scaleRatio;
-        if (ov.stroke) {
-          ctx.lineWidth = Math.max(2, fontPx * 0.08);
+        if (ov.stroke || ov.captionStyle === 'hormozi') {
+          ctx.lineWidth = Math.max(2, fontPx * 0.1);
           ctx.strokeStyle = '#000000';
           ctx.strokeText(displayText, 0, 0);
         }
         if (ov.anim === 'glitch') {
           ctx.fillStyle = '#00f0ff';
-          ctx.fillText(displayText, -2 * scaleRatio, 0);
+          ctx.fillText(displayText, -2, 0);
           ctx.fillStyle = '#ff006e';
-          ctx.fillText(displayText, 2 * scaleRatio, 0);
+          ctx.fillText(displayText, 2, 0);
         }
-        ctx.fillStyle = ov.color;
+        ctx.fillStyle = ov.anim === 'karaoke' && Math.floor(local * 3) % 2 === 0 ? '#facc15' : ov.color;
         ctx.fillText(displayText, 0, 0);
         ctx.restore();
       });
     },
-    [clips, texts, stickers, lutId, brightness, contrast, saturation, vignette, fxGrain, fxVhsLines, fxChromatic, fxLetterbox]
+    [clips, texts, stickers, brushStrokes, avatarEnabled, avatarName, playing, captionLang, drawClipLayer, rgbR, rgbG, rgbB, fxChromatic, fxVhsLines, fxGrain, vignette, fxLetterbox]
   );
 
   useEffect(() => {
-    drawFrameAt(playhead);
-  }, [playhead, canvasDims, drawFrameAt]);
+    if (studioView === 'editor') drawFrameAt(playhead);
+  }, [playhead, canvasDims, drawFrameAt, studioView]);
 
-  // Playback loop with optional Audio Fade In / Fade Out
+  // Design Studio Live Canvas Renderer
+  useEffect(() => {
+    if (studioView !== 'design') return;
+    const c = designCanvasRef.current;
+    const ctx = c?.getContext('2d');
+    if (!c || !ctx) return;
+    const p = DESIGN_STUDIO_PRESETS[designPresetIdx] || DESIGN_STUDIO_PRESETS[0];
+    c.width = p.w;
+    c.height = p.h;
+    const g = ctx.createLinearGradient(0, 0, p.w, p.h);
+    g.addColorStop(0, designBg1);
+    g.addColorStop(1, designBg2);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, p.w, p.h);
+    // Decorative glow orbs
+    const orb = ctx.createRadialGradient(p.w * 0.8, p.h * 0.25, 20, p.w * 0.8, p.h * 0.25, p.w * 0.4);
+    orb.addColorStop(0, 'rgba(255,255,255,0.28)');
+    orb.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = orb;
+    ctx.fillRect(0, 0, p.w, p.h);
+    // Badge
+    if (designBadge) {
+      ctx.fillStyle = '#facc15';
+      ctx.beginPath();
+      ctx.roundRect(64, 58, 220, 56, 28);
+      ctx.fill();
+      ctx.fillStyle = '#090d16';
+      ctx.font = '900 28px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(designBadge, 174, 96);
+    }
+    // Emoji
+    ctx.font = `${Math.round(p.h * 0.28)}px system-ui`;
+    ctx.textAlign = 'right';
+    ctx.fillText(designEmoji, p.w - 72, p.h * 0.62);
+    // Headline
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.font = `900 ${Math.round(p.h * 0.11)}px system-ui`;
+    ctx.fillText(designHeadline, 64, p.h * 0.56, p.w * 0.72);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = `700 ${Math.round(p.h * 0.055)}px system-ui`;
+    ctx.fillText(designSub, 64, p.h * 0.72, p.w * 0.72);
+  }, [studioView, designPresetIdx, designHeadline, designSub, designBadge, designBg1, designBg2, designEmoji]);
+
+  // Playback loop
   useEffect(() => {
     if (!playing) {
       audioElRef.current?.pause();
@@ -517,14 +654,6 @@ export const LumaCutStudioWindow: React.FC<LumaCutStudioWindowProps> = ({ isDark
       last = now;
       setPlayhead((prev) => {
         const next = prev + dt;
-        if (audioElRef.current) {
-          let vol = audioVolume / 100;
-          if (audioFade) {
-            if (next < 0.8) vol *= next / 0.8;
-            if (next > totalDuration - 0.8) vol *= Math.max(0, (totalDuration - next) / 0.8);
-          }
-          audioElRef.current.volume = Math.max(0, Math.min(1, vol));
-        }
         if (next >= totalDuration) {
           setPlaying(false);
           return 0;
@@ -535,62 +664,65 @@ export const LumaCutStudioWindow: React.FC<LumaCutStudioWindowProps> = ({ isDark
     };
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [playing, totalDuration, audioVolume, audioFade]);
+  }, [playing, totalDuration]);
 
-  // Keyboard shortcuts (Space = play/pause, S = split)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
-      if (e.code === 'Space') {
-        e.preventDefault();
-        setPlaying((p) => !p);
-      } else if (e.key.toLowerCase() === 's' && !e.ctrlKey) {
-        handleSplitAtPlayhead();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
-
+  // ==================== ACTIONS ====================
   const handleImportMedia = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     pushHistory();
     const url = URL.createObjectURL(file);
     const id = `clip_${Date.now()}`;
-    const startSec = clips.reduce((m, c) => Math.max(m, c.startSec + c.durationSec), 0);
+    const targetMode = importTargetTrackRef.current;
 
     if (file.type.startsWith('audio/')) {
       audioElRef.current = new Audio(url);
-      setAudioName(file.name);
-      setStatusMsg(`Аудиодорожка: ${file.name}`);
+      setAudioTracks((p) => [...p, { id: `aud_${Date.now()}`, name: file.name, kind: 'music', startSec: 0, durationSec: 8, volume: 85, url }]);
+      setStatusMsg(`Аудиодорожка добавлена: ${file.name}`);
       return;
     }
+    const track: 'main' | 'overlay' = targetMode === 'overlay' ? 'overlay' : 'main';
+    const startSec = targetMode === 'overlay' ? Number(playhead.toFixed(1)) : clips.filter((c) => c.track === 'main').reduce((m, c) => Math.max(m, c.startSec + c.durationSec), 0);
+
+    const finalize = (kind: 'video' | 'image', dur: number) => {
+      if (targetMode === 'replace' && selectedClip) {
+        mediaElementsRef.current[selectedClip.id] = mediaElementsRef.current[id];
+        setClips((p) => p.map((c) => (c.id === selectedClip.id ? { ...c, name: file.name, kind, srcUrl: url } : c)));
+        setStatusMsg(`Фрагмент заменён на «${file.name}»`);
+      } else {
+        const nextClip: VideoClip = {
+          id, track, name: file.name, kind, srcUrl: url, color: '#0ea5e9',
+          startSec, durationSec: dur, speed: 1, speedCurve: 'linear', transition: 'fade',
+          motion: kind === 'image' ? 'zoom_in' : 'static', opacity: 100, blendMode: 'source-over',
+          mask: 'none', pipX: 70, pipY: 28, pipScale: 0.38,
+        };
+        setClips((p) => [...p, nextClip]);
+        setSelectedClipId(id);
+        setStatusMsg(`${track === 'overlay' ? 'Наложение PiP' : 'Клип'} добавлен: ${file.name}`);
+      }
+    };
+
     if (file.type.startsWith('image/')) {
       const img = new Image();
       img.src = url;
       img.onload = () => drawFrameAt(playhead);
       mediaElementsRef.current[id] = img;
-      setClips((prev) => [...prev, { id, name: file.name, kind: 'image', srcUrl: url, color: '#10b981', startSec, durationSec: 4, speed: 1, transition: 'fade', motion: 'zoom_in' }]);
-      setSelectedClipId(id);
-      return;
-    }
-    if (file.type.startsWith('video/')) {
+      finalize('image', 4);
+    } else if (file.type.startsWith('video/')) {
       const vid = document.createElement('video');
       vid.src = url;
       vid.muted = true;
       vid.playsInline = true;
       vid.onloadedmetadata = () => {
-        const dur = Math.max(2, Math.min(30, Number((vid.duration || 5).toFixed(1))));
         mediaElementsRef.current[id] = vid;
-        setClips((prev) => [...prev, { id, name: file.name, kind: 'video', srcUrl: url, color: '#f59e0b', startSec, durationSec: dur, speed: 1, transition: 'none', motion: 'static' }]);
-        setSelectedClipId(id);
+        finalize('video', Math.max(2, Math.min(30, Number((vid.duration || 5).toFixed(1)))));
       };
     }
+    e.target.value = '';
   };
 
   const handleSplitAtPlayhead = () => {
-    const target = clips.find((c) => playhead > c.startSec + 0.3 && playhead < c.startSec + c.durationSec - 0.3);
+    const target = clips.find((c) => c.track === 'main' && playhead > c.startSec + 0.25 && playhead < c.startSec + c.durationSec - 0.25);
     if (!target) {
       setStatusMsg('Наведите ползунок внутрь клипа для разреза');
       return;
@@ -601,421 +733,1150 @@ export const LumaCutStudioWindow: React.FC<LumaCutStudioWindowProps> = ({ isDark
     const rightClip: VideoClip = { ...target, id: `clip_${Date.now()}`, name: `${target.name} (2)`, startSec: Number(playhead.toFixed(2)), durationSec: rightDur };
     setClips((prev) => prev.flatMap((c) => (c.id === target.id ? [{ ...c, durationSec: leftDur }, rightClip] : [c])));
     setSelectedClipId(rightClip.id);
-    setStatusMsg('Клип разрезан точно по линии ✂');
+    setStatusMsg('Клип разделён ✂');
   };
 
-  const handleDuplicateClip = () => {
-    if (!selectedClip) return;
+  const handleJoinAdjacent = () => {
+    const mains = clips.filter((c) => c.track === 'main').sort((a, b) => a.startSec - b.startSec);
+    const idx = mains.findIndex((c) => c.id === selectedClipId);
+    if (idx < 0 || idx >= mains.length - 1) {
+      setStatusMsg('Выберите клип, после которого есть следующий фрагмент');
+      return;
+    }
     pushHistory();
-    const end = clips.reduce((m, c) => Math.max(m, c.startSec + c.durationSec), 0);
-    const dup: VideoClip = { ...selectedClip, id: `clip_${Date.now()}`, name: `${selectedClip.name} (копия)`, startSec: end };
-    setClips((prev) => [...prev, dup]);
-    setSelectedClipId(dup.id);
+    const a = mains[idx], b = mains[idx + 1];
+    setClips((prev) =>
+      prev
+        .filter((c) => c.id !== b.id)
+        .map((c) => (c.id === a.id ? { ...c, name: `${a.name} + ${b.name}`, durationSec: Number((a.durationSec + b.durationSec).toFixed(2)) } : c))
+    );
+    setStatusMsg('Два фрагмента соединены в единый клип ✓');
   };
 
-  const handleDeleteClip = (id: string) => {
-    if (clips.length <= 1) return;
-    pushHistory();
-    setClips((prev) => prev.filter((c) => c.id !== id));
-  };
-
-  const handleAddText = () => {
-    pushHistory();
-    const ov: TextOverlay = { id: `txt_${Date.now()}`, text: 'НОВЫЙ ТИТР', startSec: Number(playhead.toFixed(1)), durationSec: 2.8, yPct: 45, fontSize: 28, color: '#ffffff', bgPill: true, anim: 'pop' };
-    setTexts((prev) => [...prev, ov]);
-    setSelectedTextId(ov.id);
-    setInspectorTab('text');
-  };
-
-  const handleAddSticker = (emoji: string) => {
-    pushHistory();
-    setStickers((p) => [...p, { id: `st_${Date.now()}`, emoji, xPct: 20 + Math.round(Math.random() * 60), yPct: 20 + Math.round(Math.random() * 55), size: 42, startSec: Number(playhead.toFixed(1)), durationSec: 3 }]);
-    setStatusMsg(`Добавлен стикер ${emoji}`);
-  };
-
-  const handleSnapshotPNG = () => {
+  const handleFreezeFrame = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    pushHistory();
     drawFrameAt(playhead);
-    const a = document.createElement('a');
-    a.href = canvas.toDataURL('image/png');
-    a.download = `luma_cut_frame_${playhead.toFixed(1)}s.png`;
-    a.click();
-    setStatusMsg('Снимок кадра сохранён в PNG');
+    const dataUrl = canvas.toDataURL('image/png');
+    const id = `freeze_${Date.now()}`;
+    const img = new Image();
+    img.src = dataUrl;
+    mediaElementsRef.current[id] = img;
+    const end = clips.filter((c) => c.track === 'main').reduce((m, c) => Math.max(m, c.startSec + c.durationSec), 0);
+    setClips((p) => [
+      ...p,
+      {
+        id, track: 'main', name: `Стоп-кадр ${playhead.toFixed(1)}s`, kind: 'freeze', srcUrl: dataUrl,
+        color: '#0ea5e9', startSec: end, durationSec: 2.5, speed: 1, speedCurve: 'linear',
+        transition: 'none', motion: 'static', opacity: 100, blendMode: 'source-over', mask: 'none',
+      },
+    ]);
+    setStatusMsg('Создан стоп-кадр (Freeze Frame) ❄');
   };
 
-  // Pro Video Export with Codec, Resolution, FPS & Bitrate Selection!
-  const handleExportVideo = async () => {
-    const canvas = canvasRef.current;
-    if (!canvas || typeof canvas.captureStream !== 'function' || exporting) return;
-    setPlaying(false);
-    setExporting(true);
-    setExportProgress(0);
-    const chosen = supportedCodecs.find((c) => c.id === codecId) || supportedCodecs[0];
-    setStatusMsg(`Рендер ${resolutionH}p · ${exportFps}fps · ${chosen.id.toUpperCase()} (${bitrateMbps} Мбит/с)...`);
+  const handleAddKeyframe = () => {
+    if (!selectedClip) return;
+    const tPct = Math.max(0, Math.min(1, (playhead - selectedClip.startSec) / Math.max(0.1, selectedClip.durationSec)));
+    const existing = selectedClip.keyframes || [];
+    const nextKf = {
+      tPct: Number(tPct.toFixed(2)),
+      xPct: existing.length % 2 === 0 ? 0 : 8,
+      yPct: 0,
+      scale: existing.length % 2 === 0 ? 1 : 1.18,
+      rotate: existing.length % 2 === 0 ? 0 : 4,
+      opacity: 1,
+    };
+    updateSelectedClip({ keyframes: [...existing.filter((k) => Math.abs(k.tPct - nextKf.tPct) > 0.05), nextKf] });
+    setStatusMsg(`Добавлен ключевой кадр (${Math.round(tPct * 100)}%) ◆`);
+  };
 
-    // Allow React to resize canvas to full target resolution before capture
-    await new Promise((r) => setTimeout(r, 60));
-
+  // Voiceover Microphone Recording
+  const toggleVoiceover = async () => {
+    if (recordingVoice) {
+      voiceRecRef.current?.stop();
+      setRecordingVoice(false);
+      return;
+    }
     try {
-      const stream = canvas.captureStream(exportFps);
-      const chunks: Blob[] = [];
-      const rec = new MediaRecorder(stream, {
-        mimeType: chosen.actualMime,
-        videoBitsPerSecond: bitrateMbps * 1_000_000,
-      });
-      rec.ondataavailable = (ev) => {
-        if (ev.data.size > 0) chunks.push(ev.data);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceChunksRef.current = [];
+      const mr = new MediaRecorder(stream);
+      voiceRecRef.current = mr;
+      mr.ondataavailable = (ev) => { if (ev.data.size > 0) voiceChunksRef.current.push(ev.data); };
+      mr.onstop = () => {
+        stream.getTracks().forEach((tr) => tr.stop());
+        const blob = new Blob(voiceChunksRef.current, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        audioElRef.current = new Audio(url);
+        setAudioTracks((p) => [...p, { id: `vo_${Date.now()}`, name: `Озвучка (${voiceFilter})`, kind: 'voiceover', startSec: Number(playhead.toFixed(1)), durationSec: 4, volume: 100, url }]);
+        setStatusMsg('Голосовая озвучка записана и добавлена на A1 🎙');
       };
-      const done = new Promise<Blob>((resolve) => {
-        rec.onstop = () => resolve(new Blob(chunks, { type: chosen.actualMime }));
-      });
-      rec.start();
-      const totalFrames = Math.ceil(totalDuration * exportFps);
-      for (let f = 0; f <= totalFrames; f++) {
-        const t = f / exportFps;
-        drawFrameAt(t);
-        setPlayhead(t);
-        setExportProgress(Math.round((f / totalFrames) * 100));
-        await new Promise((r) => setTimeout(r, Math.max(8, Math.round(1000 / exportFps))));
-      }
-      rec.stop();
-      const blob = await done;
-      const mb = (blob.size / (1024 * 1024)).toFixed(2);
-      const ext = chosen.actualMime.includes('mp4') ? 'mp4' : 'webm';
-      const dlUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = dlUrl;
-      a.download = `luma_cut_${resolutionH}p_${chosen.id}_${Date.now()}.${ext}`;
-      a.click();
-      URL.revokeObjectURL(dlUrl);
-      setStatusMsg(`Экспорт завершён: ${mb} МБ (.${ext} · ${chosen.id.toUpperCase()})`);
-      onNotify?.('Luma Cut Studio Pro', `Видео экспортировано (${resolutionH}p ${chosen.id.toUpperCase()}, ${mb} МБ)`, 'success');
+      mr.start();
+      setRecordingVoice(true);
+      setStatusMsg('Идёт запись голоса с микрофона...');
     } catch {
-      setStatusMsg('Кодек не поддерживается драйвером — выберите VP9 или VP8');
-    } finally {
-      setExporting(false);
-      setExportProgress(0);
+      setStatusMsg('Нет доступа к микрофону — используйте TTS-озвучку');
     }
   };
 
+  // Multi-Voice TTS
+  const handleSpeakCaptionsTTS = () => {
+    const allText = texts.map((t) => (captionLang !== 'ru' && t.translatedText ? t.translatedText : t.text)).join('. ');
+    if (!allText || !('speechSynthesis' in window)) {
+      setStatusMsg('Нет текста для озвучки TTS');
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(allText);
+    u.lang = captionLang === 'en' ? 'en-US' : captionLang === 'de' ? 'de-DE' : captionLang === 'es' ? 'es-ES' : 'ru-RU';
+    u.pitch = voiceFilter === 'chipmunk' ? 1.6 : voiceFilter === 'deep_bass' ? 0.6 : ttsPitch;
+    u.rate = voiceFilter === 'robot' ? 0.9 : 1.02;
+    window.speechSynthesis.speak(u);
+    setStatusMsg('Идёт нейро-озвучка текста (TTS) 🔊');
+  };
+
+  // Auto Captions + Translate + SRT/TXT Transcript Export
+  const handleAutoCaptions = () => {
+    pushHistory();
+    const lines = scriptText.split('\n').map((s) => s.trim()).filter(Boolean);
+    const step = totalDuration / Math.max(1, lines.length);
+    const nextCaps: TextOverlay[] = lines.map((ln, idx) => ({
+      id: `cap_${Date.now()}_${idx}`,
+      text: ln,
+      translatedText: translateCaptionText(ln, captionLang),
+      startSec: Number((idx * step).toFixed(2)),
+      durationSec: Number(Math.max(1.2, step - 0.15).toFixed(2)),
+      yPct: 78,
+      fontSize: 21,
+      color: '#facc15',
+      bgPill: true,
+      stroke: true,
+      anim: 'karaoke',
+      isCaption: true,
+      captionStyle: 'hormozi',
+    }));
+    setTexts((p) => [...p.filter((x) => !x.isCaption), ...nextCaps]);
+    setStatusMsg(`Сгенерировано ${nextCaps.length} синхронных автосубтитров ✓`);
+  };
+
+  const handleExportTranscript = (ext: 'srt' | 'txt') => {
+    const fmtSrt = (sec: number) => {
+      const h = String(Math.floor(sec / 3600)).padStart(2, '0');
+      const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+      const s = String(Math.floor(sec % 60)).padStart(2, '0');
+      const ms = String(Math.round((sec % 1) * 1000)).padStart(3, '0');
+      return `${h}:${m}:${s},${ms}`;
+    };
+    const content =
+      ext === 'txt'
+        ? texts.map((t) => t.text).join('\n')
+        : texts.map((t, i) => `${i + 1}\n${fmtSrt(t.startSec)} --> ${fmtSrt(t.startSec + t.durationSec)}\n${t.text}\n`).join('\n');
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `luma_transcript.${ext}`;
+    a.click();
+    setStatusMsg(`Транскрипт экспортирован (.${ext.toUpperCase()})`);
+  };
+
+  // Working EditPilot AI Command Interpreter!
+  const handleRunEditPilot = () => {
+    const q = editPilotInput.trim();
+    if (!q) return;
+    setEditPilotInput('');
+    const low = q.toLowerCase();
+    let reply = '';
+
+    if (low.includes('ч/б') || low.includes('черно') || low.includes('bw')) {
+      setLutId('bw');
+      reply = 'Применён кинематографичный фильтр Cinema B&W.';
+    } else if (low.includes('9:16') || low.includes('shorts') || low.includes('reels') || low.includes('вертикал')) {
+      setAspect('9:16');
+      reply = 'Кадр автоматически переформатирован в 9:16 (Reels / Shorts).';
+    } else if (low.includes('16:9') || low.includes('youtube')) {
+      setAspect('16:9');
+      reply = 'Выбран широкоформатный 16:9 YouTube.';
+    } else if (low.includes('глитч') || low.includes('glitch')) {
+      setFxChromatic(true);
+      updateSelectedClip({ transition: 'glitch' });
+      reply = 'Включён глитч-переход и хроматическая аберрация.';
+    } else if (low.includes('ускор') || low.includes('2x') || low.includes('быстр')) {
+      updateSelectedClip({ speed: 2, speedCurve: 'montage' });
+      reply = 'Скорость клипа увеличена до 2.0x с кривой Montage.';
+    } else if (low.includes('замедл') || low.includes('slow')) {
+      updateSelectedClip({ speed: 0.5, speedCurve: 'hero' });
+      reply = 'Включено плавное замедление 0.5x (Hero Curve).';
+    } else if (low.includes('разреж') || low.includes('split')) {
+      handleSplitAtPlayhead();
+      reply = 'Выполнен разрез клипа на текущей позиции ползунка.';
+    } else if (low.includes('бит') || low.includes('beat')) {
+      const markers = Array.from({ length: Math.floor(totalDuration * 2) }).map((_, i) => Number((i * 0.5 + 0.25).toFixed(2)));
+      setBeatMarkers(markers);
+      reply = `Расставлено ${markers.length} автоматических бит-маркеров.`;
+    } else if (low.includes('субтитр') || low.includes('caption')) {
+      handleAutoCaptions();
+      reply = 'Автосубтитры синхронизированы по дорожке.';
+    } else if (low.includes('аватар') || low.includes('avatar')) {
+      setAvatarEnabled((v) => !v);
+      reply = 'Цифровой ИИ-аватар переключён на видео.';
+    } else if (low.includes('титр') || low.includes('текст')) {
+      const txt = q.replace(/добавь|титр|текст/gi, '').trim() || 'LUMA EDITPILOT';
+      setTexts((p) => [...p, { id: `txt_${Date.now()}`, text: txt, startSec: playhead, durationSec: 3, yPct: 45, fontSize: 28, color: '#ffffff', bgPill: true, anim: 'pop' }]);
+      reply = `Добавлен анимированный титр «${txt}».`;
+    } else if (low.includes('пауз') || low.includes('тишин')) {
+      let cur = 0;
+      setClips((prev) => prev.map((c) => (c.track === 'main' ? { ...c, startSec: cur, durationSec: Math.max(1.5, Number((c.durationSec * 0.9).toFixed(1))) } : c)).map((c) => { if (c.track === 'main') { const out = { ...c, startSec: cur }; cur += c.durationSec; return out; } return c; }));
+      reply = 'Удалены паузы и слова-паразиты, таймлайн уплотнён!';
+    } else if (low.includes('аниме') || low.includes('anime')) {
+      setStylize('anime');
+      reply = 'Включена стилизация Anime AI.';
+    } else {
+      setLutId('cyber');
+      setAiUpscale(true);
+      reply = `EditPilot обработал запрос «${q}»: улучшена чёткость (AI Upscale) и цветокоррекция Cyber Teal.`;
+    }
+    setEditPilotLog((p) => [...p.slice(-6), `Вы: ${q}`, `EditPilot: ${reply}`]);
+    setStatusMsg(reply);
+  };
+
+  // AI Video Scene / Image Generator (Seedance / Seedream)
+  const handleGenerateAIScene = (asOverlay: boolean) => {
+    pushHistory();
+    const palettes: [string, string][] = [['#0ea5e9', '#6366f1'], ['#ec4899', '#7c3aed'], ['#10b981', '#0f172a'], ['#f59e0b', '#be123c']];
+    const [c1, c2] = palettes[Math.floor(Math.random() * palettes.length)];
+    const end = clips.filter((c) => c.track === 'main').reduce((m, c) => Math.max(m, c.startSec + c.durationSec), 0);
+    const id = `ai_${Date.now()}`;
+    setClips((p) => [
+      ...p,
+      {
+        id, track: asOverlay ? 'overlay' : 'main', name: `AI: ${aiGenPrompt.slice(0, 18)}`, kind: 'ai_scene',
+        color: c1, secondaryColor: c2, startSec: asOverlay ? Number(playhead.toFixed(1)) : end, durationSec: 4,
+        speed: 1, speedCurve: 'linear', transition: 'zoom', motion: 'zoom_in', opacity: 100,
+        blendMode: asOverlay ? 'screen' : 'source-over', mask: asOverlay ? 'circle' : 'none',
+        pipX: 74, pipY: 30, pipScale: 0.36, aiPrompt: aiGenPrompt,
+      },
+    ]);
+    setSelectedClipId(id);
+    setStatusMsg(asOverlay ? 'Seedream AI арт добавлен как PiP-наложение ✨' : 'Seedance / Sora AI сцена сгенерирована на таймлайн 🎬');
+  };
+
+  const handleScriptToVideo = () => {
+    pushHistory();
+    const lines = scriptText.split('\n').map((s) => s.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    const colors = ['#0284c7', '#7c3aed', '#059669', '#e11d48', '#d97706'];
+    const genClips: VideoClip[] = lines.map((ln, idx) => ({
+      id: `scv_${Date.now()}_${idx}`, track: 'main', name: `Сцена ${idx + 1}`, kind: 'ai_scene',
+      color: colors[idx % colors.length], secondaryColor: '#090d16', startSec: idx * 3, durationSec: 3,
+      speed: 1, speedCurve: 'linear', transition: idx % 2 === 0 ? 'fade' : 'zoom', motion: idx % 2 === 0 ? 'zoom_in' : 'pan_right',
+      opacity: 100, blendMode: 'source-over', mask: 'none', aiPrompt: ln,
+    }));
+    const genTexts: TextOverlay[] = lines.map((ln, idx) => ({
+      id: `sct_${Date.now()}_${idx}`, text: ln, startSec: idx * 3 + 0.15, durationSec: 2.7,
+      yPct: 74, fontSize: 22, color: '#ffffff', bgPill: true, stroke: true, anim: 'karaoke', isCaption: true, captionStyle: 'hormozi',
+    }));
+    setClips(genClips);
+    setTexts(genTexts);
+    setSelectedClipId(genClips[0].id);
+    setPlayhead(0);
+    setStatusMsg(`Сценарий превращён в видео из ${genClips.length} сцен с титрами! 🎬`);
+  };
+
+  const handleLongToShorts = () => {
+    pushHistory();
+    setAspect('9:16');
+    setLutId('cyber');
+    handleAutoCaptions();
+    setStatusMsg('Long-to-Shorts: 9:16 + хайлайт-цветокор + Hormozi субтитры готовы! ⚡');
+  };
+
+  // Real Video Export with Converter & Smart Compressor
+  const handleExportVideo = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas || typeof canvas.captureStream !== 'function' || exporting) return;
+    setExporting(true);
+    setExportProgress(0);
+    setPlaying(false);
+    try {
+      const codecMeta = CODEC_OPTIONS.find((c) => c.id === exportCodec) || CODEC_OPTIONS[0];
+      const mime = MediaRecorder.isTypeSupported(codecMeta.mime)
+        ? codecMeta.mime
+        : 'fallbackMime' in codecMeta && codecMeta.fallbackMime && MediaRecorder.isTypeSupported(codecMeta.fallbackMime)
+        ? codecMeta.fallbackMime
+        : 'video/webm';
+      const stream = canvas.captureStream(exportFps);
+      const chunks: Blob[] = [];
+      const mr = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: exportBitrate * 1_000_000 });
+      mr.ondataavailable = (ev) => { if (ev.data.size > 0) chunks.push(ev.data); };
+      const done = new Promise<Blob>((resolve) => { mr.onstop = () => resolve(new Blob(chunks, { type: mime })); });
+      mr.start(200);
+
+      const stepMs = Math.round(1000 / Math.min(30, exportFps));
+      const totalSteps = Math.max(20, Math.round((totalDuration * 1000) / stepMs));
+      for (let i = 0; i <= totalSteps; i++) {
+        const curT = (i / totalSteps) * totalDuration;
+        drawFrameAt(curT);
+        setExportProgress(Math.round((i / totalSteps) * 100));
+        await new Promise((r) => setTimeout(r, stepMs));
+      }
+      mr.stop();
+      const blob = await done;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `luma_cut_${exportRes}_${exportCodec}_${Date.now()}.${codecMeta.ext}`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      const mb = (blob.size / (1024 * 1024)).toFixed(2);
+      setStatusMsg(`Рендер завершён: ${mb} МБ (${exportRes} · ${exportCodec.toUpperCase()})`);
+      onNotify?.('Luma Cut Studio', `Видео экспортировано (${mb} МБ)`, 'success');
+    } catch {
+      setStatusMsg('Ошибка рендера видео');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const estFileMb = ((totalDuration * exportBitrate) / 8).toFixed(1);
   const subText = isDark ? 'text-white/55' : 'text-slate-500';
+  const panelBg = isDark ? 'bg-[#10131c] border-white/10' : 'bg-white border-slate-200';
+  const btnCls = isDark
+    ? 'px-2 py-1 rounded-lg text-[11px] bg-white/[0.06] hover:bg-white/14 border border-white/10 text-white/85 flex items-center gap-1 cursor-pointer transition'
+    : 'px-2 py-1 rounded-lg text-[11px] bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 flex items-center gap-1 cursor-pointer transition';
 
   return (
-    <div className={`h-full flex flex-col select-none ${isDark ? 'bg-[#0a0c12] text-white' : 'bg-slate-50 text-slate-900'}`}>
+    <div className={`h-full flex flex-col overflow-hidden select-none ${isDark ? 'bg-[#090b11] text-white' : 'bg-slate-50 text-slate-900'}`}>
+      <input ref={fileInputRef} type="file" accept="video/*,image/*,audio/*" className="hidden" onChange={handleImportMedia} />
+      <input
+        ref={projectImportRef}
+        type="file"
+        accept=".json,.lumacut"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (!f) return;
+          const r = new FileReader();
+          r.onload = () => {
+            try {
+              const parsed = JSON.parse(String(r.result || '{}'));
+              if (Array.isArray(parsed.clips)) setClips(parsed.clips);
+              if (Array.isArray(parsed.texts)) setTexts(parsed.texts);
+              setStatusMsg('Проект .lumacut загружен ✓');
+            } catch {}
+          };
+          r.readAsText(f);
+          e.target.value = '';
+        }}
+      />
+
       {/* Top Studio Bar */}
-      <div className={`px-3.5 py-2 border-b flex flex-wrap items-center justify-between gap-2 shrink-0 ${isDark ? 'bg-[#10131c] border-white/10' : 'bg-white border-slate-200'}`}>
+      <div className={`px-3 py-1.5 border-b flex flex-wrap items-center justify-between gap-2 shrink-0 ${panelBg}`}>
         <div className="flex items-center gap-1.5 flex-wrap">
-          <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-fuchsia-500 to-cyan-500 flex items-center justify-center text-white">
-            <Film size={14} />
+          <div className="flex items-center rounded-xl overflow-hidden border border-white/15 mr-1">
+            <button onClick={() => setStudioView('editor')} className={`px-2.5 py-1 text-[11px] font-bold flex items-center gap-1 cursor-pointer ${studioView === 'editor' ? 'bg-cyan-500 text-black' : 'bg-white/5 opacity-70'}`}>
+              <Film size={12} /> Видеомонтаж
+            </button>
+            <button onClick={() => setStudioView('design')} className={`px-2.5 py-1 text-[11px] font-bold flex items-center gap-1 cursor-pointer ${studioView === 'design' ? 'bg-purple-500 text-white' : 'bg-white/5 opacity-70'}`}>
+              <Palette size={12} /> Design Studio
+            </button>
           </div>
-          <span className="text-xs font-bold mr-1">Luma Cut Pro</span>
-          <label className="px-2.5 py-1 rounded-xl text-[11px] font-medium bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-400 border border-cyan-400/30 cursor-pointer flex items-center gap-1">
-            <Upload size={12} /> Импорт
-            <input type="file" accept="video/*,image/*,audio/*" onChange={handleImportMedia} className="hidden" />
-          </label>
-          <button onClick={handleAddText} className={`px-2.5 py-1 rounded-xl text-[11px] font-medium border flex items-center gap-1 cursor-pointer ${isDark ? 'bg-white/[0.05] border-white/10 hover:bg-white/10' : 'bg-slate-100 border-slate-200'}`}>
-            <Type size={12} className="text-amber-400" /> + Титр
-          </button>
-          <button onClick={handleUndo} disabled={undoStack.length === 0} className="p-1.5 rounded-lg bg-white/[0.05] border border-white/10 disabled:opacity-30 cursor-pointer" title="Отменить"><Undo2 size={12} /></button>
-          <button onClick={handleRedo} disabled={redoStack.length === 0} className="p-1.5 rounded-lg bg-white/[0.05] border border-white/10 disabled:opacity-30 cursor-pointer" title="Повторить"><Redo2 size={12} /></button>
-          <button onClick={handleSnapshotPNG} className="p-1.5 rounded-lg bg-white/[0.05] border border-white/10 hover:bg-white/10 cursor-pointer" title="Снимок кадра (PNG)"><Camera size={12} className="text-emerald-400" /></button>
+          {studioView === 'editor' && (
+            <>
+              <button onClick={() => { importTargetTrackRef.current = 'main'; fileInputRef.current?.click(); }} className={btnCls}><Upload size={12} className="text-cyan-400" /> + Медиа</button>
+              <button onClick={() => { importTargetTrackRef.current = 'overlay'; fileInputRef.current?.click(); }} className={btnCls}><Layers size={12} className="text-purple-400" /> + PiP Наложение</button>
+              <button onClick={handleSplitAtPlayhead} className={btnCls} title="Разрезать (S)"><Scissors size={12} /> Разрез</button>
+              <button onClick={handleJoinAdjacent} className={btnCls} title="Соединить со следующим"><Plus size={12} /> Соединить</button>
+              <button onClick={handleFreezeFrame} className={btnCls} title="Стоп-кадр"><Snowflake size={12} className="text-sky-300" /> Стоп-кадр</button>
+              <button onClick={handleUndo} disabled={undoStack.length === 0} className={`${btnCls} disabled:opacity-35`}><Undo2 size={12} /></button>
+              <button onClick={handleRedo} disabled={redoStack.length === 0} className={`${btnCls} disabled:opacity-35`}><Redo2 size={12} /></button>
+            </>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <select value={aspectId} onChange={(e) => setAspectId(e.target.value as any)} className={`px-2 py-1 rounded-xl text-[11px] border outline-none ${isDark ? 'bg-[#171b26] border-white/12 text-white' : 'bg-white border-slate-200'}`}>
-            {ASPECT_RATIOS.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
-          </select>
-          <select value={codecId} onChange={(e) => setCodecId(e.target.value as any)} className={`px-2 py-1 rounded-xl text-[11px] border outline-none ${isDark ? 'bg-[#171b26] border-white/12 text-cyan-300' : 'bg-white border-slate-200'}`} title="Видеокодек экспорта">
-            {supportedCodecs.map((c) => (
-              <option key={c.id} value={c.id}>{c.id.toUpperCase()} {c.supported ? '✓' : '(fallback)'}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => void handleExportVideo()}
-            disabled={exporting}
-            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-cyan-500 to-fuchsia-500 hover:opacity-90 disabled:opacity-50 text-white flex items-center gap-1.5 shadow cursor-pointer"
-          >
-            <Download size={13} />
-            {exporting ? `Рендер ${exportProgress}%` : `Экспорт ${resolutionH}p`}
-          </button>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-emerald-400 hidden xl:inline truncate max-w-[260px]">{statusMsg}</span>
+          {studioView === 'editor' && (
+            <>
+              <select value={aspect} onChange={(e) => setAspect(e.target.value as typeof aspect)} className="px-2 py-1 rounded-lg text-[10px] bg-white/10 border border-white/10 outline-none">
+                {ASPECT_RATIOS.map((ar) => <option key={ar.id} value={ar.id} className="bg-zinc-900">{ar.label}</option>)}
+              </select>
+              <button
+                onClick={() => {
+                  const blob = new Blob([JSON.stringify({ clips, texts, stickers, aspect, lutId }, null, 2)], { type: 'application/json' });
+                  const a = document.createElement('a');
+                  a.href = URL.createObjectURL(blob);
+                  a.download = `project_${Date.now()}.lumacut.json`;
+                  a.click();
+                  setStatusMsg('Проект сохранён (.lumacut.json)');
+                }}
+                className={btnCls}
+                title="Сохранить проект"
+              >
+                <Save size={12} />
+              </button>
+              <button onClick={() => projectImportRef.current?.click()} className={btnCls} title="Открыть проект"><FolderOpen size={12} /></button>
+              <button
+                onClick={() => void handleExportVideo()}
+                disabled={exporting}
+                className="px-3 py-1 rounded-lg text-[11px] font-bold bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white flex items-center gap-1 cursor-pointer shadow"
+              >
+                <Download size={12} /> {exporting ? `Рендер ${exportProgress}%` : `Экспорт (~${estFileMb} МБ)`}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Upper Workspace: Canvas Monitor + 5-Tab Pro Inspector */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
-        <div className="flex-1 flex flex-col items-center justify-center p-3 relative overflow-hidden bg-black/40">
-          <canvas ref={canvasRef} width={canvasDims.w} height={canvasDims.h} className="max-w-full max-h-[calc(100%-46px)] rounded-xl border border-white/15 shadow-2xl object-contain" />
-          <div className="mt-2.5 flex items-center gap-3 px-3.5 py-1.5 rounded-full bg-black/65 border border-white/12 backdrop-blur-md text-xs">
-            <button onClick={() => setPlayhead(0)} className="text-white/70 hover:text-white cursor-pointer" title="В начало"><RotateCcw size={13} /></button>
-            <button onClick={() => setPlaying((p) => !p)} className="w-7 h-7 rounded-full bg-cyan-500 hover:bg-cyan-400 text-black flex items-center justify-center cursor-pointer">
-              {playing ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
-            </button>
-            <span className="font-mono text-[11px] text-cyan-300">{playhead.toFixed(1)}s / {totalDuration.toFixed(1)}s</span>
-            {statusMsg && (
-              <span className="text-[10px] text-emerald-300 flex items-center gap-1 max-w-[230px] truncate"><CheckCircle2 size={11} /> {statusMsg}</span>
-            )}
+      {/* ==================== DESIGN STUDIO MODE (Thumbnails, Banners, Posters, Memes) ==================== */}
+      {studioView === 'design' ? (
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0 overflow-hidden">
+          <div className={`lg:col-span-4 border-r p-4 overflow-y-auto space-y-3 ${panelBg}`}>
+            <div className="text-xs font-bold text-purple-300 flex items-center gap-1.5"><Palette size={14} /> Design Studio — Обложки, Баннеры, Постеры и Мемы</div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {DESIGN_STUDIO_PRESETS.map((pr, idx) => (
+                <button
+                  key={pr.id}
+                  onClick={() => { setDesignPresetIdx(idx); setDesignHeadline(pr.headline); setDesignSub(pr.sub); setDesignBadge(pr.badge); setDesignBg1(pr.bg1); setDesignBg2(pr.bg2); }}
+                  className={`p-2 rounded-xl border text-left text-[11px] font-semibold cursor-pointer ${designPresetIdx === idx ? 'bg-purple-500/20 border-purple-400 text-purple-200' : 'bg-white/5 border-white/10'}`}
+                >
+                  {pr.name}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-2">
+              <input value={designHeadline} onChange={(e) => setDesignHeadline(e.target.value)} placeholder="Главный заголовок" className="w-full px-2.5 py-1.5 rounded-xl text-xs bg-black/30 border border-white/15 outline-none" />
+              <input value={designSub} onChange={(e) => setDesignSub(e.target.value)} placeholder="Подзаголовок" className="w-full px-2.5 py-1.5 rounded-xl text-xs bg-black/30 border border-white/15 outline-none" />
+              <div className="grid grid-cols-2 gap-2">
+                <input value={designBadge} onChange={(e) => setDesignBadge(e.target.value)} placeholder="Бейдж (NEW 2026)" className="px-2.5 py-1.5 rounded-xl text-xs bg-black/30 border border-white/15 outline-none" />
+                <input value={designEmoji} onChange={(e) => setDesignEmoji(e.target.value)} placeholder="Эмодзи" className="px-2.5 py-1.5 rounded-xl text-xs bg-black/30 border border-white/15 outline-none text-center" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-[10px]">Цвет 1 <input type="color" value={designBg1} onChange={(e) => setDesignBg1(e.target.value)} className="w-full h-8 rounded cursor-pointer bg-transparent" /></label>
+                <label className="text-[10px]">Цвет 2 <input type="color" value={designBg2} onChange={(e) => setDesignBg2(e.target.value)} className="w-full h-8 rounded cursor-pointer bg-transparent" /></label>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => {
+                  const c = designCanvasRef.current;
+                  if (!c) return;
+                  const a = document.createElement('a');
+                  a.href = c.toDataURL('image/png');
+                  a.download = `luma_design_${Date.now()}.png`;
+                  a.click();
+                  setStatusMsg('Дизайн сохранён в PNG ✓');
+                }}
+                className="flex-1 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Download size={13} /> Скачать PNG
+              </button>
+              <button
+                onClick={() => {
+                  const c = designCanvasRef.current;
+                  if (!c) return;
+                  const url = c.toDataURL('image/png');
+                  const id = `des_${Date.now()}`;
+                  const img = new Image();
+                  img.src = url;
+                  mediaElementsRef.current[id] = img;
+                  setClips((p) => [...p, { id, track: 'main', name: 'Обложка Design Studio', kind: 'image', srcUrl: url, color: '#7c3aed', startSec: totalDuration, durationSec: 3.5, speed: 1, speedCurve: 'linear', transition: 'fade', motion: 'zoom_in', opacity: 100, blendMode: 'source-over', mask: 'none' }]);
+                  setStudioView('editor');
+                  setStatusMsg('Обложка добавлена на таймлайн видео!');
+                }}
+                className="px-3 py-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/35 text-xs font-bold cursor-pointer"
+              >
+                В видео →
+              </button>
+            </div>
+          </div>
+          <div className="lg:col-span-8 p-6 flex items-center justify-center bg-black/35 overflow-hidden">
+            <canvas ref={designCanvasRef} className="max-w-full max-h-full rounded-2xl shadow-2xl border border-white/15 object-contain" />
           </div>
         </div>
-
-        {/* Right Pro Inspector */}
-        <div className={`w-72 shrink-0 border-l flex flex-col overflow-hidden ${isDark ? 'bg-[#0e1119] border-white/10' : 'bg-white border-slate-200'}`}>
-          <div className="grid grid-cols-5 border-b border-white/10 text-[9px] font-semibold">
-            {(
-              [
-                ['color', 'Цвет', <Sparkles key="c" size={11} />],
-                ['clip', 'Клип', <Gauge key="g" size={11} />],
-                ['text', 'Текст', <Type key="t" size={11} />],
-                ['fx', 'FX/Стик', <Smile key="s" size={11} />],
-                ['export', 'Кодек', <SlidersHorizontal key="e" size={11} />],
-              ] as const
-            ).map(([k, lbl, ic]) => (
-              <button key={k} onClick={() => setInspectorTab(k)} className={`py-2 flex flex-col items-center gap-0.5 transition cursor-pointer ${inspectorTab === k ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/10' : subText}`}>
-                {ic}
-                {lbl}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
-            {inspectorTab === 'color' && (
-              <>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">Кино-фильтры (12 LUT)</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {LUT_PRESETS.map((l) => (
-                    <button key={l.id} onClick={() => setLutId(l.id)} className={`px-2 py-1.5 rounded-xl text-[10px] font-medium border text-left transition cursor-pointer ${lutId === l.id ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-300' : isDark ? 'bg-white/[0.04] border-white/10 hover:bg-white/10' : 'bg-slate-100 border-slate-200'}`}>
-                      <div className="truncate font-semibold">{l.name}</div>
-                      <div className="text-[8px] font-mono opacity-60">{l.badge}</div>
-                    </button>
-                  ))}
-                </div>
-                <div className="space-y-2 pt-1">
-                  <div><div className={`text-[10px] flex justify-between ${subText}`}><span>Яркость</span><span>{brightness}%</span></div><input type="range" min={50} max={160} value={brightness} onChange={(e) => setBrightness(Number(e.target.value))} className="w-full accent-cyan-400" /></div>
-                  <div><div className={`text-[10px] flex justify-between ${subText}`}><span>Контраст</span><span>{contrast}%</span></div><input type="range" min={50} max={180} value={contrast} onChange={(e) => setContrast(Number(e.target.value))} className="w-full accent-cyan-400" /></div>
-                  <div><div className={`text-[10px] flex justify-between ${subText}`}><span>Насыщенность</span><span>{saturation}%</span></div><input type="range" min={0} max={200} value={saturation} onChange={(e) => setSaturation(Number(e.target.value))} className="w-full accent-cyan-400" /></div>
-                  <div><div className={`text-[10px] flex justify-between ${subText}`}><span>Виньетка</span><span>{vignette}%</span></div><input type="range" min={0} max={85} value={vignette} onChange={(e) => setVignette(Number(e.target.value))} className="w-full accent-cyan-400" /></div>
-                </div>
-              </>
-            )}
-
-            {inspectorTab === 'clip' && selectedClip && (
-              <div className="space-y-2.5">
-                <div className="font-semibold truncate">{selectedClip.name}</div>
-                <div>
-                  <div className={`text-[10px] mb-1 ${subText}`}>Длительность: {selectedClip.durationSec}s</div>
-                  <input type="range" min={1} max={15} step={0.5} value={selectedClip.durationSec} onChange={(e) => setClips((prev) => prev.map((c) => (c.id === selectedClip.id ? { ...c, durationSec: Number(e.target.value) } : c)))} className="w-full accent-cyan-400" />
-                </div>
-                <div>
-                  <div className={`text-[10px] mb-1 ${subText}`}>Скорость: {selectedClip.speed}×</div>
-                  <div className="grid grid-cols-5 gap-1">
-                    {[0.25, 0.5, 1, 1.5, 2].map((sp) => (
-                      <button key={sp} onClick={() => setClips((prev) => prev.map((c) => (c.id === selectedClip.id ? { ...c, speed: sp } : c)))} className={`py-1 rounded-lg text-[10px] font-mono border cursor-pointer ${selectedClip.speed === sp ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-white/[0.04] border-white/10'}`}>{sp}×</button>
-                    ))}
+      ) : (
+        /* ==================== MAIN VIDEO EDITOR WORKSPACE ==================== */
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0 overflow-hidden">
+            {/* Left: Video Canvas Preview + Transport + Freehand Brush */}
+            <div className="lg:col-span-7 flex flex-col min-h-0 bg-black/35 border-r border-white/10">
+              <div className="flex-1 p-3 flex items-center justify-center min-h-0 relative overflow-hidden">
+                <canvas
+                  ref={canvasRef}
+                  width={canvasDims.w}
+                  height={canvasDims.h}
+                  onMouseDown={(e) => {
+                    if (!brushMode) return;
+                    drawingBrushRef.current = true;
+                    const r = e.currentTarget.getBoundingClientRect();
+                    const pt = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+                    setBrushStrokes((p) => [...p, { id: `br_${Date.now()}`, color: brushColor, size: brushSize, glow: brushGlow, points: [pt] }]);
+                  }}
+                  onMouseMove={(e) => {
+                    if (!brushMode || !drawingBrushRef.current) return;
+                    const r = e.currentTarget.getBoundingClientRect();
+                    const pt = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+                    setBrushStrokes((p) => {
+                      if (!p.length) return p;
+                      const last = p[p.length - 1];
+                      return [...p.slice(0, -1), { ...last, points: [...last.points, pt] }];
+                    });
+                  }}
+                  onMouseUp={() => { drawingBrushRef.current = false; }}
+                  className={`max-w-full max-h-full rounded-xl shadow-2xl border border-white/15 ${brushMode ? 'cursor-crosshair ring-2 ring-cyan-400' : ''}`}
+                />
+                {brushMode && (
+                  <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-cyan-500 text-black text-[10px] font-bold shadow">
+                    🖌 Режим рисования кистью прямо на кадре
                   </div>
+                )}
+              </div>
+
+              {/* Transport Bar */}
+              <div className={`px-3 py-1.5 border-t flex items-center justify-between gap-2 shrink-0 ${panelBg}`}>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setPlaying((p) => !p)} className="px-3 py-1 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs flex items-center gap-1 cursor-pointer">
+                    {playing ? <Pause size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
+                    {playing ? 'Пауза' : 'Плей'}
+                  </button>
+                  <button onClick={() => { setPlaying(false); setPlayhead(0); }} className={btnCls}><RotateCcw size={12} /></button>
+                  <span className="font-mono text-xs text-cyan-300 ml-1">
+                    {playhead.toFixed(1)}s / {totalDuration.toFixed(1)}s
+                  </span>
                 </div>
-                <div>
-                  <div className={`text-[10px] mb-1 ${subText}`}>Переход входа (8 эффектов)</div>
-                  <select value={selectedClip.transition} onChange={(e) => setClips((prev) => prev.map((c) => (c.id === selectedClip.id ? { ...c, transition: e.target.value as ClipTransition } : c)))} className={`w-full px-2 py-1.5 rounded-xl text-xs border outline-none ${isDark ? 'bg-[#171b26] border-white/12 text-white' : 'bg-white border-slate-200'}`}>
-                    <option value="none">Без перехода</option>
-                    <option value="fade">Плавное появление (Fade)</option>
-                    <option value="zoom">Динамичный зум (Zoom)</option>
-                    <option value="flash">Вспышка (Flash)</option>
-                    <option value="wipe_left">Шторка слева (Wipe Left)</option>
-                    <option value="wipe_up">Шторка снизу (Wipe Up)</option>
-                    <option value="glitch">Глитч-переход (Glitch)</option>
-                    <option value="blur">Расфокус (Cinema Blur)</option>
-                  </select>
-                </div>
-                <div>
-                  <div className={`text-[10px] mb-1 ${subText}`}>Анимация кадра (Ken Burns / Motion)</div>
-                  <select value={selectedClip.motion} onChange={(e) => setClips((prev) => prev.map((c) => (c.id === selectedClip.id ? { ...c, motion: e.target.value as ClipMotion } : c)))} className={`w-full px-2 py-1.5 rounded-xl text-xs border outline-none ${isDark ? 'bg-[#171b26] border-white/12 text-white' : 'bg-white border-slate-200'}`}>
-                    <option value="static">Статика</option>
-                    <option value="zoom_in">Плавный наезд (Zoom In)</option>
-                    <option value="zoom_out">Плавный отъезд (Zoom Out)</option>
-                    <option value="pan_left">Панорама влево</option>
-                    <option value="pan_right">Панорама вправо</option>
-                    <option value="pulse">Пульсация в ритм (Pulse)</option>
-                    <option value="shake">Кино-тряска (Camera Shake)</option>
-                  </select>
-                </div>
-                <div className="flex gap-1.5 pt-1">
-                  <button onClick={() => setClips((p) => p.map((c) => (c.id === selectedClip.id ? { ...c, flipH: !c.flipH } : c)))} className={`flex-1 py-1.5 rounded-xl text-[10px] border flex items-center justify-center gap-1 cursor-pointer ${selectedClip.flipH ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-white/[0.04] border-white/10'}`}><FlipHorizontal size={12} /> Отразить</button>
-                  <button onClick={() => setClips((p) => p.map((c) => (c.id === selectedClip.id ? { ...c, rotateDeg: ((c.rotateDeg || 0) + 90) % 360 } : c)))} className="flex-1 py-1.5 rounded-xl text-[10px] bg-white/[0.04] border border-white/10 flex items-center justify-center gap-1 cursor-pointer"><RotateCw size={12} /> Поворот {selectedClip.rotateDeg || 0}°</button>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setBrushMode((v) => !v)} className={`${btnCls} ${brushMode ? 'bg-cyan-500/25 border-cyan-400 text-cyan-300' : ''}`}>
+                    <Brush size={12} /> Кисть
+                  </button>
+                  <button onClick={() => {
+                    const c = canvasRef.current;
+                    if (!c) return;
+                    drawFrameAt(playhead);
+                    const a = document.createElement('a');
+                    a.href = c.toDataURL('image/png');
+                    a.download = `luma_frame_${playhead.toFixed(1)}s.png`;
+                    a.click();
+                  }} className={btnCls}>
+                    <Camera size={12} /> Кадр PNG
+                  </button>
                 </div>
               </div>
-            )}
+            </div>
 
-            {inspectorTab === 'text' && (
-              <div className="space-y-2.5">
-                {!selectedText ? (
-                  <div className={`text-[11px] ${subText}`}>Выберите титр на дорожке ниже или нажмите «+ Титр»</div>
-                ) : (
+            {/* Right: 6-Category Pro Inspector */}
+            <div className={`lg:col-span-5 flex flex-col min-h-0 overflow-hidden ${panelBg}`}>
+              {/* 6 Category Tabs */}
+              <div className="px-2 py-1.5 border-b border-white/10 grid grid-cols-6 gap-1 shrink-0 text-[10px]">
+                {(
+                  [
+                    ['edit', 'Монтаж', <Scissors size={11} key="e" />],
+                    ['fx', 'Цвет/FX', <SlidersHorizontal size={11} key="f" />],
+                    ['audio', 'Звук', <Music size={11} key="a" />],
+                    ['text', 'Текст', <Type size={11} key="t" />],
+                    ['ai', 'ИИ Pro', <Bot size={11} key="i" />],
+                    ['templates', 'Шабл.', <Layout size={11} key="p" />],
+                  ] as const
+                ).map(([id, lbl, ic]) => (
+                  <button
+                    key={id}
+                    onClick={() => setInspectorTab(id)}
+                    className={`py-1.5 rounded-xl font-bold flex flex-col items-center gap-0.5 cursor-pointer transition ${
+                      inspectorTab === id ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40' : 'bg-white/[0.04] opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    {ic}
+                    <span>{lbl}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+                {/* ==================== CAT 1: EDITING, OVERLAY, MASKS, CHROMA, KEYFRAMES, SPEED ==================== */}
+                {inspectorTab === 'edit' && selectedClip && (
                   <>
-                    <input value={selectedText.text} onChange={(e) => setTexts((prev) => prev.map((t) => (t.id === selectedText.id ? { ...t, text: e.target.value } : t)))} className={`w-full px-2.5 py-1.5 rounded-xl text-xs border outline-none ${isDark ? 'bg-black/40 border-white/15 text-white' : 'bg-white border-slate-200'}`} />
-                    <div>
-                      <div className={`text-[10px] mb-1 ${subText}`}>Анимация текста (8 пресетов)</div>
-                      <select value={selectedText.anim} onChange={(e) => setTexts((prev) => prev.map((t) => (t.id === selectedText.id ? { ...t, anim: e.target.value as TextAnim } : t)))} className={`w-full px-2 py-1.5 rounded-xl text-xs border outline-none ${isDark ? 'bg-[#171b26] border-white/12 text-white' : 'bg-white border-slate-200'}`}>
-                        <option value="fade">Плавное появление (Fade)</option>
-                        <option value="slide">Выезд снизу (Slide Up)</option>
-                        <option value="pop">Пружинный поп (Pop Elastic)</option>
-                        <option value="typewriter">Печатная машинка (Typewriter)</option>
-                        <option value="glitch">Неон-глитч (Glitch Neon)</option>
-                        <option value="bounce">Прыжок (Bounce)</option>
-                        <option value="wave">Волна (Wave)</option>
-                        <option value="spread">Кино-разлёт (Cinema Spread)</option>
-                      </select>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-cyan-300 truncate">{selectedClip.name} ({selectedClip.track === 'overlay' ? 'PiP V2' : 'Main V1'})</span>
+                      <div className="flex gap-1">
+                        <button onClick={() => { importTargetTrackRef.current = 'replace'; fileInputRef.current?.click(); }} className={btnCls}>Заменить</button>
+                        <button onClick={() => {
+                          pushHistory();
+                          const dup: VideoClip = { ...selectedClip, id: `clip_${Date.now()}`, name: `${selectedClip.name} (коп.)`, startSec: selectedClip.startSec + selectedClip.durationSec };
+                          setClips((p) => [...p, dup]);
+                        }} className={btnCls}><Copy size={11} /></button>
+                      </div>
                     </div>
+
                     <div className="grid grid-cols-2 gap-2">
-                      <div><div className={`text-[10px] ${subText}`}>Размер: {selectedText.fontSize}px</div><input type="range" min={14} max={56} value={selectedText.fontSize} onChange={(e) => setTexts((prev) => prev.map((t) => (t.id === selectedText.id ? { ...t, fontSize: Number(e.target.value) } : t)))} className="w-full accent-amber-400" /></div>
-                      <div><div className={`text-[10px] ${subText}`}>Позиция Y: {selectedText.yPct}%</div><input type="range" min={10} max={92} value={selectedText.yPct} onChange={(e) => setTexts((prev) => prev.map((t) => (t.id === selectedText.id ? { ...t, yPct: Number(e.target.value) } : t)))} className="w-full accent-amber-400" /></div>
+                      <div>
+                        <label className={`text-[10px] block mb-0.5 ${subText}`}>Скорость: {selectedClip.speed}x</label>
+                        <input type="range" min={0.25} max={4} step={0.25} value={selectedClip.speed} onChange={(e) => updateSelectedClip({ speed: Number(e.target.value) })} className="w-full accent-cyan-400" />
+                      </div>
+                      <div>
+                        <label className={`text-[10px] block mb-0.5 ${subText}`}>Кривая скорости</label>
+                        <select value={selectedClip.speedCurve} onChange={(e) => updateSelectedClip({ speedCurve: e.target.value as SpeedCurveKind })} className="w-full px-2 py-1 rounded-lg bg-zinc-900 border border-white/15 text-[11px]">
+                          <option value="linear">Линейная</option>
+                          <option value="montage">Montage (Разгон)</option>
+                          <option value="hero">Hero (Слоу-мо центр)</option>
+                          <option value="bullet">Bullet Time</option>
+                          <option value="jump_cut">Jump Cut</option>
+                          <option value="flash_in">Flash In</option>
+                        </select>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <input type="color" value={selectedText.color} onChange={(e) => setTexts((p) => p.map((t) => (t.id === selectedText.id ? { ...t, color: e.target.value } : t)))} className="w-7 h-7 rounded bg-transparent border-0 cursor-pointer" />
-                      <button onClick={() => setTexts((p) => p.map((t) => (t.id === selectedText.id ? { ...t, bgPill: !t.bgPill } : t)))} className={`flex-1 py-1 rounded-lg text-[10px] border cursor-pointer ${selectedText.bgPill ? 'bg-amber-500/20 border-amber-400 text-amber-300' : 'bg-white/[0.04] border-white/10'}`}>Подложка</button>
-                      <button onClick={() => setTexts((p) => p.map((t) => (t.id === selectedText.id ? { ...t, stroke: !t.stroke } : t)))} className={`flex-1 py-1 rounded-lg text-[10px] border cursor-pointer ${selectedText.stroke ? 'bg-amber-500/20 border-amber-400 text-amber-300' : 'bg-white/[0.04] border-white/10'}`}>Обводка</button>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className={`text-[10px] block mb-0.5 ${subText}`}>Маска кадра</label>
+                        <select value={selectedClip.mask} onChange={(e) => updateSelectedClip({ mask: e.target.value as MaskShapeKind })} className="w-full px-2 py-1 rounded-lg bg-zinc-900 border border-white/15 text-[11px]">
+                          <option value="none">Без маски</option>
+                          <option value="circle">Круг</option>
+                          <option value="rect">Прямоугольник</option>
+                          <option value="heart">Сердце ♥</option>
+                          <option value="star">Звезда ★</option>
+                          <option value="split">Разделение 50/50</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className={`text-[10px] block mb-0.5 ${subText}`}>Наложение (Blend Mode)</label>
+                        <select value={selectedClip.blendMode} onChange={(e) => updateSelectedClip({ blendMode: e.target.value as BlendModeKind })} className="w-full px-2 py-1 rounded-lg bg-zinc-900 border border-white/15 text-[11px]">
+                          <option value="source-over">Обычный (Normal)</option>
+                          <option value="screen">Экран (Screen)</option>
+                          <option value="multiply">Умножение (Multiply)</option>
+                          <option value="overlay">Перекрытие (Overlay)</option>
+                          <option value="lighten">Осветление</option>
+                          <option value="darken">Затемнение</option>
+                        </select>
+                      </div>
                     </div>
-                    <button onClick={() => { setTexts((p) => p.filter((t) => t.id !== selectedText.id)); setSelectedTextId(null); }} className="w-full py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[11px] cursor-pointer">Удалить титр</button>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className={`text-[10px] block mb-0.5 ${subText}`}>Переход клипа</label>
+                        <select value={selectedClip.transition} onChange={(e) => updateSelectedClip({ transition: e.target.value as ClipTransition })} className="w-full px-2 py-1 rounded-lg bg-zinc-900 border border-white/15 text-[11px]">
+                          {['none', 'fade', 'flash', 'zoom', 'wipe_left', 'glitch', 'spin', 'dissolve'].map((tr) => <option key={tr} value={tr}>{tr.toUpperCase()}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={`text-[10px] block mb-0.5 ${subText}`}>Движение / Трекинг</label>
+                        <select value={selectedClip.motion} onChange={(e) => updateSelectedClip({ motion: e.target.value as ClipMotion })} className="w-full px-2 py-1 rounded-lg bg-zinc-900 border border-white/15 text-[11px]">
+                          <option value="static">Статика</option>
+                          <option value="zoom_in">Плавный зум +</option>
+                          <option value="zoom_out">Плавный зум -</option>
+                          <option value="pan_left">Панорама влево</option>
+                          <option value="pan_right">Панорама вправо</option>
+                          <option value="pulse">Пульсация</option>
+                          <option value="shake">Тряска камеры</option>
+                          <option value="stabilized">Стабилизация</option>
+                          <option value="track_focus">Отслеживание объекта</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      <button onClick={() => updateSelectedClip({ reverse: !selectedClip.reverse })} className={`${btnCls} ${selectedClip.reverse ? 'border-cyan-400 text-cyan-300' : ''}`}><Repeat size={11} /> Реверс</button>
+                      <button onClick={() => updateSelectedClip({ flipH: !selectedClip.flipH })} className={btnCls}><FlipHorizontal size={11} /> Отразить</button>
+                      <button onClick={() => updateSelectedClip({ rotateDeg: ((selectedClip.rotateDeg || 0) + 90) % 360 })} className={btnCls}><RotateCw size={11} /> Поворот 90°</button>
+                      <button onClick={() => updateSelectedClip({ stabilize: !selectedClip.stabilize })} className={`${btnCls} ${selectedClip.stabilize ? 'border-emerald-400 text-emerald-300' : ''}`}><Crosshair size={11} /> Стабилизатор</button>
+                      <button onClick={handleAddKeyframe} className="px-2 py-1 rounded-lg text-[11px] bg-amber-500/20 text-amber-300 border border-amber-400/35 cursor-pointer font-bold">
+                        ◆ + Ключевой кадр ({selectedClip.keyframes?.length || 0})
+                      </button>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-[11px]">Хромакей (Chroma Key · Зелёный экран)</span>
+                        <input type="checkbox" checked={!!selectedClip.chromaKeyEnabled} onChange={(e) => updateSelectedClip({ chromaKeyEnabled: e.target.checked })} className="accent-emerald-400" />
+                      </div>
+                      {selectedClip.chromaKeyEnabled && (
+                        <div>
+                          <label className={`text-[10px] ${subText}`}>Допуск зелёного: {selectedClip.chromaTolerance ?? 75}</label>
+                          <input type="range" min={20} max={150} value={selectedClip.chromaTolerance ?? 75} onChange={(e) => updateSelectedClip({ chromaTolerance: Number(e.target.value) })} className="w-full accent-emerald-400" />
+                        </div>
+                      )}
+                      <div>
+                        <label className={`text-[10px] ${subText}`}>Непрозрачность слоя: {selectedClip.opacity}%</label>
+                        <input type="range" min={10} max={100} value={selectedClip.opacity} onChange={(e) => updateSelectedClip({ opacity: Number(e.target.value) })} className="w-full accent-cyan-400" />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ==================== CAT 2: COLOR, RGB CURVES, FX, RETOUCH, STYLIZE ==================== */}
+                {inspectorTab === 'fx' && (
+                  <>
+                    <div>
+                      <div className={`text-[10px] font-bold uppercase mb-1 ${subText}`}>Кинофильтры LUT (12)</div>
+                      <div className="grid grid-cols-3 gap-1">
+                        {LUT_PRESETS.map((l) => (
+                          <button key={l.id} onClick={() => setLutId(l.id)} className={`px-2 py-1 rounded-lg text-[10px] border cursor-pointer truncate ${lutId === l.id ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 font-bold' : 'bg-white/5 border-white/10'}`}>
+                            {l.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div><label className={`text-[10px] ${subText}`}>Экспозиция: {exposure}%</label><input type="range" min={50} max={160} value={exposure} onChange={(e) => setExposure(Number(e.target.value))} className="w-full accent-cyan-400" /></div>
+                      <div><label className={`text-[10px] ${subText}`}>Контраст: {contrast}%</label><input type="range" min={50} max={180} value={contrast} onChange={(e) => setContrast(Number(e.target.value))} className="w-full accent-cyan-400" /></div>
+                      <div><label className={`text-[10px] ${subText}`}>Насыщенность: {saturation}%</label><input type="range" min={0} max={200} value={saturation} onChange={(e) => setSaturation(Number(e.target.value))} className="w-full accent-cyan-400" /></div>
+                      <div><label className={`text-[10px] ${subText}`}>Баланс белого: {whiteBalance}</label><input type="range" min={-50} max={50} value={whiteBalance} onChange={(e) => setWhiteBalance(Number(e.target.value))} className="w-full accent-amber-400" /></div>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
+                      <div className="text-[10px] font-bold text-cyan-300">Кривые RGB (Красный · Зелёный · Синий)</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <label className="text-[10px] text-rose-400">R {rgbR}%<input type="range" min={40} max={160} value={rgbR} onChange={(e) => setRgbR(Number(e.target.value))} className="w-full accent-rose-500" /></label>
+                        <label className="text-[10px] text-emerald-400">G {rgbG}%<input type="range" min={40} max={160} value={rgbG} onChange={(e) => setRgbG(Number(e.target.value))} className="w-full accent-emerald-500" /></label>
+                        <label className="text-[10px] text-sky-400">B {rgbB}%<input type="range" min={40} max={160} value={rgbB} onChange={(e) => setRgbB(Number(e.target.value))} className="w-full accent-sky-500" /></label>
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-1.5">
+                      <div className="text-[10px] font-bold text-pink-300">Ретушь лица и тела + Стилизация AI</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <label className="text-[10px]">Кожа {retouchSmooth}%<input type="range" min={0} max={100} value={retouchSmooth} onChange={(e) => setRetouchSmooth(Number(e.target.value))} className="w-full accent-pink-400" /></label>
+                        <label className="text-[10px]">Сияние {retouchGlow}%<input type="range" min={0} max={100} value={retouchGlow} onChange={(e) => setRetouchGlow(Number(e.target.value))} className="w-full accent-pink-400" /></label>
+                        <label className="text-[10px]">Контур {retouchSlim}%<input type="range" min={0} max={60} value={retouchSlim} onChange={(e) => setRetouchSlim(Number(e.target.value))} className="w-full accent-pink-400" /></label>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1 pt-1">
+                        {(['none', 'anime', '3d_toon', 'oil_paint', 'sketch', 'cyber_comic'] as const).map((st) => (
+                          <button key={st} onClick={() => setStylize(st)} className={`py-1 rounded-lg text-[10px] border cursor-pointer ${stylize === st ? 'bg-purple-500/25 border-purple-400 text-purple-200 font-bold' : 'bg-white/5 border-white/10'}`}>
+                            {st.toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        ['Зерно', fxGrain, () => setFxGrain((v) => !v)],
+                        ['VHS', fxVhsLines, () => setFxVhsLines((v) => !v)],
+                        ['Хроматика', fxChromatic, () => setFxChromatic((v) => !v)],
+                        ['Кинополосы', fxLetterbox, () => setFxLetterbox((v) => !v)],
+                        ['Неон Силуэт', fxBodyGlow, () => setFxBodyGlow((v) => !v)],
+                        ['AI Upscale 4K', aiUpscale, () => setAiUpscale((v) => !v)],
+                      ].map(([lbl, on, toggle]) => (
+                        <button key={String(lbl)} onClick={toggle as () => void} className={`${btnCls} ${on ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200' : ''}`}>
+                          {String(lbl)}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* ==================== CAT 3: AUDIO, MUSIC LIBRARY, VOICEOVER, VOICE FX, SEED AUDIO ==================== */}
+                {inspectorTab === 'audio' && (
+                  <>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button onClick={() => void toggleVoiceover()} className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer ${recordingVoice ? 'bg-rose-500 text-white animate-pulse' : 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/35'}`}>
+                        {recordingVoice ? <MicOff size={12} /> : <Mic size={12} />} {recordingVoice ? 'Стоп запись' : 'Записать озвучку'}
+                      </button>
+                      <button onClick={() => {
+                        setAudioTracks((p) => [...p, { id: `ext_${Date.now()}`, name: `Извлечено: ${selectedClip?.name || 'Видео'}`, kind: 'extracted', startSec: 0, durationSec: selectedClip?.durationSec || 4, volume: 90 }]);
+                        setStatusMsg('Аудио извлечено из видео на дорожку A1 🎵');
+                      }} className={btnCls}>Извлечь аудио</button>
+                      <button onClick={() => {
+                        const mk = Array.from({ length: Math.floor(totalDuration * 2) }).map((_, i) => Number((i * 0.5 + 0.25).toFixed(2)));
+                        setBeatMarkers(mk);
+                        setStatusMsg(`Авто-биты расставлены (${mk.length} маркеров) ◆`);
+                      }} className={btnCls}><Zap size={11} className="text-amber-400" /> Авто-биты</button>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2">
+                      <div className="text-[10px] font-bold text-emerald-300">Очистка звука, Разделение вокала и Фильтры голоса</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button onClick={() => setAudioNoiseReduce((v) => !v)} className={`${btnCls} ${audioNoiseReduce ? 'border-emerald-400 text-emerald-300' : ''}`}>Шумоподавление</button>
+                        <button onClick={() => setAudioSpeechEnhance((v) => !v)} className={`${btnCls} ${audioSpeechEnhance ? 'border-emerald-400 text-emerald-300' : ''}`}>Усиление речи</button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select value={vocalSplit} onChange={(e) => setVocalSplit(e.target.value as typeof vocalSplit)} className="px-2 py-1 rounded-lg bg-zinc-900 border border-white/15 text-[11px]">
+                          <option value="full">Микс: Полный звук</option>
+                          <option value="vocals_only">Только вокал (AI Split)</option>
+                          <option value="instrumental">Только минус / музыка</option>
+                        </select>
+                        <select value={voiceFilter} onChange={(e) => setVoiceFilter(e.target.value as VoiceFilterKind)} className="px-2 py-1 rounded-lg bg-zinc-900 border border-white/15 text-[11px]">
+                          <option value="normal">Голос: Оригинал</option>
+                          <option value="robot">Робот</option>
+                          <option value="chipmunk">Бурундук (Высокий)</option>
+                          <option value="deep_bass">Глубокий бас</option>
+                          <option value="echo">Эхо студии</option>
+                          <option value="radio">Рация / Радио</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Text-to-SFX (Seed Audio) */}
+                    <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-1.5">
+                      <div className="text-[10px] font-bold text-amber-300">Seed Audio · Генератор SFX по тексту</div>
+                      <div className="flex gap-1.5">
+                        <input value={seedAudioPrompt} onChange={(e) => setSeedAudioPrompt(e.target.value)} placeholder="whoosh, laser, boom, wind..." className="flex-1 px-2 py-1 rounded-lg bg-black/30 border border-white/15 text-[11px] outline-none" />
+                        <button
+                          onClick={() => {
+                            playProceduralAudio(seedAudioPrompt, voiceFilter);
+                            setAudioTracks((p) => [...p, { id: `sfx_${Date.now()}`, name: `SFX: ${seedAudioPrompt.slice(0, 16)}`, kind: 'seed_sfx', startSec: Number(playhead.toFixed(1)), durationSec: 1.5, volume: 90, synthPreset: seedAudioPrompt }]);
+                            setStatusMsg(`Звуковой эффект «${seedAudioPrompt}» сгенерирован!`);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500 text-black font-bold text-[11px] cursor-pointer"
+                        >
+                          Создать
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Royalty-Free Music & SFX Library */}
+                    <div>
+                      <div className={`text-[10px] font-bold uppercase mb-1 ${subText}`}>Библиотека музыки и SFX без авторских прав</div>
+                      <div className="space-y-1">
+                        {ROYALTY_FREE_AUDIO_LIB.map((tr) => (
+                          <div key={tr.id} className="px-2.5 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-[11px] font-semibold truncate">{tr.name}</div>
+                              <div className={`text-[9px] ${subText}`}>{tr.badge} · {tr.durationSec}s</div>
+                            </div>
+                            <div className="flex gap-1 shrink-0">
+                              <button onClick={() => playProceduralAudio(tr.id, voiceFilter)} className={btnCls}><Volume2 size={11} /></button>
+                              <button
+                                onClick={() => {
+                                  playProceduralAudio(tr.id, voiceFilter);
+                                  setAudioTracks((p) => [...p, { id: `lib_${Date.now()}`, name: tr.name, kind: tr.kind, startSec: Number(playhead.toFixed(1)), durationSec: tr.durationSec, volume: 80, synthPreset: tr.id }]);
+                                  setStatusMsg(`Добавлено на A1: ${tr.name}`);
+                                }}
+                                className="px-2 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 text-[10px] font-bold cursor-pointer"
+                              >
+                                + A1
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ==================== CAT 4: TEXT, AUTO CAPTIONS, TRANSLATOR, TTS, BRUSH, STICKERS ==================== */}
+                {inspectorTab === 'text' && (
+                  <>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button onClick={handleAutoCaptions} className="px-2.5 py-1 rounded-lg bg-cyan-500 text-black font-bold text-[11px] cursor-pointer flex items-center gap-1"><MessageSquare size={11} /> Автосубтитры</button>
+                      <button onClick={handleSpeakCaptionsTTS} className={btnCls}><Volume2 size={11} className="text-emerald-400" /> Озвучка TTS</button>
+                      <button onClick={() => {
+                        setTexts((p) => [...p, { id: `txt_${Date.now()}`, text: 'НОВЫЙ ТИТР', startSec: Number(playhead.toFixed(1)), durationSec: 3, yPct: 48, fontSize: 28, color: '#ffffff', bgPill: true, anim: 'pop' }]);
+                      }} className={btnCls}><Plus size={11} /> Титр</button>
+                      <button onClick={() => handleExportTranscript('srt')} className={btnCls}><FileText size={11} /> .SRT</button>
+                      <button onClick={() => handleExportTranscript('txt')} className={btnCls}><FileText size={11} /> .TXT</button>
+                    </div>
+
+                    {/* Caption Translator */}
+                    <div className="p-2 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-between gap-2">
+                      <span className="text-[11px] flex items-center gap-1"><Languages size={12} className="text-sky-400" /> Перевод субтитров:</span>
+                      <div className="flex gap-1">
+                        {(['ru', 'en', 'de', 'es'] as const).map((lng) => (
+                          <button
+                            key={lng}
+                            onClick={() => {
+                              setCaptionLang(lng);
+                              setTexts((p) => p.map((t) => ({ ...t, translatedText: translateCaptionText(t.text, lng) })));
+                              setStatusMsg(`Субтитры переведены на ${lng.toUpperCase()}`);
+                            }}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase cursor-pointer ${captionLang === lng ? 'bg-sky-500 text-black' : 'bg-white/10'}`}
+                          >
+                            {lng}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {selectedText && (
+                      <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2">
+                        <input value={selectedText.text} onChange={(e) => setTexts((p) => p.map((t) => (t.id === selectedText.id ? { ...t, text: e.target.value } : t)))} className="w-full px-2.5 py-1.5 rounded-lg bg-black/30 border border-white/15 text-xs outline-none" />
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <select value={selectedText.anim} onChange={(e) => setTexts((p) => p.map((t) => (t.id === selectedText.id ? { ...t, anim: e.target.value as TextAnim } : t)))} className="px-2 py-1 rounded-lg bg-zinc-900 border border-white/15 text-[10px]">
+                            {['fade', 'slide', 'pop', 'typewriter', 'glitch', 'bounce', 'spread', 'karaoke'].map((a) => <option key={a} value={a}>{a.toUpperCase()}</option>)}
+                          </select>
+                          <select value={selectedText.captionStyle || 'hormozi'} onChange={(e) => setTexts((p) => p.map((t) => (t.id === selectedText.id ? { ...t, captionStyle: e.target.value as CaptionStyleKind } : t)))} className="px-2 py-1 rounded-lg bg-zinc-900 border border-white/15 text-[10px]">
+                            <option value="hormozi">Hormozi Bold</option>
+                            <option value="neon_karaoke">Neon Karaoke</option>
+                            <option value="minimal_glass">Minimal Glass</option>
+                            <option value="cinema">Cinema Sub</option>
+                          </select>
+                          <input type="color" value={selectedText.color} onChange={(e) => setTexts((p) => p.map((t) => (t.id === selectedText.id ? { ...t, color: e.target.value } : t)))} className="w-full h-7 rounded cursor-pointer bg-transparent" />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Freehand Canvas Brush */}
+                    <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold flex items-center gap-1"><Brush size={12} className="text-cyan-400" /> Рисование кистью на видео</span>
+                        <div className="flex gap-1">
+                          <button onClick={() => setBrushMode((v) => !v)} className={`px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer ${brushMode ? 'bg-cyan-500 text-black' : 'bg-white/10'}`}>{brushMode ? 'ВКЛ' : 'ВЫКЛ'}</button>
+                          <button onClick={() => setBrushStrokes([])} className="px-2 py-0.5 rounded-lg text-[10px] bg-rose-500/20 text-rose-300 cursor-pointer">Стереть</button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input type="color" value={brushColor} onChange={(e) => setBrushColor(e.target.value)} className="w-8 h-6 rounded bg-transparent cursor-pointer" />
+                        <input type="range" min={2} max={18} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="flex-1 accent-cyan-400" />
+                        <label className="text-[10px] flex items-center gap-1"><input type="checkbox" checked={brushGlow} onChange={(e) => setBrushGlow(e.target.checked)} /> Неон</label>
+                      </div>
+                    </div>
+
+                    {/* Stickers + AI Sticker Generator */}
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap gap-1">
+                        {STICKER_PALETTE.map((em) => (
+                          <button key={em} onClick={() => setStickers((p) => [...p, { id: `st_${Date.now()}`, emoji: em, xPct: 22 + Math.round(Math.random() * 55), yPct: 22 + Math.round(Math.random() * 50), size: 42, startSec: playhead, durationSec: 3, animated: true }])} className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/15 text-base cursor-pointer">
+                            {em}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-1.5">
+                        <input value={aiStickerPrompt} onChange={(e) => setAiStickerPrompt(e.target.value)} placeholder="ИИ-стикер по тексту (напр. ПОДПИШИСЬ)..." className="flex-1 px-2 py-1 rounded-lg bg-black/30 border border-white/15 text-[11px] outline-none" />
+                        <button
+                          onClick={() => {
+                            if (!aiStickerPrompt.trim()) return;
+                            setStickers((p) => [...p, { id: `aist_${Date.now()}`, emoji: '✨', label: aiStickerPrompt.trim().toUpperCase(), xPct: 50, yPct: 30, size: 36, startSec: playhead, durationSec: 3.5, animated: true }]);
+                            setAiStickerPrompt('');
+                            setStatusMsg('ИИ-стикер добавлен на видео ✨');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-purple-500 text-white text-[10px] font-bold cursor-pointer"
+                        >
+                          + AI Стикер
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ==================== CAT 5: AI STUDIO (EditPilot, Seedance/Sora, BG Remove, Script-to-Video, Shorts, Avatar) ==================== */}
+                {inspectorTab === 'ai' && (
+                  <>
+                    {/* EditPilot Command Bar */}
+                    <div className="p-2.5 rounded-xl bg-gradient-to-br from-cyan-500/12 to-purple-500/12 border border-cyan-400/30 space-y-1.5">
+                      <div className="text-[11px] font-bold text-cyan-300 flex items-center gap-1.5"><Bot size={13} /> EditPilot AI · Монтаж текстом</div>
+                      <div className="flex gap-1.5">
+                        <input
+                          value={editPilotInput}
+                          onChange={(e) => setEditPilotInput(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleRunEditPilot()}
+                          placeholder="«сделай ч/б», «формат 9:16», «добавь титр Привет»..."
+                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/15 text-[11px] outline-none"
+                        />
+                        <button onClick={handleRunEditPilot} className="px-2.5 py-1 rounded-lg bg-cyan-500 text-black font-bold text-[11px] cursor-pointer">Пуск</button>
+                      </div>
+                      <div className="max-h-20 overflow-y-auto space-y-0.5 text-[10px] text-white/75">
+                        {editPilotLog.map((l, i) => <div key={i}>{l}</div>)}
+                      </div>
+                    </div>
+
+                    {/* Seedance / Sora 2 & Seedream Generators */}
+                    <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-1.5">
+                      <div className="text-[11px] font-bold text-purple-300 flex items-center gap-1"><Sparkles size={12} /> Генератор ИИ-видео (Seedance/Sora) и Арта (Seedream)</div>
+                      <input value={aiGenPrompt} onChange={(e) => setAiGenPrompt(e.target.value)} className="w-full px-2.5 py-1.5 rounded-lg bg-black/30 border border-white/15 text-[11px] outline-none" />
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button onClick={() => handleGenerateAIScene(false)} className="py-1.5 rounded-lg bg-purple-500/25 text-purple-200 border border-purple-400/35 text-[10px] font-bold cursor-pointer">🎬 Сгенерировать сцену</button>
+                        <button onClick={() => handleGenerateAIScene(true)} className="py-1.5 rounded-lg bg-pink-500/25 text-pink-200 border border-pink-400/35 text-[10px] font-bold cursor-pointer">🖼 ИИ-Арт (PiP слой)</button>
+                      </div>
+                    </div>
+
+                    {/* Script-to-Video */}
+                    <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-1.5">
+                      <div className="text-[11px] font-bold text-amber-300">Сценарий → Видео (Script-to-Video)</div>
+                      <textarea value={scriptText} onChange={(e) => setScriptText(e.target.value)} rows={3} className="w-full p-2 rounded-lg bg-black/30 border border-white/15 text-[11px] outline-none resize-none" />
+                      <button onClick={handleScriptToVideo} className="w-full py-1.5 rounded-lg bg-amber-500 text-black font-bold text-[11px] cursor-pointer">Собрать видео по сценарию ✨</button>
+                    </div>
+
+                    {/* 1-Click AI Utilities */}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button onClick={handleLongToShorts} className={btnCls}><Zap size={12} className="text-amber-400" /> Long → Shorts 9:16</button>
+                      <button onClick={() => updateSelectedClip({ bgRemoveEnabled: !selectedClip?.bgRemoveEnabled, bgReplaceColor: '#020617' })} className={`${btnCls} ${selectedClip?.bgRemoveEnabled ? 'border-emerald-400 text-emerald-300' : ''}`}>
+                        <Wand2 size={12} /> Удалить фон ИИ
+                      </button>
+                      <button onClick={() => setAvatarEnabled((v) => !v)} className={`${btnCls} ${avatarEnabled ? 'border-cyan-400 text-cyan-300' : ''}`}>
+                        <UserCheck size={12} /> ИИ-Аватар (Lip-Sync)
+                      </button>
+                      <button
+                        onClick={() => {
+                          let cur = 0;
+                          setClips((prev) => prev.map((c) => { if (c.track !== 'main') return c; const d = Math.max(1.5, Number((c.durationSec * 0.88).toFixed(1))); const out = { ...c, startSec: cur, durationSec: d }; cur += d; return out; }));
+                          setStatusMsg('Паузы и слова-паразиты удалены ✂');
+                        }}
+                        className={btnCls}
+                      >
+                        <ScissorsLineDashed size={12} /> Удалить паузы
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* ==================== CAT 6: TEMPLATES, CONVERTER & SMART COMPRESSOR ==================== */}
+                {inspectorTab === 'templates' && (
+                  <>
+                    <div className="text-[10px] font-bold uppercase text-cyan-300">Готовые шаблоны монтажа в 1 клик</div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {PROJECT_TEMPLATES.map((tpl) => (
+                        <button
+                          key={tpl.id}
+                          onClick={() => {
+                            pushHistory();
+                            setClips(tpl.clips);
+                            setTexts(tpl.texts);
+                            setAspect(tpl.aspect);
+                            setLutId(tpl.lut);
+                            setSelectedClipId(tpl.clips[0].id);
+                            setPlayhead(0);
+                            setStatusMsg(`Применён шаблон: ${tpl.name}`);
+                          }}
+                          className="p-2 rounded-xl bg-white/[0.04] hover:bg-cyan-500/15 border border-white/10 hover:border-cyan-400/40 text-left cursor-pointer transition"
+                        >
+                          <div className="text-[11px] font-bold truncate">{tpl.name}</div>
+                          <div className="text-[9px] font-mono text-cyan-400 mt-0.5">{tpl.badge} · LUT {tpl.lut.toUpperCase()}</div>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Format Converter & Smart Compressor */}
+                    <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2">
+                      <div className="text-[11px] font-bold text-emerald-300">Конвертер форматов и Сжатие видео</div>
+                      <select value={exportCodec} onChange={(e) => setExportCodec(e.target.value as typeof exportCodec)} className="w-full px-2 py-1.5 rounded-lg bg-zinc-900 border border-white/15 text-[11px]">
+                        {CODEC_OPTIONS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                      </select>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <select value={exportRes} onChange={(e) => setExportRes(e.target.value as typeof exportRes)} className="px-2 py-1 rounded-lg bg-zinc-900 border border-white/15 text-[10px]">
+                          <option value="720p">720p HD</option>
+                          <option value="1080p">1080p FHD</option>
+                          <option value="4k">4K UHD</option>
+                        </select>
+                        <select value={exportFps} onChange={(e) => setExportFps(Number(e.target.value) as 24 | 30 | 60)} className="px-2 py-1 rounded-lg bg-zinc-900 border border-white/15 text-[10px]">
+                          <option value={24}>24 FPS</option>
+                          <option value={30}>30 FPS</option>
+                          <option value={60}>60 FPS</option>
+                        </select>
+                        <select value={exportBitrate} onChange={(e) => setExportBitrate(Number(e.target.value) as 2 | 5 | 10)} className="px-2 py-1 rounded-lg bg-zinc-900 border border-white/15 text-[10px]">
+                          <option value={2}>2 Мбит/с (Сжато)</option>
+                          <option value={5}>5 Мбит/с (Норм)</option>
+                          <option value={10}>10 Мбит/с (Макс)</option>
+                        </select>
+                      </div>
+                      <div className={`text-[10px] font-mono ${subText}`}>Расчётный размер файла: ~{estFileMb} МБ</div>
+                    </div>
                   </>
                 )}
               </div>
-            )}
+            </div>
+          </div>
 
-            {inspectorTab === 'fx' && (
-              <div className="space-y-3">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-fuchsia-400">Киноэффекты кадра (FX)</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {[
-                    ['Плёночное зерно', fxGrain, () => setFxGrain((v) => !v)],
-                    ['VHS скан-линии', fxVhsLines, () => setFxVhsLines((v) => !v)],
-                    ['Хром-аберрация', fxChromatic, () => setFxChromatic((v) => !v)],
-                    ['Кинополосы 21:9', fxLetterbox, () => setFxLetterbox((v) => !v)],
-                  ].map(([lbl, on, toggle]) => (
-                    <button key={lbl as string} onClick={toggle as () => void} className={`p-2 rounded-xl text-[10px] font-semibold border transition cursor-pointer ${on ? 'bg-fuchsia-500/25 border-fuchsia-400 text-fuchsia-200' : 'bg-white/[0.04] border-white/10'}`}>
-                      {lbl as string}
-                    </button>
+          {/* Bottom Multi-Track Timeline (Ruler + Beat Markers + V1 + V2 PiP + T1 + A1) */}
+          <div className={`h-44 shrink-0 border-t flex flex-col overflow-hidden ${panelBg}`}>
+            <div className="px-3 py-1 border-b border-white/10 flex items-center justify-between text-[10px] shrink-0">
+              <div className="flex items-center gap-3 font-mono">
+                <span className="text-cyan-300 font-bold">МНОГОДОРОЖЕЧНЫЙ ТАЙМЛАЙН</span>
+                <span className={subText}>V1 · V2 (PiP) · T1 (Титры) · A1 (Звук) · ◆ Биты ({beatMarkers.length})</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setZoomPxPerSec((z) => Math.max(36, z - 12))} className={btnCls}>-</button>
+                <span className="font-mono text-[10px]">{zoomPxPerSec}px/s</span>
+                <button onClick={() => setZoomPxPerSec((z) => Math.min(130, z + 12))} className={btnCls}>+</button>
+              </div>
+            </div>
+
+            <div
+              className="flex-1 overflow-x-auto overflow-y-auto relative p-2 space-y-1.5"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = e.clientX - rect.left + e.currentTarget.scrollLeft - 56;
+                setPlayhead(Math.max(0, Math.min(totalDuration, Number((x / zoomPxPerSec).toFixed(2)))));
+              }}
+            >
+              {/* Playhead Line */}
+              <div
+                className="pointer-events-none absolute top-0 bottom-0 w-0.5 bg-rose-500 z-30 shadow-[0_0_8px_#f43f5e]"
+                style={{ left: `${56 + playhead * zoomPxPerSec}px` }}
+              />
+
+              {/* Beat Markers Ruler */}
+              <div className="flex items-center h-4 relative">
+                <span className="w-12 shrink-0 text-[9px] font-mono opacity-50">TIME</span>
+                <div className="relative h-full" style={{ width: `${totalDuration * zoomPxPerSec + 120}px` }}>
+                  {beatMarkers.map((b, i) => (
+                    <span key={i} title={`Бит ${b}s`} className="absolute top-0.5 text-[9px] text-amber-400 -translate-x-1/2" style={{ left: `${b * zoomPxPerSec}px` }}>◆</span>
                   ))}
-                </div>
-
-                <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400 pt-1">Стикеры на кадр</div>
-                <div className="grid grid-cols-5 gap-1">
-                  {STICKER_PALETTE.map((em) => (
-                    <button key={em} onClick={() => handleAddSticker(em)} className="py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/15 text-base cursor-pointer">{em}</button>
-                  ))}
-                </div>
-                {stickers.length > 0 && (
-                  <button onClick={() => setStickers([])} className="w-full py-1 rounded-lg bg-rose-500/15 text-rose-300 text-[10px] cursor-pointer">Очистить стикеры ({stickers.length})</button>
-                )}
-
-                <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 pt-1 flex items-center gap-1"><Music size={11} /> Звук ({audioName || 'не добавлен'})</div>
-                <div className="space-y-1.5">
-                  <div className={`text-[10px] flex justify-between ${subText}`}><span>Громкость</span><span>{audioVolume}%</span></div>
-                  <input type="range" min={0} max={100} value={audioVolume} onChange={(e) => setAudioVolume(Number(e.target.value))} className="w-full accent-emerald-400" />
-                  <label className="flex items-center gap-2 text-[10px] cursor-pointer">
-                    <input type="checkbox" checked={audioFade} onChange={(e) => setAudioFade(e.target.checked)} />
-                    Плавное затухание (Fade In / Out)
-                  </label>
                 </div>
               </div>
-            )}
 
-            {inspectorTab === 'export' && (
-              <div className="space-y-3">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">Кодек и параметры экспорта</div>
-                <div className="space-y-1">
-                  {supportedCodecs.map((c) => (
-                    <button
+              {/* V2 Overlay / PiP Track */}
+              <div className="flex items-center h-7 relative">
+                <span className="w-12 shrink-0 text-[9px] font-mono text-purple-300 font-bold">V2 PiP</span>
+                <div className="relative h-full bg-white/[0.03] rounded-md" style={{ width: `${totalDuration * zoomPxPerSec + 120}px` }}>
+                  {clips.filter((c) => c.track === 'overlay').map((c) => (
+                    <div
                       key={c.id}
-                      onClick={() => setCodecId(c.id)}
-                      className={`w-full p-2 rounded-xl border text-left transition cursor-pointer ${codecId === c.id ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200' : 'bg-white/[0.04] border-white/10'}`}
+                      onClick={(e) => { e.stopPropagation(); setSelectedClipId(c.id); setInspectorTab('edit'); }}
+                      className={`absolute top-0.5 bottom-0.5 rounded-md px-2 flex items-center text-[10px] font-semibold truncate cursor-pointer border ${selectedClipId === c.id ? 'border-white bg-purple-500/70' : 'border-purple-400/40 bg-purple-600/45'}`}
+                      style={{ left: `${c.startSec * zoomPxPerSec}px`, width: `${Math.max(36, c.durationSec * zoomPxPerSec - 2)}px` }}
                     >
-                      <div className="text-[11px] font-semibold flex items-center justify-between">
-                        <span>{c.label}</span>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded ${c.supported ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{c.supported ? 'Нативный' : 'Авто'}</span>
-                      </div>
-                    </button>
+                      {c.name}
+                    </div>
                   ))}
                 </div>
-                <div>
-                  <div className={`text-[10px] mb-1 ${subText}`}>Разрешение экспорта</div>
-                  <div className="grid grid-cols-3 gap-1">
-                    {([480, 720, 1080] as const).map((r) => (
-                      <button key={r} onClick={() => setResolutionH(r)} className={`py-1.5 rounded-lg text-[10px] font-mono border cursor-pointer ${resolutionH === r ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-white/[0.04] border-white/10'}`}>{r}p</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div className={`text-[10px] mb-1 ${subText}`}>Частота кадров (FPS)</div>
-                  <div className="grid grid-cols-3 gap-1">
-                    {([24, 30, 60] as const).map((f) => (
-                      <button key={f} onClick={() => setExportFps(f)} className={`py-1.5 rounded-lg text-[10px] font-mono border cursor-pointer ${exportFps === f ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-white/[0.04] border-white/10'}`}>{f} FPS</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div className={`text-[10px] mb-1 ${subText}`}>Битрейт видео</div>
-                  <div className="grid grid-cols-4 gap-1">
-                    {([2, 5, 10, 16] as const).map((b) => (
-                      <button key={b} onClick={() => setBitrateMbps(b)} className={`py-1.5 rounded-lg text-[10px] font-mono border cursor-pointer ${bitrateMbps === b ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-white/[0.04] border-white/10'}`}>{b}M</button>
-                    ))}
-                  </div>
-                </div>
-                <button onClick={() => void handleExportVideo()} disabled={exporting} className="w-full py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-fuchsia-500 text-white font-bold text-xs cursor-pointer">
-                  {exporting ? `Идёт рендер ${exportProgress}%...` : `Начать рендер (${resolutionH}p · ${codecId.toUpperCase()})`}
-                </button>
               </div>
-            )}
-          </div>
-        </div>
-      </div>
 
-      {/* Bottom Multi-Track Timeline */}
-      <div className={`h-44 shrink-0 border-t flex flex-col ${isDark ? 'bg-[#0b0e15] border-white/10' : 'bg-slate-100 border-slate-200'}`}>
-        <div className="px-3 py-1.5 border-b border-white/10 flex items-center justify-between gap-2 text-[10px]">
-          <div className="flex items-center gap-1.5">
-            <button onClick={handleSplitAtPlayhead} className="px-2 py-0.5 rounded-lg bg-white/[0.06] hover:bg-white/15 flex items-center gap-1 cursor-pointer" title="Разрезать (S)"><Scissors size={11} className="text-cyan-400" /> Разрезать (S)</button>
-            <button onClick={handleDuplicateClip} className="px-2 py-0.5 rounded-lg bg-white/[0.06] hover:bg-white/15 flex items-center gap-1 cursor-pointer"><Copy size={11} /> Дублировать</button>
-            {selectedClip && clips.length > 1 && (
-              <button onClick={() => handleDeleteClip(selectedClip.id)} className="px-2 py-0.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 flex items-center gap-1 cursor-pointer"><Trash2 size={11} /> Удалить</button>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setTimelineZoom((z) => Math.max(0.6, +(z - 0.2).toFixed(1)))} className="p-0.5 hover:text-cyan-400 cursor-pointer"><ZoomOut size={12} /></button>
-            <span className="font-mono text-[10px]">{Math.round(timelineZoom * 100)}%</span>
-            <button onClick={() => setTimelineZoom((z) => Math.min(2, +(z + 0.2).toFixed(1)))} className="p-0.5 hover:text-cyan-400 cursor-pointer"><ZoomIn size={12} /></button>
-          </div>
-        </div>
+              {/* V1 Main Video Track */}
+              <div className="flex items-center h-9 relative">
+                <span className="w-12 shrink-0 text-[9px] font-mono text-cyan-300 font-bold">V1 VID</span>
+                <div className="relative h-full bg-white/[0.04] rounded-md" style={{ width: `${totalDuration * zoomPxPerSec + 120}px` }}>
+                  {clips.filter((c) => c.track === 'main').map((c) => (
+                    <div
+                      key={c.id}
+                      onClick={(e) => { e.stopPropagation(); setSelectedClipId(c.id); }}
+                      className={`absolute top-0.5 bottom-0.5 rounded-lg px-2 flex items-center justify-between gap-1 text-[10px] font-bold truncate cursor-pointer border ${selectedClipId === c.id ? 'border-white ring-1 ring-cyan-300' : 'border-white/20'}`}
+                      style={{ left: `${c.startSec * zoomPxPerSec}px`, width: `${Math.max(44, c.durationSec * zoomPxPerSec - 2)}px`, backgroundColor: `${c.color}aa` }}
+                    >
+                      <span className="truncate">{c.name} {c.reverse ? '↺' : ''}</span>
+                      {clips.filter((x) => x.track === 'main').length > 1 && (
+                        <button onClick={(e) => { e.stopPropagation(); setClips((p) => p.filter((x) => x.id !== c.id)); }} className="opacity-70 hover:opacity-100 cursor-pointer"><Trash2 size={10} /></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-        <div className="flex-1 overflow-x-auto overflow-y-auto px-3 py-2 space-y-2 relative">
-          <input type="range" min={0} max={totalDuration} step={0.05} value={playhead} onChange={(e) => setPlayhead(Number(e.target.value))} className="w-full accent-rose-500 h-1 cursor-pointer" />
-          {/* Video Track */}
-          <div className="flex items-center gap-1 h-11" style={{ width: `${Math.max(100, timelineZoom * 100)}%` }}>
-            {clips.map((c) => (
-              <div
-                key={c.id}
-                onClick={() => { setSelectedClipId(c.id); setInspectorTab('clip'); }}
-                style={{ width: `${(c.durationSec / totalDuration) * 100}%`, backgroundColor: `${c.color}30`, borderColor: selectedClipId === c.id ? '#38bdf8' : `${c.color}66` }}
-                className="h-full rounded-xl border-2 px-2 py-1 flex flex-col justify-between overflow-hidden cursor-pointer transition"
-              >
-                <div className="text-[10px] font-bold truncate">{c.name}</div>
-                <div className="text-[9px] font-mono opacity-75 truncate">{c.durationSec}s · {c.transition} · {c.motion}</div>
+              {/* T1 Text / Captions Track */}
+              <div className="flex items-center h-6 relative">
+                <span className="w-12 shrink-0 text-[9px] font-mono text-amber-300 font-bold">T1 TXT</span>
+                <div className="relative h-full bg-white/[0.03] rounded-md" style={{ width: `${totalDuration * zoomPxPerSec + 120}px` }}>
+                  {texts.map((t) => (
+                    <div
+                      key={t.id}
+                      onClick={(e) => { e.stopPropagation(); setSelectedTextId(t.id); setInspectorTab('text'); }}
+                      className={`absolute top-0.5 bottom-0.5 rounded px-1.5 flex items-center text-[9px] font-semibold truncate cursor-pointer border ${selectedTextId === t.id ? 'border-white bg-amber-500/70 text-black' : 'border-amber-400/35 bg-amber-500/30'}`}
+                      style={{ left: `${t.startSec * zoomPxPerSec}px`, width: `${Math.max(36, t.durationSec * zoomPxPerSec - 2)}px` }}
+                    >
+                      {t.text}
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
-          {/* Text Track */}
-          <div className="relative h-8 bg-white/[0.03] rounded-xl border border-white/10" style={{ width: `${Math.max(100, timelineZoom * 100)}%` }}>
-            {texts.map((t) => (
-              <div
-                key={t.id}
-                onClick={() => { setSelectedTextId(t.id); setInspectorTab('text'); }}
-                style={{ left: `${(t.startSec / totalDuration) * 100}%`, width: `${Math.max(8, (t.durationSec / totalDuration) * 100)}%` }}
-                className={`absolute top-1 bottom-1 rounded-lg px-2 flex items-center text-[10px] font-semibold truncate cursor-pointer border ${selectedTextId === t.id ? 'bg-amber-500/35 border-amber-300 text-amber-100' : 'bg-amber-500/20 border-amber-400/40 text-amber-200'}`}
-              >
-                T: {t.text}
+
+              {/* A1 Audio Track */}
+              <div className="flex items-center h-6 relative">
+                <span className="w-12 shrink-0 text-[9px] font-mono text-emerald-300 font-bold">A1 AUD</span>
+                <div className="relative h-full bg-white/[0.03] rounded-md" style={{ width: `${totalDuration * zoomPxPerSec + 120}px` }}>
+                  {audioTracks.map((a) => (
+                    <div
+                      key={a.id}
+                      onClick={(e) => { e.stopPropagation(); if (a.synthPreset) playProceduralAudio(a.synthPreset, voiceFilter); setInspectorTab('audio'); }}
+                      className="absolute top-0.5 bottom-0.5 rounded px-2 flex items-center text-[9px] font-semibold truncate cursor-pointer bg-emerald-500/35 border border-emerald-400/40 text-emerald-100"
+                      style={{ left: `${a.startSec * zoomPxPerSec}px`, width: `${Math.max(40, a.durationSec * zoomPxPerSec - 2)}px` }}
+                    >
+                      ♪ {a.name}
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

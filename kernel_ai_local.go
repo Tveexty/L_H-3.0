@@ -93,18 +93,18 @@ func RunLumaLocalAI(messages []AIChatMessage, mode, verbosity string, kernel *Lu
 
 	switch normMode {
 	case "code":
-		modelName = "Luma Code 2.0"
+		modelName = "Luma Code 3.0"
 		reply = generateCoderReply(prompt, low, isEnglish, kernel, prevAssistant)
 	case "language":
-		modelName = "Luma Lang 2.0"
+		modelName = "Luma Lang 3.0"
 		reply = generateLanguageReply(prompt, low, isEnglish, kernel, false, prevAssistant)
 	default:
-		// Auto / Hybrid 2.0 smart router
+		// Auto / Hybrid 3.0 smart router
 		if (isExplicitCodeRequest(low) || looksLikePastedCode(prompt)) && !isKnowledgeQuestion(low) {
-			modelName = "Luma Code 2.0 (Auto)"
+			modelName = "Luma Code 3.0 (Auto)"
 			reply = generateCoderReply(prompt, low, isEnglish, kernel, prevAssistant)
 		} else {
-			modelName = "Luma Lang 2.0 (Auto)"
+			modelName = "Luma Lang 3.0 (Auto)"
 			reply = generateLanguageReply(prompt, low, isEnglish, kernel, true, prevAssistant)
 		}
 	}
@@ -337,7 +337,12 @@ func generateLanguageReply(prompt, low string, isEn bool, kernel *LumaKernel, al
 		return fmt.Sprintf("Текущее системное время: **%s** · Дата: **%s** (%s).", now.Format("15:04:05"), now.Format("02.01.2006"), weekdaysRu[now.Weekday()])
 	}
 
-	// 4. Writing Studio: Emails, Project Plans, Checklists, Summaries, Pros & Cons, Comparisons
+	// 4. Luma AI 3.0 Enhanced Intelligence (Live Translation, Text Summarizer/Fixer, Loan Calc, Practical Guides, Side-by-Side Comparisons)
+	if ai30Reply, ok := tryLumaAI30Enhanced(prompt, low, isEn, prevAssistant); ok {
+		return ai30Reply
+	}
+
+	// 4b. Writing Studio: Emails, Project Plans, Checklists, Summaries, Pros & Cons, Comparisons
 	if wr, ok := tryGenerateStructuredWriting(prompt, low, isEn); ok {
 		return wr
 	}
@@ -348,9 +353,9 @@ func generateLanguageReply(prompt, low string, isEn bool, kernel *LumaKernel, al
 	}
 	if expr, val, ok := tryEvalSmartMath(prompt); ok {
 		if isEn {
-			return fmt.Sprintf("### Luma Lang 2.0 · Calculation\n\n`%s` = **%s**", expr, formatFloatClean(val))
+			return fmt.Sprintf("### Luma Lang 3.0 · Calculation\n\n`%s` = **%s**", expr, formatFloatClean(val))
 		}
-		return fmt.Sprintf("### Luma Lang 2.0 · Результат вычисления\n\n`%s` = **%s**", expr, formatFloatClean(val))
+		return fmt.Sprintf("### Luma Lang 3.0 · Результат вычисления\n\n`%s` = **%s**", expr, formatFloatClean(val))
 	}
 
 	// 6. Unit Converter (km/mi, C/F, kg/lb, GB/MB, m/s <-> km/h)
@@ -373,62 +378,59 @@ func generateLanguageReply(prompt, low string, isEn bool, kernel *LumaKernel, al
 		return kbReply
 	}
 
-	// 9. Live Wikipedia Knowledge Lookup
-	if topic := extractKnowledgeTopic(prompt, low); topic != "" {
-		if wikiReply, ok := fetchWikipediaSummary(topic, isEn); ok {
-			return wikiReply
-		}
-	}
-
-	// 10. Luma OS 1.5.1 Capabilities & Help
+	// 9. Luma OS 1.5.2 Capabilities & Help
 	if containsAny(low, "luma", "лума", "горяч", "клавиш", "hotkey", "помощ", "help", "что ты умеешь", "что ты можешь", "what can you do", "возможност") {
-		return "### Luma AI 2.0 — Два обновлённых интеллектуальных движка\n\n" +
-			"В **Luma OS 1.5.1 (Carbon)** работают две усиленные нейромодели с контекстной памятью диалога:\n\n" +
-			"1. **Luma Lang 2.0 (`Языковая`)** — энциклопедические ответы + глубокий поиск Wikipedia, составление планов, писем, чеклистов и сравнений, решение уравнений и сложной математики, конвертер величин и глубокая диагностика вашего ПК.\n" +
-			"2. **Luma Code 2.0 (`Кодер`)** — статический анализ и ревью вашего кода (поиск багов, уязвимостей и узких мест), 45+ готовых архитектурных шаблонов на `Python`, `TypeScript`, `React`, `Go`, `Rust`, `C++`, `C#`, `SQL`, `HTML/CSS`, `Docker`, `PowerShell`, `Bash` + кнопка быстрого открытия в **Luma Code Studio**.\n\n" +
-			"- Поддерживается контекст диалога: просто напишите *«подробнее»*, *«короче»*, *«добавь тесты»* или *«перепиши на Go»*.\n" +
-			"- Также можно подключить облачные API (**Gemini**, **OpenAI**, **Claude**, **DeepSeek**, **Ollama**)."
+		return "### Luma AI 3.0 — Интеллектуальный движок уровня AI Overview (без API)\n\n" +
+			"В **Luma OS 1.5.2 (Carbon · Ядро 1.4.5)** работают три объединённых модуля с памятью диалога:\n\n" +
+			"1. **Luma Lang 3.0 + Live Knowledge Synthesis** — синтезирует структурированные ответы по любым темам из энциклопедии, Wikipedia и веб-знаний, переводит тексты (`переведи на английский: ...`), сокращает/проверяет вставленные тексты, считает кредиты/математику/уравнения и помогает с настройкой ПК.\n" +
+			"2. **Luma Code 3.0 (`Кодер`)** — статический поиск багов и ревью кода, 45+ шаблонов на `Python`, `TypeScript`, `React`, `Go`, `Rust`, `C++`, `C#`, `SQL`, `HTML/CSS`, `Docker`, `PowerShell`, `Bash`.\n" +
+			"3. **Диагностика и облако** — живой анализ вашего ПК (CPU/RAM/GPU/батарея) + опциональное подключение **Gemini / OpenAI / Claude / DeepSeek / Ollama**."
 	}
 
-	// 11. Greetings & Small Talk
+	// 10. Greetings & Small Talk
 	if containsAny(low, "привет", "здравств", "хай", "hello", "hi ", "hey", "салют", "добрый", "доброе утро", "добрый вечер") || low == "hi" {
 		if isEn {
-			return "Hello! I'm **Luma Lang 2.0** inside Luma OS `1.5.1 (Carbon)`.\n\nAsk me to explain any topic, draft a plan/email/checklist, solve equations, inspect your PC's health, or switch to **Luma Code 2.0** for code generation & live code review!"
+			return "Hello! I'm **Luma AI 3.0** inside Luma OS `1.5.2 (Carbon · Kernel 1.4.5)`.\n\nAsk me anything — factual questions, translations, text summaries, comparisons (`A vs B`), math/finance, PC troubleshooting, or paste code for review!"
 		}
-		return "Привет! Я **Luma Lang 2.0** — обновлённая языковая модель в Luma OS `1.5.1 (Carbon)`.\n\nПопробуйте спросить:\n- *«Составь план изучения Python за 30 дней»* или *«Напиши деловое письмо»*\n- *«Кто такой Пушкин?»* или *«Реши 2x^2 - 5x + 2 = 0»*\n- *«Проанализируй мой ПК и безопасность»*\n- Или вставьте любой код — **Luma Code 2.0** найдёт ошибки и предложит оптимизации!"
+		return "Привет! Я **Luma AI 3.0** в Luma OS `1.5.2 (Carbon · Ядро 1.4.5)`.\n\nСпрашивайте что угодно:\n- Любые вопросы по науке, истории, технологиям, играм и жизни *(живой синтез ответа как AI Overview)*\n- *«Переведи на английский: ...»*, *«Сократи текст: ...»*, *«Сравни RTX 4060 и 4070»*\n- *«Кредит 500000 на 24 мес под 16%»* или *«Реши 2x^2 - 5x + 2 = 0»*\n- *«Как поднять FPS»*, *«Проанализируй мой ПК»* или вставьте любой код для поиска ошибок!"
 	}
 
 	if containsAny(low, "спасибо", "благодар", "thanks", "thank you", "круто", "отлично", "молодец") {
 		if isEn {
 			return "You're welcome! Ask a follow-up anytime — I remember our conversation context."
 		}
-		return "Пожалуйста! Если нужно углубить ответ, составить план или разобрать код — просто напишите."
+		return "Пожалуйста! Если нужно углубить ответ, сравнить варианты или разобрать код — просто напишите."
 	}
 
 	if containsAny(low, "как дела", "как ты", "how are you") {
 		if isEn {
-			return "Running at peak speed on **LumaCore 1.6.1** with Luma AI 2.0 active! What shall we build or explore?"
+			return "Running at peak speed on **LumaCore 1.4.5** with **Luma AI 3.0** active! What shall we explore or build?"
 		}
-		return "Отлично! Работаю на обновлённом ядре **LumaCore 1.6.1** с движком **Luma AI 2.0**. Чем займёмся — разберём тему, напишем план, проверим ПК или соберём код?"
+		return "Отлично! Работаю на ядре **LumaCore 1.4.5** с движком **Luma AI 3.0**. Чем займёмся — разберём любую тему, переведём текст, проверим ПК или напишем код?"
 	}
 
-	// 12. Auto-mode fallback to Code 2.0
+	// 11. Auto-mode fallback to Code 3.0
 	if allowAutoCodeFallback && (isExplicitCodeRequest(low) || looksLikePastedCode(prompt)) {
 		return generateCoderReply(prompt, low, isEn, kernel, prevAssistant)
 	}
 
-	// 13. Last-chance Wikipedia lookup for short queries
-	if len(strings.Fields(prompt)) <= 6 && len([]rune(prompt)) >= 3 {
-		if wikiReply, ok := fetchWikipediaSummary(strings.Trim(prompt, "?!.,\"'«» "), isEn); ok {
+	// 12. Live Dual-Source Web Overview Synthesis (Wikipedia Full Search + DuckDuckGo Instant Answer!)
+	if webOverview, ok := answerWithLiveWebOverview(prompt, low, isEn); ok {
+		return webOverview
+	}
+
+	// 13. Classic Wikipedia summary fallback
+	if topic := extractKnowledgeTopic(prompt, low); topic != "" {
+		if wikiReply, ok := fetchWikipediaSummary(topic, isEn); ok {
 			return wikiReply
 		}
 	}
 
 	// 14. Clean fallback
 	if isEn {
-		return fmt.Sprintf("### Luma Lang 2.0\n\nI couldn't find an exact offline or Wikipedia match for *\"%s\"*.\n\n- Try **\"What is ...\"**, **\"Make a plan for ...\"**, **\"Write an email about ...\"**, or paste code for review\n- Switch to **Luma Code 2.0** for programming & architecture tasks.", prompt)
+		return fmt.Sprintf("### Luma AI 3.0\n\nI couldn't retrieve a live match for *\"%s\"* right now (offline or very specific query).\n\n- Try rephrasing with key terms, **\"Compare A and B\"**, **\"Translate to ...\"**, **\"Make a plan for ...\"**, or paste code for review\n- You can also connect **Gemini / OpenAI / Claude / Ollama** in AI Settings.", prompt)
 	}
-	return fmt.Sprintf("### Luma Lang 2.0\n\nПо запросу *«%s»* не нашлось точной статьи в локальной базе и Wikipedia.\n\n- Попробуйте: *«Что такое ...»*, *«Составь план ...»*, *«Напиши письмо ...»*, *«Сравни A и B»*\n- Для задач программирования и ревью кода переключитесь на **Luma Code 2.0**\n- Для свободных творческих бесед также можно подключить **Gemini / OpenAI / Claude / DeepSeek / Ollama**.", prompt)
+	return fmt.Sprintf("### Luma AI 3.0\n\nПо запросу *«%s»* не удалось получить точную справку (возможно, нет сети или слишком редкая формулировка).\n\n- Попробуйте уточнить тему ключевыми словами: *«Что такое ...»*, *«Сравни A и B»*, *«Переведи на английский: ...»*, *«Составь план ...»*, *«Как поднять FPS»*\n- Для программирования и поиска ошибок вставьте код — сработает **Luma Code 3.0**\n- Также можно подключить облачную модель (**Gemini / OpenAI / Claude / DeepSeek / Ollama**) в Настройках ИИ.", prompt)
 }
 
 func tryGenerateStructuredWriting(prompt, low string, isEn bool) (string, bool) {

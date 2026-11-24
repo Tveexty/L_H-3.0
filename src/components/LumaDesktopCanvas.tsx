@@ -76,7 +76,12 @@ import {
   WidgetShape,
   WidgetVariantDef,
 } from './LumaWidgetCatalog';
-import { CustomUserWidgetSpec, evalCustomWidgetScript } from './LumaCustomWidgetBuilder';
+import {
+  computeCustomWidgetOutput,
+  CustomUserWidgetSpec,
+  CustomWidgetActionType,
+  renderCustomLucideIcon,
+} from './LumaCustomWidgetBuilder';
 import { SmartContextMenu } from './SmartContextMenu';
 
 export { DESKTOP_WIDGET_CATALOG };
@@ -1384,21 +1389,143 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
     onConsumePendingCustomWidget?.();
   }, [pendingCustomWidget, onConsumePendingCustomWidget, onPushToast]);
 
+  const runSingleCustomAction = (actionType?: CustomWidgetActionType, target?: string, args?: string, openInNewTab = true) => {
+    if (!actionType || actionType === 'none') return;
+    const t = (target || '').trim();
+    switch (actionType) {
+      case 'launch_pc_app': {
+        if (!t) return;
+        const foundApp = apps.find((a) => a.id === t || a.name.toLowerCase() === t.toLowerCase() || a.url === t);
+        if (foundApp) {
+          onLaunchApp(foundApp);
+          return;
+        }
+        fetch('/api/kernel/apps/launch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ exec_path: t, name: t, args: args || '' }),
+        }).catch(() => {});
+        onPushToast('Запуск приложения', `Открываю: ${t}`, 'success');
+        break;
+      }
+      case 'open_luma_app': {
+        if (!t) return;
+        onOpenSystemWindow(t as DesktopSystemWinId);
+        break;
+      }
+      case 'open_url': {
+        if (!t) return;
+        const url = /^https?:\/\//i.test(t) ? t : `https://${t}`;
+        if (openInNewTab) window.open(url, '_blank', 'noopener,noreferrer');
+        else window.location.href = url;
+        break;
+      }
+      case 'open_folder': {
+        if (!t) return;
+        fetch('/api/kernel/open-path', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: t }),
+        }).catch(() => {});
+        onPushToast('Открыто', t, 'info');
+        break;
+      }
+      case 'run_terminal': {
+        if (!t) return;
+        onRunTerminalCommand(t);
+        break;
+      }
+      case 'media_control': {
+        if (t === 'next') onNextTrack();
+        else if (t === 'prev') onPrevTrack();
+        else onToggleMediaPlay();
+        break;
+      }
+      case 'copy_text': {
+        if (t) navigator.clipboard?.writeText(t).catch(() => {});
+        onPushToast('Буфер обмена', 'Текст скопирован', 'success');
+        break;
+      }
+      case 'show_toast': {
+        onPushToast('Виджет Luma', t || 'Действие выполнено', 'info');
+        break;
+      }
+      case 'run_js': {
+        if (!t) return;
+        try {
+          // eslint-disable-next-line no-new-func
+          new Function('toast', t)((msg: string) => onPushToast('JS-виджет', String(msg), 'info'));
+        } catch (err) {
+          onPushToast('Ошибка JS', err instanceof Error ? err.message : String(err), 'warning');
+        }
+        break;
+      }
+      case 'system_action': {
+        if (t === 'toggle_theme') onToggleTheme();
+        else if (t === 'toggle_dnd') onToggleDnd();
+        else if (t === 'toggle_mute') onToggleMute();
+        else if (t === 'lock_screen') onPowerAction('lock');
+        else if (t === 'sleep_pc') onPowerAction('sleep');
+        else if (t === 'screenshot') {
+          fetch('/api/kernel/capture/screenshot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
+          onPushToast('Скриншот', 'Снимок экрана сохранён', 'success');
+        } else if (t === 'volume_up' || t === 'volume_down') {
+          const nextVol = Math.max(0, Math.min(100, volume + (t === 'volume_up' ? 10 : -10)));
+          fetch('/api/kernel/audio/volume', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ volume: nextVol }) }).catch(() => {});
+        } else if (t === 'power_performance' || t === 'power_saver') {
+          fetch('/api/kernel/power/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan: t === 'power_performance' ? 'performance' : 'powersaver' }) }).catch(() => {});
+          onPushToast('План питания', t === 'power_performance' ? 'Максимум производительности' : 'Энергосбережение', 'success');
+        } else if (t === 'clean_temp') {
+          fetch('/api/kernel/optimize', { method: 'POST' }).catch(() => {});
+          onPushToast('Оптимизация', 'Память и кэш очищены', 'success');
+        } else if (t === 'toggle_gaming') {
+          window.dispatchEvent(new CustomEvent('luma-custom-sys-action', { detail: { action: t } }));
+          onPushToast('Игровой режим', 'Переключено', 'success');
+        } else {
+          window.dispatchEvent(new CustomEvent('luma-custom-sys-action', { detail: { action: t } }));
+        }
+        break;
+      }
+    }
+  };
+
+  const executeCustomSpecClick = (spec?: CustomUserWidgetSpec, isDouble = false) => {
+    if (!spec) return false;
+    if (isDouble && spec.doubleClickActionType && spec.doubleClickActionType !== 'none') {
+      runSingleCustomAction(spec.doubleClickActionType, spec.doubleClickTarget, spec.doubleClickArgs, spec.openInNewTab ?? true);
+      return true;
+    }
+    const hasPrimary = spec.clickActionType && spec.clickActionType !== 'none';
+    const hasChain = Array.isArray(spec.chainedActions) && spec.chainedActions.length > 0;
+    if (!hasPrimary && !hasChain) return false;
+    if (spec.clickConfirm && !window.confirm(`Выполнить действие виджета «${spec.title}»?`)) return true;
+    if (hasPrimary) {
+      runSingleCustomAction(spec.clickActionType, spec.clickTarget, spec.clickArgs, spec.openInNewTab ?? true);
+    }
+    if (hasChain) {
+      spec.chainedActions!.forEach((st, idx) => {
+        window.setTimeout(() => runSingleCustomAction(st.actionType, st.target, st.args, spec.openInNewTab ?? true), idx * 140);
+      });
+    }
+    return true;
+  };
+
   const addWidgetVariantAt = (def: WidgetCatalogDef, variant: WidgetVariantDef, col: number, row: number) => {
-    if (def.type === 'luma_custom_widget' && onOpenCustomWidgetBuilder) {
+    const actualType = variant.targetWidgetType || def.type;
+    if (actualType === 'luma_custom_widget' && onOpenCustomWidgetBuilder) {
       setPickerModal(null);
       onOpenCustomWidgetBuilder();
       return;
     }
-    const id = `w_${def.type}_${Date.now()}`;
+    const id = `w_${actualType}_${Date.now()}`;
     const c = Math.max(1, Math.min(gridCols - variant.w + 1, col));
     const r = Math.max(1, Math.min(totalRows - variant.h + 1, row));
     setWidgets((prev) => [
       ...prev,
       {
         id,
-        widgetType: def.type,
-        title: def.title,
+        widgetType: actualType,
+        title: variant.targetWidgetType ? variant.label : def.title,
         group: def.group,
         col: c,
         row: r,
@@ -3080,100 +3207,238 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
       case 'luma_custom_widget': {
         const spec = w.customSpec;
         const hhmm = now.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
-        const out = spec
-          ? evalCustomWidgetScript(spec.scriptCode, {
-              telemetry: {
-                cpu_percent: liveSystem?.cpu_percent,
-                ram_percent: liveSystem?.ram_percent,
-                ram_used_gb: liveSystem?.ram_used_gb,
-                ram_total_gb: liveSystem?.ram_total_gb,
-                gpu_percent: liveSystem?.gpu_percent,
-                gpu_temp_c: liveSystem?.gpu_temp_c,
-                battery_pct: liveSystem?.battery_percent,
-                battery_charging: liveSystem?.battery_charging,
-              },
-              wireless: wirelessBatteries.map((d) => ({
-                name: d.name,
-                battery_percent: d.battery_percent,
-                device_type: d.device_type,
-                transport: d.transport,
-              })),
-              time: {
-                hhmm,
-                seconds: String(now.getSeconds()).padStart(2, '0'),
-                dateStr: now.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' }),
-                hour: now.getHours(),
-              },
-              weather: { temp: weather.temp, desc: weather.label, city: weather.city },
-            })
-          : { headline: w.title, value: 'Carbon Studio', subtitle: 'Нажмите ✎ чтобы настроить скрипт и фото' };
-        const accent = spec?.accentColor || accentHex || '#22d3ee';
+        const out = computeCustomWidgetOutput(spec, {
+          telemetry: {
+            cpu_percent: liveSystem?.cpu_percent,
+            ram_percent: liveSystem?.ram_percent,
+            ram_used_gb: liveSystem?.ram_used_gb,
+            ram_total_gb: liveSystem?.ram_total_gb,
+            gpu_percent: liveSystem?.gpu_percent,
+            gpu_temp_c: liveSystem?.gpu_temp_c,
+            battery_pct: liveSystem?.battery_percent,
+            battery_charging: liveSystem?.battery_charging,
+          },
+          wireless: wirelessBatteries.map((d) => ({
+            name: d.name,
+            battery_percent: d.battery_percent,
+            device_type: d.device_type,
+            transport: d.transport,
+          })),
+          time: {
+            hhmm,
+            seconds: String(now.getSeconds()).padStart(2, '0'),
+            dateStr: now.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' }),
+            hour: now.getHours(),
+          },
+          weather: { temp: weather.temp, desc: weather.label, city: weather.city },
+        });
+        const isAlert =
+          spec?.alertEnabled &&
+          typeof out.numericValue === 'number' &&
+          ((spec.alertCondition === 'lt' && out.numericValue < (spec.alertThreshold ?? 20)) ||
+            (spec.alertCondition !== 'lt' && out.numericValue > (spec.alertThreshold ?? 85)));
+        const accent = isAlert ? spec?.alertColor || '#f43f5e' : spec?.accentColor || accentHex || '#22d3ee';
+        const bgMode = spec?.bgMode || (spec?.bgImage ? 'image' : 'glass');
+        const bgStyle: React.CSSProperties = {
+          padding: `${spec?.padding ?? 14}px`,
+          fontFamily: spec?.fontFamily === 'mono' ? 'ui-monospace, monospace' : spec?.fontFamily === 'serif' ? 'Georgia, serif' : undefined,
+          background:
+            bgMode === 'gradient'
+              ? `linear-gradient(${spec?.bgGradientAngle ?? 135}deg, ${spec?.bgGradientFrom || '#0ea5e9'}, ${spec?.bgGradientTo || '#6366f1'})`
+              : bgMode === 'animated_mesh'
+              ? `radial-gradient(circle at 15% 20%, ${spec?.bgGradientFrom || '#0ea5e9'}cc, transparent 55%), radial-gradient(circle at 85% 80%, ${spec?.bgGradientTo || '#a855f7'}cc, #0b0f1a 70%)`
+              : bgMode === 'transparent'
+              ? 'transparent'
+              : bgMode === 'solid'
+              ? spec?.bgColor || '#0f131c'
+              : `rgba(15,18,26,${(spec?.bgOpacity ?? 80) / 100})`,
+          boxShadow: spec?.glowRadius ? `inset 0 0 ${spec.glowRadius}px ${spec.glowColor || accent}55` : undefined,
+        };
         return (
-          <div className="relative h-full w-full -m-3.5 p-3.5 overflow-hidden text-white flex flex-col justify-between">
-            {spec?.bgImage && (
+          <div
+            onDoubleClick={(e) => {
+              if (!editMode && executeCustomSpecClick(spec, true)) {
+                e.stopPropagation();
+              }
+            }}
+            className={`relative h-full w-full overflow-hidden text-white flex flex-col justify-between ${
+              isAlert && spec?.alertPulse ? 'animate-pulse' : ''
+            }`}
+            style={bgStyle}
+          >
+            {bgMode === 'image' && spec?.bgImage && (
               <img
                 src={spec.bgImage}
                 alt=""
-                className="pointer-events-none absolute inset-0 w-full h-full object-cover"
+                className="pointer-events-none absolute inset-0 w-full h-full"
                 style={{
-                  opacity: (spec.bgOpacity ?? 75) / 100,
-                  filter: spec.bgBlur ? `blur(${spec.bgBlur * 0.35}px)` : undefined,
+                  objectFit: spec.bgFit || 'cover',
+                  objectPosition: `${spec.bgPosX ?? 50}% ${spec.bgPosY ?? 50}%`,
+                  transform: spec.bgZoom && spec.bgZoom !== 100 ? `scale(${spec.bgZoom / 100})` : undefined,
+                  opacity: (spec.bgOpacity ?? 80) / 100,
+                  filter: `blur(${(spec.bgBlur || 0) * 0.35}px) brightness(${spec.bgBrightness ?? 100}%) contrast(${spec.bgContrast ?? 100}%) saturate(${spec.bgSaturate ?? 110}%) grayscale(${spec.bgGrayscale ?? 0}%)`,
                 }}
               />
             )}
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-black/55 via-black/35 to-black/70" />
-            <div className="relative z-10 flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider opacity-85 truncate">
-                {out.headline || w.title}
-              </span>
-              <div className="flex items-center gap-1 shrink-0">
-                {out.badge && (
+            {(spec?.imageOverlayGradient || 'dark') !== 'none' && (
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    spec?.imageOverlayGradient === 'bottom'
+                      ? 'linear-gradient(to top, rgba(0,0,0,0.82), rgba(0,0,0,0.12) 55%, transparent)'
+                      : spec?.imageOverlayGradient === 'soft'
+                      ? 'linear-gradient(135deg, rgba(0,0,0,0.28), rgba(0,0,0,0.45))'
+                      : 'linear-gradient(135deg, rgba(0,0,0,0.52), rgba(0,0,0,0.32), rgba(0,0,0,0.68))',
+                }}
+              />
+            )}
+
+            <div
+              className={`relative z-10 flex flex-col h-full justify-between gap-1.5 ${
+                spec?.contentAlign === 'center' ? 'items-center text-center' : spec?.contentAlign === 'right' ? 'items-end text-right' : 'items-start text-left'
+              }`}
+              style={{ textShadow: (spec?.textShadow ?? true) ? '0 1px 8px rgba(0,0,0,0.6)' : undefined }}
+            >
+              {(spec?.showHeader ?? true) && (
+                <div className="w-full flex items-center justify-between gap-1.5">
                   <span
-                    className="text-[9px] font-mono px-1.5 py-0.5 rounded-full font-bold"
-                    style={{ backgroundColor: `${accent}33`, color: accent, border: `1px solid ${accent}55` }}
-                  >
-                    {out.badge}
-                  </span>
-                )}
-                {onOpenCustomWidgetBuilder && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenCustomWidgetBuilder(w.id, spec);
+                    className={`truncate ${(spec?.titleUppercase ?? true) ? 'uppercase' : ''}`}
+                    style={{
+                      fontSize: `${spec?.titleSize ?? 10}px`,
+                      color: spec?.titleColor || '#ffffff',
+                      fontWeight: spec?.titleWeight === 'black' ? 900 : spec?.titleWeight === 'bold' ? 700 : 600,
                     }}
-                    title="Редактировать фото и JS-скрипт виджета"
-                    className="p-1 rounded-lg bg-black/45 hover:bg-black/75 text-white/80 hover:text-white cursor-pointer"
                   >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="relative z-10 my-auto">
-              <div className="text-xl sm:text-2xl font-black tracking-tight leading-none truncate">
-                {out.error ? 'Ошибка JS' : out.value || '—'}
-              </div>
-              <div className="text-[10px] text-white/75 mt-1 truncate">
-                {out.error || out.subtitle || ''}
-              </div>
-            </div>
-            {typeof out.progress === 'number' && (
-              <div className="relative z-10 w-full h-1.5 rounded-full bg-white/15 overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${out.progress}%`, backgroundColor: accent }} />
-              </div>
-            )}
-            {out.rows && out.rows.length > 0 && (
-              <div className="relative z-10 pt-1 border-t border-white/15 space-y-0.5">
-                {out.rows.slice(0, 3).map((r, i) => (
-                  <div key={i} className="flex items-center justify-between text-[10px]">
-                    <span className="text-white/70 truncate">{r.label}</span>
-                    <span className="font-mono font-bold" style={{ color: accent }}>
-                      {r.value}
-                    </span>
+                    {out.headline || w.title}
+                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {(spec?.showBadge ?? true) && out.badge && (
+                      <span
+                        className="text-[9px] font-mono px-1.5 py-0.5 rounded-full font-bold"
+                        style={{ backgroundColor: `${accent}33`, color: accent, border: `1px solid ${accent}55` }}
+                      >
+                        {out.badge}
+                      </span>
+                    )}
+                    {onOpenCustomWidgetBuilder && (spec?.showEditPencil ?? true) && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenCustomWidgetBuilder(w.id, spec);
+                        }}
+                        title="Редактировать виджет (115+ опций)"
+                        className="p-1 rounded-lg bg-black/45 hover:bg-black/75 text-white/80 hover:text-white cursor-pointer"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
-                ))}
+                </div>
+              )}
+
+              <div className={`w-full flex items-center gap-2.5 my-auto ${spec?.contentAlign === 'center' ? 'flex-col justify-center' : ''}`}>
+                {(spec?.showIcon ?? false) && spec?.iconType && spec.iconType !== 'none' && (
+                  <div
+                    className={`shrink-0 flex items-center justify-center ${
+                      spec.iconBgShape === 'circle' ? 'rounded-full p-2' : spec.iconBgShape === 'squircle' ? 'rounded-2xl p-2' : spec.iconBgShape === 'square' ? 'rounded-md p-2' : ''
+                    }`}
+                    style={{
+                      backgroundColor:
+                        spec.iconBgShape && spec.iconBgShape !== 'none'
+                          ? `${spec.iconBgColor || accent}${Math.round(((spec.iconBgOpacity ?? 18) / 100) * 255)
+                              .toString(16)
+                              .padStart(2, '0')}`
+                          : undefined,
+                    }}
+                  >
+                    {spec.iconType === 'image' && spec.iconImage ? (
+                      <img src={spec.iconImage} alt="" style={{ width: spec.iconSize ?? 24, height: spec.iconSize ?? 24 }} className="object-contain rounded" />
+                    ) : spec.iconType === 'emoji' ? (
+                      <span style={{ fontSize: `${spec.iconSize ?? 24}px`, lineHeight: 1 }}>{spec.iconEmoji || '🚀'}</span>
+                    ) : (
+                      renderCustomLucideIcon(spec.iconName, spec.iconSize ?? 22, spec.iconColor || accent)
+                    )}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  {out.value && (
+                    <div
+                      className="leading-none truncate"
+                      style={{
+                        fontSize: `${spec?.valueSize ?? 22}px`,
+                        color: spec?.valueColor || '#ffffff',
+                        fontWeight: spec?.valueWeight === 'semibold' ? 600 : spec?.valueWeight === 'bold' ? 700 : 900,
+                      }}
+                    >
+                      {out.error ? 'Ошибка JS' : out.value}
+                    </div>
+                  )}
+                  {(spec?.showSubtitle ?? true) && (out.error || out.subtitle) && (
+                    <div className="mt-1 truncate" style={{ fontSize: `${spec?.subtitleSize ?? 10}px`, color: spec?.subtitleColor || '#d4d4d8' }}>
+                      {out.error || out.subtitle}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+
+              {spec?.quickButtons && spec.quickButtons.length > 0 && (
+                <div
+                  className="w-full grid gap-1.5 pt-0.5"
+                  style={{ gridTemplateColumns: `repeat(${spec.buttonColumns || 2}, minmax(0, 1fr))` }}
+                >
+                  {spec.quickButtons.map((btn) => (
+                    <button
+                      key={btn.id}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        runSingleCustomAction(btn.actionType, btn.target, btn.args, spec.openInNewTab ?? true);
+                      }}
+                      className="px-2 py-1 rounded-xl bg-white/14 hover:bg-white/25 border border-white/15 text-[10px] font-semibold truncate text-center transition cursor-pointer"
+                    >
+                      {btn.emoji} {btn.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {(spec?.showProgress ?? true) && spec?.progressStyle !== 'hidden' && typeof out.progress === 'number' && (
+                <div className="w-full">
+                  {spec?.progressStyle === 'segmented' ? (
+                    <div className="grid grid-cols-10 gap-1">
+                      {Array.from({ length: 10 }).map((_, idx) => (
+                        <div
+                          key={idx}
+                          className="rounded-sm"
+                          style={{
+                            height: `${spec.progressHeight ?? 6}px`,
+                            backgroundColor: idx * 10 < (out.progress || 0) ? accent : 'rgba(255,255,255,0.16)',
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="w-full rounded-full bg-white/15 overflow-hidden" style={{ height: `${spec?.progressHeight ?? 6}px` }}>
+                      <div className="h-full rounded-full" style={{ width: `${out.progress}%`, backgroundColor: accent }} />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(spec?.showRows ?? true) && out.rows && out.rows.length > 0 && (
+                <div className="w-full pt-1 border-t border-white/15 space-y-0.5">
+                  {out.rows.slice(0, 3).map((r, i) => (
+                    <div key={i} className="flex items-center justify-between text-[10px]">
+                      <span className="text-white/70 truncate">{r.label}</span>
+                      <span className="font-mono font-bold" style={{ color: accent }}>
+                        {r.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         );
       }
@@ -3553,8 +3818,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         if (variant === 'week_strip') {
           return (
             <div
-              className="h-full w-full -m-3.5 p-3 text-white flex flex-col justify-between relative overflow-hidden"
-              style={{ width: 'calc(100% + 1.75rem)', height: 'calc(100% + 1.75rem)', background: skyGradient }}
+              className="h-full w-full p-3 text-white flex flex-col justify-between relative overflow-hidden"
+              style={{ background: skyGradient }}
             >
               <div className="flex items-center justify-between text-[10px] font-mono relative z-10">
                 <span className="font-bold flex items-center gap-1 truncate">
@@ -3579,8 +3844,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
 
         return (
           <div
-            className="h-full w-full -m-3.5 p-3.5 text-white flex flex-col justify-between relative overflow-hidden"
-            style={{ width: 'calc(100% + 1.75rem)', height: 'calc(100% + 1.75rem)', background: skyGradient }}
+            className="h-full w-full p-3.5 text-white flex flex-col justify-between relative overflow-hidden"
+            style={{ background: skyGradient }}
           >
             {/* Illustrated Scenic Sky & Horizon Vector Artwork */}
             <svg viewBox="0 0 360 170" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 w-full h-full opacity-90">
@@ -4260,6 +4525,23 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           const isSelected = selectedId === w.id;
           const isResizing = resizingTarget?.kind === 'widget' && resizingTarget.id === w.id;
           const shapeCls = getShapeClass(w.shape);
+          const isFullBleed = w.widgetType === 'luma_weather_week' || w.widgetType === 'luma_custom_widget';
+          const customBorderStyle: React.CSSProperties =
+            w.widgetType === 'luma_custom_widget' && w.customSpec
+              ? {
+                  borderRadius: typeof w.customSpec.borderRadius === 'number' ? `${w.customSpec.borderRadius}px` : undefined,
+                  borderWidth: typeof w.customSpec.borderWidth === 'number' ? `${w.customSpec.borderWidth}px` : undefined,
+                  borderStyle: w.customSpec.borderStyle || 'solid',
+                  borderColor: w.customSpec.borderColor
+                    ? `${w.customSpec.borderColor}${Math.round(((w.customSpec.borderOpacity ?? 18) / 100) * 255)
+                        .toString(16)
+                        .padStart(2, '0')}`
+                    : undefined,
+                  boxShadow: w.customSpec.glowRadius
+                    ? `0 0 ${w.customSpec.glowRadius}px ${w.customSpec.glowColor || w.customSpec.accentColor || '#22d3ee'}66`
+                    : undefined,
+                }
+              : {};
 
           return (
             <div
@@ -4283,6 +4565,9 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 }
                 const targetEl = e.target as HTMLElement | null;
                 if (targetEl?.closest('button, input, textarea, select, a')) return;
+                if (w.widgetType === 'luma_custom_widget' && executeCustomSpecClick(w.customSpec, false)) {
+                  return;
+                }
                 setActiveWidgetSettingsId(w.id);
               }}
               onContextMenu={(e) => {
@@ -4300,9 +4585,18 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 gridRow: `${clampedRow} / span ${Math.min(w.h, totalRows)}`,
                 zIndex: isResizing ? 28 : isSelected ? 15 : 5,
                 ...computeWidgetSurfaceStyle(w, isDark, accentHex),
+                ...customBorderStyle,
               }}
-              title={editMode ? `${w.title} (${w.w}×${w.h})` : `${w.title} · Нажмите для настроек виджета`}
-              className={`group relative border ${w.shape === 'circle' ? 'p-2.5' : 'p-3.5'} ${shapeCls} luma-card-lift ${cardCls} ${
+              title={
+                editMode
+                  ? `${w.title} (${w.w}×${w.h})`
+                  : w.widgetType === 'luma_custom_widget' && w.customSpec?.tooltipText
+                  ? w.customSpec.tooltipText
+                  : `${w.title} · Нажмите для настроек виджета`
+              }
+              className={`group relative border ${isFullBleed ? 'p-0 overflow-hidden' : w.shape === 'circle' ? 'p-2.5' : 'p-3.5'} ${shapeCls} luma-card-lift ${
+                isFullBleed ? 'border-white/15 bg-transparent shadow-xl' : cardCls
+              } ${
                 deletingWidgetIds[w.id] ? (deleteAnimStyle === 'harmony7' ? 'luma-delete-harmony7' : 'luma-delete-widget') : ''
               } ${
                 editMode ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
@@ -4314,7 +4608,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                   : ''
               }`}
             >
-              <div className={`w-full h-full overflow-hidden ${shapeCls}`}>{renderWidgetBody(w)}</div>
+              <div className={`w-full h-full overflow-hidden ${isFullBleed ? '' : shapeCls}`}>{renderWidgetBody(w)}</div>
 
               {!editMode && !isResizing && (
                 <button

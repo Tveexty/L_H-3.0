@@ -33,6 +33,7 @@ export interface WidgetVariantDef {
   h: number;
   shape: WidgetShape;
   previewKind: 'circle' | 'square' | 'wide' | 'pill' | 'flip';
+  targetWidgetType?: string;
 }
 
 export interface WidgetCatalogDef {
@@ -77,85 +78,124 @@ export function getShapeClass(shape?: WidgetShape): string {
 export const DESKTOP_WIDGET_CATALOG: WidgetCatalogDef[] = [
   {
     type: 'luma_clock',
-    title: 'Часы и дата',
+    title: 'Часы и мировое время',
     group: 'Основное',
     category: 'clock',
     defaultW: 5,
     defaultH: 3,
     defaultVariant: 'wide_editorial',
     defaultShape: 'squircle',
-    summary: '5 стилей: 18 циферблатов, круглые аналоговые, матричный квадрат, флип и капсула',
+    summary: 'Все 10 стилей часов в одном месте: 18 циферблатов, швейцарский хронограф, стеклянный флип, аналоговый круг, матрица и 3 мировых столицы',
     variants: [
       { id: 'wide_editorial', label: '18 Циферблатов', desc: 'Синхронизация с выбранным стилем часов', w: 5, h: 3, shape: 'squircle', previewKind: 'wide' },
       { id: 'analog_circle', label: 'Аналоговый круг', desc: 'Круглый циферблат со стрелками', w: 3, h: 3, shape: 'circle', previewKind: 'circle' },
-      { id: 'square_matrix', label: 'Квадрат матрица', desc: 'Крупные часы над минутами', w: 3, h: 3, shape: 'squircle', previewKind: 'square' },
+      { id: 'swiss_chrono', label: 'Швейцарский хронограф', desc: 'Прецизионный аналоговый циферблат + дата', w: 4, h: 3, shape: 'circle', previewKind: 'circle', targetWidgetType: 'luma_clock_studio' },
+      { id: 'glass_flip_pro', label: 'Стеклянный Флип Pro', desc: 'Крупное табло с секундами и прогрессом дня', w: 5, h: 3, shape: 'squircle', previewKind: 'flip', targetWidgetType: 'luma_clock_studio' },
       { id: 'split_flip', label: 'Механика Флип', desc: 'Раздельные перекидные табло', w: 4, h: 2, shape: 'sharp', previewKind: 'flip' },
+      { id: 'square_matrix', label: 'Квадрат матрица', desc: 'Крупные часы над минутами', w: 3, h: 3, shape: 'squircle', previewKind: 'square' },
       { id: 'pill_minimal', label: 'Мини-капсула', desc: 'Узкая строка времени и даты', w: 4, h: 1, shape: 'pill', previewKind: 'pill' },
+      { id: 'dual_horizon', label: 'Двойной пояс', desc: 'Местное время и UTC / мировая столица', w: 6, h: 2, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_clock_studio' },
+      { id: 'minimal_editorial', label: 'Мировые часы (3 города)', desc: 'Москва / Лондон / Токио в реальном времени', w: 6, h: 2, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_world_clock' },
+      { id: 'chamfer_cities', label: 'Гранёные пояса', desc: 'Контрастный блок мирового времени', w: 6, h: 2, shape: 'chamfer', previewKind: 'wide', targetWidgetType: 'luma_world_clock' },
     ],
   },
   {
     type: 'luma_battery',
-    title: 'Батарея и питание',
+    title: 'Батарея, питание и периферия',
     group: 'Система',
     category: 'battery',
-    defaultW: 3,
+    defaultW: 6,
     defaultH: 3,
-    defaultVariant: 'circle_ring',
-    defaultShape: 'circle',
-    summary: 'Реальный заряд АКБ: кольцо, квадратная ячейка, полоса или компактная капсула',
+    defaultVariant: 'carbon_ecosystem',
+    defaultShape: 'squircle',
+    summary: 'Все 14 стилей питания в одном месте: АКБ ПК, беспроводные мыши (BT / 2.4GHz), наушники, клавиатуры, здоровье АКБ и кнопки питания',
     variants: [
-      { id: 'circle_ring', label: 'Кольцо заряда', desc: 'Круговой индикатор процентов', w: 3, h: 3, shape: 'circle', previewKind: 'circle' },
+      { id: 'carbon_ecosystem', label: 'Экосистема ПК + Периферия', desc: 'Главное устройство + плитки мышек, гарнитур и BT', w: 6, h: 3, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_power_ecosystem' },
+      { id: 'carbon_compact', label: 'Компактный стек заряда', desc: 'Узкая панель заряда ПК и мыши/гарнитуры', w: 4, h: 2, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_power_ecosystem' },
+      { id: 'circle_ring', label: 'Кольцо заряда ПК', desc: 'Круговой индикатор процентов 3×3', w: 3, h: 3, shape: 'circle', previewKind: 'circle' },
       { id: 'square_cell', label: 'Квадрат ячейка', desc: 'Вертикальный элемент питания', w: 3, h: 3, shape: 'squircle', previewKind: 'square' },
-      { id: 'wide_bar', label: 'Широкая шкала', desc: 'Процент, статус сети и полоса', w: 4, h: 2, shape: 'squircle', previewKind: 'wide' },
+      { id: 'wide_bar', label: 'Широкая шкала АКБ', desc: 'Процент, статус сети и полоса', w: 4, h: 2, shape: 'squircle', previewKind: 'wide' },
       { id: 'pill_compact', label: 'Капсула питания', desc: 'Компактный индикатор 3×1', w: 3, h: 1, shape: 'pill', previewKind: 'pill' },
+      { id: 'beryllium_cards', label: 'Беспроводной хаб 2.4GHz / BT', desc: 'Карточки всех подключённых устройств со шкалами', w: 5, h: 2, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_wireless_hub' },
+      { id: 'pill_wireless', label: 'Лента периферии', desc: 'Узкая строка заряда BT / 2.4GHz 5×1', w: 5, h: 1, shape: 'pill', previewKind: 'pill', targetWidgetType: 'luma_wireless_hub' },
+      { id: 'boron_power_hub', label: 'Энергия Boron (ПК + BT)', desc: 'АКБ ПК + список мышек и клавиатур', w: 5, h: 3, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_battery_boron' },
+      { id: 'boron_rings', label: 'Кольца энергии', desc: 'Кольцевые шкалы ПК и мыши/гарнитуры', w: 5, h: 2, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_battery_boron' },
+      { id: 'lithium_prism', label: 'Аналитика АКБ Pro', desc: 'График разряда, здоровье % и циклы зарядки', w: 5, h: 3, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_battery_pro' },
+      { id: 'chamfer_pro', label: 'Техно-грань АКБ', desc: 'Скошенные углы со статистикой батареи', w: 5, h: 2, shape: 'chamfer', previewKind: 'wide', targetWidgetType: 'luma_battery_pro' },
+      { id: 'default', label: 'Управление питанием', desc: 'Блокировка экрана, Сон и Корзина', w: 5, h: 2, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_power' },
+      { id: 'pill_power', label: 'Капсула действий питания', desc: 'Узкая панель Блок / Сон / Корзина', w: 5, h: 1, shape: 'pill', previewKind: 'pill', targetWidgetType: 'luma_power' },
     ],
   },
   {
     type: 'luma_weather',
-    title: 'Погода (Авто-регион)',
+    title: 'Погода и прогноз на неделю',
     group: 'Основное',
     category: 'weather',
-    defaultW: 5,
-    defaultH: 2,
-    defaultVariant: 'wide_forecast',
+    defaultW: 6,
+    defaultH: 3,
+    defaultVariant: 'scenic_week',
     defaultShape: 'squircle',
-    summary: 'Погода Open-Meteo по вашему городу: широкая карточка, квадрат или круглый радар',
+    summary: 'Все 6 стилей погоды Open-Meteo: живописный прогноз на 7 дней, арт-карточка, недельная лента, широкая карточка, квадрат и круглый радар',
     variants: [
+      { id: 'scenic_week', label: '7 дней + Картинка неба', desc: 'Безрамочный арт-фон погоды и прогноз на неделю', w: 6, h: 3, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_weather_week' },
+      { id: 'scenic_card', label: 'Арт-карточка погоды', desc: 'Крупный пейзаж неба и прогноз на 3 дня', w: 4, h: 3, shape: 'squircle', previewKind: 'square', targetWidgetType: 'luma_weather_week' },
+      { id: 'week_strip', label: 'Недельная лента 7 дней', desc: 'Компактная полоса на неделю 6×2', w: 6, h: 2, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_weather_week' },
       { id: 'wide_forecast', label: 'Широкий прогноз', desc: 'Город, температура, ветер и влажность', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
       { id: 'square_card', label: 'Квадрат погоды', desc: 'Компактная плитка 3×3 с крупной цифрой', w: 3, h: 3, shape: 'squircle', previewKind: 'square' },
       { id: 'circle_radar', label: 'Круглый радар', desc: 'Атмосферный круглый виджет 3×3', w: 3, h: 3, shape: 'circle', previewKind: 'circle' },
     ],
   },
   {
+    type: 'luma_calendar',
+    title: 'Календарь и события',
+    group: 'Основное',
+    category: 'clock',
+    defaultW: 5,
+    defaultH: 3,
+    defaultVariant: 'month_grid',
+    defaultShape: 'squircle',
+    summary: 'Все 4 вида календаря: интерактивная сетка месяца с событиями, повестка дня, листок даты 3×3 и дата с поясами',
+    variants: [
+      { id: 'month_grid', label: 'Сетка месяца + События', desc: 'Дни месяца + клик открывает Календарь', w: 5, h: 3, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_calendar_month' },
+      { id: 'agenda_today', label: 'Сегодня и напоминания', desc: 'Крупная дата + ближайшие события', w: 4, h: 3, shape: 'squircle', previewKind: 'square', targetWidgetType: 'luma_calendar_month' },
+      { id: 'wide_world', label: 'Дата + Мировые пояса', desc: 'Дата и время MSK / LON / TYO', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
+      { id: 'square_date', label: 'Листок даты', desc: 'Крупное число месяца и день недели', w: 3, h: 3, shape: 'squircle', previewKind: 'square' },
+    ],
+  },
+  {
     type: 'luma_media',
-    title: 'Медиаплеер',
+    title: 'Медиаплеер и спектр',
     group: 'Основное',
     category: 'media',
     defaultW: 6,
     defaultH: 2,
     defaultVariant: 'wide_deck',
     defaultShape: 'squircle',
-    summary: 'Управление реальной музыкой ОС: широкая дека, виниловый круг или квадратная обложка',
+    summary: 'Управление реальной музыкой ОС: широкая дека, виниловый круг, квадратная обложка и живой эквалайзер Lithium',
     variants: [
       { id: 'wide_deck', label: 'Широкая дека', desc: 'Трек, эквалайзер и все кнопки', w: 6, h: 2, shape: 'squircle', previewKind: 'wide' },
       { id: 'vinyl_circle', label: 'Виниловый круг', desc: 'Вращающийся круглый диск 3×3', w: 3, h: 3, shape: 'circle', previewKind: 'circle' },
       { id: 'square_cover', label: 'Квадрат обложка', desc: 'Карточка 3×3 с кнопками внизу', w: 3, h: 3, shape: 'squircle', previewKind: 'square' },
+      { id: 'chamfer_pro', label: 'Спектр Кристалл Li-3', desc: 'Живые волны и быстрый запуск AI/Калькулятора', w: 5, h: 2, shape: 'chamfer', previewKind: 'wide', targetWidgetType: 'luma_lithium_spectrum' },
     ],
   },
   {
     type: 'luma_sys',
-    title: 'CPU / RAM / Система',
+    title: 'Система: CPU / GPU / RAM',
     group: 'Система',
     category: 'system',
     defaultW: 6,
     defaultH: 2,
     defaultVariant: 'wide_telemetry',
     defaultShape: 'squircle',
-    summary: 'Живая нагрузка процессора, памяти и дисков: 4 шкалы, двойные кольца или полоса',
+    summary: 'Вся телеметрия железа: 4 шкалы CPU/RAM/Диск, двойные кольца, GPU чип + VRAM + температура и пульс ядра LumaCore 1.4.5',
     variants: [
       { id: 'wide_telemetry', label: 'Панель 4 шкалы', desc: 'CPU, ОЗУ, Диск и Заряд в ряд', w: 6, h: 2, shape: 'squircle', previewKind: 'wide' },
-      { id: 'dual_rings', label: 'Двойные кольца', desc: 'Два круговых датчика CPU и ОЗУ', w: 4, h: 3, shape: 'squircle', previewKind: 'square' },
-      { id: 'pill_strip', label: 'Узкая лента', desc: 'Компактная капсула 5×1', w: 5, h: 1, shape: 'pill', previewKind: 'pill' },
+      { id: 'dual_rings', label: 'Двойные кольца CPU/RAM', desc: 'Два круговых датчика CPU и ОЗУ', w: 4, h: 3, shape: 'squircle', previewKind: 'square' },
+      { id: 'pill_strip', label: 'Узкая лента CPU/RAM', desc: 'Компактная капсула 5×1', w: 5, h: 1, shape: 'pill', previewKind: 'pill' },
+      { id: 'dual_bars', label: 'GPU Чип + VRAM + °C', desc: 'Полная телеметрия видеокарты NVML / PDH', w: 5, h: 2, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_gpu_vram' },
+      { id: 'circle_gpu', label: 'Круговой датчик GPU', desc: 'Кольцо загрузки видеокарты 3×3', w: 3, h: 3, shape: 'circle', previewKind: 'circle', targetWidgetType: 'luma_gpu_vram' },
+      { id: 'crystal_deck', label: 'Пульс ядра LumaCore', desc: 'Изумрудно-золотой HUD ядра 1.4.5 и LumaShield', w: 5, h: 2, shape: 'chamfer', previewKind: 'wide', targetWidgetType: 'luma_beryllium_pulse' },
     ],
   },
   {
@@ -204,21 +244,6 @@ export const DESKTOP_WIDGET_CATALOG: WidgetCatalogDef[] = [
     ],
   },
   {
-    type: 'luma_calendar',
-    title: 'Календарь и пояса',
-    group: 'Инструменты',
-    category: 'clock',
-    defaultW: 5,
-    defaultH: 2,
-    defaultVariant: 'wide_world',
-    defaultShape: 'squircle',
-    summary: 'Листок календаря 3×3 или дата с мировыми часовыми поясами',
-    variants: [
-      { id: 'wide_world', label: 'Дата + Пояса', desc: 'Дата и время MSK / LON / TYO', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
-      { id: 'square_date', label: 'Листок даты', desc: 'Крупное число месяца и день недели', w: 3, h: 3, shape: 'squircle', previewKind: 'square' },
-    ],
-  },
-  {
     type: 'luma_quick',
     title: 'Быстрые переключатели',
     group: 'Основное',
@@ -250,17 +275,35 @@ export const DESKTOP_WIDGET_CATALOG: WidgetCatalogDef[] = [
   },
   {
     type: 'luma_notes',
-    title: 'Заметки и задачи',
+    title: 'Заметки, задачи и привычки',
     group: 'Инструменты',
     category: 'tools',
     defaultW: 5,
     defaultH: 3,
     defaultVariant: 'default',
     defaultShape: 'squircle',
-    summary: 'Интерактивный список задач с добавлением прямо на рабочем столе',
+    summary: 'Интерактивный список задач и ежедневный трекер привычек (Streak) прямо на рабочем столе',
     variants: [
       { id: 'default', label: 'Список задач', desc: 'Чеклист 5×3 с полем ввода', w: 5, h: 3, shape: 'squircle', previewKind: 'wide' },
       { id: 'compact', label: 'Компактный блок', desc: 'Квадратная карточка 4×3', w: 4, h: 3, shape: 'squircle', previewKind: 'square' },
+      { id: 'beryllium_list', label: 'Трекер привычек (Streak)', desc: 'Отметки привычек + счётчик серии дней', w: 5, h: 3, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_habit_streak' },
+    ],
+  },
+  {
+    type: 'luma_wellbeing',
+    title: 'Экранное время и ритм дня',
+    group: 'Инструменты',
+    category: 'tools',
+    defaultW: 5,
+    defaultH: 2,
+    defaultVariant: 'lithium_prism',
+    defaultShape: 'squircle',
+    summary: 'Живое экранное время за 7 дней, сводка активных сессий и кольца прогресса задач',
+    variants: [
+      { id: 'lithium_prism', label: '7-дневная шкала Pro', desc: 'Экранное время сегодня и график недели', w: 5, h: 2, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_screentime' },
+      { id: 'default', label: 'Сводка сессий', desc: 'Активные задачи и переход в Трекер', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
+      { id: 'rings_bar', label: 'Шкала ритма дня', desc: 'Процент выполненных задач за день', w: 4, h: 2, shape: 'squircle', previewKind: 'wide', targetWidgetType: 'luma_rings' },
+      { id: 'circle_ring', label: 'Круг прогресса', desc: 'Кольцо активности 3×3', w: 3, h: 3, shape: 'circle', previewKind: 'circle', targetWidgetType: 'luma_rings' },
     ],
   },
   {
@@ -278,21 +321,6 @@ export const DESKTOP_WIDGET_CATALOG: WidgetCatalogDef[] = [
     ],
   },
   {
-    type: 'luma_power',
-    title: 'Управление питанием',
-    group: 'Система',
-    category: 'battery',
-    defaultW: 5,
-    defaultH: 2,
-    defaultVariant: 'default',
-    defaultShape: 'squircle',
-    summary: 'Блокировка экрана, спящий режим и Корзина ОС',
-    variants: [
-      { id: 'default', label: 'Питание 3 кнопки', desc: 'Блок, Сон и Корзина', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
-      { id: 'pill_power', label: 'Капсула питания', desc: 'Узкая панель действий', w: 5, h: 1, shape: 'pill', previewKind: 'pill' },
-    ],
-  },
-  {
     type: 'luma_guard',
     title: 'LumaGuard AES-256',
     group: 'Система',
@@ -304,35 +332,6 @@ export const DESKTOP_WIDGET_CATALOG: WidgetCatalogDef[] = [
     summary: 'Состояние шифрования и быстрая ротация ключей ядра',
     variants: [
       { id: 'default', label: 'Статус защиты', desc: 'AES-256 + кнопка ротации', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
-    ],
-  },
-  {
-    type: 'luma_wellbeing',
-    title: 'Экранное время',
-    group: 'Инструменты',
-    category: 'tools',
-    defaultW: 5,
-    defaultH: 2,
-    defaultVariant: 'default',
-    defaultShape: 'squircle',
-    summary: 'Счётчик активных сессий и переход в Трекер',
-    variants: [
-      { id: 'default', label: 'Сводка сессий', desc: 'Активные задачи сейчас', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
-    ],
-  },
-  {
-    type: 'luma_rings',
-    title: 'Ритм дня',
-    group: 'Инструменты',
-    category: 'tools',
-    defaultW: 4,
-    defaultH: 2,
-    defaultVariant: 'default',
-    defaultShape: 'squircle',
-    summary: 'Прогресс выполненных задач за день',
-    variants: [
-      { id: 'default', label: 'Шкала прогресса', desc: 'Процент выполненных задач', w: 4, h: 2, shape: 'squircle', previewKind: 'wide' },
-      { id: 'circle_ring', label: 'Круг прогресса', desc: 'Кольцо активности 3×3', w: 3, h: 3, shape: 'circle', previewKind: 'circle' },
     ],
   },
   {
@@ -350,231 +349,42 @@ export const DESKTOP_WIDGET_CATALOG: WidgetCatalogDef[] = [
     ],
   },
   {
-    type: 'luma_battery_pro',
-    title: 'Аналитика Батареи Pro',
-    group: 'Система',
-    category: 'battery',
-    defaultW: 5,
-    defaultH: 3,
-    defaultVariant: 'lithium_prism',
-    defaultShape: 'squircle',
-    summary: 'Здоровье АКБ %, циклы зарядки, график разряда и переход в настройки батареи',
-    variants: [
-      { id: 'lithium_prism', label: 'Призма Lithium', desc: 'График, здоровье % и циклы', w: 5, h: 3, shape: 'squircle', previewKind: 'wide' },
-      { id: 'chamfer_pro', label: 'Техно-грань', desc: 'Скошенные углы со статистикой', w: 5, h: 2, shape: 'chamfer', previewKind: 'wide' },
-    ],
-  },
-  {
     type: 'luma_ai_quick',
-    title: 'Luma AI Мини-чат',
+    title: 'Luma AI 3.0 Мини-чат',
     group: 'Инструменты',
     category: 'tools',
     defaultW: 6,
     defaultH: 3,
     defaultVariant: 'lithium_prism',
     defaultShape: 'squircle',
-    summary: 'Быстрые вопросы к автономному LumaNano 1.2 прямо с рабочего стола (без API)',
+    summary: 'Быстрые вопросы к Luma AI 3.0 (Lang 3.0 + Веб-синтез) прямо с рабочего стола',
     variants: [
       { id: 'lithium_prism', label: 'Карточка чата', desc: 'Поле запроса и мгновенный ответ', w: 6, h: 3, shape: 'squircle', previewKind: 'wide' },
       { id: 'pill_ai', label: 'AI-строка', desc: 'Компактная капсула запроса 6×1', w: 6, h: 1, shape: 'pill', previewKind: 'pill' },
     ],
   },
   {
-    type: 'luma_world_clock',
-    title: 'Мировые часы (3 города)',
-    group: 'Основное',
-    category: 'clock',
-    defaultW: 6,
-    defaultH: 2,
-    defaultVariant: 'minimal_editorial',
-    defaultShape: 'squircle',
-    summary: 'Точное время в 3 мировых столицах в реальном времени (Москва / Лондон / Токио)',
-    variants: [
-      { id: 'minimal_editorial', label: '3 Города в ряд', desc: 'Синхронизация по UTC', w: 6, h: 2, shape: 'squircle', previewKind: 'wide' },
-      { id: 'chamfer_cities', label: 'Гранёный блок', desc: 'Контрастный стиль с гранями', w: 6, h: 2, shape: 'chamfer', previewKind: 'wide' },
-    ],
-  },
-  {
-    type: 'luma_screentime',
-    title: 'Экранное время Pro',
-    group: 'Инструменты',
-    category: 'tools',
-    defaultW: 5,
-    defaultH: 2,
-    defaultVariant: 'lithium_prism',
-    defaultShape: 'squircle',
-    summary: 'Живое экранное время за сегодня и столбцы активности за 7 дней',
-    variants: [
-      { id: 'lithium_prism', label: '7-дневная шкала', desc: 'Экранное время и график', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
-    ],
-  },
-  {
-    type: 'luma_lithium_spectrum',
-    title: 'Спектр Lithium Li-3',
-    group: 'Основное',
-    category: 'media',
-    defaultW: 5,
-    defaultH: 2,
-    defaultVariant: 'chamfer_pro',
-    defaultShape: 'chamfer',
-    summary: 'Эквалайзер и быстрый запуск Калькулятора, Luma AI и Служб ОС',
-    variants: [
-      { id: 'chamfer_pro', label: 'Кристалл Li-3', desc: 'Живые волны и быстрые ярлыки', w: 5, h: 2, shape: 'chamfer', previewKind: 'wide' },
-    ],
-  },
-  {
-    type: 'luma_wireless_hub',
-    title: 'Беспроводной Хаб (2.4GHz / BT)',
-    group: 'Система',
-    category: 'battery',
-    defaultW: 5,
-    defaultH: 2,
-    defaultVariant: 'beryllium_cards',
-    defaultShape: 'squircle',
-    summary: 'Живой процент заряда беспроводных и радиоканальных 2.4GHz мышек, наушников, клавиатур',
-    variants: [
-      { id: 'beryllium_cards', label: 'Карточки заряда', desc: 'Все подключённые устройства со шкалами', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
-      { id: 'pill_wireless', label: 'Компактная строка', desc: 'Узкая лента заряда 5×1', w: 5, h: 1, shape: 'pill', previewKind: 'pill' },
-    ],
-  },
-  {
-    type: 'luma_gpu_vram',
-    title: 'GPU Чип + VRAM Монитор',
-    group: 'Система',
-    category: 'system',
-    defaultW: 5,
-    defaultH: 2,
-    defaultVariant: 'dual_bars',
-    defaultShape: 'squircle',
-    summary: 'Загрузка чипа GPU %, выделенная видеопамять VRAM (ГБ) и температура °C в реальном времени',
-    variants: [
-      { id: 'dual_bars', label: 'Чип + VRAM шкалы', desc: 'Полная телеметрия NVML / PDH', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
-      { id: 'circle_gpu', label: 'Круговой датчик', desc: 'Кольцо загрузки GPU 3×3', w: 3, h: 3, shape: 'circle', previewKind: 'circle' },
-    ],
-  },
-  {
-    type: 'luma_habit_streak',
-    title: 'Трекер привычек (Streak)',
-    group: 'Инструменты',
-    category: 'tools',
-    defaultW: 5,
-    defaultH: 3,
-    defaultVariant: 'beryllium_list',
-    defaultShape: 'squircle',
-    summary: 'Ежедневные привычки со счётчиком серии дней прямо на рабочем столе',
-    variants: [
-      { id: 'beryllium_list', label: 'Карточка серии', desc: 'Отметки привычек + серия дней', w: 5, h: 3, shape: 'squircle', previewKind: 'wide' },
-    ],
-  },
-  {
-    type: 'luma_beryllium_pulse',
-    title: 'Пульс Beryllium Be-4',
-    group: 'Основное',
-    category: 'system',
-    defaultW: 5,
-    defaultH: 2,
-    defaultVariant: 'crystal_deck',
-    defaultShape: 'chamfer',
-    summary: 'Флагманский виджет ядра: живой статус LumaCore 1.5, LumaShield 1.5 и быстрые действия',
-    variants: [
-      { id: 'crystal_deck', label: 'Кристалл Be-4', desc: 'Изумрудно-золотой HUD ядра', w: 5, h: 2, shape: 'chamfer', previewKind: 'wide' },
-    ],
-  },
-  {
-    type: 'luma_weather_week',
-    title: 'Погода на неделю (Арт · 7 дней)',
-    group: 'Основное',
-    category: 'weather',
-    defaultW: 6,
-    defaultH: 3,
-    defaultVariant: 'scenic_week',
-    defaultShape: 'squircle',
-    summary: 'Живые иллюстрации неба, температура сейчас и прогноз Open-Meteo на 7 дней вперёд',
-    variants: [
-      { id: 'scenic_week', label: '7 дней + Картинка неба', desc: 'Художественный фон погоды и неделя', w: 6, h: 3, shape: 'squircle', previewKind: 'wide' },
-      { id: 'scenic_card', label: 'Арт-карточка погоды', desc: 'Крупный живописный пейзаж и прогноз на 3 дня', w: 4, h: 3, shape: 'squircle', previewKind: 'square' },
-      { id: 'week_strip', label: 'Недельная лента', desc: 'Компактная полоса 7 дней 6×2', w: 6, h: 2, shape: 'squircle', previewKind: 'wide' },
-    ],
-  },
-  {
-    type: 'luma_clock_studio',
-    title: 'Часы Студия Pro (Boron)',
-    group: 'Основное',
-    category: 'clock',
-    defaultW: 5,
-    defaultH: 3,
-    defaultVariant: 'swiss_chrono',
-    defaultShape: 'squircle',
-    summary: 'Новые дизайнерские часы 1.4: швейцарский хронограф, стеклянный флип и двойной часовой пояс',
-    variants: [
-      { id: 'swiss_chrono', label: 'Швейцарский хронограф', desc: 'Прецизионный аналоговый циферблат + дата', w: 4, h: 3, shape: 'circle', previewKind: 'circle' },
-      { id: 'glass_flip_pro', label: 'Стеклянный Флип Pro', desc: 'Крупное табло с секундами и прогрессом дня', w: 5, h: 3, shape: 'squircle', previewKind: 'flip' },
-      { id: 'dual_horizon', label: 'Двойной пояс', desc: 'Местное время и UTC / мировая столица', w: 6, h: 2, shape: 'squircle', previewKind: 'wide' },
-    ],
-  },
-  {
-    type: 'luma_battery_boron',
-    title: 'Энергия Boron (ПК + Мыши/BT)',
-    group: 'Система',
-    category: 'battery',
-    defaultW: 5,
-    defaultH: 3,
-    defaultVariant: 'boron_power_hub',
-    defaultShape: 'squircle',
-    summary: 'Заряд ноутбука/ПК + все подключённые беспроводные мыши, клавиатуры и наушники (BT и 2.4GHz)',
-    variants: [
-      { id: 'boron_power_hub', label: 'Хаб питания Boron', desc: 'АКБ ПК + список беспроводных устройств', w: 5, h: 3, shape: 'squircle', previewKind: 'wide' },
-      { id: 'boron_rings', label: 'Кольца энергии', desc: 'Кольцевые шкалы ПК и мыши/гарнитуры', w: 5, h: 2, shape: 'squircle', previewKind: 'wide' },
-    ],
-  },
-  {
-    type: 'luma_calendar_month',
-    title: 'Календарь и события (Месяц)',
-    group: 'Основное',
-    category: 'clock',
-    defaultW: 5,
-    defaultH: 3,
-    defaultVariant: 'month_grid',
-    defaultShape: 'squircle',
-    summary: 'Интерактивная сетка месяца с вашими событиями из Календаря Luma OS 1.4',
-    variants: [
-      { id: 'month_grid', label: 'Сетка месяца', desc: 'Дни месяца + клик открывает Календарь', w: 5, h: 3, shape: 'squircle', previewKind: 'wide' },
-      { id: 'agenda_today', label: 'Сегодня и события', desc: 'Крупная дата + ближайшие напоминания', w: 4, h: 3, shape: 'squircle', previewKind: 'square' },
-    ],
-  },
-  {
-    type: 'luma_power_ecosystem',
-    title: 'Заряд ПК и всей периферии (1.5)',
-    group: 'Система',
-    category: 'battery',
-    defaultW: 6,
-    defaultH: 3,
-    defaultVariant: 'carbon_ecosystem',
-    defaultShape: 'squircle',
-    summary: 'Единый монитор заряда ПК/ноутбука, мышек (IO, Ajazz, Ardor), клавиатур, наушников и геймпадов',
-    variants: [
-      { id: 'carbon_ecosystem', label: 'Экосистема Carbon', desc: 'Главное устройство + плитки всей периферии', w: 6, h: 3, shape: 'squircle', previewKind: 'wide' },
-      { id: 'carbon_compact', label: 'Компактный стек', desc: 'Узкая панель заряда ПК и мыши/гарнитуры', w: 4, h: 2, shape: 'squircle', previewKind: 'wide' },
-    ],
-  },
-  {
     type: 'luma_custom_widget',
-    title: 'Свой виджет (Фото + JS)',
+    title: 'Свой виджет Pro (100+ опций)',
     group: 'Инструменты',
     category: 'tools',
     defaultW: 4,
     defaultH: 2,
     defaultVariant: 'custom_studio',
     defaultShape: 'squircle',
-    summary: 'Создайте уникальный виджет со своей картинкой и JS-скриптом данных системы',
+    summary: 'Конструктор: запуск любого приложения с ПК, сайтов, команд, фото, градиенты, свечение, живая телеметрия и JS-скрипты',
     variants: [
-      { id: 'custom_studio', label: 'Конструктор Carbon', desc: 'Открывает редактор фото и JS-кода виджета', w: 4, h: 2, shape: 'squircle', previewKind: 'wide' },
+      { id: 'custom_studio', label: 'Конструктор Carbon Pro', desc: '100+ настроек дизайна, действий и скриптов', w: 4, h: 2, shape: 'squircle', previewKind: 'wide' },
     ],
   },
 ];
 
 export function getWidgetDef(widgetType: string): WidgetCatalogDef {
-  return DESKTOP_WIDGET_CATALOG.find((d) => d.type === widgetType) || DESKTOP_WIDGET_CATALOG[0];
+  return (
+    DESKTOP_WIDGET_CATALOG.find((d) => d.type === widgetType) ||
+    DESKTOP_WIDGET_CATALOG.find((d) => d.variants.some((v) => v.targetWidgetType === widgetType)) ||
+    DESKTOP_WIDGET_CATALOG[0]
+  );
 }
 
 function getWidgetFamilyIcon(type: string) {
@@ -645,6 +455,7 @@ function VariantMiniPreview({
   variant: WidgetVariantDef;
   isDark: boolean;
 }) {
+  const effectiveType = variant.targetWidgetType || widgetType;
   const frameBg = isDark ? 'bg-black/45 border-white/12 text-zinc-100' : 'bg-white/85 border-zinc-900/15 text-zinc-900';
   const dimCls = isDark ? 'text-zinc-400' : 'text-zinc-500';
   const shapeBoxCls =
@@ -659,8 +470,8 @@ function VariantMiniPreview({
       : 'w-36 h-16 rounded-2xl';
 
   // Signature visual thumbnails so every widget design is immediately clear
-  if (widgetType === 'luma_clock') {
-    if (variant.id === 'analog_circle') {
+  if (effectiveType === 'luma_clock' || effectiveType === 'luma_clock_studio' || effectiveType === 'luma_world_clock') {
+    if (variant.id === 'analog_circle' || variant.id === 'swiss_chrono') {
       return (
         <div className={`${shapeBoxCls} border flex items-center justify-center relative ${frameBg}`}>
           <svg viewBox="0 0 60 60" className="w-16 h-16">
@@ -693,7 +504,7 @@ function VariantMiniPreview({
         </div>
       );
     }
-    if (variant.id === 'split_flip') {
+    if (variant.id === 'split_flip' || variant.id === 'glass_flip_pro') {
       return (
         <div className={`${shapeBoxCls} border flex items-center justify-center gap-1.5 px-2 font-mono font-bold ${frameBg}`}>
           <span className="px-2 py-1.5 rounded bg-black/25 border border-white/10 text-base relative">14</span>
@@ -711,6 +522,15 @@ function VariantMiniPreview({
         </div>
       );
     }
+    if (effectiveType === 'luma_world_clock' || variant.id === 'dual_horizon') {
+      return (
+        <div className={`${shapeBoxCls} border flex items-center justify-between px-2.5 font-mono ${frameBg}`}>
+          <div className="text-center"><div className={`text-[7px] ${dimCls}`}>MSK</div><div className="text-xs font-bold">14:38</div></div>
+          <div className="text-center"><div className={`text-[7px] ${dimCls}`}>LON</div><div className="text-xs font-bold text-[var(--luma-accent)]">11:38</div></div>
+          <div className="text-center"><div className={`text-[7px] ${dimCls}`}>TYO</div><div className="text-xs font-bold">20:38</div></div>
+        </div>
+      );
+    }
     return (
       <div className={`${shapeBoxCls} border flex flex-col justify-between p-2.5 font-mono ${frameBg}`}>
         <span className={`text-[8px] uppercase ${dimCls}`}>LUMA CLOCK</span>
@@ -721,7 +541,14 @@ function VariantMiniPreview({
     );
   }
 
-  if (widgetType === 'luma_battery') {
+  if (
+    effectiveType === 'luma_battery' ||
+    effectiveType === 'luma_battery_pro' ||
+    effectiveType === 'luma_battery_boron' ||
+    effectiveType === 'luma_power_ecosystem' ||
+    effectiveType === 'luma_wireless_hub' ||
+    effectiveType === 'luma_power'
+  ) {
     if (variant.id === 'circle_ring') {
       return (
         <div className={`${shapeBoxCls} border flex items-center justify-center relative ${frameBg}`}>
@@ -744,7 +571,7 @@ function VariantMiniPreview({
         </div>
       );
     }
-    if (variant.id === 'pill_compact') {
+    if (variant.previewKind === 'pill') {
       return (
         <div className={`${shapeBoxCls} border px-3 flex items-center gap-2 font-mono text-xs font-bold ${frameBg}`}>
           <BatteryCharging className="w-3.5 h-3.5 text-[var(--luma-accent)] shrink-0" />
@@ -755,11 +582,26 @@ function VariantMiniPreview({
         </div>
       );
     }
+    if (effectiveType === 'luma_power_ecosystem' || effectiveType === 'luma_wireless_hub' || effectiveType === 'luma_battery_boron') {
+      return (
+        <div className={`${shapeBoxCls} border p-2 flex flex-col justify-between font-mono ${frameBg}`}>
+          <div className="flex justify-between items-center text-[8px]">
+            <span className="text-[var(--luma-accent)] font-bold">ПК 92%</span>
+            <span className={dimCls}>МЫШЬ 78% · BT</span>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            <div className="h-2 rounded-full bg-emerald-400/80" />
+            <div className="h-2 rounded-full bg-cyan-400/80" />
+            <div className="h-2 rounded-full bg-amber-400/80" />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className={`${shapeBoxCls} border p-2.5 flex flex-col justify-between font-mono ${frameBg}`}>
         <div className="flex justify-between items-center text-[9px]">
-          <span className={dimCls}>АКБ</span>
-          <span className="font-bold">84%</span>
+          <span className={dimCls}>{effectiveType === 'luma_power' ? 'ПИТАНИЕ' : 'АКБ'}</span>
+          <span className="font-bold">{effectiveType === 'luma_power' ? '⚡ ОС' : '84%'}</span>
         </div>
         <div className="h-2 rounded-full bg-zinc-500/25 overflow-hidden">
           <div className="h-full w-4/5 bg-[var(--luma-accent)] rounded-full" />
@@ -768,7 +610,7 @@ function VariantMiniPreview({
     );
   }
 
-  if (widgetType === 'luma_media') {
+  if (effectiveType === 'luma_media' || effectiveType === 'luma_lithium_spectrum') {
     if (variant.id === 'vinyl_circle') {
       return (
         <div className={`${shapeBoxCls} border flex items-center justify-center relative ${frameBg}`}>
@@ -794,7 +636,7 @@ function VariantMiniPreview({
     return (
       <div className={`${shapeBoxCls} border px-3 py-2 flex items-center justify-between ${frameBg}`}>
         <div className="space-y-0.5">
-          <div className="text-[10px] font-bold">Аудио ОС</div>
+          <div className="text-[10px] font-bold">{effectiveType === 'luma_lithium_spectrum' ? 'Спектр' : 'Аудио ОС'}</div>
           <div className={`text-[8px] font-mono ${dimCls}`}>◀ ▶ ▶▶</div>
         </div>
         <div className="w-6 h-6 rounded-full bg-[var(--luma-accent)] text-white flex items-center justify-center text-[9px]">▶</div>
@@ -802,7 +644,23 @@ function VariantMiniPreview({
     );
   }
 
-  if (widgetType === 'luma_weather') {
+  if (effectiveType === 'luma_weather' || effectiveType === 'luma_weather_week') {
+    if (effectiveType === 'luma_weather_week') {
+      return (
+        <div
+          className={`${shapeBoxCls} border border-sky-400/40 px-2.5 py-2 flex flex-col justify-between text-white overflow-hidden`}
+          style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #38bdf8 60%, #f59e0b 115%)' }}
+        >
+          <div className="flex items-center justify-between text-[10px] font-mono font-bold">
+            <span>+18°</span>
+            <CloudSun className="w-3.5 h-3.5 text-amber-200" />
+          </div>
+          <div className="flex justify-between text-[7px] font-mono opacity-90">
+            <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span>
+          </div>
+        </div>
+      );
+    }
     if (variant.id === 'circle_radar') {
       return (
         <div className={`${shapeBoxCls} border flex flex-col items-center justify-center gap-0.5 ${frameBg}`}>
@@ -834,7 +692,7 @@ function VariantMiniPreview({
   if (variant.previewKind === 'circle') {
     return (
       <div className={`${shapeBoxCls} border flex flex-col items-center justify-center gap-1 ${frameBg}`}>
-        <span className="text-[var(--luma-accent)]">{getWidgetFamilyIcon(widgetType)}</span>
+        <span className="text-[var(--luma-accent)]">{getWidgetFamilyIcon(effectiveType)}</span>
         <span className="text-[9px] font-mono font-bold">
           {variant.w}×{variant.h}
         </span>
@@ -844,7 +702,7 @@ function VariantMiniPreview({
   if (variant.previewKind === 'pill') {
     return (
       <div className={`${shapeBoxCls} border px-3 flex items-center justify-center gap-2 ${frameBg}`}>
-        <span className="text-[var(--luma-accent)]">{getWidgetFamilyIcon(widgetType)}</span>
+        <span className="text-[var(--luma-accent)]">{getWidgetFamilyIcon(effectiveType)}</span>
         <span className="text-[10px] font-mono font-bold">
           {variant.w}×{variant.h}
         </span>
@@ -853,7 +711,7 @@ function VariantMiniPreview({
   }
   return (
     <div className={`${shapeBoxCls} border p-2.5 flex flex-col justify-between ${frameBg}`}>
-      <span className="text-[var(--luma-accent)]">{getWidgetFamilyIcon(widgetType)}</span>
+      <span className="text-[var(--luma-accent)]">{getWidgetFamilyIcon(effectiveType)}</span>
       <div className="flex items-center gap-1">
         <span className="h-1 flex-1 rounded-full bg-[var(--luma-accent)]" />
         <span className="h-1 w-4 rounded-full bg-zinc-500/35" />

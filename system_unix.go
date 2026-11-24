@@ -1385,6 +1385,14 @@ func (p *platformProbe) CaptureScreenNative() (CaptureMediaFile, error) {
 	return CaptureMediaFile{}, fmt.Errorf("use_browser_capture")
 }
 
+func (p *platformProbe) SupportsNativeScreenFrame() bool {
+	return false
+}
+
+func (p *platformProbe) CaptureScreenJPEGFrame(maxWidth, quality int) ([]byte, int, int, error) {
+	return nil, 0, 0, fmt.Errorf("use_browser_capture")
+}
+
 func (p *platformProbe) EmptyOSRecycleBinNative() error {
 	home, _ := os.UserHomeDir()
 	trashDir := filepath.Join(home, ".local", "share", "Trash")

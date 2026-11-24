@@ -525,7 +525,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'svc_ai',
         group: 'Службы и утилиты',
-        title: 'Luma AI 2.0 (Luma Lang 2.0 + Code 2.0 + Облако)',
+        title: 'Luma AI 3.0 (Luma Lang 3.0 + Code 3.0 + Web Overview)',
         subtitle: 'Офлайн-ИИ с памятью диалога и ревью кода, Gemini, OpenAI, Claude, Ollama',
         badge: 'AI 2.0',
         keywords: 'ии нейросеть ai ассистент chatgpt gemini claude код luma ai 2.0',

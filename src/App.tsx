@@ -200,8 +200,10 @@ import { LumaTrackerWindow } from './components/LumaTrackerWindow';
 import { LumaTrashWindow } from './components/LumaTrashWindow';
 import { LumaUpdateCinemaOverlay } from './components/LumaUpdateCinemaOverlay';
 import { LumaOfficeSuiteWindow } from './components/LumaOfficeSuiteWindow';
+import { AltTabEntry, LumaAltTabSwitcher } from './components/LumaAltTabSwitcher';
 import { SmartContextMenu } from './components/SmartContextMenu';
 import { getLangLocale, LUMA_LANGUAGES, LumaLangCode, tr } from './i18n/translations';
+import { useLumaAutoTranslate } from './i18n/LumaAutoTranslator';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Gamepad2,
@@ -711,13 +713,18 @@ export default function App() {
   const taskbarStripRef = useRef<HTMLDivElement | null>(null);
   const [taskListSearch, setTaskListSearch] = useState<string>('');
 
-  // --- Multi-Language i18n (9 Languages) ---
+  // --- Multi-Language i18n (100% Complete Auto-Translation for ALL Widgets & UI) ---
   const [lang, setLang] = useState<LumaLangCode>(() => {
     const saved = savedState?.lang as LumaLangCode | undefined;
     return saved && LUMA_LANGUAGES.some((l) => l.code === saved) ? saved : 'ru';
   });
+  useLumaAutoTranslate(lang);
   const locale = getLangLocale(lang);
   const t = (key: string, fallback?: string) => tr(lang, key, fallback);
+
+  // --- Native Custom Alt+Tab Window Switcher State (1.5.2) ---
+  const [altTabOpen, setAltTabOpen] = useState(false);
+  const [altTabIdx, setAltTabIdx] = useState(0);
 
   // --- Extra Wallpaper Engine Customization (Transitions + Live Animated Wallpapers) ---
   const [wallpaperImageUrl, setWallpaperImageUrl] = useState<string>(savedState?.wallpaperImageUrl || '');
@@ -926,9 +933,9 @@ export default function App() {
     {
       id: 'notif_carbon_welcome',
       source: 'system',
-      sender: 'Luma OS 1.5.1 Carbon',
-      title: 'Добро пожаловать в Carbon 1.5.1!',
-      body: 'Новое: Luma Office Studio, Luma AI 2.0, LumaShield 2.0, обои 4K и резинка Dynamic Island.',
+      sender: 'Luma OS 1.5.2 Carbon',
+      title: 'Добро пожаловать в Carbon 1.5.2!',
+      body: 'Ядро 1.4.5 · Zero-Freeze запись · Cut/Code/Office Studio Pro · Luma AI 3.0 · Свой Alt+Tab · 100% перевод.',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       unread: true,
     },
@@ -1460,7 +1467,7 @@ export default function App() {
           total_bytes: 23.4 * 1024 * 1024,
           speed_mbps: 24.2,
           target_version: '1.5 (Carbon · C-6)',
-          message: 'Загрузка образа LumaOS_1.5.1.exe (LumaCore 1.5 + LumaShield 1.5)...',
+          message: 'Загрузка образа LumaOS_1.5.2.exe (LumaCore 1.5 + LumaShield 1.5)...',
         },
       },
       {
@@ -2622,69 +2629,143 @@ export default function App() {
 
   const executeScenarioRule = useCallback(
     (rule: LumaScenarioRule) => {
-      const p = (rule.actionParam || '').trim().toLowerCase();
-      switch (rule.actionType) {
-        case 'set_dnd':
-          setDndEnabled(p !== 'off' && p !== 'false');
-          break;
-        case 'set_theme':
-          setThemeKey(p === 'light' ? 'nothing_paper' : 'nothing_mono');
-          break;
-        case 'set_volume': {
-          const vol = Math.max(0, Math.min(100, parseInt(p, 10) || 0));
-          setVolume(vol);
-          setIsMuted(vol === 0);
-          void fetch('/api/kernel/audio', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ volume: vol, mute: vol === 0 }),
-          }).catch(() => {});
-          break;
+      // Check optional AND condition
+      const cond = rule.conditionType || 'none';
+      const hr = new Date().getHours();
+      if (cond === 'only_on_battery' && liveSystem?.battery_charging) return;
+      if (cond === 'only_on_ac' && !liveSystem?.battery_charging) return;
+      if (cond === 'only_at_night' && hr >= 7 && hr < 21) return;
+      if (cond === 'only_in_day' && (hr < 7 || hr >= 21)) return;
+      if (cond === 'only_if_cpu_high' && (liveSystem?.cpu_percent || 0) <= 65) return;
+      if (cond === 'only_if_dnd_off' && dndEnabled) return;
+
+      const runStep = (actionType: LumaScenarioRule['actionType'], rawParam: string) => {
+        const p = (rawParam || '').trim().toLowerCase();
+        switch (actionType) {
+          case 'set_dnd':
+            setDndEnabled(p !== 'off' && p !== 'false');
+            break;
+          case 'set_theme':
+            setThemeKey(p === 'light' ? 'nothing_paper' : 'nothing_mono');
+            break;
+          case 'set_night_light':
+            setNightLightLevel(Math.max(0, Math.min(70, parseInt(p, 10) || 0)));
+            break;
+          case 'set_gaming_boost': {
+            const on = p !== 'off' && p !== 'false';
+            setGamingBoost(on);
+            if (on) {
+              setPowerProfile('performance');
+              void fetch('/api/kernel/optimize', { method: 'POST' }).catch(() => {});
+            }
+            break;
+          }
+          case 'set_mic_mute':
+            setMicMuted(p !== 'off' && p !== 'false');
+            break;
+          case 'set_brightness':
+            setScreenBrightness(Math.max(30, Math.min(100, parseInt(p, 10) || 80)));
+            break;
+          case 'set_volume': {
+            const vol = Math.max(0, Math.min(100, parseInt(p, 10) || 0));
+            setVolume(vol);
+            setIsMuted(vol === 0);
+            void fetch('/api/kernel/audio', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ volume: vol, mute: vol === 0 }),
+            }).catch(() => {});
+            break;
+          }
+          case 'set_mouse_dpi': {
+            const dpi = Math.max(200, Math.min(20000, parseInt(p, 10) || 1600));
+            void fetch('/api/kernel/mouse/dpi', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ target_effective_dpi: dpi }),
+            }).catch(() => {});
+            break;
+          }
+          case 'set_power_plan': {
+            const plan: PowerProfile = p === 'performance' ? 'performance' : p === 'powersaver' || p === 'saver' ? 'saver' : 'balanced';
+            setPowerProfile(plan);
+            void fetch('/api/kernel/power-plan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ plan: plan === 'saver' ? 'powersaver' : plan }),
+            }).catch(() => {});
+            break;
+          }
+          case 'open_window': {
+            const win = (p || 'settings') as DexWinId;
+            if (INITIAL_WINDOWS[win]) openWindow(win);
+            break;
+          }
+          case 'launch_pc_app':
+            if (rawParam.trim()) {
+              void fetch('/api/kernel/apps/launch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ exec_path: rawParam.trim(), name: rawParam.trim() }),
+              }).catch(() => {});
+            }
+            break;
+          case 'open_url':
+            if (rawParam.trim()) {
+              const url = /^https?:\/\//i.test(rawParam.trim()) ? rawParam.trim() : `https://${rawParam.trim()}`;
+              window.open(url, '_blank', 'noopener,noreferrer');
+            }
+            break;
+          case 'run_terminal':
+            if (rawParam.trim()) {
+              void fetch('/api/kernel/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: rawParam.trim() }),
+              }).catch(() => {});
+            }
+            break;
+          case 'take_screenshot':
+            void fetch('/api/kernel/capture/screenshot', { method: 'POST', body: '{}' }).catch(() => {});
+            break;
+          case 'start_recording':
+            void fetch('/api/kernel/capture/native-record/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fps: 12, max_width: 1280, quality: 72 }),
+            }).catch(() => {});
+            break;
+          case 'optimize_ram':
+            void fetch('/api/kernel/optimize', { method: 'POST' }).catch(() => {});
+            break;
+          case 'toggle_island':
+            setDynamicIslandEnabled(p !== 'off');
+            break;
+          case 'toggle_dual_bar':
+            setDualTaskbarMode(p !== 'off');
+            break;
+          case 'lock_screen':
+            void fetch('/api/kernel/power', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'lock' }) }).catch(() => {});
+            break;
+          case 'sleep_pc':
+            void fetch('/api/kernel/power', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sleep' }) }).catch(() => {});
+            break;
+          case 'clean_trash':
+            void fetch('/api/kernel/trash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'empty' }) }).catch(() => {});
+            break;
+          case 'notify':
+          default:
+            break;
         }
-        case 'set_mouse_dpi': {
-          const dpi = Math.max(200, Math.min(20000, parseInt(p, 10) || 1600));
-          void fetch('/api/kernel/mouse/dpi', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ target_effective_dpi: dpi }),
-          }).catch(() => {});
-          break;
-        }
-        case 'set_power_plan': {
-          const plan: PowerProfile = p === 'performance' ? 'performance' : p === 'powersaver' || p === 'saver' ? 'saver' : 'balanced';
-          setPowerProfile(plan);
-          void fetch('/api/kernel/power-plan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ plan: plan === 'saver' ? 'powersaver' : plan }),
-          }).catch(() => {});
-          break;
-        }
-        case 'open_window': {
-          const win = (p || 'settings') as DexWinId;
-          if (INITIAL_WINDOWS[win]) openWindow(win);
-          break;
-        }
-        case 'take_screenshot':
-          void fetch('/api/kernel/capture/screenshot', { method: 'POST', body: '{}' }).catch(() => {});
-          break;
-        case 'optimize_ram':
-          void fetch('/api/kernel/plugins/api', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ plugin_id: 'scenario_engine', action: 'ram.optimize' }),
-          }).catch(() => {});
-          break;
-        case 'toggle_island':
-          setDynamicIslandEnabled(p !== 'off');
-          break;
-        case 'toggle_dual_bar':
-          setDualTaskbarMode(p !== 'off');
-          break;
-        case 'notify':
-        default:
-          break;
+      };
+
+      runStep(rule.actionType, rule.actionParam);
+      if (Array.isArray(rule.extraActions)) {
+        rule.extraActions.forEach((step, idx) => {
+          window.setTimeout(() => runStep(step.actionType, step.actionParam), (idx + 1) * 140);
+        });
       }
+
       const nowStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
       setScenarios((prev) =>
         prev.map((s) => (s.id === rule.id ? { ...s, lastRunAt: nowStr, runCount: (s.runCount || 0) + 1 } : s))
@@ -2692,13 +2773,14 @@ export default function App() {
       pushToast('Сценарий выполнен', rule.actionType === 'notify' && rule.actionParam ? rule.actionParam : rule.name, 'success');
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [liveSystem, dndEnabled]
   );
 
-  // Automatic Scenario Triggers: Time HH:MM, Power State, Low Battery, Vault Enter
+  // Automatic Scenario Triggers: Time HH:MM, Power State, Low Battery, High CPU/RAM/GPU, Vault Enter
   const prevChargingRef = useRef<boolean | null>(null);
   const lastMinuteFiredRef = useRef<string>('');
   const lowBattFiredRef = useRef<boolean>(false);
+  const telemetryFiredAtRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     if (!enabledFeatures.scenarios || !liveSystem) return;
@@ -2721,6 +2803,23 @@ export default function App() {
         if (liveSystem.battery_percent > 35) lowBattFiredRef.current = false;
       }
     }
+    const nowMs = Date.now();
+    scenarios
+      .filter((s) => s.enabled && (s.triggerType === 'cpu_high' || s.triggerType === 'ram_high' || s.triggerType === 'gpu_hot'))
+      .forEach((s) => {
+        if (nowMs - (telemetryFiredAtRef.current[s.id] || 0) < 120_000) return;
+        const thresh = parseInt(s.triggerParam, 10) || 85;
+        const val =
+          s.triggerType === 'cpu_high'
+            ? liveSystem.cpu_percent || 0
+            : s.triggerType === 'ram_high'
+            ? liveSystem.ram_percent || 0
+            : liveSystem.gpu_temp_c || 0;
+        if (val >= thresh) {
+          telemetryFiredAtRef.current[s.id] = nowMs;
+          executeScenarioRule(s);
+        }
+      });
   }, [liveSystem, scenarios, enabledFeatures.scenarios, executeScenarioRule]);
 
   useEffect(() => {
@@ -2842,7 +2941,7 @@ export default function App() {
         pushToast('Окно ОС', d?.detail || `Переключено на ${win?.title || win?.name || `PID ${pid}`}`, 'info');
       }
     } catch {
-      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.5.1.exe', 'info');
+      pushToast('Окно ОС', 'Доступно при запуске LumaOS_1.5.2.exe', 'info');
     }
   };
 
@@ -2871,7 +2970,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Окна ОС', 'Доступно при запуске LumaOS_1.5.1.exe', 'info');
+      pushToast('Окна ОС', 'Доступно при запуске LumaOS_1.5.2.exe', 'info');
     }
   };
 
@@ -2909,7 +3008,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('2 окна рядом', 'Доступно при запуске LumaOS_1.5.1.exe', 'info');
+      pushToast('2 окна рядом', 'Доступно при запуске LumaOS_1.5.2.exe', 'info');
     }
   };
 
@@ -3031,10 +3130,12 @@ export default function App() {
           fresh.push({
             id,
             source: mapAppKeyToSource(item.app_key || item.app || ''),
-            sender: item.app || 'Система',
-            title: item.title || item.app || 'Новое уведомление',
+            sender: item.sender || item.title || item.app || 'Система',
+            chat: item.chat || undefined,
+            title: item.title || item.app || 'Новое сообщение',
             body: item.body || '',
             time: item.time || new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+            avatarUrl: item.avatar_url || undefined,
             unread: true,
           });
         }
@@ -3046,8 +3147,8 @@ export default function App() {
           const latest = fresh[0];
           if (!dndEnabled) {
             triggerIslandPulse(
-              `${latest.sender}: ${latest.title}`,
-              latest.body || 'Новое сообщение',
+              latest.chat && latest.chat !== latest.sender ? `${latest.sender} → ${latest.chat}` : latest.sender,
+              latest.body || latest.title || 'Новое сообщение',
               latest.source
             );
           }
@@ -3068,6 +3169,143 @@ export default function App() {
       window.clearInterval(timer);
     };
   }, [dndEnabled, triggerIslandPulse]);
+
+  // --- Custom Widget Pro System Actions Bridge (1.5.2) ---
+  useEffect(() => {
+    const onCustomAction = (e: Event) => {
+      const action = (e as CustomEvent<{ action?: string }>).detail?.action;
+      if (action === 'toggle_gaming') {
+        setGamingBoost((v) => !v);
+        setPowerProfile('performance');
+      } else if (action === 'open_hub') {
+        setCarbonHubOpen((v) => !v);
+      } else if (action === 'open_vault') {
+        setVaultOpen(true);
+      } else if (action === 'open_spotlight') {
+        setSpotlightOpen(true);
+      }
+    };
+    window.addEventListener('luma-custom-sys-action', onCustomAction);
+    return () => window.removeEventListener('luma-custom-sys-action', onCustomAction);
+  }, []);
+
+  // --- Native Custom Alt+Tab Window Switcher (Luma OS Windows + Live Windows Apps) ---
+  const altTabEntries: AltTabEntry[] = useMemo(() => {
+    const lumaTitles: Partial<Record<DexWinId, string>> = {
+      apps: 'Приложения', explorer: 'Проводник', taskmgr: 'Диспетчер задач', terminal: 'Терминал',
+      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.4.5', settings: 'Настройки', plugins: 'Расширения',
+      island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma AI 3.0', utilities: 'Службы ОС',
+      calculator: 'Калькулятор', calendar: 'Календарь', trash: 'Корзина', scenarios: 'Сценарии',
+      code_studio: 'Code Studio Pro', cut_studio: 'Cut Studio Pro', office: 'Office Studio Pro',
+    };
+    const openLuma: AltTabEntry[] = (Object.keys(windows) as DexWinId[])
+      .filter((id) => windows[id]?.open)
+      .sort((a, b) => (windows[b]?.z || 0) - (windows[a]?.z || 0))
+      .map((id) => ({
+        key: `luma_${id}`,
+        kind: 'luma',
+        id,
+        title: lumaTitles[id] || id,
+        subtitle: windows[id].minimized ? 'Свёрнуто · Luma OS' : 'Активно · Luma OS',
+        minimized: windows[id].minimized,
+        active: !windows[id].minimized,
+      }));
+    const openHost: AltTabEntry[] = hostWindows.map((hw) => ({
+      key: `host_${hw.pid}`,
+      kind: 'host',
+      id: String(hw.pid),
+      pid: hw.pid,
+      title: hw.friendly_name || hw.title || hw.name,
+      subtitle: hw.name || `PID ${hw.pid}`,
+      iconUrl: hw.icon_url,
+    }));
+    return [...openLuma, ...openHost];
+  }, [windows, hostWindows]);
+
+  const altTabEntriesRef = useRef<AltTabEntry[]>(altTabEntries);
+  altTabEntriesRef.current = altTabEntries;
+  const altTabIdxRef = useRef<number>(altTabIdx);
+  altTabIdxRef.current = altTabIdx;
+  const altTabOpenRef = useRef<boolean>(altTabOpen);
+  altTabOpenRef.current = altTabOpen;
+
+  const activateAltTabEntry = useCallback(
+    (item?: AltTabEntry) => {
+      setAltTabOpen(false);
+      if (!item) return;
+      if (item.kind === 'luma') {
+        const wid = item.id as DexWinId;
+        openWindow(wid);
+      } else if (item.pid) {
+        void handleFocusHostWindow(item.pid);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  useEffect(() => {
+    const stepSwitcher = (reverse: boolean) => {
+      void pollHostWindows();
+      const list = altTabEntriesRef.current;
+      const len = Math.max(1, list.length);
+      if (!altTabOpenRef.current) {
+        setAltTabOpen(true);
+        setAltTabIdx(len > 1 ? (reverse ? len - 1 : 1) : 0);
+      } else {
+        setAltTabIdx((cur) => (cur + (reverse ? -1 : 1) + len) % len);
+      }
+    };
+
+    const onNativeAltTab = (e: Event) => {
+      const reverse = Boolean((e as CustomEvent<{ reverse?: boolean }>).detail?.reverse);
+      stepSwitcher(reverse);
+    };
+    const onNativeCommit = () => {
+      if (!altTabOpenRef.current) return;
+      activateAltTabEntry(altTabEntriesRef.current[altTabIdxRef.current]);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Browser/WebView fallback: Alt+Tab or Alt+Q opens custom Luma Alt+Tab Switcher
+      if (e.altKey && (e.key === 'Tab' || e.code === 'KeyQ')) {
+        e.preventDefault();
+        e.stopPropagation();
+        stepSwitcher(e.shiftKey);
+        return;
+      }
+      if (!altTabOpenRef.current) return;
+      const len = Math.max(1, altTabEntriesRef.current.length);
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setAltTabOpen(false);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        activateAltTabEntry(altTabEntriesRef.current[altTabIdxRef.current]);
+      } else if (e.key === 'ArrowRight' || e.key === 'Tab') {
+        e.preventDefault();
+        setAltTabIdx((c) => (c + 1) % len);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setAltTabIdx((c) => (c - 1 + len) % len);
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt' && altTabOpenRef.current) {
+        activateAltTabEntry(altTabEntriesRef.current[altTabIdxRef.current]);
+      }
+    };
+
+    window.addEventListener('luma-alt-tab', onNativeAltTab);
+    window.addEventListener('luma-alt-tab-commit', onNativeCommit);
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    return () => {
+      window.removeEventListener('luma-alt-tab', onNativeAltTab);
+      window.removeEventListener('luma-alt-tab-commit', onNativeCommit);
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+    };
+  }, [activateAltTabEntry]);
 
   // --- Audio Input/Output Devices Switcher (1.3) ---
   const fetchAudioDevices = async (force = false) => {
@@ -3425,7 +3663,7 @@ export default function App() {
         pushToast('Питание', d?.detail || `Выполнено: ${action}`, 'info');
       }
     } catch {
-      pushToast('Питание', 'Доступно при запуске LumaOS_1.5.1.exe', 'info');
+      pushToast('Питание', 'Доступно при запуске LumaOS_1.5.2.exe', 'info');
     }
   };
 
@@ -3458,7 +3696,7 @@ export default function App() {
         pushToast('Режим оболочки Windows', 'Параметры применены к системе', 'success');
       }
     } catch {
-      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.5.1.exe)', 'info');
+      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.5.2.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -3901,7 +4139,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.5.1.exe', 'info');
+      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.5.2.exe', 'info');
     }
   };
 
@@ -5352,12 +5590,12 @@ export default function App() {
                   Диспетчер задач
                 </button>
                 <a
-                  href="/LumaOS_1.5.1.exe"
-                  download="LumaOS_1.5.1.exe"
+                  href="/LumaOS_1.5.2.exe"
+                  download="LumaOS_1.5.2.exe"
                   className="px-3.5 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  LumaOS_1.5.1.exe
+                  LumaOS_1.5.2.exe
                 </a>
               </div>
             </div>
@@ -5587,158 +5825,168 @@ export default function App() {
         </DexWindow>
       )}
 
-      {/* ==================== LUMA OS 1.5.1 CARBON: TRASH, SCENARIOS, CODE STUDIO, CUT STUDIO & OFFICE STUDIO ==================== */}
-      {isWinVisible('trash') && (
-        <DexWindow
-          id="trash"
-          title="Корзина Luma OS"
-          subtitle="Системная корзина Pro · Массовые операции · Превью · Автоочистка"
-          icon={<Trash2 className="w-4 h-4" />}
-          isDark={isDark}
-          designStyle={designStyle}
-          windowControlsStyle={windowControlsStyle}
-          taskbarPosition={taskbarPosition}
-          taskbarSizePx={effectiveTaskbarSizePx}
-          topBarOffsetPx={dualTaskbarMode ? 46 : 0}
-          snapCommand={snapCommands.trash || null}
-          zIndex={windows.trash.z}
-          initialWidth={860}
-          initialHeight={580}
-          onFocus={() => focusWindow('trash')}
-          onMinimize={() => minimizeWindow('trash')}
-          onClose={() => closeWindow('trash')}
-        >
-          <LumaTrashWindow
+      {/* ==================== LUMA OS 1.5.2 CARBON: TRASH, SCENARIOS, CODE STUDIO, CUT STUDIO & OFFICE STUDIO (ZERO-LOSS ON MINIMIZE!) ==================== */}
+      {windows.trash.open && (
+        <div style={{ display: isWinVisible('trash') ? 'contents' : 'none' }}>
+          <DexWindow
+            id="trash"
+            title="Корзина Luma OS"
+            subtitle="Системная корзина Pro · Массовые операции · Превью · Автоочистка"
+            icon={<Trash2 className="w-4 h-4" />}
             isDark={isDark}
-            deleteAnimStyle={deleteAnimStyle}
-            onCountChange={(c) => setTrashCount(c)}
-            onNotify={(title, msg, kind) => pushToast(title, msg, kind === 'warn' ? 'warning' : kind || 'info')}
-          />
-        </DexWindow>
+            designStyle={designStyle}
+            windowControlsStyle={windowControlsStyle}
+            taskbarPosition={taskbarPosition}
+            taskbarSizePx={effectiveTaskbarSizePx}
+            topBarOffsetPx={dualTaskbarMode ? 46 : 0}
+            snapCommand={snapCommands.trash || null}
+            zIndex={windows.trash.z}
+            initialWidth={860}
+            initialHeight={580}
+            onFocus={() => focusWindow('trash')}
+            onMinimize={() => minimizeWindow('trash')}
+            onClose={() => closeWindow('trash')}
+          >
+            <LumaTrashWindow
+              isDark={isDark}
+              deleteAnimStyle={deleteAnimStyle}
+              onCountChange={(c) => setTrashCount(c)}
+              onNotify={(title, msg, kind) => pushToast(title, msg, kind === 'warn' ? 'warning' : kind || 'info')}
+            />
+          </DexWindow>
+        </div>
       )}
 
-      {isWinVisible('scenarios') && (
-        <DexWindow
-          id="scenarios"
-          title="Сценарии автоматизации"
-          subtitle="Если действие → Автоматический результат"
-          icon={<Zap className="w-4 h-4" />}
-          isDark={isDark}
-          designStyle={designStyle}
-          windowControlsStyle={windowControlsStyle}
-          taskbarPosition={taskbarPosition}
-          taskbarSizePx={effectiveTaskbarSizePx}
-          topBarOffsetPx={dualTaskbarMode ? 46 : 0}
-          snapCommand={snapCommands.scenarios || null}
-          zIndex={windows.scenarios.z}
-          initialWidth={900}
-          initialHeight={600}
-          onFocus={() => focusWindow('scenarios')}
-          onMinimize={() => minimizeWindow('scenarios')}
-          onClose={() => closeWindow('scenarios')}
-        >
-          <LumaScenariosWindow
+      {windows.scenarios.open && (
+        <div style={{ display: isWinVisible('scenarios') ? 'contents' : 'none' }}>
+          <DexWindow
+            id="scenarios"
+            title="Сценарии автоматизации Pro"
+            subtitle="17 триггеров · Условия «И» · 22 действия · Цепочки"
+            icon={<Zap className="w-4 h-4" />}
             isDark={isDark}
-            scenarios={scenarios}
-            onChangeScenarios={setScenarios}
-            onExecuteScenario={executeScenarioRule}
-          />
-        </DexWindow>
+            designStyle={designStyle}
+            windowControlsStyle={windowControlsStyle}
+            taskbarPosition={taskbarPosition}
+            taskbarSizePx={effectiveTaskbarSizePx}
+            topBarOffsetPx={dualTaskbarMode ? 46 : 0}
+            snapCommand={snapCommands.scenarios || null}
+            zIndex={windows.scenarios.z}
+            initialWidth={940}
+            initialHeight={620}
+            onFocus={() => focusWindow('scenarios')}
+            onMinimize={() => minimizeWindow('scenarios')}
+            onClose={() => closeWindow('scenarios')}
+          >
+            <LumaScenariosWindow
+              isDark={isDark}
+              scenarios={scenarios}
+              onChangeScenarios={setScenarios}
+              onExecuteScenario={executeScenarioRule}
+            />
+          </DexWindow>
+        </div>
       )}
 
-      {isWinVisible('code_studio') && (
-        <DexWindow
-          id="code_studio"
-          title="Luma Code Studio"
-          subtitle="IDE Pro · Подсветка синтаксиса · Миникарта · Команды Ctrl+Shift+P"
-          icon={<Code2 className="w-4 h-4" />}
-          isDark={isDark}
-          designStyle={designStyle}
-          windowControlsStyle={windowControlsStyle}
-          taskbarPosition={taskbarPosition}
-          taskbarSizePx={effectiveTaskbarSizePx}
-          topBarOffsetPx={dualTaskbarMode ? 46 : 0}
-          snapCommand={snapCommands.code_studio || null}
-          zIndex={windows.code_studio.z}
-          initialWidth={1120}
-          initialHeight={700}
-          onFocus={() => focusWindow('code_studio')}
-          onMinimize={() => minimizeWindow('code_studio')}
-          onClose={() => closeWindow('code_studio')}
-        >
-          <LumaCodeStudioWindow
+      {windows.code_studio.open && (
+        <div style={{ display: isWinVisible('code_studio') ? 'contents' : 'none' }}>
+          <DexWindow
+            id="code_studio"
+            title="Luma Code Studio Pro"
+            subtitle="IDE 1.5.2 · Live диагностика ошибок · Pro Терминал · Автосохранение"
+            icon={<Code2 className="w-4 h-4" />}
             isDark={isDark}
-            onNotify={(title, msg, kind) => pushToast(title, msg, kind === 'warn' ? 'warning' : kind || 'info')}
-          />
-        </DexWindow>
+            designStyle={designStyle}
+            windowControlsStyle={windowControlsStyle}
+            taskbarPosition={taskbarPosition}
+            taskbarSizePx={effectiveTaskbarSizePx}
+            topBarOffsetPx={dualTaskbarMode ? 46 : 0}
+            snapCommand={snapCommands.code_studio || null}
+            zIndex={windows.code_studio.z}
+            initialWidth={1120}
+            initialHeight={700}
+            onFocus={() => focusWindow('code_studio')}
+            onMinimize={() => minimizeWindow('code_studio')}
+            onClose={() => closeWindow('code_studio')}
+          >
+            <LumaCodeStudioWindow
+              isDark={isDark}
+              onNotify={(title, msg, kind) => pushToast(title, msg, kind === 'warn' ? 'warning' : kind || 'info')}
+            />
+          </DexWindow>
+        </div>
       )}
 
-      {isWinVisible('cut_studio') && (
-        <DexWindow
-          id="cut_studio"
-          title="Luma Cut Studio"
-          subtitle="Видеоредактор Pro · VP9/H.264/AV1 · 8 переходов · 12 LUT · Анимации"
-          icon={<Film className="w-4 h-4" />}
-          isDark={isDark}
-          designStyle={designStyle}
-          windowControlsStyle={windowControlsStyle}
-          taskbarPosition={taskbarPosition}
-          taskbarSizePx={effectiveTaskbarSizePx}
-          topBarOffsetPx={dualTaskbarMode ? 46 : 0}
-          snapCommand={snapCommands.cut_studio || null}
-          zIndex={windows.cut_studio.z}
-          initialWidth={1160}
-          initialHeight={730}
-          onFocus={() => focusWindow('cut_studio')}
-          onMinimize={() => minimizeWindow('cut_studio')}
-          onClose={() => closeWindow('cut_studio')}
-        >
-          <LumaCutStudioWindow
+      {windows.cut_studio.open && (
+        <div style={{ display: isWinVisible('cut_studio') ? 'contents' : 'none' }}>
+          <DexWindow
+            id="cut_studio"
+            title="Luma Cut Studio Pro"
+            subtitle="CapCut-класса монтаж · Маски/Хромакей · ИИ EditPilot · Озвучка · Design Studio"
+            icon={<Film className="w-4 h-4" />}
             isDark={isDark}
-            onNotify={(title, msg, kind) => pushToast(title, msg, kind === 'warn' ? 'warning' : kind || 'info')}
-          />
-        </DexWindow>
+            designStyle={designStyle}
+            windowControlsStyle={windowControlsStyle}
+            taskbarPosition={taskbarPosition}
+            taskbarSizePx={effectiveTaskbarSizePx}
+            topBarOffsetPx={dualTaskbarMode ? 46 : 0}
+            snapCommand={snapCommands.cut_studio || null}
+            zIndex={windows.cut_studio.z}
+            initialWidth={1180}
+            initialHeight={740}
+            onFocus={() => focusWindow('cut_studio')}
+            onMinimize={() => minimizeWindow('cut_studio')}
+            onClose={() => closeWindow('cut_studio')}
+          >
+            <LumaCutStudioWindow
+              isDark={isDark}
+              onNotify={(title, msg, kind) => pushToast(title, msg, kind === 'warn' ? 'warning' : kind || 'info')}
+            />
+          </DexWindow>
+        </div>
       )}
 
-      {isWinVisible('office') && (
-        <DexWindow
-          id="office"
-          title="Luma Office Studio"
-          subtitle="Docs (.docx) · Sheets (.xlsx) · Slides (.pptx) · Открытие и экспорт в любой формат"
-          icon={<FileText className="w-4 h-4" />}
-          isDark={isDark}
-          designStyle={designStyle}
-          windowControlsStyle={windowControlsStyle}
-          taskbarPosition={taskbarPosition}
-          taskbarSizePx={effectiveTaskbarSizePx}
-          topBarOffsetPx={dualTaskbarMode ? 46 : 0}
-          snapCommand={snapCommands.office || null}
-          zIndex={windows.office.z}
-          initialWidth={1180}
-          initialHeight={740}
-          onFocus={() => focusWindow('office')}
-          onMinimize={() => minimizeWindow('office')}
-          onClose={() => closeWindow('office')}
-        >
-          <LumaOfficeSuiteWindow
+      {windows.office.open && (
+        <div style={{ display: isWinVisible('office') ? 'contents' : 'none' }}>
+          <DexWindow
+            id="office"
+            title="Luma Office Studio Pro"
+            subtitle="Word (.docx) · Excel 35+ формул (.xlsx) · PowerPoint F5 + Лазер (.pptx) · PDF"
+            icon={<FileText className="w-4 h-4" />}
             isDark={isDark}
-            onNotify={(title, body, level) =>
-              pushToast(
-                title,
-                body,
-                level === 'ok' ? 'success' : level === 'warn' || level === 'danger' ? 'warning' : 'info'
-              )
-            }
-          />
-        </DexWindow>
+            designStyle={designStyle}
+            windowControlsStyle={windowControlsStyle}
+            taskbarPosition={taskbarPosition}
+            taskbarSizePx={effectiveTaskbarSizePx}
+            topBarOffsetPx={dualTaskbarMode ? 46 : 0}
+            snapCommand={snapCommands.office || null}
+            zIndex={windows.office.z}
+            initialWidth={1200}
+            initialHeight={750}
+            onFocus={() => focusWindow('office')}
+            onMinimize={() => minimizeWindow('office')}
+            onClose={() => closeWindow('office')}
+          >
+            <LumaOfficeSuiteWindow
+              isDark={isDark}
+              onNotify={(title, body, level) =>
+                pushToast(
+                  title,
+                  body,
+                  level === 'ok' ? 'success' : level === 'warn' || level === 'danger' ? 'warning' : 'info'
+                )
+              }
+            />
+          </DexWindow>
+        </div>
       )}
 
-      {/* WINDOW 5: SYSTEM SETTINGS (1.5.1 CARBON) */}
+      {/* WINDOW 5: SYSTEM SETTINGS (1.5.2 CARBON) */}
       {isWinVisible('settings') && (
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.5.1 (Carbon · C-6)"
+          subtitle="Luma OS 1.5.2 (Carbon · C-6 · Kernel 1.4.5)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -6570,7 +6818,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.5.1.exe).
+                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.5.2.exe).
                   </div>
                 </div>
               )}
@@ -8650,23 +8898,23 @@ export default function App() {
                 </div>
               )}
 
-              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.5.1 CARBON) */}
+              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.5.2 CARBON) */}
               {settingsTab === 'about' && (
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.5.1 (CARBON · C-6)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.5.2 (CARBON · C-6)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.6.1 · LumaShield 2.0 · Luma AI 2.0 · Office Studio
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.4.5 · LumaShield 2.0 · Luma AI 3.0 · Office / Code / Cut Studio Pro
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.5.1.exe"
-                      download="LumaOS_1.5.1.exe"
+                      href="/LumaOS_1.5.2.exe"
+                      download="LumaOS_1.5.2.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.5.1.exe
+                      LumaOS_1.5.2.exe
                     </a>
                   </div>
 
@@ -8703,14 +8951,14 @@ export default function App() {
                       <div
                         key={ver}
                         className={`p-4 rounded-xl border space-y-2 ${
-                          ver === '1.5.1 (Carbon)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
+                          ver === '1.5.2 (Carbon)' ? 'border-[var(--luma-accent)]/60 bg-[var(--luma-accent)]/[0.06]' : surfaceCls
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-mono font-bold">
                             Версия {ver}
                           </span>
-                          {ver === '1.5.1 (Carbon)' && <StatusPill active={true} />}
+                          {ver === '1.5.2 (Carbon)' && <StatusPill active={true} />}
                         </div>
                         <ul className="space-y-1 text-xs leading-relaxed">
                           {items.map((line, i) => (
@@ -12055,7 +12303,7 @@ export default function App() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.5.1 (CARBON)</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.5.2 (CARBON)</span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>
               {liveSystem?.location?.city || 'LOCAL'}
             </span>
@@ -12859,6 +13107,30 @@ export default function App() {
           }).catch(() => {});
         }}
         onNotify={(title, msg, kind) => pushToast(title, msg, kind === 'warn' ? 'warning' : kind || 'info')}
+      />
+
+      {/* ==================== NATIVE CUSTOM ALT+TAB WINDOW SWITCHER (LUMA + WINDOWS APPS) ==================== */}
+      <LumaAltTabSwitcher
+        open={altTabOpen}
+        isDark={isDark}
+        items={altTabEntries}
+        selectedIndex={altTabIdx}
+        onSelectIndex={setAltTabIdx}
+        onActivate={(item) => activateAltTabEntry(item)}
+        onCloseItem={(item) => {
+          if (item.kind === 'luma') {
+            closeWindow(item.id as DexWinId);
+          } else if (item.pid) {
+            void fetch('/api/kernel/windows/close', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pid: item.pid }),
+            })
+              .then(() => void pollHostWindows())
+              .catch(() => {});
+          }
+        }}
+        onCancel={() => setAltTabOpen(false)}
       />
 
       {/* ==================== CUSTOM USER WIDGET BUILDER (PHOTO + LIVE JS SCRIPT) ==================== */}

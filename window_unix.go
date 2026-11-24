@@ -80,3 +80,19 @@ func toggleNativeFullscreen(force *bool) bool {
 func isNativeFullscreen() bool {
 	return false
 }
+
+func suspendWindowTopmost(suspend bool) {}
+
+var unixAltTabEnabled = true
+
+func setCustomAltTabEnabled(enabled bool) {
+	unixShellMu.Lock()
+	unixAltTabEnabled = enabled
+	unixShellMu.Unlock()
+}
+
+func isCustomAltTabEnabled() bool {
+	unixShellMu.Lock()
+	defer unixShellMu.Unlock()
+	return unixAltTabEnabled
+}

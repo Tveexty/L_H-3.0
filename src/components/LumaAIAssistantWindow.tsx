@@ -52,13 +52,13 @@ export interface AIProviderPreset {
 export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
   {
     id: 'luma_local',
-    label: 'Luma AI 2.0 (Lang 2.0 + Code 2.0)',
+    label: 'Luma AI 3.0 (Lang 3.0 + Code 3.0 + Web Overview)',
     badge: 'Без API',
-    defaultModel: 'luma-lang-2.0',
-    models: ['luma-lang-2.0', 'luma-code-2.0', 'luma-hybrid-2.0'],
-    defaultBaseUrl: 'internal://luma-ai-2.0',
+    defaultModel: 'luma-lang-3.0',
+    models: ['luma-lang-3.0', 'luma-code-3.0', 'luma-hybrid-3.0'],
+    defaultBaseUrl: 'internal://luma-ai-3.0',
     needsKey: false,
-    hint: 'Умные автономные движки в ядре LumaCore 1.6.1 с контекстной памятью: Luma Lang 2.0 (планы, письма, чеклисты, уравнения, Wikipedia, диагностика ПК) и Luma Code 2.0 (статическое ревью вашего кода + 45+ шаблонов на 14 языках).',
+    hint: 'Умный движок уровня Chrome AI Overview в ядре LumaCore 1.4.5: живой двух-источниковый веб-синтез (Wikipedia + DuckDuckGo), переводчик, суммаризация текста, кредитный калькулятор, сравнения A vs B, инженерные гайды и Code 3.0.',
   },
   {
     id: 'gemini',
@@ -169,7 +169,7 @@ export const DEFAULT_LUMA_AI_CONFIG: LumaAIConfig = {
   models: {},
   baseUrls: {},
   systemPrompt:
-    'Ты — встроенный системный ИИ-ассистент Luma AI 2.0 в Luma OS 1.5.1 (Carbon). Отвечай чётко, умно, структурированно и на языке пользователя.',
+    'Ты — встроенный системный ИИ-ассистент Luma AI 3.0 в Luma OS 1.5.2 (Carbon · Kernel 1.4.5). Отвечай чётко, умно, структурированно и на языке пользователя.',
   temperature: 0.7,
   includeSystemContext: true,
 };

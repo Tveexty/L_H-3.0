@@ -48,9 +48,9 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.5.1"
+	KernelVersion       = "1.5.2"
 	KernelCodename      = "Carbon"
-	KernelEngineVersion = "1.6.1"
+	KernelEngineVersion = "1.4.5"
 	SecurityCoreVersion = "2.0"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
@@ -2874,6 +2874,68 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "file": saved, "captures": listLumaCaptures()})
 	})
 
+	nativeRecorder := NewNativeScreenRecorder(kernel.probe)
+
+	mux.HandleFunc("/api/kernel/capture/prepare", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		var req struct {
+			SuspendTopmost bool `json:"suspend_topmost"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		suspendWindowTopmost(req.SuspendTopmost)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "suspended": req.SuspendTopmost})
+	})
+
+	mux.HandleFunc("/api/kernel/capture/native-record/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(nativeRecorder.Status())
+	})
+
+	mux.HandleFunc("/api/kernel/capture/native-record/start", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			FPS      int `json:"fps"`
+			Quality  int `json:"quality"`
+			MaxWidth int `json:"max_width"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if err := nativeRecorder.Start(req.FPS, req.Quality, req.MaxWidth); err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error(), "use_browser": true})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(nativeRecorder.Status())
+	})
+
+	mux.HandleFunc("/api/kernel/capture/native-record/stop", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		file, err := nativeRecorder.Stop()
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "file": file, "captures": listLumaCaptures()})
+	})
+
+	mux.HandleFunc("/api/kernel/alt-tab/toggle", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodPost {
+			var req struct {
+				Enabled bool `json:"enabled"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			setCustomAltTabEnabled(req.Enabled)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "enabled": isCustomAltTabEnabled()})
+	})
+
 	mux.HandleFunc("/api/kernel/capture/list", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -2881,15 +2943,16 @@ func main() {
 			"screenshots_dir": getLumaCapturesDir("screenshot"),
 			"recordings_dir":  getLumaCapturesDir("recording"),
 			"captures":        listLumaCaptures(),
+			"native_recorder": nativeRecorder.Status(),
 		})
 	})
 
-	// Serve standalone executable download for LumaOS_1.5.1.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.5.2.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.1.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.2.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -2897,12 +2960,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.1.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.5.2.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.5.2.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.4.exe", serveExe)
@@ -2961,8 +3025,8 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.5.1 (CARBON · C-6) — LUMACORE 1.6.1 & LUMASHIELD 2.0")
-	log.Printf("  - Office Studio, TG/OS Notif Bridge, AI 2.0, 4K Carbon UI: ON")
+	log.Printf("  LUMA OS 1.5.2 (CARBON · C-6) — LUMACORE 1.4.5 & LUMASHIELD 2.0")
+	log.Printf("  - Native AVI Recorder, Luma Alt+Tab, AI 3.0, Office & Cut Pro")
 	log.Printf("  - Desktop Environment:          http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:    http://%s/api/kernel/status", addr)

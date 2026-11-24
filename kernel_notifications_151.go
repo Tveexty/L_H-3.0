@@ -3,35 +3,39 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
 	"html"
+	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf16"
 )
 
-// ==================== LUMA OS 1.5.1 (CARBON) REAL TELEGRAM & MESSENGER NOTIFICATION BRIDGE ====================
-// Zero-PowerShell, Zero-Admin, Zero-WMI live OS notification listener combining:
-//   1. Native Windows 10/11 WPN Toast DB + WAL reader (%LOCALAPPDATA%\Microsoft\Windows\Notifications\wpndatabase.db*)
-//      catching real Telegram Desktop, Discord, WhatsApp, Viber, VK, Steam, Chrome, Edge & Windows toast alerts!
-//   2. Live Win32 Window Unread-Badge Monitor (EnumWindows) catching instant Telegram "(3) Telegram",
-//      Discord "• Discord", WhatsApp "(2) WhatsApp", Viber, VK, Slack, Teams unread counter rises even under Focus Assist!
+// ==================== LUMA OS 1.5.2 (CARBON) TRUE INCOMING MESSENGER NOTIFICATION BRIDGE ====================
+// Zero-PowerShell, Zero-Admin, Zero-WMI live OS notification listener:
+//   - Direct Windows 10/11 WPN Toast DB + WAL XML extractor (%LOCALAPPDATA%\Microsoft\Windows\Notifications\wpndatabase.db*)
+//     parsing BOTH UTF-8 and UTF-16LE <toast> payloads, real sender names, real message bodies, AND circular user avatars (<image src>).
+//   - Strict incoming-only filter: NEVER spams generic unread counters ("3048413 непрочит.") or outgoing/system noise!
 
 type OSNotificationItem struct {
 	ID        string `json:"id"`
 	App       string `json:"app"`
-	AppKey    string `json:"app_key"` // telegram | discord | whatsapp | vk | viber | steam | browser | mail | system
+	AppKey    string `json:"app_key"` // telegram | discord | whatsapp | vk | viber | steam | slack | teams | mail | browser | system
+	Sender    string `json:"sender"`
+	Chat      string `json:"chat,omitempty"`
 	Title     string `json:"title"`
 	Body      string `json:"body"`
-	Level     string `json:"level"`  // info | ok | warn | danger
-	Source    string `json:"source"` // wpn_db | window_badge | manual
+	AvatarURL string `json:"avatar_url,omitempty"`
+	Direction string `json:"direction"` // incoming
+	Level     string `json:"level"`     // info | ok | warn | danger
+	Source    string `json:"source"`    // wpn_db | manual
 	Time      string `json:"time"`
 	Timestamp int64  `json:"timestamp"`
 }
@@ -44,38 +48,32 @@ type OSNotificationBridge struct {
 	lastDBMod     int64
 	lastWALMod    int64
 	seededDB      bool
-	windowUnread  map[string]int
-	windowTitles  map[string]string
 	activeSources []string
 }
 
 func NewOSNotificationBridge(probe *platformProbe) *OSNotificationBridge {
 	b := &OSNotificationBridge{
-		probe:        probe,
-		items:        []OSNotificationItem{},
-		seenHashes:   map[string]bool{},
-		windowUnread: map[string]int{},
-		windowTitles: map[string]string{},
+		probe:      probe,
+		items:      []OSNotificationItem{},
+		seenHashes: map[string]bool{},
 		activeSources: []string{
-			"Win32 Messenger Unread-Badge Watcher (Telegram / Discord / WhatsApp / VK / Viber)",
+			"Incoming Messenger Filter (Only real user messages, zero unread-badge spam)",
 		},
 	}
 	if runtime.GOOS == "windows" {
-		b.activeSources = append([]string{"Windows WPN Notification DB + WAL Live Reader"}, b.activeSources...)
+		b.activeSources = append([]string{"Windows WPN Notification DB + WAL Direct Toast & Avatar Reader"}, b.activeSources...)
 	}
-	// Initial seed scan without spamming old toasts as brand-new alerts
+	// Seed existing DB entries on startup without flooding old notifications as brand-new alerts
 	b.scanWPNDatabase(true)
-	b.scanMessengerWindows(true)
 	go b.backgroundLoop()
 	return b
 }
 
 func (b *OSNotificationBridge) backgroundLoop() {
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(1500 * time.Millisecond)
 	defer ticker.Stop()
 	for range ticker.C {
 		b.scanWPNDatabase(false)
-		b.scanMessengerWindows(false)
 	}
 }
 
@@ -108,7 +106,7 @@ func (b *OSNotificationBridge) PushManual(app, title, body, level string) OSNoti
 		app = "Telegram"
 	}
 	if strings.TrimSpace(title) == "" {
-		title = "Новое сообщение"
+		title = "Пользователь"
 	}
 	if strings.TrimSpace(level) == "" {
 		level = "info"
@@ -117,12 +115,17 @@ func (b *OSNotificationBridge) PushManual(app, title, body, level string) OSNoti
 	if appName == "Windows" && app != "" {
 		appName = app
 	}
+	cleanTitle := strings.TrimSpace(title)
+	sender, chat := splitSenderAndChat(cleanTitle)
 	it := OSNotificationItem{
 		ID:        fmt.Sprintf("osn_%d", time.Now().UnixNano()),
 		App:       appName,
 		AppKey:    appKey,
-		Title:     strings.TrimSpace(title),
+		Sender:    sender,
+		Chat:      chat,
+		Title:     cleanTitle,
 		Body:      strings.TrimSpace(body),
+		Direction: "incoming",
 		Level:     level,
 		Source:    "manual",
 		Time:      time.Now().Format("15:04"),
@@ -138,6 +141,7 @@ func (b *OSNotificationBridge) PushManual(app, title, body, level string) OSNoti
 }
 
 // Channel A: Windows 10/11 WPN Notification SQLite + WAL direct XML <toast> extractor (0 PowerShell, 0 CGo)
+// Reads real incoming messages with sender name, message body, and circular user avatar!
 func (b *OSNotificationBridge) scanWPNDatabase(seedOnly bool) {
 	if runtime.GOOS != "windows" {
 		return
@@ -171,9 +175,9 @@ func (b *OSNotificationBridge) scanWPNDatabase(seedOnly bool) {
 	b.mu.Unlock()
 
 	var found []OSNotificationItem
-	// Scan WAL first (freshest live toasts!), then main DB
+	// Scan WAL first (freshest real-time toasts!), then main DB
 	for _, p := range []string{walPath, dbPath} {
-		raw, err := readFileHeadTail(p, 6*1024*1024)
+		raw, err := readFileHeadTail(p, 8*1024*1024)
 		if err != nil || len(raw) == 0 {
 			continue
 		}
@@ -191,8 +195,8 @@ func (b *OSNotificationBridge) scanWPNDatabase(seedOnly bool) {
 		}
 		b.seenHashes[fp] = true
 		if seedOnly {
-			// Seed only last 4 recent OS notifications on boot so history is populated without flood
-			if seededCount < 4 {
+			// Seed only last 5 recent incoming messenger messages on boot
+			if seededCount < 5 {
 				it.Timestamp = time.Now().UnixMilli() - int64(60000+seededCount*1000)
 				b.items = append(b.items, it)
 				seededCount++
@@ -222,7 +226,6 @@ func readFileHeadTail(path string, maxBytes int64) ([]byte, error) {
 	if size <= maxBytes {
 		return os.ReadFile(path)
 	}
-	// Read the tail of large DB/WAL files where the newest toasts live
 	buf := make([]byte, maxBytes)
 	n, err := f.ReadAt(buf, size-maxBytes)
 	if n > 0 {
@@ -232,6 +235,19 @@ func readFileHeadTail(path string, maxBytes int64) ([]byte, error) {
 }
 
 func extractToastsFromBinary(raw []byte) []OSNotificationItem {
+	var out []OSNotificationItem
+	// 1. Scan UTF-8 <toast>...</toast>
+	out = append(out, scanUTF8Toasts(raw)...)
+	// 2. Also scan UTF-16LE <toast>...</toast> (used by some UWP / WhatsApp / Teams notifications)
+	out = append(out, scanUTF16LEToasts(raw)...)
+
+	if len(out) > 40 {
+		out = out[len(out)-40:]
+	}
+	return out
+}
+
+func scanUTF8Toasts(raw []byte) []OSNotificationItem {
 	var out []OSNotificationItem
 	startTag := []byte("<toast")
 	endTag := []byte("</toast>")
@@ -243,55 +259,208 @@ func extractToastsFromBinary(raw []byte) []OSNotificationItem {
 		}
 		absStart := pos + idx
 		endIdx := bytes.Index(raw[absStart:], endTag)
-		if endIdx < 0 || endIdx > 24*1024 {
+		if endIdx < 0 || endIdx > 28*1024 {
 			pos = absStart + len(startTag)
 			continue
 		}
 		absEnd := absStart + endIdx + len(endTag)
 		xmlChunk := raw[absStart:absEnd]
-		// Grab surrounding 320 bytes to detect AppUserModelID (Telegram.TelegramDesktop, com.squirrel.Discord, WhatsApp, etc.)
-		ctxStart := absStart - 320
+		ctxStart := absStart - 420
 		if ctxStart < 0 {
 			ctxStart = 0
 		}
-		ctxEnd := absEnd + 220
+		ctxEnd := absEnd + 260
 		if ctxEnd > len(raw) {
 			ctxEnd = len(raw)
 		}
-		contextText := string(raw[ctxStart:ctxEnd])
-
-		texts := extractToastTextNodes(xmlChunk)
-		if len(texts) > 0 {
-			title := strings.TrimSpace(texts[0])
-			body := ""
-			if len(texts) > 1 {
-				body = strings.TrimSpace(strings.Join(texts[1:], " · "))
-			}
-			if title != "" || body != "" {
-				appName, appKey := detectMessengerApp(contextText + " " + title + " " + body)
-				out = append(out, OSNotificationItem{
-					ID:     fmt.Sprintf("wpn_%d_%d", time.Now().UnixNano()%10000000, len(out)),
-					App:    appName,
-					AppKey: appKey,
-					Title:  truncateUTF8(title, 96),
-					Body:   truncateUTF8(body, 220),
-					Level:  "info",
-					Source: "wpn_db",
-					Time:   time.Now().Format("15:04"),
-				})
-			}
+		if item, ok := parseToastChunk(xmlChunk, string(raw[ctxStart:ctxEnd]), len(out)); ok {
+			out = append(out, item)
 		}
 		pos = absEnd
-	}
-	if len(out) > 40 {
-		out = out[len(out)-40:]
 	}
 	return out
 }
 
-func extractToastTextNodes(xmlBytes []byte) []string {
+func scanUTF16LEToasts(raw []byte) []OSNotificationItem {
+	var out []OSNotificationItem
+	startTag := encodeUTF16LE("<toast")
+	endTag := encodeUTF16LE("</toast>")
+	pos := 0
+	for pos < len(raw) {
+		idx := bytes.Index(raw[pos:], startTag)
+		if idx < 0 {
+			break
+		}
+		absStart := pos + idx
+		endIdx := bytes.Index(raw[absStart:], endTag)
+		if endIdx < 0 || endIdx > 56*1024 {
+			pos = absStart + len(startTag)
+			continue
+		}
+		absEnd := absStart + endIdx + len(endTag)
+		utf8XML := decodeUTF16LE(raw[absStart:absEnd])
+		ctxStart := absStart - 512
+		if ctxStart < 0 {
+			ctxStart = 0
+		}
+		ctxEnd := absEnd + 320
+		if ctxEnd > len(raw) {
+			ctxEnd = len(raw)
+		}
+		ctxStr := decodeUTF16LE(raw[ctxStart:ctxEnd]) + " " + string(raw[ctxStart:ctxEnd])
+		if item, ok := parseToastChunk([]byte(utf8XML), ctxStr, len(out)+1000); ok {
+			out = append(out, item)
+		}
+		pos = absEnd
+	}
+	return out
+}
+
+func encodeUTF16LE(s string) []byte {
+	u := utf16.Encode([]rune(s))
+	b := make([]byte, len(u)*2)
+	for i, v := range u {
+		b[i*2] = byte(v)
+		b[i*2+1] = byte(v >> 8)
+	}
+	return b
+}
+
+func decodeUTF16LE(b []byte) string {
+	n := len(b) / 2
+	if n == 0 {
+		return ""
+	}
+	u := make([]uint16, n)
+	for i := 0; i < n; i++ {
+		u[i] = uint16(b[i*2]) | (uint16(b[i*2+1]) << 8)
+	}
+	return string(utf16.Decode(u))
+}
+
+func parseToastChunk(xmlChunk []byte, contextText string, seq int) (OSNotificationItem, bool) {
+	texts, avatarSrc := extractToastDetails(xmlChunk)
+	if len(texts) == 0 {
+		return OSNotificationItem{}, false
+	}
+
+	title := strings.TrimSpace(texts[0])
+	body := ""
+	chat := ""
+	if len(texts) == 2 {
+		body = strings.TrimSpace(texts[1])
+	} else if len(texts) >= 3 {
+		// Many Telegram/WhatsApp/Discord toasts put: [0]=Sender or Group, [1]=Message, [2]=Account/Channel
+		body = strings.TrimSpace(texts[1])
+		extra := strings.TrimSpace(texts[2])
+		if extra != "" && len(extra) < 64 && !strings.EqualFold(extra, title) {
+			chat = extra
+		}
+	}
+
+	// Strictly filter to REAL incoming user/messenger messages!
+	// Ignore empty bodies, outgoing self-messages, system sync/update alerts, and generic unread counts.
+	if title == "" || body == "" {
+		return OSNotificationItem{}, false
+	}
+	if !isIncomingUserMessage(title, body, contextText) {
+		return OSNotificationItem{}, false
+	}
+
+	appName, appKey := detectMessengerApp(contextText + " " + title + " " + body)
+	// Only accept real messaging/communication notifications from WPN (not random Windows telemetry/updates)
+	if !isAllowedMessengerApp(appKey) {
+		return OSNotificationItem{}, false
+	}
+
+	sender, parsedChat := splitSenderAndChat(title)
+	if chat == "" {
+		chat = parsedChat
+	}
+	displayTitle := sender
+	if chat != "" && !strings.Contains(sender, "→") {
+		displayTitle = sender + " → " + chat
+	}
+
+	avatarData := loadToastAvatarDataURI(avatarSrc)
+
+	return OSNotificationItem{
+		ID:        fmt.Sprintf("wpn_%d_%d", time.Now().UnixNano()%10000000, seq),
+		App:       appName,
+		AppKey:    appKey,
+		Sender:    truncateUTF8(sender, 64),
+		Chat:      truncateUTF8(chat, 64),
+		Title:     truncateUTF8(displayTitle, 96),
+		Body:      truncateUTF8(body, 260),
+		AvatarURL: avatarData,
+		Direction: "incoming",
+		Level:     "info",
+		Source:    "wpn_db",
+		Time:      time.Now().Format("15:04"),
+	}, true
+}
+
+func isAllowedMessengerApp(appKey string) bool {
+	switch appKey {
+	case "telegram", "discord", "whatsapp", "viber", "vk", "slack", "teams", "steam", "mail":
+		return true
+	default:
+		return false
+	}
+}
+
+func isIncomingUserMessage(title, body, ctx string) bool {
+	lt := strings.ToLower(strings.TrimSpace(title))
+	lb := strings.ToLower(strings.TrimSpace(body))
+	lc := strings.ToLower(ctx)
+
+	// Block outgoing / self-sent prefixes
+	outgoingPrefixes := []string{
+		"вы:", "you:", "me:", "я:", "sent ", "отправлено", "delivered", "доставлено",
+		"uploading", "downloading", "загрузка", "скачивание", "синхронизация", "syncing",
+	}
+	for _, p := range outgoingPrefixes {
+		if strings.HasPrefix(lb, p) || strings.HasPrefix(lt, p) {
+			return false
+		}
+	}
+
+	// Block generic unread-counter & system/maintenance banners
+	noisePhrases := []string{
+		"непрочит", "unread messages", "new messages", "новое сообщение (",
+		"update available", "доступно обновление", "restarting", "connected",
+		"подключено", "windows security", "windows update", "onedrive", "defender",
+		"backup complete", "резервное копирование", "battery", "usb device",
+		"typing...", "печатает...", "recording voice", "записывает голосовое",
+	}
+	for _, n := range noisePhrases {
+		if strings.Contains(lb, n) || strings.Contains(lt, n) {
+			return false
+		}
+	}
+	if strings.Contains(lc, "windows.systemtoast") && !strings.Contains(lc, "telegram") && !strings.Contains(lc, "whatsapp") && !strings.Contains(lc, "discord") {
+		return false
+	}
+	return true
+}
+
+func splitSenderAndChat(raw string) (string, string) {
+	for _, sep := range []string{" → ", " -> ", " — ", " | ", ": "} {
+		if idx := strings.Index(raw, sep); idx > 0 {
+			left := strings.TrimSpace(raw[:idx])
+			right := strings.TrimSpace(raw[idx+len(sep):])
+			if left != "" && right != "" {
+				return left, right
+			}
+		}
+	}
+	return strings.TrimSpace(raw), ""
+}
+
+func extractToastDetails(xmlBytes []byte) ([]string, string) {
 	dec := xml.NewDecoder(bytes.NewReader(xmlBytes))
 	var texts []string
+	var avatarSrc string
 	inText := false
 	var buf strings.Builder
 	for {
@@ -304,6 +473,18 @@ func extractToastTextNodes(xmlBytes []byte) []string {
 			if strings.EqualFold(t.Name.Local, "text") {
 				inText = true
 				buf.Reset()
+			} else if strings.EqualFold(t.Name.Local, "image") {
+				var src, placement string
+				for _, attr := range t.Attr {
+					if strings.EqualFold(attr.Name.Local, "src") {
+						src = strings.TrimSpace(attr.Value)
+					} else if strings.EqualFold(attr.Name.Local, "placement") {
+						placement = strings.ToLower(strings.TrimSpace(attr.Value))
+					}
+				}
+				if src != "" && (avatarSrc == "" || placement == "applogooverride") {
+					avatarSrc = src
+				}
 			}
 		case xml.CharData:
 			if inText {
@@ -319,110 +500,51 @@ func extractToastTextNodes(xmlBytes []byte) []string {
 			}
 		}
 	}
-	return texts
+	return texts, avatarSrc
 }
 
-// Channel B: Live Messenger Window Unread-Badge Watcher (Telegram, Discord, WhatsApp, VK, Viber, Slack, Teams, Steam)
-var unreadParenRe = regexp.MustCompile(`\((\d+)\)`)
-
-func (b *OSNotificationBridge) scanMessengerWindows(seedOnly bool) {
-	if b.probe == nil {
-		return
+func loadToastAvatarDataURI(src string) string {
+	src = strings.TrimSpace(src)
+	if src == "" {
+		return ""
 	}
-	wins := b.probe.ListOpenWindows()
-	if len(wins) == 0 {
-		return
+	if strings.HasPrefix(src, "data:image/") {
+		return src
 	}
-
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	for _, w := range wins {
-		lowProc := strings.ToLower(w.Name + " " + w.FriendlyName)
-		lowTitle := strings.ToLower(w.Title)
-		appName, appKey := matchMessengerProcess(lowProc, lowTitle)
-		if appKey == "" {
-			continue
-		}
-
-		unread := 0
-		if m := unreadParenRe.FindStringSubmatch(w.Title); len(m) == 2 {
-			unread, _ = strconv.Atoi(m[1])
-		} else if strings.HasPrefix(w.Title, "•") || strings.Contains(w.Title, "• ") || strings.Contains(w.Title, "* ") {
-			unread = 1
-		}
-
-		key := fmt.Sprintf("%s_%d", appKey, w.PID)
-		prevCount, hadPrev := b.windowUnread[key]
-		prevTitle := b.windowTitles[key]
-		b.windowUnread[key] = unread
-		b.windowTitles[key] = w.Title
-
-		if seedOnly || !hadPrev {
-			continue
-		}
-
-		if unread > prevCount || (unread > 0 && w.Title != prevTitle) {
-			delta := unread - prevCount
-			if delta < 1 {
-				delta = 1
+	localPath := src
+	if strings.HasPrefix(strings.ToLower(src), "file://") {
+		if u, err := url.Parse(src); err == nil {
+			localPath = u.Path
+			if runtime.GOOS == "windows" && strings.HasPrefix(localPath, "/") && len(localPath) > 2 && localPath[2] == ':' {
+				localPath = localPath[1:]
 			}
-			cleanTitle := strings.TrimSpace(unreadParenRe.ReplaceAllString(w.Title, ""))
-			cleanTitle = strings.TrimLeft(cleanTitle, "•* -")
-			if cleanTitle == "" {
-				cleanTitle = appName
-			}
-			body := fmt.Sprintf("Новое сообщение (%d непрочит.) · %s", unread, cleanTitle)
-			if delta == 1 && unread == 1 {
-				body = fmt.Sprintf("Новое входящее сообщение · %s", cleanTitle)
-			}
-			it := OSNotificationItem{
-				ID:        fmt.Sprintf("msg_%d", time.Now().UnixNano()),
-				App:       appName,
-				AppKey:    appKey,
-				Title:     fmt.Sprintf("%s — новое сообщение", appName),
-				Body:      truncateUTF8(body, 180),
-				Level:     "info",
-				Source:    "window_badge",
-				Time:      time.Now().Format("15:04"),
-				Timestamp: time.Now().UnixMilli(),
-			}
-			b.items = append([]OSNotificationItem{it}, b.items...)
-			if len(b.items) > 80 {
-				b.items = b.items[:80]
-			}
+			localPath = filepath.FromSlash(localPath)
 		}
 	}
-}
-
-func matchMessengerProcess(lowProc, lowTitle string) (string, string) {
-	switch {
-	case strings.Contains(lowProc, "telegram") || strings.Contains(lowProc, "ayugram") || strings.Contains(lowProc, "kotatogram") || strings.Contains(lowTitle, "telegram"):
-		return "Telegram", "telegram"
-	case strings.Contains(lowProc, "discord") || strings.Contains(lowTitle, "discord"):
-		return "Discord", "discord"
-	case strings.Contains(lowProc, "whatsapp") || strings.Contains(lowTitle, "whatsapp"):
-		return "WhatsApp", "whatsapp"
-	case strings.Contains(lowProc, "viber") || strings.Contains(lowTitle, "viber"):
-		return "Viber", "viber"
-	case strings.Contains(lowProc, "vk") || strings.Contains(lowTitle, "вконтакте") || strings.Contains(lowTitle, "vk messenger"):
-		return "VK Мессенджер", "vk"
-	case strings.Contains(lowProc, "slack") || strings.Contains(lowTitle, "slack"):
-		return "Slack", "slack"
-	case strings.Contains(lowProc, "teams") || strings.Contains(lowTitle, "microsoft teams"):
-		return "Teams", "teams"
-	case strings.Contains(lowProc, "signal") || strings.Contains(lowProc, "element"):
-		return "Messenger", "telegram"
-	case strings.Contains(lowProc, "steam") && (strings.Contains(lowTitle, "чат") || strings.Contains(lowTitle, "chat") || strings.Contains(lowTitle, "friends")):
-		return "Steam", "steam"
+	st, err := os.Stat(localPath)
+	if err != nil || st.IsDir() || st.Size() == 0 || st.Size() > 256*1024 {
+		return ""
 	}
-	return "", ""
+	raw, err := os.ReadFile(localPath)
+	if err != nil || len(raw) == 0 {
+		return ""
+	}
+	mime := "image/png"
+	low := strings.ToLower(localPath)
+	if strings.HasSuffix(low, ".jpg") || strings.HasSuffix(low, ".jpeg") {
+		mime = "image/jpeg"
+	} else if strings.HasSuffix(low, ".webp") {
+		mime = "image/webp"
+	} else if strings.HasSuffix(low, ".gif") {
+		mime = "image/gif"
+	}
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw)
 }
 
 func detectMessengerApp(ctx string) (string, string) {
 	l := strings.ToLower(ctx)
 	switch {
-	case strings.Contains(l, "telegram") || strings.Contains(l, "ayugram") || strings.Contains(l, "tdesktop"):
+	case strings.Contains(l, "telegram") || strings.Contains(l, "ayugram") || strings.Contains(l, "kotatogram") || strings.Contains(l, "tdesktop"):
 		return "Telegram", "telegram"
 	case strings.Contains(l, "discord"):
 		return "Discord", "discord"
@@ -438,16 +560,16 @@ func detectMessengerApp(ctx string) (string, string) {
 		return "Teams", "teams"
 	case strings.Contains(l, "steam"):
 		return "Steam", "steam"
+	case strings.Contains(l, "signal"):
+		return "Signal", "telegram"
+	case strings.Contains(l, "outlook") || strings.Contains(l, "mail") || strings.Contains(l, "gmail") || strings.Contains(l, "thunderbird"):
+		return "Почта", "mail"
 	case strings.Contains(l, "chrome"):
 		return "Chrome", "browser"
 	case strings.Contains(l, "msedge") || strings.Contains(l, "edge"):
 		return "Edge", "browser"
 	case strings.Contains(l, "firefox"):
 		return "Firefox", "browser"
-	case strings.Contains(l, "outlook") || strings.Contains(l, "mail") || strings.Contains(l, "gmail") || strings.Contains(l, "thunderbird"):
-		return "Почта", "mail"
-	case strings.Contains(l, "spotify") || strings.Contains(l, "яндекс музыка"):
-		return "Музыка", "system"
 	default:
 		return "Windows", "system"
 	}
