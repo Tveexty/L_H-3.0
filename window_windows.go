@@ -422,7 +422,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.6.2b (Nitrogen)",
+			Title:  "Luma OS 1.6.3 (Nitrogen)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,
@@ -623,7 +623,7 @@ func forceBringLumaToFront(lumaHwnd uintptr, pinTopmost bool) {
 		customAltTabMu.Unlock()
 	} else {
 		nativeWinMu.Lock()
-		keepTop := activeShellCfg.AlwaysOnTop
+		keepTop := activeShellCfg.AlwaysOnTop || pinnedLumaWindowTopmost
 		nativeWinMu.Unlock()
 		if !keepTop {
 			_, _, _ = procSetWindowPos.Call(lumaHwnd, hwndNoTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoOwnerZOrder)
@@ -632,6 +632,36 @@ func forceBringLumaToFront(lumaHwnd uintptr, pinTopmost bool) {
 		altTabPinnedTopmost = false
 		customAltTabMu.Unlock()
 	}
+}
+
+var pinnedLumaWindowTopmost bool
+
+func setLumaPinnedWindowTopmost(enabled bool) bool {
+	nativeWinMu.Lock()
+	pinnedLumaWindowTopmost = enabled
+	wv := nativeWebView
+	keepTop := activeShellCfg.AlwaysOnTop || pinnedLumaWindowTopmost
+	nativeWinMu.Unlock()
+	if wv != nil {
+		wv.Dispatch(func() {
+			hwnd := uintptr(wv.Window())
+			if hwnd == 0 {
+				return
+			}
+			insertAfter := hwndNoTopmost
+			if keepTop {
+				insertAfter = hwndTopmost
+			}
+			_, _, _ = procSetWindowPos.Call(hwnd, insertAfter, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoOwnerZOrder)
+		})
+	}
+	return keepTop
+}
+
+func isLumaPinnedWindowTopmost() bool {
+	nativeWinMu.Lock()
+	defer nativeWinMu.Unlock()
+	return pinnedLumaWindowTopmost || activeShellCfg.AlwaysOnTop
 }
 
 func releaseAltTabTopmost() {
@@ -646,7 +676,7 @@ func releaseAltTabTopmost() {
 
 	nativeWinMu.Lock()
 	wv := nativeWebView
-	keepTop := activeShellCfg.AlwaysOnTop
+	keepTop := activeShellCfg.AlwaysOnTop || pinnedLumaWindowTopmost
 	nativeWinMu.Unlock()
 	if wv == nil || keepTop || !wasPinned {
 		return
@@ -678,7 +708,7 @@ func bringLumaHomeNow() {
 func suspendWindowTopmost(suspend bool) {
 	nativeWinMu.Lock()
 	wv := nativeWebView
-	restoreTop := activeShellCfg.AlwaysOnTop
+	restoreTop := activeShellCfg.AlwaysOnTop || pinnedLumaWindowTopmost
 	nativeWinMu.Unlock()
 	if wv == nil {
 		return

@@ -61,7 +61,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
   const [activeSlideIdx, setActiveSlideIdx] = useState(0);
   const [busy, setBusy] = useState(false);
 
-  // Luma AI 5.0 Nexus Office Assistant Drawer state
+  // Luma Ai Nitrogen Office Assistant Drawer state (SSE Token Streaming)
   const [aiOpen, setAiOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
@@ -71,19 +71,76 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
   const runOfficeAI38 = async (action: string, customPrompt?: string) => {
     setAiOpen(true);
     setAiBusy(true);
+    setAiReply('');
+    setAiSources([]);
     const appKey = mode === 'docs' ? 'word' : mode === 'sheets' ? 'excel' : 'powerpoint';
     let content = '';
     if (mode === 'docs') {
-      content = docHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
+      content = docHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4500);
     } else if (mode === 'sheets') {
       const sh = sheets[activeSheetIdx] || sheets[0];
-      content = JSON.stringify(sh?.cells || {}).slice(0, 3000);
+      content = JSON.stringify(sh?.cells || {}).slice(0, 3500);
     } else {
       const sl = slides[activeSlideIdx] || slides[0];
       const elemsText = (sl?.elements || []).map((el) => el.text || '').filter(Boolean).join('\n');
       content = `${sl?.title || ''}\n${elemsText}\n${sl?.notes || ''}`.trim();
     }
+    const actionHints: Record<string, string> = {
+      improve: `Улучши стиль, структуру и читаемость текста в ${brand.name}. Верни готовый улучшенный текст.`,
+      summarize: `Сделай краткую структурированную выжимку по содержимому ${brand.name}.`,
+      generate: `Дополни материал фактами, примерами и полезными выводами для ${brand.name}.`,
+      formula: `Подбери точные формулы Excel (русские и английские названия) для этой таблицы и объясни их.`,
+      analyze: `Проанализируй данные таблицы Excel, выдели ключевые тренды и аномалии.`,
+      explain: `Объясни расчёты и логику этой таблицы простыми словами.`,
+      slide: `Сформируй сильные тезисы (4–6 буллитов) для слайда PowerPoint по этому содержимому.`,
+    };
+    const userPrompt = (customPrompt ?? aiPrompt).trim() || actionHints[action] || `Помоги с документом «${docTitle}» в ${brand.name}.`;
+
     try {
+      const res = await fetch('/api/kernel/ai/nitrogen/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: `office_${appKey}`,
+          message: userPrompt,
+          context_app: `office_${appKey}`,
+          context_content: `Файл: ${docTitle}\nСодержимое:\n${content}`,
+          stream: true,
+        }),
+      });
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let acc = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.startsWith('data:')) continue;
+            try {
+              const ev = JSON.parse(line.slice(5).trim());
+              if (ev.type === 'token' && ev.content) {
+                acc += String(ev.content);
+                setAiReply(acc);
+              } else if (ev.type === 'done') {
+                if (ev.reply && !acc) {
+                  acc = String(ev.reply);
+                  setAiReply(acc);
+                }
+                if (Array.isArray(ev.sources)) setAiSources(ev.sources);
+              }
+            } catch {
+              /* ignore partial SSE frame */
+            }
+          }
+        }
+        if (acc.trim()) return;
+      }
+      // Fallback to /api/kernel/ai/assist
       const r = await fetch('/api/kernel/ai/assist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -91,7 +148,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
           app: appKey,
           action,
           content,
-          prompt: (customPrompt ?? aiPrompt).trim(),
+          prompt: userPrompt,
           filename: docTitle,
         }),
       });
@@ -101,7 +158,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
         setAiSources(Array.isArray(d.sources) ? d.sources : []);
       }
     } catch {
-      setAiReply('Не удалось связаться с Luma AI 5.0 Nexus.');
+      setAiReply('Не удалось связаться с Luma Ai Nitrogen.');
     } finally {
       setAiBusy(false);
     }
@@ -112,10 +169,10 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
     if (mode === 'docs') {
       const htmlBlock = `<p>${aiReply.replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br/>')}</p>`;
       setDocHtml((prev) => prev + htmlBlock);
-      onNotify?.('Luma AI 5.0 · Word', 'Ответ вставлен в конец документа', 'ok');
+      onNotify?.('Luma Ai Nitrogen · Word', 'Ответ вставлен в конец документа', 'ok');
     } else if (mode === 'slides') {
       const nowId = Date.now();
-      const slideTitle = aiPrompt.trim() || `AI 5.0 · ${docTitle}`;
+      const slideTitle = aiPrompt.trim() || `Luma Ai Nitrogen · ${docTitle}`;
       const newSlide: OfficeSlide = {
         id: `sl_ai_${nowId}`,
         title: slideTitle,
@@ -152,10 +209,10 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
       };
       setSlides((prev) => [...prev, newSlide]);
       setActiveSlideIdx(slides.length);
-      onNotify?.('Luma AI 5.0 · PowerPoint', 'Добавлен новый слайд с тезисами AI 5.0', 'ok');
+      onNotify?.('Luma Ai Nitrogen · PowerPoint', 'Добавлен новый слайд с тезисами ИИ', 'ok');
     } else {
       navigator.clipboard?.writeText(aiReply).catch(() => {});
-      onNotify?.('Luma AI 5.0 · Excel', 'Формулы и рекомендации скопированы в буфер обмена', 'ok');
+      onNotify?.('Luma Ai Nitrogen · Excel', 'Формулы и рекомендации скопированы в буфер обмена', 'ok');
     }
   };
 
@@ -489,14 +546,14 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
           <button
             type="button"
             onClick={() => setAiOpen((v) => !v)}
-            title="Помощник Luma AI 5.0 Nexus (тексты, формулы Excel, слайды PowerPoint)"
+            title="Помощник Luma Ai Nitrogen (тексты, формулы Excel, слайды PowerPoint)"
             className={`px-2.5 py-1 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition ${
               aiOpen
                 ? 'bg-white text-sky-700 shadow'
                 : 'bg-white/20 hover:bg-white/30 text-white'
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5" /> AI 5.0
+            <Sparkles className="w-3.5 h-3.5" /> Ai Nitrogen
           </button>
 
           <button
@@ -510,7 +567,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
         </div>
       </div>
 
-      {/* Luma AI 5.0 Nexus Side Assistant Drawer for Word / Excel / PowerPoint */}
+      {/* Luma Ai Nitrogen Side Assistant Drawer for Word / Excel / PowerPoint */}
       {aiOpen && (
         <div
           className={`fixed sm:absolute right-3 top-12 bottom-3 w-80 sm:w-96 z-[60] rounded-2xl border shadow-2xl flex flex-col overflow-hidden backdrop-blur-2xl ${
@@ -520,7 +577,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
           <div className="px-3.5 py-2.5 border-b border-black/10 flex items-center justify-between bg-gradient-to-r from-sky-600 to-indigo-600 text-white">
             <div className="flex items-center gap-1.5 text-xs font-black">
               <Sparkles className="w-3.5 h-3.5" />
-              Luma AI 5.0 · {brand.short}
+              Luma Ai Nitrogen · {brand.short}
             </div>
             <button type="button" onClick={() => setAiOpen(false)} className="p-1 rounded hover:bg-white/15 cursor-pointer">
               <X className="w-3.5 h-3.5" />
@@ -561,8 +618,8 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-3 text-xs space-y-2.5">
-            {aiBusy ? (
-              <div className="text-sky-500 animate-pulse">Luma AI 5.0 анализирует {brand.short} и проверяет источники…</div>
+            {aiBusy && !aiReply ? (
+              <div className="text-sky-500 animate-pulse">Luma Ai Nitrogen анализирует {brand.short} и генерирует ответ…</div>
             ) : aiReply ? (
               <>
                 <div className="whitespace-pre-wrap leading-relaxed">{aiReply}</div>
@@ -597,7 +654,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
                     type="button"
                     onClick={() => {
                       navigator.clipboard?.writeText(aiReply).catch(() => {});
-                      onNotify?.('Luma AI 5.0', 'Ответ скопирован', 'ok');
+                      onNotify?.('Luma Ai Nitrogen', 'Ответ скопирован', 'ok');
                     }}
                     className={`p-1.5 rounded-lg border cursor-pointer ${officeDark ? 'border-white/15 hover:bg-white/10' : 'border-slate-300 hover:bg-slate-100'}`}
                     title="Копировать ответ"
@@ -608,7 +665,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
               </>
             ) : (
               <div className="opacity-65">
-                Выберите действие выше или введите задачу для <b>{brand.name}</b> — Luma AI 5.0 Nexus поможет с текстом, формулами или слайдами с проверенными источниками.
+                Выберите действие выше или введите задачу для <b>{brand.name}</b> — Luma Ai Nitrogen работает в потоковом режиме и поможет с текстом, формулами или слайдами.
               </div>
             )}
           </div>
@@ -622,7 +679,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
             <input
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
-              placeholder={`Спросить AI 5.0 для ${brand.short}…`}
+              placeholder={`Спросить Luma Ai Nitrogen для ${brand.short}…`}
               className={`flex-1 px-2.5 py-1.5 rounded-xl border text-xs outline-none ${officeDark ? 'bg-slate-900 border-white/10' : 'bg-slate-50 border-slate-300'}`}
             />
             <button
@@ -824,10 +881,10 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
 
             {backstageTab === 'info' && (
               <div className="space-y-3 max-w-xl text-xs leading-relaxed">
-                <h2 className="text-xl font-bold">Luma Office Studio 1.6.2b (Nitrogen · AI 5.0)</h2>
-                <p>Классический понятный интерфейс Microsoft Word, Excel и PowerPoint с группировкой инструментов на ленте Ribbon, строкой быстрого поиска команд и автосохранением.</p>
+                <h2 className="text-xl font-bold">Luma Office Studio 1.6.3 (Nitrogen · Luma Ai Nitrogen)</h2>
+                <p>Классический понятный интерфейс Word, Excel и PowerPoint с группировкой инструментов на ленте Ribbon, постраничной вёрсткой A4, потоковым помощником Luma Ai Nitrogen и автосохранением.</p>
                 <ul className="list-disc pl-5 space-y-1 opacity-85">
-                  <li><strong>Word:</strong> 7 вкладок ленты, сетка таблиц 10×8, Формат по образцу, безопасный поиск/замена по текстовым узлам, кликабельная навигация по заголовкам, уравнения и символы, линейка, проверка типографики, озвучка текста и примечания.</li>
+                  <li><strong>Word:</strong> 7 вкладок ленты, многостраничная вёрстка A4 с разрывами страниц (`Ctrl+Enter`) и навигатором страниц, сетка таблиц 10×8, Формат по образцу, поиск/замена, оглавление, линейка и примечания.</li>
                   <li><strong>Excel:</strong> 140+ формул на русском и английском (`СУММ`, `ВПР`, `ГПР`, `ПРОСМОТРX`, `ЕСЛИМН`, `СЧЁТЕСЛИМН`, `ПЛТ`, `ЧПС`, `МЕДИАНА`, `КОРРЕЛ`, `ПРЕОБР`), поиск формул `fx`, навигация стрелками и быстрый ввод с клавиатуры, `Ctrl+Z`, маркер автозаполнения, сводные таблицы и 6 типов графиков.</li>
                   <li><strong>PowerPoint:</strong> 8 вкладок ленты, 15+ фигур, редактируемый SmartArt и диаграммы, рисование пером/маркером, 12 тем, 10 живых переходов слайдов, 12 настоящих CSS-анимаций объектов с порядком показа, `Ctrl+Z`, `Delete` и режим докладчика `F5`.</li>
                 </ul>

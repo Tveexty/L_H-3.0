@@ -128,11 +128,11 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
       }
       return [
         {
-          id: 'ev_welcome_carbon',
+          id: 'ev_welcome_nitrogen',
           date: todayKey,
           time: '10:00',
-          title: 'Luma OS 1.5.1 (Carbon · C-6)',
-          note: 'Luma Office Studio, LumaShield 2.0, AI 2.0, 4K обои и живые уведомления',
+          title: 'Luma OS 1.6.3 (Nitrogen · N-7)',
+          note: 'Luma Ai Nitrogen, Luma Office Studio, LumaShield 2.5 и умный календарь',
           color: '#06b6d4',
           category: 'work',
           done: false,
@@ -142,6 +142,11 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
       ];
     });
 
+    const [aiPlanInput, setAiPlanInput] = useState('');
+    const [aiPlanBusy, setAiPlanBusy] = useState(false);
+    const [aiPlanReply, setAiPlanReply] = useState('');
+    const kernelHydratedRef = React.useRef(false);
+
     const [newTitle, setNewTitle] = useState('');
     const [newTime, setNewTime] = useState('12:00');
     const [newNote, setNewNote] = useState('');
@@ -150,12 +155,56 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
     const [newRepeat, setNewRepeat] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none');
     const [newPriority, setNewPriority] = useState<'normal' | 'important' | 'urgent'>('normal');
 
+    const loadFromKernelCalendar = React.useCallback(async () => {
+      try {
+        const r = await fetch('/api/kernel/calendar/events');
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d?.ok && Array.isArray(d.events)) {
+          if (d.events.length > 0) {
+            setEvents((prev) => {
+              const byId = new Map<string, LumaCalendarEvent>();
+              for (const ev of prev) byId.set(ev.id, ev);
+              for (const ke of d.events as LumaCalendarEvent[]) {
+                byId.set(ke.id, {
+                  ...ke,
+                  color: ke.color || CATEGORY_META[ke.category || 'work']?.color || '#06b6d4',
+                });
+              }
+              return Array.from(byId.values());
+            });
+          }
+          kernelHydratedRef.current = true;
+        }
+      } catch {
+        /* ignore offline */
+      }
+    }, []);
+
+    useEffect(() => {
+      void loadFromKernelCalendar();
+      const onExternalUpdate = () => {
+        void loadFromKernelCalendar();
+      };
+      window.addEventListener('luma-calendar-updated', onExternalUpdate);
+      return () => window.removeEventListener('luma-calendar-updated', onExternalUpdate);
+    }, [loadFromKernelCalendar]);
+
     useEffect(() => {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
       } catch {
         /* ignore */
       }
+      if (!kernelHydratedRef.current) return;
+      const t = window.setTimeout(() => {
+        void fetch('/api/kernel/calendar/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sync_all: true, events }),
+        }).catch(() => {});
+      }, 350);
+      return () => window.clearTimeout(t);
     }, [events]);
 
     useEffect(() => {
@@ -163,7 +212,7 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
       return () => window.clearInterval(id);
     }, []);
 
-    // Live On-Time Reminder Trigger (notifies via Dynamic Island & Notification Center!)
+    // Live On-Time Reminder Trigger
     useEffect(() => {
       const curDate = toYmd(nowClock);
       const curHM = `${String(nowClock.getHours()).padStart(2, '0')}:${String(nowClock.getMinutes()).padStart(2, '0')}`;
@@ -198,6 +247,54 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
       }, 1000);
       return () => window.clearInterval(id);
     }, [pomoRunning, pomoMode, onNotify]);
+
+    const handleAskNitrogenCalendar = async () => {
+      const prompt = aiPlanInput.trim();
+      if (!prompt || aiPlanBusy) return;
+      setAiPlanBusy(true);
+      setAiPlanReply('');
+      try {
+        const res = await fetch('/api/kernel/ai/nitrogen/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: 'calendar_planner',
+            message: prompt,
+            context_app: 'calendar',
+            context_content: `Выбранная дата: ${selectedDate}. Событий в календаре: ${events.length}.`,
+            stream: false,
+          }),
+        });
+        if (res.ok) {
+          const ct = res.headers.get('content-type') || '';
+          let replyText = '';
+          if (ct.includes('text/event-stream')) {
+            const raw = await res.text();
+            for (const line of raw.split('\n')) {
+              if (!line.startsWith('data:')) continue;
+              try {
+                const ev = JSON.parse(line.slice(5).trim());
+                if (ev.type === 'token' && ev.content) replyText += String(ev.content);
+                if (ev.type === 'done' && ev.reply && !replyText) replyText = String(ev.reply);
+              } catch {
+                /* ignore */
+              }
+            }
+          } else {
+            const d = await res.json();
+            replyText = String(d.reply || d.error || '');
+          }
+          setAiPlanReply(replyText || 'Готово! Календарь обновлён.');
+          setAiPlanInput('');
+          await loadFromKernelCalendar();
+          onNotify?.('Luma Ai Nitrogen · Календарь', 'События синхронизированы', 'success');
+        }
+      } catch {
+        setAiPlanReply('Не удалось связаться с Luma Ai Nitrogen.');
+      } finally {
+        setAiPlanBusy(false);
+      }
+    };
 
     const handleQuickAddSubmit = () => {
       const raw = quickAdd.trim();
@@ -534,6 +631,42 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
               <Upload className="w-3.5 h-3.5 text-emerald-400" /> Импорт
               <input type="file" accept=".ics" onChange={handleImportICS} className="hidden" />
             </label>
+          </div>
+
+          {/* Luma Ai Nitrogen Smart Scheduler Bar */}
+          <div
+            className={`p-2.5 rounded-xl border space-y-2 ${
+              isDark
+                ? 'bg-gradient-to-r from-sky-500/[0.08] via-indigo-500/[0.06] to-transparent border-sky-400/25'
+                : 'bg-gradient-to-r from-sky-50 via-indigo-50/70 to-white border-sky-300/60'
+            }`}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-sky-400 shrink-0">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Luma Ai Nitrogen</span>
+              </div>
+              <input
+                value={aiPlanInput}
+                onChange={(e) => setAiPlanInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void handleAskNitrogenCalendar()}
+                placeholder="Скажите ИИ: «Запланируй созвон завтра в 15:00» или «Какие планы на сегодня?»"
+                className="flex-1 min-w-[200px] bg-transparent text-xs outline-none placeholder:opacity-60"
+              />
+              <button
+                type="button"
+                disabled={aiPlanBusy || !aiPlanInput.trim()}
+                onClick={() => void handleAskNitrogenCalendar()}
+                className="px-3 py-1 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-500 hover:brightness-110 disabled:opacity-50 text-white text-[11px] font-bold cursor-pointer transition shrink-0"
+              >
+                {aiPlanBusy ? 'Думаю…' : 'Спланировать'}
+              </button>
+            </div>
+            {aiPlanReply && (
+              <div className={`text-[11px] whitespace-pre-wrap leading-relaxed px-2.5 py-1.5 rounded-lg border ${isDark ? 'bg-black/30 border-white/10 text-slate-200' : 'bg-white/90 border-sky-200 text-slate-800'}`}>
+                {aiPlanReply}
+              </div>
+            )}
           </div>
 
           {/* Category Filter Chips + Monthly Progress */}

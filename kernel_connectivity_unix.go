@@ -220,3 +220,51 @@ func connectBluetoothNative(req BluetoothConnectRequest, probe *platformProbe) B
 		Status:  st,
 	}
 }
+
+func discoverAllBluetoothDevicesNative(probe *platformProbe, activeScan bool) BluetoothStatus {
+	var st BluetoothStatus
+	if probe != nil {
+		st = probe.GetBluetoothStatus()
+	}
+	if st.Devices == nil {
+		st.Devices = []BluetoothDevice{}
+	}
+	byKey := map[string]bool{}
+	for i := range st.Devices {
+		st.Devices[i].Paired = true
+		byKey[strings.ToLower(st.Devices[i].Name)] = true
+	}
+	if _, err := exec.LookPath("bluetoothctl"); err == nil {
+		if activeScan {
+			_, _ = runUnixCmd(2*time.Second, "bluetoothctl", "--timeout", "2", "scan", "on")
+		}
+		if out, err := runUnixCmd(2*time.Second, "bluetoothctl", "devices"); err == nil {
+			for _, line := range strings.Split(out, "\n") {
+				fields := strings.Fields(line)
+				if len(fields) >= 3 && fields[0] == "Device" {
+					mac := fields[1]
+					name := strings.Join(fields[2:], " ")
+					low := strings.ToLower(name)
+					if !byKey[low] {
+						byKey[low] = true
+						st.Available = true
+						st.Devices = append(st.Devices, BluetoothDevice{
+							Name:           name,
+							Status:         "Найдено рядом",
+							Connected:      false,
+							Paired:         false,
+							Discovered:     true,
+							Address:        mac,
+							Class:          "Bluetooth",
+							DeviceType:     "other",
+							BatteryPercent: -1,
+							Transport:      "Bluetooth",
+							InstanceID:     mac,
+						})
+					}
+				}
+			}
+		}
+	}
+	return st
+}

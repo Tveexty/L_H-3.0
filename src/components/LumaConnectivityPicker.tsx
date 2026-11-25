@@ -50,6 +50,9 @@ export interface BluetoothDeviceItem {
   name: string;
   status: string;
   connected: boolean;
+  paired?: boolean;
+  discovered?: boolean;
+  address?: string;
   class?: string;
   device_type?: string;
   battery_percent?: number;
@@ -414,7 +417,7 @@ interface BluetoothPickerProps {
   isDark: boolean;
   status: BluetoothStatusSnapshot | null;
   loading: boolean;
-  onRefresh: () => void;
+  onRefresh: (activeScan?: boolean) => void;
   onToggleRadio: (enabled: boolean) => void;
   onDeviceAction: (
     dev: BluetoothDeviceItem,
@@ -487,7 +490,7 @@ export const LumaBluetoothPickerPanel: React.FC<BluetoothPickerProps> = ({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <Bluetooth className={`w-3.5 h-3.5 shrink-0 ${enabled ? 'text-sky-400' : 'text-rose-400'}`} />
-          <span className="text-[11px] font-bold truncate">Устройства Bluetooth</span>
+          <span className="text-[11px] font-bold truncate">Bluetooth ({devices.length})</span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
@@ -506,12 +509,13 @@ export const LumaBluetoothPickerPanel: React.FC<BluetoothPickerProps> = ({
           </button>
           <button
             type="button"
-            onClick={onRefresh}
+            onClick={() => onRefresh(true)}
             disabled={loading}
-            title="Обновить список устройств"
-            className={`p-1 rounded-lg border transition cursor-pointer ${itemCls}`}
+            title="Найти все устройства Bluetooth рядом (активное сканирование)"
+            className={`px-1.5 py-1 rounded-lg border text-[9px] font-semibold inline-flex items-center gap-1 transition cursor-pointer ${itemCls}`}
           >
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin text-sky-400' : ''}`} />
+            <span>Поиск</span>
           </button>
           <button
             type="button"
@@ -550,25 +554,32 @@ export const LumaBluetoothPickerPanel: React.FC<BluetoothPickerProps> = ({
       ) : loading && devices.length === 0 ? (
         <div className={`py-4 flex items-center justify-center gap-2 text-[11px] ${mutedCls}`}>
           <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
-          <span>Поиск устройств Bluetooth…</span>
+          <span>Поиск всех устройств Bluetooth рядом…</span>
         </div>
       ) : devices.length === 0 ? (
         <div className={`py-3 text-center text-[10px] font-mono ${mutedCls}`}>
-          Устройства Bluetooth не найдены. Включите сопряжение на устройстве и обновите список.
+          Устройства Bluetooth не найдены. Нажмите «Поиск» для сканирования эфира.
         </div>
       ) : (
-        <div className="space-y-1 max-h-56 overflow-y-auto pr-0.5">
+        <div className="space-y-1 max-h-60 overflow-y-auto pr-0.5">
           {devices.map((dev, idx) => {
-            const devKey = `${dev.instance_id || dev.name}_${idx}`;
+            const devKey = `${dev.instance_id || dev.address || dev.name}_${idx}`;
             const expanded = selectedKey === devKey;
             const isBusy = busyKey === devKey;
             const hasBat = typeof dev.battery_percent === 'number' && dev.battery_percent >= 0;
+            const stateLabel = dev.connected
+              ? 'Подключено'
+              : dev.discovered && !dev.paired
+              ? 'Найдено рядом'
+              : 'Сопряжено';
             return (
               <div
                 key={devKey}
                 className={`rounded-xl border transition overflow-hidden ${
                   dev.connected
-                    ? 'border-sky-400/45 bg-sky-500/10'
+                    ? 'border-emerald-400/45 bg-emerald-500/10'
+                    : dev.discovered && !dev.paired
+                    ? 'border-amber-400/35 bg-amber-500/[0.06]'
                     : expanded
                     ? 'border-cyan-400/50 bg-cyan-500/10'
                     : itemCls
@@ -585,7 +596,7 @@ export const LumaBluetoothPickerPanel: React.FC<BluetoothPickerProps> = ({
                     <div className="min-w-0">
                       <div className="text-[11px] font-semibold truncate">{dev.name}</div>
                       <div className={`text-[9px] font-mono truncate ${mutedCls}`}>
-                        {dev.connected ? 'Подключено' : 'Готово к подключению'} · {dev.transport || dev.class || 'Bluetooth'}
+                        {stateLabel} · {dev.address || dev.transport || dev.class || 'Bluetooth'}
                       </div>
                     </div>
                   </div>
@@ -600,6 +611,8 @@ export const LumaBluetoothPickerPanel: React.FC<BluetoothPickerProps> = ({
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
                     ) : dev.connected ? (
                       <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
+                    ) : dev.discovered && !dev.paired ? (
+                      <span className="px-1.5 py-0.5 rounded text-[8px] font-mono bg-amber-500/20 text-amber-300">НОВОЕ</span>
                     ) : null}
                   </div>
                 </button>
@@ -621,7 +634,7 @@ export const LumaBluetoothPickerPanel: React.FC<BluetoothPickerProps> = ({
                       <form
                         onSubmit={(e) => {
                           e.preventDefault();
-                          void runAction(dev, devKey, pinCode.trim() ? 'pair' : 'connect', pinCode.trim());
+                          void runAction(dev, devKey, dev.discovered || pinCode.trim() ? 'pair' : 'connect', pinCode.trim());
                         }}
                         className="space-y-1.5"
                       >
@@ -649,7 +662,7 @@ export const LumaBluetoothPickerPanel: React.FC<BluetoothPickerProps> = ({
                             className="px-2.5 py-1 rounded-lg bg-[var(--luma-accent)] text-white text-[10px] font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
                           >
                             {isBusy && <Loader2 className="w-3 h-3 animate-spin" />}
-                            {pinCode.trim() ? 'Сопрячь с PIN' : 'Подключить'}
+                            {dev.discovered && !dev.paired ? 'Сопрячь и подключить' : pinCode.trim() ? 'Сопрячь с PIN' : 'Подключить'}
                           </button>
                         </div>
                       </form>

@@ -768,6 +768,7 @@ const LumaToggleSwitch: React.FC<{ checked: boolean; accent?: string }> = ({ che
 interface ChargeLimitConfigState {
   enabled: boolean;
   limit_percent: number;
+  stop_charging_now?: boolean;
   notify_at_limit: boolean;
   auto_eco_at_limit: boolean;
 }
@@ -790,16 +791,21 @@ const BatteryCareChargeLimitCard: React.FC<{
   const [cfg, setCfg] = useState<ChargeLimitConfigState>({
     enabled: false,
     limit_percent: 80,
+    stop_charging_now: false,
     notify_at_limit: true,
     auto_eco_at_limit: true,
   });
   const [statusMsg, setStatusMsg] = useState('');
+  const [hwMethod, setHwMethod] = useState('');
+  const [hwApplied, setHwApplied] = useState(false);
 
   useEffect(() => {
     void fetch('/api/kernel/power/charge-limit')
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d?.config) setCfg(d.config);
+        if (d?.hardware_method) setHwMethod(String(d.hardware_method));
+        if (typeof d?.hardware_applied === 'boolean') setHwApplied(d.hardware_applied);
       })
       .catch(() => {});
   }, []);
@@ -815,8 +821,10 @@ const BatteryCareChargeLimitCard: React.FC<{
       if (r.ok) {
         const d = await r.json();
         if (d?.config) setCfg(d.config);
+        if (d?.hardware_method) setHwMethod(String(d.hardware_method));
+        if (typeof d?.hardware_applied === 'boolean') setHwApplied(d.hardware_applied);
         setStatusMsg(d?.message || 'Сохранено');
-        window.setTimeout(() => setStatusMsg(''), 3500);
+        window.setTimeout(() => setStatusMsg(''), 4500);
       }
     } catch {
       /* ignore */
@@ -827,12 +835,13 @@ const BatteryCareChargeLimitCard: React.FC<{
     Math.abs(p.pct - cfg.limit_percent) < Math.abs(best.pct - cfg.limit_percent) ? p : best
   );
   const clampedNow = Math.max(0, Math.min(100, currentPercent));
-  const limitReached = cfg.enabled && hasBattery && isCharging && clampedNow >= cfg.limit_percent;
+  const stopNow = Boolean(cfg.stop_charging_now);
+  const limitReached = (cfg.enabled || stopNow) && hasBattery && isCharging && (stopNow || clampedNow >= cfg.limit_percent);
 
   return (
     <div
       className={`relative overflow-hidden rounded-2xl border p-5 space-y-4 ${cardCls} ${
-        cfg.enabled
+        cfg.enabled || stopNow
           ? isDark
             ? 'border-emerald-500/35 bg-gradient-to-br from-emerald-500/[0.08] via-transparent to-cyan-500/[0.05]'
             : 'border-emerald-300 bg-gradient-to-br from-emerald-50/90 via-white to-cyan-50/50'
@@ -844,7 +853,7 @@ const BatteryCareChargeLimitCard: React.FC<{
         <div className="flex items-center gap-3">
           <div
             className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition ${
-              cfg.enabled
+              cfg.enabled || stopNow
                 ? 'bg-gradient-to-br from-emerald-400 to-teal-600 text-white shadow-lg shadow-emerald-500/25'
                 : isDark
                 ? 'bg-white/10 text-emerald-400'
@@ -854,28 +863,74 @@ const BatteryCareChargeLimitCard: React.FC<{
             <ShieldCheck className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-sm font-extrabold tracking-tight flex items-center gap-2">
-              <span>Режим сбережения батареи (Лимит заряда)</span>
-              {cfg.enabled && (
+            <div className="text-sm font-extrabold tracking-tight flex flex-wrap items-center gap-2">
+              <span>Режим сбережения батареи и остановки зарядки</span>
+              {stopNow ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-400/40">
+                  🔌 Не заряжать АКБ
+                </span>
+              ) : cfg.enabled ? (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-400/35">
                   До {cfg.limit_percent}%
                 </span>
-              )}
+              ) : null}
             </div>
             <div className="text-[11px] text-zinc-500 mt-0.5">
-              Защищает аккумулятор ноутбука от износа при долгой работе от сети — выберите максимальный процент заряда
+              Защищает аккумулятор ноутбука от износа при работе от сети — аппаратный стоп зарядки (Lenovo/ASUS/MSI/Acer/ACPI) + умный контроль
             </div>
           </div>
         </div>
 
         <button
           type="button"
-          onClick={() => void saveChargeCfg({ ...cfg, enabled: !cfg.enabled })}
+          onClick={() => void saveChargeCfg({ ...cfg, enabled: !cfg.enabled, stop_charging_now: cfg.enabled ? false : cfg.stop_charging_now })}
           className="inline-flex items-center gap-2 cursor-pointer"
         >
-          <span className="text-xs font-bold">{cfg.enabled ? 'Включено' : 'Выключено'}</span>
-          <LumaToggleSwitch checked={cfg.enabled} accent="#10b981" />
+          <span className="text-xs font-bold">{cfg.enabled || stopNow ? 'Включено' : 'Выключено'}</span>
+          <LumaToggleSwitch checked={cfg.enabled || stopNow} accent="#10b981" />
         </button>
+      </div>
+
+      {/* Prominent 1-Click Stop Charging Mode Switch (for Laptop AC Use) */}
+      <div
+        onClick={() =>
+          void saveChargeCfg({
+            ...cfg,
+            enabled: !stopNow ? true : cfg.enabled,
+            stop_charging_now: !stopNow,
+            limit_percent: !stopNow && cfg.limit_percent > 80 ? 60 : cfg.limit_percent,
+          })
+        }
+        className={`rounded-2xl border p-3.5 flex items-center justify-between gap-3 cursor-pointer transition ${
+          stopNow
+            ? isDark
+              ? 'border-amber-400/45 bg-amber-500/15 text-amber-100'
+              : 'border-amber-400 bg-amber-50 text-amber-950'
+            : isDark
+            ? 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]'
+            : 'border-zinc-200 bg-zinc-50 hover:bg-zinc-100'
+        }`}
+      >
+        <div className="min-w-0">
+          <div className="text-xs font-black flex items-center gap-2">
+            <span>🔌 Не заряжать батарею (работа напрямую от сети)</span>
+            {stopNow && (
+              <span className="px-1.5 py-0.5 rounded bg-amber-500/25 text-amber-300 text-[9px] font-mono">
+                АКТИВНО
+              </span>
+            )}
+          </div>
+          <div className="text-[11px] text-zinc-500 mt-0.5">
+            Мгновенно переводит контроллер батареи ноутбука в Conservation / Stop-Charge режим — питание идёт от адаптера, АКБ не греется и не перезаряжается
+          </div>
+          {hwMethod && (
+            <div className="text-[10px] font-mono mt-1 text-emerald-400">
+              {hwApplied ? '✓ Аппаратный контроллер: ' : 'ℹ Режим LumaCore: '}
+              {hwMethod}
+            </div>
+          )}
+        </div>
+        <LumaToggleSwitch checked={stopNow} accent="#f59e0b" />
       </div>
 
       {/* Visual Animated Battery Gauge with Glowing Target Cap Marker */}
@@ -883,7 +938,11 @@ const BatteryCareChargeLimitCard: React.FC<{
         <div className="flex items-center justify-between text-xs">
           <span className="font-semibold">
             {hasBattery ? `Текущий заряд: ${clampedNow}%` : 'Лимит заряда аккумулятора'}
-            {limitReached && <span className="ml-2 text-emerald-400 font-bold">· Лимит достигнут</span>}
+            {stopNow ? (
+              <span className="ml-2 text-amber-400 font-bold">· Зарядка остановлена</span>
+            ) : limitReached ? (
+              <span className="ml-2 text-emerald-400 font-bold">· Лимит достигнут</span>
+            ) : null}
           </span>
           <div className="flex items-center gap-2">
             {statusMsg && (
@@ -892,7 +951,7 @@ const BatteryCareChargeLimitCard: React.FC<{
               </span>
             )}
             <span className="text-sm font-black font-mono text-emerald-400">
-              {cfg.enabled ? `${cfg.limit_percent}%` : '100%'}
+              {stopNow ? 'СТОП' : cfg.enabled ? `${cfg.limit_percent}%` : '100%'}
             </span>
           </div>
         </div>
@@ -903,13 +962,15 @@ const BatteryCareChargeLimitCard: React.FC<{
           <div
             style={{ width: `${hasBattery ? clampedNow : cfg.enabled ? cfg.limit_percent : 100}%` }}
             className={`h-full rounded-lg transition-all duration-300 ${
-              cfg.enabled
+              stopNow
+                ? 'bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-400'
+                : cfg.enabled
                 ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400'
                 : 'bg-gradient-to-r from-sky-500 to-indigo-500'
             }`}
           />
           {/* Target Limit Threshold Pin */}
-          {cfg.enabled && (
+          {cfg.enabled && !stopNow && (
             <div
               style={{ left: `${cfg.limit_percent}%` }}
               className="absolute top-0 bottom-0 w-1 -ml-0.5 bg-white shadow-[0_0_12px_rgba(255,255,255,0.95)] transition-all duration-200"
@@ -925,7 +986,7 @@ const BatteryCareChargeLimitCard: React.FC<{
             max={100}
             step={5}
             value={cfg.limit_percent}
-            onChange={(e) => void saveChargeCfg({ ...cfg, enabled: true, limit_percent: Number(e.target.value) })}
+            onChange={(e) => void saveChargeCfg({ ...cfg, enabled: true, stop_charging_now: false, limit_percent: Number(e.target.value) })}
             className="w-full accent-emerald-500 cursor-pointer"
           />
           <div className="flex justify-between text-[10px] font-mono text-zinc-500">
@@ -941,7 +1002,7 @@ const BatteryCareChargeLimitCard: React.FC<{
         {/* Quick Preset Chips */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
           {CHARGE_PRESETS.map((p) => {
-            const active = cfg.enabled ? cfg.limit_percent === p.pct : p.pct === 100;
+            const active = !stopNow && (cfg.enabled ? cfg.limit_percent === p.pct : p.pct === 100);
             return (
               <button
                 key={p.pct}
@@ -950,6 +1011,7 @@ const BatteryCareChargeLimitCard: React.FC<{
                   void saveChargeCfg({
                     ...cfg,
                     enabled: p.pct < 100,
+                    stop_charging_now: false,
                     limit_percent: p.pct,
                   })
                 }

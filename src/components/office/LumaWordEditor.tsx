@@ -1184,8 +1184,69 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
           </div>
         )}
 
-        {/* Center Scrollable Paper Canvas */}
-        <div className="flex-1 min-w-0 overflow-auto flex flex-col items-center py-4 px-4">
+        {/* Center Scrollable Multi-Page A4 Word Canvas (True Page-by-Page Layout for Large Documents!) */}
+        <div
+          id="luma-word-scroll-canvas"
+          className="flex-1 min-w-0 overflow-auto flex flex-col items-center py-4 px-4"
+        >
+          {/* Quick Page Navigator Bar + Manual Page Break (Ctrl+Enter) */}
+          <div
+            style={{ width: `${Math.round((pageWidthPx * zoom) / 100)}px` }}
+            className={`mb-2 px-3 py-1.5 rounded-lg border flex flex-wrap items-center justify-between gap-2 text-[11px] select-none shrink-0 ${
+              officeDark ? 'bg-[#252526] border-white/10 text-zinc-300' : 'bg-white border-[#D1D1D1] text-slate-700'
+            }`}
+          >
+            <div className="flex items-center gap-2 font-mono">
+              <span className="font-bold text-[#185ABD]">Листы A4:</span>
+              <span className="px-1.5 py-0.5 rounded bg-[#185ABD]/15 text-[#185ABD] font-bold">
+                {Math.max(1, stats.pages)} стр.
+              </span>
+              <span className="opacity-65 hidden sm:inline">· {stats.words} слов</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {Array.from({ length: Math.min(8, Math.max(1, stats.pages)) }).map((_, pIdx) => (
+                <button
+                  key={pIdx}
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('luma-word-scroll-canvas');
+                    if (el) {
+                      const pageStep = Math.round(((1060 + 28) * zoom) / 100);
+                      el.scrollTo({ top: pIdx * pageStep, behavior: 'smooth' });
+                    }
+                  }}
+                  title={`Перейти на страницу ${pIdx + 1}`}
+                  className={`w-6 h-5 rounded text-[10px] font-mono font-bold border transition cursor-pointer ${
+                    officeDark
+                      ? 'border-white/15 hover:bg-[#185ABD] hover:text-white'
+                      : 'border-slate-300 hover:bg-[#185ABD] hover:text-white'
+                  }`}
+                >
+                  {pIdx + 1}
+                </button>
+              ))}
+              {stats.pages > 8 && <span className="text-[10px] opacity-60">…{stats.pages}</span>}
+              {!readMode && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    editorRef.current?.focus();
+                    document.execCommand(
+                      'insertHTML',
+                      false,
+                      '<div class="luma-word-page-break" contenteditable="false" data-page-break="1"><span>— Разрыв страницы —</span></div><p><br/></p>'
+                    );
+                    syncFromDom();
+                  }}
+                  title="Вставить разрыв страницы (Ctrl + Enter)"
+                  className="ml-1 px-2 py-0.5 rounded bg-[#185ABD] hover:bg-[#144ca0] text-white text-[10px] font-semibold cursor-pointer"
+                >
+                  + Разрыв стр.
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Authentic Centimeter Top Ruler */}
           {showRuler && !readMode && (
             <div
@@ -1203,71 +1264,110 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
             </div>
           )}
 
-          {/* Realistic White A4 Paper Sheet */}
-          <div
-            style={{
-              width: `${pageWidthPx}px`,
-              transform: `scale(${zoom / 100})`,
-              transformOrigin: 'top center',
-              backgroundColor: pageBg,
-              color: pageText,
-              padding: `${paddingPx}px`,
-              border:
-                pageBorder === 'thin'
-                  ? '1px solid #334155'
-                  : pageBorder === 'double'
-                  ? '4px double #185ABD'
-                  : pageBorder === 'accent'
-                  ? '3px solid #185ABD'
-                  : '1px solid rgba(0,0,0,0.12)',
-            }}
-            className="relative min-h-[1040px] shadow-[0_6px_28px_rgba(0,0,0,0.18)] rounded-[2px] flex flex-col select-text transition-all"
-          >
-            {/* Watermark Overlay */}
-            {watermark && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
-                <span className="text-6xl font-black tracking-widest opacity-[0.07] -rotate-35 uppercase select-none">
-                  {watermark}
-                </span>
-              </div>
-            )}
+          {/* True Paginated A4 Document Stack: Visual Word Page Sheets & Realistic Desk Gaps Between Every Page */}
+          {(() => {
+            const A4_PAGE_H = orientation === 'landscape' ? 760 : 1060;
+            const PAGE_GAP = 26;
+            const STRIDE = A4_PAGE_H + PAGE_GAP;
+            const pageCount = Math.max(1, stats.pages);
+            const deskBg = officeDark ? '#18181b' : '#e5e7eb';
+            const totalMinHeight = pageCount * A4_PAGE_H + (pageCount - 1) * PAGE_GAP;
+            return (
+              <div
+                style={{
+                  width: `${pageWidthPx}px`,
+                  minHeight: `${totalMinHeight}px`,
+                  transform: `scale(${zoom / 100})`,
+                  transformOrigin: 'top center',
+                  backgroundColor: pageBg,
+                  color: pageText,
+                  padding: `${paddingPx}px`,
+                  // Repeating realistic page-break desk bands so large multi-page documents clearly divide into distinct A4 pages!
+                  backgroundImage:
+                    pageCount > 1
+                      ? `repeating-linear-gradient(to bottom, ${pageBg} 0px, ${pageBg} ${A4_PAGE_H}px, rgba(0,0,0,0.16) ${A4_PAGE_H}px, ${deskBg} ${A4_PAGE_H + 2}px, ${deskBg} ${STRIDE - 2}px, rgba(0,0,0,0.16) ${STRIDE - 1}px, ${pageBg} ${STRIDE}px)`
+                      : undefined,
+                  border:
+                    pageBorder === 'thin'
+                      ? '1px solid #334155'
+                      : pageBorder === 'double'
+                      ? '4px double #185ABD'
+                      : pageBorder === 'accent'
+                      ? '3px solid #185ABD'
+                      : '1px solid rgba(0,0,0,0.14)',
+                }}
+                className="relative shadow-[0_8px_32px_rgba(0,0,0,0.22)] rounded-[2px] flex flex-col select-text transition-all"
+              >
+                {/* Visual Page Number Footers & Sheet Separators rendered cleanly at EVERY page boundary */}
+                {Array.from({ length: pageCount }).map((_, idx) => {
+                  const pageBottomTop = idx * STRIDE + A4_PAGE_H - 28;
+                  return (
+                    <div
+                      key={`pg_marker_${idx}`}
+                      style={{ top: `${pageBottomTop}px`, left: `${paddingPx}px`, right: `${paddingPx}px` }}
+                      className="pointer-events-none absolute flex items-center justify-between text-[10px] font-mono text-slate-400/90 border-t border-slate-300/60 pt-1 select-none"
+                    >
+                      <span>{footerText || 'Luma Word 1.6.3'}</span>
+                      {showPageNum && (
+                        <span>
+                          Страница {idx + 1} из {pageCount}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
 
-            {/* Header */}
-            {headerText && (
-              <div className="text-[11px] text-slate-400 border-b border-slate-200 pb-2 mb-4 flex justify-between">
-                <span>{headerText}</span>
-                <span>{docTitle}</span>
-              </div>
-            )}
+                {/* Watermark Overlay */}
+                {watermark && (
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
+                    <span className="text-6xl font-black tracking-widest opacity-[0.07] -rotate-35 uppercase select-none">
+                      {watermark}
+                    </span>
+                  </div>
+                )}
 
-            {/* Editable Document Body */}
-            <div
-              ref={editorRef}
-              contentEditable={!readMode}
-              suppressContentEditableWarning
-              onInput={syncFromDom}
-              onMouseUp={handleEditorMouseUp}
-              style={{
-                fontFamily,
-                fontSize: `${fontSizePx}px`,
-                lineHeight,
-                columnCount: columns,
-                columnGap: '28px',
-                cursor: formatPainterStyle ? 'crosshair' : 'text',
-              }}
-              className={`flex-1 outline-none prose max-w-none [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-3 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_blockquote]:border-l-4 [&_blockquote]:border-[#185ABD] [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-3 [&_table]:w-full [&_table]:border-collapse ${
-                trackChanges ? 'caret-rose-600' : ''
-              } ${showNonPrinting ? '[&_p]:after:content-["¶"] [&_p]:after:text-sky-400/60 [&_p]:after:ml-1' : ''}`}
-            />
+                {/* Header */}
+                {headerText && (
+                  <div className="text-[11px] text-slate-400 border-b border-slate-200 pb-2 mb-4 flex justify-between">
+                    <span>{headerText}</span>
+                    <span>{docTitle}</span>
+                  </div>
+                )}
 
-            {/* Footer */}
-            {(footerText || showPageNum) && (
-              <div className="mt-8 pt-2 border-t border-slate-200 text-[11px] text-slate-400 flex items-center justify-between">
-                <span>{footerText || 'Luma Word 1.5.4'}</span>
-                {showPageNum && <span>Страница 1 из {stats.pages}</span>}
+                {/* Editable Document Body (supports huge texts + Ctrl+Enter manual page breaks!) */}
+                <div
+                  ref={editorRef}
+                  contentEditable={!readMode}
+                  suppressContentEditableWarning
+                  onInput={syncFromDom}
+                  onKeyDown={(e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !readMode) {
+                      e.preventDefault();
+                      document.execCommand(
+                        'insertHTML',
+                        false,
+                        '<div class="luma-word-page-break" contenteditable="false" data-page-break="1"><span>— Разрыв страницы —</span></div><p><br/></p>'
+                      );
+                      syncFromDom();
+                    }
+                  }}
+                  onMouseUp={handleEditorMouseUp}
+                  style={{
+                    fontFamily,
+                    fontSize: `${fontSizePx}px`,
+                    lineHeight,
+                    columnCount: columns,
+                    columnGap: '28px',
+                    paddingBottom: '44px',
+                    cursor: formatPainterStyle ? 'crosshair' : 'text',
+                  }}
+                  className={`flex-1 outline-none prose max-w-none [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-3 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_blockquote]:border-l-4 [&_blockquote]:border-[#185ABD] [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-3 [&_table]:w-full [&_table]:border-collapse ${
+                    trackChanges ? 'caret-rose-600' : ''
+                  } ${showNonPrinting ? '[&_p]:after:content-["¶"] [&_p]:after:text-sky-400/60 [&_p]:after:ml-1' : ''}`}
+                />
               </div>
-            )}
-          </div>
+            );
+          })()}
         </div>
 
         {/* Right Comments Pane */}
@@ -1341,17 +1441,17 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
         )}
       </div>
 
-      {/* AUTHENTIC MS WORD BLUE STATUS BAR */}
+      {/* AUTHENTIC LUMA WORD BLUE STATUS BAR */}
       <div className="h-6 px-3 bg-[#185ABD] text-white text-[11px] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
-          <span>Страница 1 из {stats.pages}</span>
+          <span>Страниц: {stats.pages} (A4)</span>
           <span>Слов: {stats.words}</span>
           <span className="hidden sm:inline">Знаков: {stats.chars} ({stats.charsNoSpace} без проб.)</span>
-          <span className="hidden md:inline">Русский (Россия)</span>
+          <span className="hidden md:inline">Ctrl+Enter — разрыв страницы</span>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => setReadMode((v) => !v)} className="hover:underline cursor-pointer">
-            {readMode ? 'Режим чтения' : 'Разметка страницы'}
+            {readMode ? 'Режим чтения' : 'Разметка страниц A4'}
           </button>
           <span>|</span>
           <input

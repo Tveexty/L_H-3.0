@@ -309,21 +309,29 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
       setSnapPreviewZone(null);
     };
 
-    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointermove', onMove, { passive: true });
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskbarPosition, taskbarSizePx, minWidth, minHeight]);
 
   const startDrag = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
     onFocus();
     setSnapMenuOpen(false);
     if (maximized) {
-      // Smoothly unmaximize under cursor like Windows 11
+      // Smoothly unmaximize under finger / stylus / cursor
       const ratio = e.clientX / Math.max(1, window.innerWidth);
       const nx = Math.round(e.clientX - rect.w * ratio);
       const ny = Math.max(getInsets().padTop, e.clientY - 18);
@@ -343,7 +351,13 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
 
   const startResize = (dir: ResizeDir) => (e: React.PointerEvent) => {
     if (maximized) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
     onFocus();
     setSnapMenuOpen(false);
     dragRef.current = {
@@ -413,16 +427,17 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
 
       <div
         style={style}
-        onMouseDown={onFocus}
+        onPointerDown={onFocus}
         onContextMenu={(e) => e.stopPropagation()}
         className={`luma-animate-in flex flex-col overflow-hidden select-none ${winSurface} ${
-          alwaysOnTop ? 'ring-1 ring-amber-400/55 shadow-[0_24px_80px_rgba(245,158,11,0.18)]' : ''
+          alwaysOnTop ? 'ring-1 ring-amber-400/65 shadow-[0_24px_80px_rgba(245,158,11,0.22)]' : ''
         }`}
       >
-        {/* Window Titlebar */}
+        {/* Window Titlebar (Full Mouse + Touch + Stylus drag support) */}
         <div
           onPointerDown={startDrag}
           onDoubleClick={() => setMaximized((m) => !m)}
+          style={{ touchAction: 'none' }}
           className={`h-11 px-4 flex items-center justify-between gap-3 border-b shrink-0 cursor-grab active:cursor-grabbing relative ${
             isNova
               ? isDark
@@ -446,8 +461,8 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
             </span>
             <span className="text-xs font-bold tracking-tight truncate">{title}</span>
             {alwaysOnTop && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/40 text-amber-300 text-[9px] font-bold shrink-0">
-                <Pin className="w-2.5 h-2.5" /> Поверх
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/45 text-amber-300 text-[9px] font-bold shrink-0">
+                <Pin className="w-2.5 h-2.5" /> Поверх всех окон
               </span>
             )}
             {subtitle && (
@@ -458,14 +473,14 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
           </div>
 
           <div className="flex items-center gap-1 shrink-0 relative">
-            {/* Always on Top (Поверх всех окон) Pin Toggle */}
+            {/* Always on Top (Поверх Chrome и всех окон Windows) Pin Toggle */}
             {onToggleAlwaysOnTop && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleAlwaysOnTop();
                 }}
-                title={alwaysOnTop ? 'Открепить (Поверх всех окон: ВКЛ)' : 'Закрепить поверх всех окон (Always on Top)'}
+                title={alwaysOnTop ? 'Открепить (сейчас поверх Chrome и всех окон)' : 'Закрепить поверх Chrome и всех приложений Windows (📌)'}
                 className={`w-7 h-7 ${isGlass || isNova ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
                   alwaysOnTop
                     ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/40'
@@ -735,23 +750,24 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
           {children}
         </div>
 
-        {/* 8-Direction Resize Handles (All 4 edges + 4 corners) */}
+        {/* 8-Direction Resize Handles (All 4 edges + 4 corners — Mouse, Touch & Stylus friendly) */}
         {!maximized && (
           <>
-            <div onPointerDown={startResize('n')} className="absolute top-0 left-3 right-3 h-1.5 cursor-ns-resize z-20" />
-            <div onPointerDown={startResize('s')} className="absolute bottom-0 left-3 right-3 h-1.5 cursor-ns-resize z-20" />
-            <div onPointerDown={startResize('w')} className="absolute left-0 top-3 bottom-3 w-1.5 cursor-ew-resize z-20" />
-            <div onPointerDown={startResize('e')} className="absolute right-0 top-3 bottom-3 w-1.5 cursor-ew-resize z-20" />
+            <div onPointerDown={startResize('n')} style={{ touchAction: 'none' }} className="absolute top-0 left-4 right-4 h-2.5 cursor-ns-resize z-20" />
+            <div onPointerDown={startResize('s')} style={{ touchAction: 'none' }} className="absolute bottom-0 left-4 right-4 h-2.5 cursor-ns-resize z-20" />
+            <div onPointerDown={startResize('w')} style={{ touchAction: 'none' }} className="absolute left-0 top-4 bottom-4 w-2.5 cursor-ew-resize z-20" />
+            <div onPointerDown={startResize('e')} style={{ touchAction: 'none' }} className="absolute right-0 top-4 bottom-4 w-2.5 cursor-ew-resize z-20" />
 
-            <div onPointerDown={startResize('nw')} className="absolute top-0 left-0 w-3.5 h-3.5 cursor-nwse-resize z-30" />
-            <div onPointerDown={startResize('ne')} className="absolute top-0 right-0 w-3.5 h-3.5 cursor-nesw-resize z-30" />
-            <div onPointerDown={startResize('sw')} className="absolute bottom-0 left-0 w-3.5 h-3.5 cursor-nesw-resize z-30" />
+            <div onPointerDown={startResize('nw')} style={{ touchAction: 'none' }} className="absolute top-0 left-0 w-5 h-5 cursor-nwse-resize z-30" />
+            <div onPointerDown={startResize('ne')} style={{ touchAction: 'none' }} className="absolute top-0 right-0 w-5 h-5 cursor-nesw-resize z-30" />
+            <div onPointerDown={startResize('sw')} style={{ touchAction: 'none' }} className="absolute bottom-0 left-0 w-5 h-5 cursor-nesw-resize z-30" />
             <div
               onPointerDown={startResize('se')}
-              title="Изменить размер окна"
-              className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize z-30 flex items-end justify-end p-1 opacity-45 hover:opacity-100"
+              style={{ touchAction: 'none' }}
+              title="Изменить размер окна (мышь, палец или стилус)"
+              className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize z-30 flex items-end justify-end p-1.5 opacity-55 hover:opacity-100"
             >
-              <span className={`w-2 h-2 border-r-2 border-b-2 rounded-br-[2px] ${isDark ? 'border-zinc-400' : 'border-zinc-500'}`} />
+              <span className={`w-2.5 h-2.5 border-r-2 border-b-2 rounded-br-[2px] ${isDark ? 'border-zinc-400' : 'border-zinc-500'}`} />
             </div>
           </>
         )}

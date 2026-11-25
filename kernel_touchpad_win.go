@@ -11,15 +11,15 @@ import (
 	"unsafe"
 )
 
-// ==================== LUMA OS 1.6.2b: WINDOWS PRECISION TOUCHPAD GESTURES CONTROL ====================
-// Cleanly backs up & disables Windows 3-finger / 4-finger Precision Touchpad gestures when
-// "Замена горячих клавиш" (ReplaceHotkeys) is active, and restores exact original registry values
-// on toggle-off, Ctrl+Alt+Shift+W, or exit — pure Win32 advapi32 + WM_SETTINGCHANGE (zero PowerShell, zero callbacks!).
+// ==================== LUMA OS 1.6.3: FULL WINDOWS PRECISION TOUCHPAD GESTURE SUPPRESSION ====================
+// Disables ALL Windows Precision Touchpad multi-finger gestures (3-finger & 4-finger slides/taps/directions,
+// pinch-zoom system hijack, and Windows EdgeUI corner/edge swipes) while Luma OS is running,
+// backing up exact original registry DWORDs and cleanly restoring them on toggle-off, Ctrl+Alt+Shift+W, or exit!
+// 100% pure Win32 advapi32 + WM_SETTINGCHANGE — ZERO PowerShell, ZERO NewCallback!
 
 var (
 	tpAdvapi32DLL          = syscall.NewLazyDLL("advapi32.dll")
 	tpProcRegCreateKeyExW  = tpAdvapi32DLL.NewProc("RegCreateKeyExW")
-	tpProcRegOpenKeyExW    = tpAdvapi32DLL.NewProc("RegOpenKeyExW")
 	tpProcRegQueryValueExW = tpAdvapi32DLL.NewProc("RegQueryValueExW")
 	tpProcRegSetValueExW   = tpAdvapi32DLL.NewProc("RegSetValueExW")
 	tpProcRegDeleteValueW  = tpAdvapi32DLL.NewProc("RegDeleteValueW")
@@ -33,15 +33,15 @@ var (
 )
 
 const (
-	tpHkeyCurrentUser   = uintptr(0x80000001)
-	tpKeyRead           = 0x20019
-	tpKeySetValue       = 0x0002
-	tpKeyAllWrite       = 0x2001F
-	tpRegDword          = 4
-	tpHwndBroadcast     = uintptr(0xFFFF)
-	tpWmSettingChange   = 0x001A
-	tpSmtoAbortIfHung   = 0x0002
-	tpRegSubkeyPath     = `Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad`
+	tpHkeyCurrentUser = uintptr(0x80000001)
+	tpKeyAllWrite     = 0x2001F
+	tpRegDword        = 4
+	tpHwndBroadcast   = uintptr(0xFFFF)
+	tpWmSettingChange = 0x001A
+	tpSmtoAbortIfHung = 0x0002
+
+	tpRegSubkeyPath = `Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad`
+	tpEdgeUiSubkey  = `Software\Microsoft\Windows\CurrentVersion\ImmersiveShell\EdgeUi`
 )
 
 type touchpadRegBackupValue struct {
@@ -51,13 +51,31 @@ type touchpadRegBackupValue struct {
 
 type touchpadRegBackup struct {
 	Values map[string]touchpadRegBackupValue `json:"values"`
+	EdgeUI map[string]touchpadRegBackupValue `json:"edge_ui,omitempty"`
 }
 
+// ALL Windows 10 / 11 Precision Touchpad multi-finger & pinch gestures
 var touchpadGestureRegNames = []string{
 	"ThreeFingerSlideEnabled",
 	"ThreeFingerTapEnabled",
+	"ThreeFingerUp",
+	"ThreeFingerDown",
+	"ThreeFingerLeft",
+	"ThreeFingerRight",
 	"FourFingerSlideEnabled",
 	"FourFingerTapEnabled",
+	"FourFingerUp",
+	"FourFingerDown",
+	"FourFingerLeft",
+	"FourFingerRight",
+	"ZoomEnabled",
+}
+
+// Windows Edge / Corner swipe gestures
+var touchpadEdgeUiRegValues = map[string]uint32{
+	"DisableCharmsHint": 1,
+	"DisableTLCorner":   1,
+	"DisableTRCorner":   1,
 }
 
 func touchpadBackupPath() string {
@@ -68,6 +86,29 @@ func touchpadBackupPath() string {
 	dir := filepath.Join(cfgDir, "LumaOS")
 	_ = os.MkdirAll(dir, 0o700)
 	return filepath.Join(dir, "touchpad_gestures_backup.json")
+}
+
+func tpOpenOrCreateKey(subkey string) uintptr {
+	subPtr, err := syscall.UTF16PtrFromString(subkey)
+	if err != nil {
+		return 0
+	}
+	var hKey uintptr
+	r, _, _ := tpProcRegCreateKeyExW.Call(
+		tpHkeyCurrentUser,
+		uintptr(unsafe.Pointer(subPtr)),
+		0,
+		0,
+		0,
+		tpKeyAllWrite,
+		0,
+		uintptr(unsafe.Pointer(&hKey)),
+		0,
+	)
+	if r != 0 {
+		return 0
+	}
+	return hKey
 }
 
 func tpRegReadDword(hKey uintptr, name string) (uint32, bool) {
@@ -117,17 +158,19 @@ func tpRegDeleteValue(hKey uintptr, name string) {
 }
 
 func tpBroadcastSettingChange() {
-	if ptr, err := syscall.UTF16PtrFromString("PrecisionTouchPad"); err == nil {
-		var res uintptr
-		_, _, _ = tpProcSendMessageTimout.Call(
-			tpHwndBroadcast,
-			tpWmSettingChange,
-			0,
-			uintptr(unsafe.Pointer(ptr)),
-			tpSmtoAbortIfHung,
-			400,
-			uintptr(unsafe.Pointer(&res)),
-		)
+	for _, topic := range []string{"PrecisionTouchPad", "ImmersiveShell"} {
+		if ptr, err := syscall.UTF16PtrFromString(topic); err == nil {
+			var res uintptr
+			_, _, _ = tpProcSendMessageTimout.Call(
+				tpHwndBroadcast,
+				tpWmSettingChange,
+				0,
+				uintptr(unsafe.Pointer(ptr)),
+				tpSmtoAbortIfHung,
+				350,
+				uintptr(unsafe.Pointer(&res)),
+			)
+		}
 	}
 }
 
@@ -135,36 +178,35 @@ func setWindowsTouchpadGesturesDisabled(disable bool) {
 	touchpadMu.Lock()
 	defer touchpadMu.Unlock()
 
-	subPtr, err := syscall.UTF16PtrFromString(tpRegSubkeyPath)
-	if err != nil {
-		return
-	}
-	var hKey uintptr
-	r, _, _ := tpProcRegCreateKeyExW.Call(
-		tpHkeyCurrentUser,
-		uintptr(unsafe.Pointer(subPtr)),
-		0,
-		0,
-		0,
-		tpKeyAllWrite,
-		0,
-		uintptr(unsafe.Pointer(&hKey)),
-		0,
-	)
-	if r != 0 || hKey == 0 {
+	hKey := tpOpenOrCreateKey(tpRegSubkeyPath)
+	if hKey == 0 {
 		return
 	}
 	defer tpProcRegCloseKey.Call(hKey)
 
+	hEdge := tpOpenOrCreateKey(tpEdgeUiSubkey)
+	if hEdge != 0 {
+		defer tpProcRegCloseKey.Call(hEdge)
+	}
+
 	bPath := touchpadBackupPath()
 
 	if disable {
-		// Save original Windows values ONCE before zeroing them out
+		// Save original Windows values ONCE before disabling ALL Windows touchpad & edge gestures
 		if _, statErr := os.Stat(bPath); os.IsNotExist(statErr) {
-			bk := touchpadRegBackup{Values: make(map[string]touchpadRegBackupValue, len(touchpadGestureRegNames))}
+			bk := touchpadRegBackup{
+				Values: make(map[string]touchpadRegBackupValue, len(touchpadGestureRegNames)),
+				EdgeUI: make(map[string]touchpadRegBackupValue, len(touchpadEdgeUiRegValues)),
+			}
 			for _, name := range touchpadGestureRegNames {
 				v, ok := tpRegReadDword(hKey, name)
 				bk.Values[name] = touchpadRegBackupValue{Existed: ok, Value: v}
+			}
+			if hEdge != 0 {
+				for name := range touchpadEdgeUiRegValues {
+					v, ok := tpRegReadDword(hEdge, name)
+					bk.EdgeUI[name] = touchpadRegBackupValue{Existed: ok, Value: v}
+				}
 			}
 			if raw, mErr := json.MarshalIndent(bk, "", "  "); mErr == nil {
 				_ = os.WriteFile(bPath, raw, 0o600)
@@ -173,21 +215,37 @@ func setWindowsTouchpadGesturesDisabled(disable bool) {
 		for _, name := range touchpadGestureRegNames {
 			tpRegWriteDword(hKey, name, 0)
 		}
+		if hEdge != 0 {
+			for name, val := range touchpadEdgeUiRegValues {
+				tpRegWriteDword(hEdge, name, val)
+			}
+		}
 		touchpadDisabled = true
 		tpBroadcastSettingChange()
 		return
 	}
 
-	// Restore original values from backup (or clean Windows defaults if previously zeroed without backup)
+	// Restore exact original Windows values from backup
 	if raw, rErr := os.ReadFile(bPath); rErr == nil {
 		var bk touchpadRegBackup
-		if json.Unmarshal(raw, &bk) == nil && len(bk.Values) > 0 {
+		if json.Unmarshal(raw, &bk) == nil {
 			for _, name := range touchpadGestureRegNames {
 				if orig, ok := bk.Values[name]; ok {
 					if orig.Existed {
 						tpRegWriteDword(hKey, name, orig.Value)
 					} else {
 						tpRegDeleteValue(hKey, name)
+					}
+				}
+			}
+			if hEdge != 0 && len(bk.EdgeUI) > 0 {
+				for name := range touchpadEdgeUiRegValues {
+					if orig, ok := bk.EdgeUI[name]; ok {
+						if orig.Existed {
+							tpRegWriteDword(hEdge, name, orig.Value)
+						} else {
+							tpRegDeleteValue(hEdge, name)
+						}
 					}
 				}
 			}
@@ -199,9 +257,15 @@ func setWindowsTouchpadGesturesDisabled(disable bool) {
 			"ThreeFingerTapEnabled":   2,
 			"FourFingerSlideEnabled":  1,
 			"FourFingerTapEnabled":    4,
+			"ZoomEnabled":             1,
 		}
 		for name, defVal := range defaults {
 			tpRegWriteDword(hKey, name, defVal)
+		}
+		if hEdge != 0 {
+			for name := range touchpadEdgeUiRegValues {
+				tpRegWriteDword(hEdge, name, 0)
+			}
 		}
 	}
 	touchpadDisabled = false

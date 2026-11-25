@@ -5647,36 +5647,6 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
             </button>
           )}
 
-          {(rmbConfig?.showAiQuick ?? true) && (
-            <button
-              onClick={() => {
-                onOpenSystemWindow('ai');
-                setCtxMenu(null);
-              }}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
-                isDark ? 'hover:bg-indigo-500/15 text-indigo-300' : 'hover:bg-indigo-100 text-indigo-700'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="font-semibold">Спросить Luma AI 5.0 Nexus</span>
-            </button>
-          )}
-
-          {(rmbConfig?.showScreenshot ?? true) && onTakeScreenshot && (
-            <button
-              onClick={() => {
-                onTakeScreenshot();
-                setCtxMenu(null);
-              }}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
-                isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
-              }`}
-            >
-              <Camera className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Сделать скриншот экрана</span>
-            </button>
-          )}
-
           {(rmbConfig?.showOffice ?? true) && (
             <button
               onClick={() => {
@@ -5731,38 +5701,6 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           >
             <Cpu className={`w-3.5 h-3.5 ${mutedCls}`} />
             <span>Диспетчер задач</span>
-          </button>
-
-          <button
-            onClick={() => {
-              onToggleFullscreen();
-              setCtxMenu(null);
-            }}
-            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
-              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              {isFullscreen ? <Minimize className={`w-3.5 h-3.5 ${mutedCls}`} /> : <Maximize className={`w-3.5 h-3.5 ${mutedCls}`} />}
-              <span>{isFullscreen ? 'Выйти из полного экрана' : 'Во весь экран (F11)'}</span>
-            </span>
-            <span className="text-[10px] font-mono text-[var(--luma-accent)]">{isFullscreen ? 'ВКЛ' : 'F11'}</span>
-          </button>
-
-          <button
-            onClick={() => {
-              onSetEditMode(!editMode);
-              setCtxMenu(null);
-            }}
-            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
-              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Move className={`w-3.5 h-3.5 ${mutedCls}`} />
-              <span>Режим расстановки</span>
-            </span>
-            <span className="text-[10px] font-mono text-[var(--luma-accent)]">{editMode ? 'ВКЛ' : 'ВЫКЛ'}</span>
           </button>
 
           <button
@@ -5837,33 +5775,6 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           )}
 
           <div className={`my-1 border-t ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`} />
-
-          <button
-            onClick={() => {
-              setWidgets(DEFAULT_MINIMAL_WIDGETS);
-              setShortcuts(DEFAULT_SHORTCUTS);
-              setCtxMenu(null);
-            }}
-            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
-              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
-            }`}
-          >
-            <RotateCcw className={`w-3.5 h-3.5 ${mutedCls}`} />
-            <span>Пресет: Чистый стол</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setWidgets(DEFAULT_WORKSTATION_WIDGETS);
-              setCtxMenu(null);
-            }}
-            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
-              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
-            }`}
-          >
-            <Activity className={`w-3.5 h-3.5 ${mutedCls}`} />
-            <span>Пресет: Станция</span>
-          </button>
 
           <button
             onClick={() => {

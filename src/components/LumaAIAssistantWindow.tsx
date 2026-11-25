@@ -27,6 +27,8 @@ import {
   Brain,
   ChevronDown,
   CheckCircle2,
+  Download,
+  HardDrive,
 } from 'lucide-react';
 
 export type AIProviderId =
@@ -86,21 +88,31 @@ export interface AIProviderPreset {
 export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
   {
     id: 'luma_local',
-    label: 'Luma AI 5.0 Nexus (Память · Система · Весь интернет)',
-    badge: 'AI 5.0',
-    defaultModel: 'luma-5.0-nexus',
-    models: ['luma-5.0-nexus', 'luma-5.0-code', 'luma-5.0-research'],
-    defaultBaseUrl: 'internal://luma-ai-5.0-nexus',
+    label: 'Luma Ai Nitrogen (Ollama · RAG Память · ОС · Офис · Календарь)',
+    badge: 'Nitrogen',
+    defaultModel: 'qwen2.5:3b',
+    models: ['qwen2.5:3b', 'llama3.2:3b', 'luma-nitrogen-core', 'gemini-2.5-flash-lite'],
+    defaultBaseUrl: 'http://127.0.0.1:11434/v1',
     needsKey: false,
-    hint: 'Умная автономная нейросеть Luma AI 5.0 Nexus в ядре LumaCore 1.5.2: долгосрочная память о пользователе, глубокая интеграция с системой (диагностика ПК, пинг, буфер обмена, процессы, кэш, Корзина, Luma Обвести для поиска), переводы на 50 языков, математика и живой поиск по всему интернету.',
+    hint: 'Модульный ассистент Luma Ai Nitrogen с потоковым выводом (SSE), трёхуровневой долговременной памятью (SQLite + Vector RAG), локальным Ollama (Qwen 2.5 3B / Llama 3.2 3B), поддержкой любых OpenAI API и интеграцией с Системой, Офисом, Календарём и «Обвести для поиска».',
+  },
+  {
+    id: 'ollama',
+    label: 'Локальный Ollama / LM Studio',
+    badge: 'Локально',
+    defaultModel: 'qwen2.5:3b',
+    models: ['qwen2.5:3b', 'llama3.2:3b', 'qwen2.5:7b', 'deepseek-r1:8b', 'gemma3:4b', 'mistral'],
+    defaultBaseUrl: 'http://127.0.0.1:11434/v1',
+    needsKey: false,
+    hint: 'Локальная нейросеть без API-ключа (Ollama :11434 или LM Studio :1234). Нажмите «Установить ИИ», чтобы скачать автоматически.',
   },
   {
     id: 'gemini',
-    label: 'Google Gemini',
+    label: 'Google Gemini Flash-Lite',
     badge: 'Cloud',
-    defaultModel: 'gemini-2.5-flash',
-    models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'],
-    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    defaultModel: 'gemini-2.5-flash-lite',
+    models: ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     needsKey: true,
     hint: 'Ключ на aistudio.google.com/apikey',
   },
@@ -160,24 +172,14 @@ export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
     hint: 'Мгновенная генерация на console.groq.com',
   },
   {
-    id: 'ollama',
-    label: 'Ollama / LM Studio',
-    badge: 'Локально',
-    defaultModel: 'llama3.2',
-    models: ['llama3.2', 'qwen2.5:7b', 'deepseek-r1:8b', 'gemma3:4b', 'mistral'],
-    defaultBaseUrl: 'http://127.0.0.1:11434/v1',
-    needsKey: false,
-    hint: 'Локальная LLM без API-ключа (порт 11434 / 1234)',
-  },
-  {
     id: 'custom',
     label: 'Свой API (OpenAI-совм.)',
     badge: 'Custom',
-    defaultModel: 'gpt-4o-mini',
-    models: ['gpt-4o-mini'],
-    defaultBaseUrl: '',
+    defaultModel: 'qwen2.5:3b',
+    models: ['qwen2.5:3b', 'llama3.2:3b', 'gpt-4o-mini'],
+    defaultBaseUrl: 'http://127.0.0.1:11434/v1',
     needsKey: false,
-    hint: 'Любой OpenAI-совместимый сервер (/v1/chat/completions)',
+    hint: 'Любой OpenAI-совместимый сервер (/v1/chat/completions) — просто задайте BASE_URL, API_KEY и MODEL_NAME',
   },
 ];
 
@@ -203,7 +205,7 @@ export const DEFAULT_LUMA_AI_CONFIG: LumaAIConfig = {
   models: {},
   baseUrls: {},
   systemPrompt:
-    'Ты — умный автономный ИИ-агент Luma AI 5.0 Nexus с долгосрочной памятью в Luma OS 1.6.2 (Nitrogen · N-7 · LumaCore 1.5.2). Думай пошагово, запоминай контекст, управляй ПК и находи точные ответы в интернете.',
+    'Ты — Luma Ai Nitrogen, универсальный личный ассистент, программист и помощник в Luma OS 1.6.3 (Nitrogen · N-7). Отвечай чётко, без воды, с Markdown-кодом, используй долговременную память и помогай с системой, Офисом, Календарём и поиском.',
   temperature: 0.7,
   includeSystemContext: true,
 };
@@ -312,6 +314,57 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
   }>({ facts: [] });
   const [newFactInput, setNewFactInput] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showAiManager, setShowAiManager] = useState(false);
+  const [installModelChoice, setInstallModelChoice] = useState<'qwen2.5:3b' | 'llama3.2:3b'>('qwen2.5:3b');
+  const [aiManageState, setAiManageState] = useState<{
+    installed?: boolean;
+    enabled?: boolean;
+    ollama_installed?: boolean;
+    ollama_running?: boolean;
+    python_service_online?: boolean;
+    installed_models?: string[];
+    installing?: boolean;
+    progress?: number;
+    step?: string;
+    message?: string;
+    active_model?: string;
+    base_url?: string;
+  } | null>(null);
+
+  const fetchAiManageStatus = async () => {
+    try {
+      const r = await fetch('/api/kernel/ai/manage');
+      if (r.ok) {
+        const d = await r.json();
+        setAiManageState(d);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const runAiManageAction = async (action: 'install' | 'uninstall' | 'enable' | 'disable', model?: string) => {
+    try {
+      const r = await fetch('/api/kernel/ai/manage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, model: model || installModelChoice }),
+      });
+      const d = await r.json();
+      setAiManageState(d);
+      if (action === 'install') {
+        onPushToast('Luma Ai Nitrogen', d?.message || `Запущена загрузка ${model || installModelChoice}...`, 'info');
+        if (onToggleAiEnabled && !aiEnabled) onToggleAiEnabled(true);
+      } else if (action === 'uninstall') {
+        onPushToast('Удаление ИИ', d?.message || 'Модели ИИ удалены, место на диске освобождено', 'success');
+        if (onToggleAiEnabled) onToggleAiEnabled(false);
+      } else if (action === 'enable') {
+        if (onToggleAiEnabled) onToggleAiEnabled(true);
+      }
+    } catch {
+      onPushToast('Luma Ai Nitrogen', 'Не удалось выполнить операцию управления ИИ', 'warning');
+    }
+  };
 
   const loadAIMemory = async () => {
     try {
@@ -331,7 +384,16 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
 
   useEffect(() => {
     void loadAIMemory();
+    void fetchAiManageStatus();
   }, []);
+
+  useEffect(() => {
+    if (!aiManageState?.installing) return;
+    const id = window.setInterval(() => {
+      void fetchAiManageStatus();
+    }, 1500);
+    return () => window.clearInterval(id);
+  }, [aiManageState?.installing]);
 
   const addAIMemoryFactUI = async () => {
     const val = newFactInput.trim();
@@ -350,7 +412,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           facts: Array.isArray(d.memory.facts) ? d.memory.facts : [],
         });
         setNewFactInput('');
-        onPushToast('Память Luma AI 5.0', 'Факт сохранён в долгосрочную память', 'success');
+        onPushToast('Память Luma Ai Nitrogen', 'Факт сохранён в долговременную память', 'success');
       }
     } catch {
       // ignore
@@ -416,7 +478,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
 
   const speakText = (text: string, msgId?: string) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      onPushToast('Luma AI Голос', 'Синтез речи не поддерживается браузером', 'warning');
+      onPushToast('Luma Ai Nitrogen Голос', 'Синтез речи не поддерживается браузером', 'warning');
       return;
     }
     try {
@@ -531,6 +593,24 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
     });
   };
 
+  const syncNitrogenBackendConfig = async () => {
+    try {
+      await fetch('/api/kernel/ai/nitrogen/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          base_url: currentBaseUrl || 'http://127.0.0.1:11434/v1',
+          api_key: currentKey || 'ollama',
+          model_name: currentModel || 'qwen2.5:3b',
+          temperature: config.temperature,
+          system_prompt: config.systemPrompt,
+        }),
+      });
+    } catch {
+      /* ignore */
+    }
+  };
+
   const sendMessage = async (textOverride?: string) => {
     const content = (textOverride ?? input).trim();
     if (!content || loading || !activeThread) return;
@@ -552,9 +632,10 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
     };
 
     const updatedMessages = [...activeThread.messages, userMsg];
+    const targetThreadId = activeThread.id;
     setThreads((prev) =>
       prev.map((t) =>
-        t.id === activeThread.id
+        t.id === targetThreadId
           ? {
               ...t,
               title: t.messages.length === 0 ? content.slice(0, 32) : t.title,
@@ -566,6 +647,142 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
     );
     setInput('');
     setLoading(true);
+
+    // Use true SSE Token Streaming via Luma Ai Nitrogen gateway for Nitrogen/Ollama/OpenAI-compatible providers
+    const useNitrogenStream =
+      config.provider === 'luma_local' ||
+      config.provider === 'ollama' ||
+      config.provider === 'custom' ||
+      config.provider === 'groq' ||
+      config.provider === 'openrouter' ||
+      config.provider === 'openai' ||
+      config.provider === 'deepseek';
+
+    if (useNitrogenStream) {
+      const botId = `m_${Date.now()}_a`;
+      const botTime = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      const initialBot: ChatMsg = {
+        id: botId,
+        role: 'assistant',
+        content: '',
+        time: botTime,
+        model: `Luma Ai Nitrogen (${currentModel})`,
+      };
+      setThreads((prev) =>
+        prev.map((t) => (t.id === targetThreadId ? { ...t, messages: [...t.messages, initialBot] } : t))
+      );
+
+      try {
+        const res = await fetch('/api/kernel/ai/nitrogen/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: targetThreadId,
+            message: content,
+            history: updatedMessages.slice(-16).map((m) => ({ role: m.role, content: m.content })),
+            base_url: currentBaseUrl,
+            api_key: currentKey,
+            model: currentModel,
+            mode: config.aiMode || 'auto',
+            verbosity: config.verbosity || 'balanced',
+            temperature: config.temperature,
+            system_prompt: config.systemPrompt,
+            stream: true,
+          }),
+        });
+
+        if (res.ok && res.body) {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let fullText = '';
+          let modelLabel = `Luma Ai Nitrogen (${currentModel})`;
+          let sourcesList: AISourceLinkItem[] | undefined;
+          let thinkingList: AIThinkingStepItem[] | undefined;
+          let actionsList: AIExecutedActionItem[] | undefined;
+          let elapsedMs: number | undefined;
+
+          const patchBot = () => {
+            setThreads((prev) =>
+              prev.map((t) =>
+                t.id === targetThreadId
+                  ? {
+                      ...t,
+                      messages: t.messages.map((m) =>
+                        m.id === botId
+                          ? {
+                              ...m,
+                              content: fullText,
+                              model: modelLabel,
+                              sources: sourcesList,
+                              thinkingSteps: thinkingList,
+                              actions: actionsList,
+                              elapsedMs,
+                            }
+                          : m
+                      ),
+                    }
+                  : t
+              )
+            );
+          };
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const rawLine of lines) {
+              if (!rawLine.startsWith('data:')) continue;
+              try {
+                const ev = JSON.parse(rawLine.slice(5).trim());
+                if (ev.type === 'token' && ev.content) {
+                  fullText += String(ev.content);
+                  patchBot();
+                } else if (ev.type === 'tool_result' && ev.tool) {
+                  if (String(ev.tool).includes('calendar')) {
+                    window.dispatchEvent(new Event('luma-calendar-updated'));
+                  }
+                } else if (ev.type === 'done') {
+                  if (ev.reply && !fullText) fullText = String(ev.reply);
+                  if (ev.model) modelLabel = String(ev.model);
+                  if (Array.isArray(ev.sources) && ev.sources.length > 0) sourcesList = ev.sources;
+                  if (Array.isArray(ev.thinking_steps) && ev.thinking_steps.length > 0) thinkingList = ev.thinking_steps;
+                  if (Array.isArray(ev.actions) && ev.actions.length > 0) actionsList = ev.actions;
+                  if (typeof ev.elapsed_ms === 'number') elapsedMs = ev.elapsed_ms;
+                  if (Array.isArray(ev.ui_actions) && ev.ui_actions.length > 0) {
+                    window.dispatchEvent(new CustomEvent('luma-ai-agent-actions', { detail: ev.ui_actions }));
+                  }
+                  if (ev.calendar_updated) {
+                    window.dispatchEvent(new Event('luma-calendar-updated'));
+                  }
+                  patchBot();
+                }
+              } catch {
+                /* ignore malformed SSE chunk */
+              }
+            }
+          }
+
+          if (!fullText.trim()) {
+            fullText = 'Готово! Запрос обработан Luma Ai Nitrogen.';
+            patchBot();
+          }
+          void loadAIMemory();
+          if (autoSpeak) speakText(fullText, botId);
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // Remove empty placeholder and fall through to /api/kernel/ai/chat fallback
+        setThreads((prev) =>
+          prev.map((t) =>
+            t.id === targetThreadId ? { ...t, messages: t.messages.filter((m) => m.id !== botId) } : t
+          )
+        );
+      }
+    }
 
     try {
       const r = await fetch('/api/kernel/ai/chat', {
@@ -589,7 +806,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
       const data = await r.json();
       const replyText = data?.ok
         ? data.reply
-        : `Ошибка (${preset.label}): ${data?.error || 'Не удалось получить ответ'}.\n\nСовет: используйте встроенную **Luma AI 5.0 Nexus** (долгосрочная память, глубокое управление ПК и поиск по всему интернету без API-ключей).`;
+        : `Ошибка (${preset.label}): ${data?.error || 'Не удалось получить ответ'}.\n\nСовет: используйте **Luma Ai Nitrogen** (Ollama Qwen 2.5 3B / Llama 3.2 3B или встроенный режим без API-ключей).`;
       const sourcesList: AISourceLinkItem[] | undefined =
         Array.isArray(data?.sources) && data.sources.length > 0 ? data.sources : undefined;
       const thinkingList: AIThinkingStepItem[] | undefined =
@@ -611,17 +828,17 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
         elapsedMs: typeof data?.elapsed_ms === 'number' ? data.elapsed_ms : undefined,
       };
       setThreads((prev) =>
-        prev.map((t) => (t.id === activeThread.id ? { ...t, messages: [...t.messages, botMsg] } : t))
+        prev.map((t) => (t.id === targetThreadId ? { ...t, messages: [...t.messages, botMsg] } : t))
       );
       void loadAIMemory();
       if (data?.ok && autoSpeak) {
         speakText(replyText, botMsg.id);
       }
       if (!data?.ok) {
-        onPushToast('Luma AI 5.0', data?.error || 'Требуется настройка провайдера', 'warning');
+        onPushToast('Luma Ai Nitrogen', data?.error || 'Требуется настройка провайдера', 'warning');
       }
     } catch {
-      onPushToast('Luma AI 5.0', 'Нет ответа от шлюза LumaCore 1.5.2', 'warning');
+      onPushToast('Luma Ai Nitrogen', 'Нет ответа от шлюза LumaCore 1.5.3', 'warning');
     } finally {
       setLoading(false);
     }
@@ -885,20 +1102,32 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           <Power className="w-8 h-8" />
         </div>
         <div className="max-w-md space-y-1.5">
-          <h3 className="text-lg font-extrabold">Подсистема Luma AI отключена</h3>
+          <h3 className="text-lg font-extrabold">Luma Ai Nitrogen отключён или удалён</h3>
           <p className={`text-xs leading-relaxed ${mutedCls}`}>
-            Вы отключили Luma AI для экономии оперативной памяти и ресурсов ПК. Все ИИ-виджеты, голосовые службы и API-шлюз остановлены на уровне ядра.
+            Вы можете мгновенно включить встроенный ИИ обратно или скачать локальную нейросеть Ollama (Qwen 2.5 3B / Llama 3.2 3B) в 1 клик.
           </p>
         </div>
-        {onToggleAiEnabled && (
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {onToggleAiEnabled && (
+            <button
+              onClick={() => void runAiManageAction('enable')}
+              className="px-5 py-2.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-bold inline-flex items-center gap-2 cursor-pointer"
+            >
+              <Power className="w-4 h-4" />
+              Включить Luma Ai Nitrogen
+            </button>
+          )}
           <button
-            onClick={() => onToggleAiEnabled(true)}
-            className="px-5 py-2.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-bold inline-flex items-center gap-2 cursor-pointer"
+            onClick={() => {
+              setShowAiManager(true);
+              void runAiManageAction('install', installModelChoice);
+            }}
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-500 text-white text-xs font-bold inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-sky-500/20"
           >
-            <Power className="w-4 h-4" />
-            Включить Luma AI обратно
+            <Download className="w-4 h-4" />
+            Скачать ИИ ({installModelChoice})
           </button>
-        )}
+        </div>
       </div>
     );
   }
@@ -919,7 +1148,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           Новый диалог
         </button>
 
-        {/* Quick Luma AI 5.0 Nexus / Web Search Switches */}
+        {/* Quick Luma Ai Nitrogen / Web Search Switches */}
         <div className="grid grid-cols-2 gap-1">
           <button
             type="button"
@@ -929,7 +1158,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                 ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-400'
                 : btnCls
             }`}
-            title="Автономный режим: ИИ сам открывает окна, меняет громкость/яркость/стиль/обои, создаёт файлы и запускает аудит"
+            title="Автономный режим: ИИ управляет системой, Календарём, Офисом и файлами"
           >
             <Zap className="w-3 h-3 shrink-0" />
             <span>Агент</span>
@@ -942,41 +1171,41 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                 ? 'border-sky-500/60 bg-sky-500/15 text-sky-400'
                 : btnCls
             }`}
-            title="Поиск по всему интернету и чтение страниц из любых сайтов в реальном времени"
+            title="Поиск по интернету и чтение источников в реальном времени"
           >
             <Globe className="w-3 h-3 shrink-0" />
             <span>Интернет</span>
           </button>
         </div>
 
-        {/* Quick 2-Engine Model Switcher (Luma AI 5.0 Nexus General vs Code) */}
+        {/* Quick 2-Engine Model Switcher (Luma Ai Nitrogen General vs Code) */}
         <div className="grid grid-cols-2 gap-1">
           <button
             onClick={() => {
               onChangeConfig({ ...config, provider: 'luma_local', aiMode: 'language' });
-              onPushToast('Luma AI 5.0 Nexus', 'Активен универсальный думающий режим с памятью', 'success');
+              onPushToast('Luma Ai Nitrogen', 'Активен универсальный режим с 3-уровневой памятью', 'success');
             }}
             className={`py-1.5 px-2 rounded-xl border text-[10px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
               config.provider === 'luma_local' && activeMode === 'language'
                 ? 'border-indigo-500/60 bg-indigo-500/15 text-indigo-400'
                 : btnCls
             }`}
-            title="Универсальный агент с долгосрочной памятью: мышление, поиск по вебу, управление ПК"
+            title="Универсальный ассистент с долговременной памятью, Календарём и Офисом"
           >
             <BookOpen className="w-3 h-3 shrink-0" />
-            <span>Мыслитель</span>
+            <span>Ассистент</span>
           </button>
           <button
             onClick={() => {
               onChangeConfig({ ...config, provider: 'luma_local', aiMode: 'code' });
-              onPushToast('Luma AI 5.0 Code', 'Активен режим программиста (12 языков)', 'success');
+              onPushToast('Luma Ai Nitrogen Code', 'Активен режим программиста и рефакторинга', 'success');
             }}
             className={`py-1.5 px-2 rounded-xl border text-[10px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
               config.provider === 'luma_local' && activeMode === 'code'
                 ? 'border-sky-500/60 bg-sky-500/15 text-sky-400'
                 : btnCls
             }`}
-            title="Кодер: программирование, алгоритмы, скрипты, боты, API"
+            title="Программист: код, дебаг, рефакторинг, API и скрипты"
           >
             <Code2 className="w-3 h-3 shrink-0" />
             <span>Кодер</span>
@@ -1002,7 +1231,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                   key={v.id}
                   onClick={() => {
                     onChangeConfig({ ...config, verbosity: v.id });
-                    onPushToast('Luma AI · Объём ответа', `Выбран режим: ${v.label}`, 'info');
+                    onPushToast('Luma Ai Nitrogen', `Объём ответа: ${v.label}`, 'info');
                   }}
                   title={v.tip}
                   className={`py-1 px-1 rounded-lg border text-[10px] font-semibold cursor-pointer transition text-center truncate ${
@@ -1024,9 +1253,10 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                 setActiveThreadId(t.id);
                 setShowConfig(false);
                 setShowMemory(false);
+                setShowAiManager(false);
               }}
               className={`group px-2.5 py-2 rounded-xl border text-xs cursor-pointer flex items-center justify-between gap-1.5 transition ${
-                t.id === activeThread?.id && !showConfig && !showMemory
+                t.id === activeThread?.id && !showConfig && !showMemory && !showAiManager
                   ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] font-semibold'
                   : btnCls
               }`}
@@ -1053,26 +1283,29 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           onClick={() => {
             setShowConfig((v) => !v);
             setShowMemory(false);
+            setShowAiManager(false);
           }}
           className={`p-2.5 rounded-xl border text-left space-y-1 cursor-pointer transition ${
             showConfig ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]' : btnCls
           }`}
         >
           <div className="flex items-center justify-between text-[10px] font-mono uppercase">
-            <span className="text-[var(--luma-accent)] font-bold truncate">{preset.label}</span>
+            <span className="text-[var(--luma-accent)] font-bold truncate">Luma Ai Nitrogen</span>
             <Settings2 className="w-3 h-3 shrink-0" />
           </div>
           <div className="text-[11px] font-mono truncate opacity-80">
-            {config.provider === 'luma_local'
-              ? activeMode === 'code'
-                ? 'Luma AI 5.0 Code'
-                : activeMode === 'language'
-                ? 'Luma AI 5.0 Nexus'
-                : 'Luma AI 5.0 Hybrid'
-              : currentModel}
+            {currentModel}
           </div>
           <div className={`text-[10px] ${preset.needsKey && !currentKey ? 'text-amber-500' : 'text-emerald-500'}`}>
-            {preset.needsKey ? (currentKey ? 'API-ключ задан' : 'Нужен API-ключ') : 'Память + ОС · Готов'}
+            {aiManageState?.python_service_online
+              ? 'FastAPI RAG :49225 · Онлайн'
+              : aiManageState?.ollama_running
+              ? 'Ollama :11434 · Онлайн'
+              : preset.needsKey
+              ? currentKey
+                ? 'API-ключ задан'
+                : 'Нужен API-ключ'
+              : 'SSE + Память · Готов'}
           </div>
         </button>
       </aside>
@@ -1091,7 +1324,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
               {(
                 [
                   { id: 'auto' as const, label: 'Авто', icon: <Zap className="w-3 h-3" /> },
-                  { id: 'language' as const, label: 'Языковая', icon: <BookOpen className="w-3 h-3" /> },
+                  { id: 'language' as const, label: 'Ассистент', icon: <BookOpen className="w-3 h-3" /> },
                   { id: 'code' as const, label: 'Кодер', icon: <Code2 className="w-3 h-3" /> },
                 ] as const
               ).map((m) => (
@@ -1108,11 +1341,31 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => {
+                setShowAiManager((v) => !v);
+                setShowMemory(false);
+                setShowConfig(false);
+                void fetchAiManageStatus();
+              }}
+              className={`px-2 py-1 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer transition ${
+                showAiManager
+                  ? 'border-sky-400 bg-sky-500/20 text-sky-300'
+                  : aiManageState?.installing
+                  ? 'border-amber-400 bg-amber-500/15 text-amber-300 animate-pulse'
+                  : btnCls
+              }`}
+              title="Скачать локальную модель Ollama (Qwen 2.5 3B / Llama 3.2 3B) или удалить ИИ"
+            >
+              <Download className="w-3 h-3" />
+              <span>{aiManageState?.installing ? `${aiManageState.progress ?? 0}%` : 'Скачать / Удалить ИИ'}</span>
+            </button>
             <button
               onClick={() => {
                 setShowMemory((v) => !v);
                 setShowConfig(false);
+                setShowAiManager(false);
                 void loadAIMemory();
               }}
               className={`px-2 py-1 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer transition ${
@@ -1122,7 +1375,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                   ? 'border-violet-500/40 bg-violet-500/10 text-violet-300'
                   : btnCls
               }`}
-              title="Долгосрочная память Luma AI 5.0 Nexus: факты о вас, имя, город и предпочтения"
+              title="Долговременная 3-уровневая память Luma Ai Nitrogen"
             >
               <Brain className="w-3 h-3" />
               <span>Память</span>
@@ -1138,7 +1391,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                   ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-400 font-semibold'
                   : btnCls
               }`}
-              title="Автоматически озвучивать ответы Luma AI голосом"
+              title="Автоматически озвучивать ответы Luma Ai Nitrogen голосом"
             >
               {autoSpeak ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
               <span className="hidden lg:inline">Озвучка</span>
@@ -1159,6 +1412,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
               onClick={() => {
                 setShowConfig((v) => !v);
                 setShowMemory(false);
+                setShowAiManager(false);
               }}
               className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer ${
                 showConfig ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
@@ -1170,7 +1424,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
             {onToggleAiEnabled && (
               <button
                 onClick={() => onToggleAiEnabled(false)}
-                title="Полностью отключить Luma AI в системе (экономия ресурсов)"
+                title="Отключить Luma Ai Nitrogen в системе (экономия ресурсов)"
                 className="p-1.5 rounded-lg border border-rose-500/35 bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white cursor-pointer transition"
               >
                 <Power className="w-3.5 h-3.5" />
@@ -1179,13 +1433,99 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           </div>
         </div>
 
-        {/* Luma AI 5.0 Persistent Memory Manager Drawer */}
+        {/* Download / Install / Uninstall Local AI Manager Drawer */}
+        {showAiManager && !showConfig && (
+          <div className={`px-4 py-3.5 border-b space-y-3 ${isDark ? 'border-white/10 bg-sky-950/25' : 'border-slate-200 bg-sky-50/80'}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-black text-sky-400">
+                <HardDrive className="w-4 h-4" />
+                <span>Управление локальным ИИ — Luma Ai Nitrogen (Ollama)</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                <span className={`px-2 py-0.5 rounded-full border ${aiManageState?.ollama_installed ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-400' : 'border-amber-400/40 bg-amber-500/15 text-amber-400'}`}>
+                  Ollama: {aiManageState?.ollama_running ? 'Запущен' : aiManageState?.ollama_installed ? 'Установлен' : 'Не установлен'}
+                </span>
+                <span className={`px-2 py-0.5 rounded-full border ${aiManageState?.python_service_online ? 'border-sky-400/40 bg-sky-500/15 text-sky-400' : 'border-white/15 opacity-70'}`}>
+                  Python RAG :49225: {aiManageState?.python_service_online ? 'Онлайн' : 'Оффлайн'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className={`text-[11px] font-semibold ${mutedCls}`}>Модель для загрузки:</span>
+              {(['qwen2.5:3b', 'llama3.2:3b'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setInstallModelChoice(m)}
+                  className={`px-2.5 py-1 rounded-xl border font-mono text-[11px] font-bold cursor-pointer transition ${
+                    installModelChoice === m
+                      ? 'bg-sky-500 border-sky-400 text-white'
+                      : btnCls
+                  }`}
+                >
+                  {m === 'qwen2.5:3b' ? 'Qwen 2.5 3B (~1.9 ГБ · Лучше для RU/Кода)' : 'Llama 3.2 3B (~2.0 ГБ · Быстрая)'}
+                </button>
+              ))}
+            </div>
+
+            {aiManageState?.installing && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-[11px] font-mono text-sky-400">
+                  <span>{aiManageState.message || aiManageState.step || 'Установка...'}</span>
+                  <span>{aiManageState.progress ?? 0}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-black/30 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-sky-500 to-emerald-400 transition-all duration-300"
+                    style={{ width: `${Math.max(4, Math.min(100, aiManageState.progress ?? 8))}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {Array.isArray(aiManageState?.installed_models) && aiManageState.installed_models.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
+                <span className={mutedCls}>Установленные модели:</span>
+                {aiManageState.installed_models.map((m) => (
+                  <span key={m} className="px-2 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-300">
+                    {m}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <button
+                type="button"
+                disabled={Boolean(aiManageState?.installing)}
+                onClick={() => void runAiManageAction('install', installModelChoice)}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-500 hover:brightness-110 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{aiManageState?.installing ? 'Идёт загрузка...' : `Скачать и установить ИИ (${installModelChoice})`}</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={Boolean(aiManageState?.installing)}
+                onClick={() => void runAiManageAction('uninstall')}
+                className="px-3 py-1.5 rounded-xl border border-rose-500/40 bg-rose-500/12 hover:bg-rose-500 hover:text-white text-rose-400 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Удалить ИИ (освободить диск)</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Luma Ai Nitrogen Persistent Memory Manager Drawer */}
         {showMemory && !showConfig && (
           <div className={`px-4 py-3 border-b space-y-2.5 ${isDark ? 'border-white/10 bg-violet-950/25' : 'border-slate-200 bg-violet-50/70'}`}>
             <div className="flex items-center justify-between gap-2">
               <div className="text-xs font-bold flex items-center gap-1.5 text-violet-400">
                 <Brain className="w-4 h-4" />
-                <span>Долгосрочная память Luma AI 5.0 Nexus ({memoryStore.facts.length})</span>
+                <span>3-уровневая долговременная память Luma Ai Nitrogen ({memoryStore.facts.length})</span>
               </div>
               {memoryStore.facts.length > 0 && (
                 <button
@@ -1204,7 +1544,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void addAIMemoryFactUI();
                 }}
-                placeholder="Добавить факт в память (например: Я пишу код на TypeScript и Go)..."
+                placeholder="Добавить факт в память (например: Я пишу код на TypeScript, Go и Python)..."
                 className={`flex-1 px-2.5 py-1.5 rounded-xl border text-xs outline-none ${
                   isDark ? 'bg-black/40 border-white/15' : 'bg-white border-slate-300'
                 }`}
@@ -1219,7 +1559,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
             </div>
             {memoryStore.facts.length === 0 ? (
               <div className={`text-[11px] ${mutedCls}`}>
-                Память пока пуста. Напишите в чате «Меня зовут ...», «Я живу в ...» или «Запомни ...» — ИИ сохранит это навсегда.
+                Память пока пуста. Напишите в чате «Меня зовут ...», «Я живу в ...» или «Запомни ...» — Luma Ai Nitrogen сохранит это в SQLite + Vector RAG навсегда.
               </div>
             ) : (
               <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
@@ -1250,7 +1590,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
         {showConfig ? (
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
-              <div className="text-xs font-bold">Выберите нейросеть (встроенная без API или облачная)</div>
+              <div className="text-xs font-bold">Выберите движок Luma Ai Nitrogen (локальный Ollama или любой OpenAI-совместимый API)</div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {AI_PROVIDER_PRESETS.map((p) => (
                   <button
@@ -1263,7 +1603,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                     }`}
                   >
                     <div className="text-xs font-bold truncate">{p.label}</div>
-                    <div className={`text-[10px] font-mono ${p.id === 'luma_local' ? 'text-emerald-400 font-bold' : mutedCls}`}>
+                    <div className={`text-[10px] font-mono ${p.id === 'luma_local' || p.id === 'ollama' ? 'text-emerald-400 font-bold' : mutedCls}`}>
                       {p.badge}
                     </div>
                   </button>
@@ -1277,11 +1617,10 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                 <label className="space-y-1">
                   <span className={`text-[11px] font-mono flex items-center gap-1 ${mutedCls}`}>
                     <KeyRound className="w-3 h-3" />
-                    API-ключ ({preset.label})
+                    API_KEY ({preset.badge})
                   </span>
                   <input
                     type="password"
-                    disabled={config.provider === 'luma_local'}
                     value={currentKey}
                     onChange={(e) =>
                       onChangeConfig({
@@ -1290,20 +1629,18 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                       })
                     }
                     placeholder={
-                      config.provider === 'luma_local'
-                        ? 'Не требуется — работает автономно!'
-                        : preset.needsKey
+                      preset.needsKey
                         ? 'Вставьте API-ключ...'
-                        : 'Опционально для локального сервера'
+                        : 'ollama (не требуется для локального Ollama)'
                     }
-                    className={`w-full px-3 py-2 rounded-xl border text-xs font-mono outline-none disabled:opacity-55 ${btnCls}`}
+                    className={`w-full px-3 py-2 rounded-xl border text-xs font-mono outline-none ${btnCls}`}
                   />
                 </label>
 
                 <label className="space-y-1">
                   <span className={`text-[11px] font-mono flex items-center gap-1 ${mutedCls}`}>
                     <Bot className="w-3 h-3" />
-                    Модель
+                    MODEL_NAME
                   </span>
                   <input
                     value={currentModel}
@@ -1335,28 +1672,26 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                 ))}
               </div>
 
-              {config.provider !== 'luma_local' && (
-                <label className="block space-y-1 text-xs">
-                  <span className={`text-[11px] font-mono flex items-center gap-1 ${mutedCls}`}>
-                    <Globe className="w-3 h-3" />
-                    Base URL (API Endpoint)
-                  </span>
-                  <input
-                    value={currentBaseUrl}
-                    onChange={(e) =>
-                      onChangeConfig({
-                        ...config,
-                        baseUrls: { ...config.baseUrls, [config.provider]: e.target.value },
-                      })
-                    }
-                    placeholder={preset.defaultBaseUrl || 'https://your-endpoint.com/v1'}
-                    className={`w-full px-3 py-2 rounded-xl border text-xs font-mono outline-none ${btnCls}`}
-                  />
-                </label>
-              )}
+              <label className="block space-y-1 text-xs">
+                <span className={`text-[11px] font-mono flex items-center gap-1 ${mutedCls}`}>
+                  <Globe className="w-3 h-3" />
+                  BASE_URL (OpenAI-совместимый API: Ollama / Gemini Flash-Lite / Groq / OpenRouter)
+                </span>
+                <input
+                  value={currentBaseUrl}
+                  onChange={(e) =>
+                    onChangeConfig({
+                      ...config,
+                      baseUrls: { ...config.baseUrls, [config.provider]: e.target.value },
+                    })
+                  }
+                  placeholder={preset.defaultBaseUrl || 'http://127.0.0.1:11434/v1'}
+                  className={`w-full px-3 py-2 rounded-xl border text-xs font-mono outline-none ${btnCls}`}
+                />
+              </label>
 
               <label className="block space-y-1 text-xs">
-                <span className={`text-[11px] font-mono ${mutedCls}`}>Системный промпт</span>
+                <span className={`text-[11px] font-mono ${mutedCls}`}>Системный промпт (System Persona)</span>
                 <textarea
                   rows={2}
                   value={config.systemPrompt}
@@ -1380,8 +1715,9 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                 </div>
                 <button
                   onClick={() => {
+                    void syncNitrogenBackendConfig();
                     setShowConfig(false);
-                    onPushToast('Luma AI', `Активна модель: ${preset.label} (${currentModel})`, 'success');
+                    onPushToast('Luma Ai Nitrogen', `Сохранено: ${currentModel} (${currentBaseUrl || 'local'})`, 'success');
                   }}
                   className="px-4 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-bold cursor-pointer"
                 >
@@ -1402,30 +1738,28 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                   <div>
                     <div className="text-base font-extrabold">
                       {activeMode === 'code'
-                        ? 'Luma Code 1.2 · Программист'
-                        : activeMode === 'language'
-                        ? 'Luma Lang 1.2 · Языковая модель'
-                        : 'Luma AI 1.2 · Гибридный интеллект'}
+                        ? 'Luma Ai Nitrogen · Программист и Архитектор'
+                        : 'Luma Ai Nitrogen · Универсальный ИИ-ассистент'}
                     </div>
                     <div className={`text-xs mt-1 ${mutedCls}`}>
                       {activeMode === 'code'
-                        ? 'Чистый рабочий код на Python, TypeScript, React, HTML/CSS, Go, Rust, C++, C#, SQL, PowerShell и Bash.'
-                        : 'Энциклопедия (45+ тем оффлайн + Wikipedia), умный калькулятор с формулами, конвертер величин и диагностика ПК без API-ключей.'}
+                        ? 'Потоковый вывод кода, рефакторинг, дебаг и сохранение сниппетов в SQLite + Vector RAG память.'
+                        : 'Потоковый ответ по токенам (SSE), 3-уровневая долговременная память, Ollama (Qwen 2.5 3B / Llama 3.2 3B), управление ПК, Календарь, Офис и Luma Обвести для поиска.'}
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
                     {(activeMode === 'code'
                       ? [
-                          'Напиши Telegram-бота на Python (aiogram)',
-                          'Напиши HTTP сервер на Go или Python',
-                          'Напиши HTML/CSS карточку с эффектом стекла',
-                          'Напиши PowerShell скрипт очистки Temp',
+                          'Напиши FastAPI микросервис с SQLite и стримингом',
+                          'Напиши Telegram-бота на Python (aiogram 3)',
+                          'Объясни и отрефактори async/await в TypeScript',
+                          'Напиши Go HTTP сервер с graceful shutdown',
                         ]
                       : [
-                          'Кто такой Пушкин?',
-                          'Что такое квантовая физика?',
-                          'Посчитай (1440 * 900) / 100 и 15% от 2000',
-                          'Проанализируй мой ПК и состояние батареи',
+                          'Запланируй созвон завтра в 15:00 в календаре',
+                          'Запомни: я пишу на Go, TypeScript и Python',
+                          'Проанализируй состояние моего ПК и батареи',
+                          'Что у меня запланировано в календаре?',
                         ]
                     ).map((prompt) => (
                       <button
@@ -1487,7 +1821,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
               {loading && (
                 <div className="flex items-center gap-2 text-xs text-[var(--luma-accent)] font-mono">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>{activeMode === 'code' ? 'Luma Code 1.2' : 'Luma Lang 1.2'} готовит ответ...</span>
+                  <span>Luma Ai Nitrogen генерирует потоковый ответ...</span>
                 </div>
               )}
               <div ref={endRef} />
@@ -1522,8 +1856,8 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
                   listening
                     ? 'Говорите в микрофон...'
                     : activeMode === 'code'
-                    ? 'Опишите код или скрипт (Python, JS, Go, HTML, SQL, PS)...'
-                    : 'Задайте вопрос (напр. «Кто такой Пушкин?» или «(12+8)*4»)...'
+                    ? 'Опишите код, рефакторинг или баг (Python, Go, TS, SQL, C++)...'
+                    : 'Спросите Luma Ai Nitrogen о чём угодно, запланируйте задачу в календаре или управляйте ПК...'
                 }
                 className={`flex-1 px-3.5 py-2.5 rounded-xl border text-xs outline-none ${btnCls}`}
               />

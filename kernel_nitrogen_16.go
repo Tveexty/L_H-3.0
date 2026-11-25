@@ -35,7 +35,7 @@ var (
 	devReqSeq       uint64
 	devReqLogMu     sync.Mutex
 	devReqLogs      = make([]DevRequestLog, 0, 48)
-	devActiveRoutes = 100
+	devActiveRoutes = 108
 )
 
 type devStatusWriter struct {
@@ -1258,4 +1258,7 @@ func registerNitrogen16Routes(mux *http.ServeMux, kernel *LumaKernel, notifBridg
 
 	// Luma OS 1.6.2b: 100% Native Wi-Fi & Bluetooth Picker/Connect Routes (ZERO Windows Settings!)
 	registerConnectivity162bRoutes(mux, kernel)
+
+	// Luma OS 1.6.3: Luma Ai Nitrogen SSE Streaming + Calendar Store + AI Install/Uninstall + Real Pin-Above-Chrome!
+	registerNitrogen163Routes(mux, kernel)
 }

@@ -155,16 +155,27 @@ func registerConnectivity162bRoutes(mux *http.ServeMux, kernel *LumaKernel) {
 		_ = json.NewEncoder(w).Encode(res)
 	})
 
-	// 4. Native Bluetooth Device List (Enriched, Pure Luma OS)
+	// 4. Native Bluetooth Device List (ALL Connected + Paired + Discovered Nearby Devices, Pure Luma OS)
 	mux.HandleFunc("/api/kernel/bluetooth/devices", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		var st BluetoothStatus
-		if kernel != nil && kernel.probe != nil {
-			st = kernel.probe.GetBluetoothStatus()
+		activeScan := r.URL.Query().Get("scan") == "1" || r.URL.Query().Get("scan") == "true" || r.URL.Query().Get("rescan") == "1"
+		var probe *platformProbe
+		if kernel != nil {
+			probe = kernel.probe
 		}
+		st := discoverAllBluetoothDevicesNative(probe, activeScan)
 		if st.Devices == nil {
 			st.Devices = []BluetoothDevice{}
 		}
+		sort.SliceStable(st.Devices, func(i, j int) bool {
+			if st.Devices[i].Connected != st.Devices[j].Connected {
+				return st.Devices[i].Connected
+			}
+			if st.Devices[i].Paired != st.Devices[j].Paired {
+				return st.Devices[i].Paired
+			}
+			return strings.ToLower(st.Devices[i].Name) < strings.ToLower(st.Devices[j].Name)
+		})
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":           true,
 			"available":    st.Available,

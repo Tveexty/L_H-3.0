@@ -141,3 +141,19 @@ func releaseAltTabTopmost() {}
 
 func bringLumaHomeNow() {}
 
+var unixPinnedTopmost bool
+
+func setLumaPinnedWindowTopmost(enabled bool) bool {
+	unixShellMu.Lock()
+	unixPinnedTopmost = enabled
+	unixShellMu.Unlock()
+	return enabled
+}
+
+func isLumaPinnedWindowTopmost() bool {
+	unixShellMu.Lock()
+	defer unixShellMu.Unlock()
+	return unixPinnedTopmost
+}
+
+

@@ -161,9 +161,9 @@ export interface SystemFeaturesMap {
 }
 
 export const SYSTEM_FEATURE_META: { key: keyof SystemFeaturesMap; label: string; desc: string }[] = [
-  { key: 'ai', label: 'Luma AI 5.0 Nexus', desc: 'Память, веб-поиск и глубокое управление системой' },
+  { key: 'ai', label: 'Luma Ai Nitrogen', desc: 'Ollama / OpenAI стриминг, 3-уровневая память, Офис и Календарь' },
   { key: 'dynamicIsland', label: 'Luma Island', desc: 'Живой остров с анимацией и таймером' },
-  { key: 'calendar', label: 'Календарь и задачи', desc: 'День/Неделя/Месяц/Повестка и напоминания' },
+  { key: 'calendar', label: 'Календарь и задачи', desc: 'День/Неделя/Месяц/Повестка + Luma Ai Nitrogen' },
   { key: 'scenarios', label: 'Сценарии (Автоматизация)', desc: 'Правила «Если + Условие → Цепочка действий»' },
   { key: 'codeStudio', label: 'Luma Code Studio', desc: 'IDE с live-диагностикой ошибок и Pro терминалом' },
   { key: 'cutStudio', label: 'Luma Cut Studio', desc: 'Видеомонтаж, маски, AI, озвучка, Design Studio' },
@@ -194,7 +194,7 @@ interface LumaCarbonControlHubProps {
   bluetoothStatus?: BluetoothStatusSnapshot | null;
   bluetoothLoading?: boolean;
   onToggleBluetooth: (enabled?: boolean) => void;
-  onRefreshBluetooth?: () => void;
+  onRefreshBluetooth?: (activeScan?: boolean) => void;
   onBluetoothDeviceAction?: (
     dev: BluetoothDeviceItem,
     action: 'connect' | 'disconnect' | 'pair',
@@ -1077,7 +1077,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
           <div className={`px-3.5 py-2.5 border-b flex items-center justify-between gap-2 shrink-0 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]" />
-              <span className="text-xs font-bold tracking-tight truncate">Панель управления 1.6.2b</span>
+              <span className="text-xs font-bold tracking-tight truncate">Панель управления 1.6.3</span>
               <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-md border ${isDark ? 'bg-white/[0.06] border-white/10 text-white/60' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
                 TAB
               </span>
@@ -1111,7 +1111,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             {showFeaturesModal ? (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-cyan-400">Менеджер функций Luma OS 1.6.2b</span>
+                  <span className="text-[11px] font-bold text-cyan-400">Менеджер функций Luma OS 1.6.3</span>
                   <button onClick={() => setShowFeaturesModal(false)} className="text-[10px] px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/15">Назад</button>
                 </div>
                 {SYSTEM_FEATURE_META.map((feat) => {
@@ -1161,7 +1161,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                     isDark={isDark}
                     status={bluetoothStatus}
                     loading={bluetoothLoading}
-                    onRefresh={() => onRefreshBluetooth?.()}
+                    onRefresh={(activeScan) => onRefreshBluetooth?.(activeScan)}
                     onToggleRadio={(en) => onToggleBluetooth(en)}
                     onDeviceAction={
                       onBluetoothDeviceAction ||

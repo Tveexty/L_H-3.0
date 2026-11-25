@@ -16,11 +16,241 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
-// ==================== LUMA OS 1.6.2b: WINDOWS NATIVE WI-FI & BLUETOOTH ENGINE ====================
-// Uses UTF-8 netsh wlan (chcp 65001) + direct WinRT Radio.GetRadiosAsync (NEVER RequestAccessAsync!)
-// and silent PnP/Bluetooth device control — ZERO Windows Settings windows ever pop up!
+// ==================== LUMA OS 1.6.3: WINDOWS NATIVE WI-FI (WLANAPI + NETSH) & FULL BLUETOOTH DISCOVERY (BTHPROPS) ====================
+// Uses Win32 wlanapi.dll WlanScan + UTF-8 netsh wlan (chcp 65001) + pure Win32 bthprops.cpl BluetoothFindFirstDevice
+// to list ALL nearby, paired, and connected devices — ZERO RequestAccessAsync, ZERO ms-settings, ZERO NewCallback!
+
+var (
+	wlanApiDLL             = syscall.NewLazyDLL("wlanapi.dll")
+	procWlanOpenHandle     = wlanApiDLL.NewProc("WlanOpenHandle")
+	procWlanCloseHandle    = wlanApiDLL.NewProc("WlanCloseHandle")
+	procWlanEnumInterfaces = wlanApiDLL.NewProc("WlanEnumInterfaces")
+	procWlanScan           = wlanApiDLL.NewProc("WlanScan")
+	procWlanFreeMemory     = wlanApiDLL.NewProc("WlanFreeMemory")
+
+	bthPropsDLL                 = syscall.NewLazyDLL("bthprops.cpl")
+	procBtFindFirstDevice       = bthPropsDLL.NewProc("BluetoothFindFirstDevice")
+	procBtFindNextDevice        = bthPropsDLL.NewProc("BluetoothFindNextDevice")
+	procBtFindDeviceClose       = bthPropsDLL.NewProc("BluetoothFindDeviceClose")
+)
+
+type winWlanGUID struct {
+	Data1 uint32
+	Data2 uint16
+	Data3 uint16
+	Data4 [8]byte
+}
+
+type winWlanInterfaceInfo struct {
+	InterfaceGuid winWlanGUID
+	Description   [256]uint16
+	State         uint32
+}
+
+type winWlanInterfaceList struct {
+	NumberOfItems uint32
+	Index         uint32
+	InterfaceInfo [1]winWlanInterfaceInfo
+}
+
+// triggerWin32WlanScan triggers a real hardware 802.11 active scan so ALL nearby Wi-Fi APs appear immediately.
+func triggerWin32WlanScan() {
+	var negotiated uint32
+	var hClient uintptr
+	if r, _, _ := procWlanOpenHandle.Call(2, 0, uintptr(unsafe.Pointer(&negotiated)), uintptr(unsafe.Pointer(&hClient))); r != 0 || hClient == 0 {
+		return
+	}
+	defer procWlanCloseHandle.Call(hClient, 0)
+
+	var listPtr uintptr
+	if r, _, _ := procWlanEnumInterfaces.Call(hClient, 0, uintptr(unsafe.Pointer(&listPtr))); r != 0 || listPtr == 0 {
+		return
+	}
+	defer procWlanFreeMemory.Call(listPtr)
+
+	hdr := (*winWlanInterfaceList)(unsafe.Pointer(listPtr))
+	count := hdr.NumberOfItems
+	if count > 8 {
+		count = 8
+	}
+	base := uintptr(unsafe.Pointer(&hdr.InterfaceInfo[0]))
+	stride := unsafe.Sizeof(winWlanInterfaceInfo{})
+	for i := uint32(0); i < count; i++ {
+		iface := (*winWlanInterfaceInfo)(unsafe.Pointer(base + uintptr(i)*stride))
+		_, _, _ = procWlanScan.Call(hClient, uintptr(unsafe.Pointer(&iface.InterfaceGuid)), 0, 0, 0)
+	}
+	time.Sleep(850 * time.Millisecond)
+}
+
+// Win32 BLUETOOTH_DEVICE_SEARCH_PARAMS (packed layout matching bthapis.h on amd64)
+type winBtSearchParams struct {
+	DwSize               uint32
+	FReturnAuthenticated int32
+	FReturnRemembered    int32
+	FReturnUnknown       int32
+	FReturnConnected     int32
+	FIssueInquiry        int32
+	CTimeoutMultiplier   byte
+	_                    [7]byte
+	HRadio               uintptr
+}
+
+type winBtSystemTime struct {
+	Year, Month, DayOfWeek, Day, Hour, Minute, Second, Milliseconds uint16
+}
+
+// Win32 BLUETOOTH_DEVICE_INFO (dwSize = 560 bytes on amd64)
+type winBtDeviceInfo struct {
+	DwSize          uint32
+	_               uint32
+	Address         uint64
+	UlClassofDevice uint32
+	FConnected      int32
+	FRemembered     int32
+	FAuthenticated  int32
+	StLastSeen      winBtSystemTime
+	StLastUsed      winBtSystemTime
+	SzName          [248]uint16
+}
+
+func formatBtMacAddr(addr uint64) string {
+	return fmt.Sprintf("%02X:%02X:%02X:%02X:%02X:%02X",
+		byte((addr>>40)&0xFF),
+		byte((addr>>32)&0xFF),
+		byte((addr>>24)&0xFF),
+		byte((addr>>16)&0xFF),
+		byte((addr>>8)&0xFF),
+		byte(addr&0xFF),
+	)
+}
+
+func classifyBtClassCode(cod uint32, name string) string {
+	major := (cod >> 8) & 0x1F
+	minor := (cod >> 2) & 0x3F
+	switch major {
+	case 4: // Audio/Video
+		return "headphones"
+	case 5: // Peripheral
+		if (minor & 0x20) != 0 {
+			return "mouse"
+		}
+		if (minor & 0x10) != 0 {
+			return "keyboard"
+		}
+		if minor == 1 || minor == 2 {
+			return "gamepad"
+		}
+	case 2: // Phone
+		return "phone"
+	case 7: // Wearable
+		return "watch"
+	}
+	return classifyPeripheralType(name)
+}
+
+// discoverAllBluetoothDevicesNative enumerates ALL connected, paired (remembered), AND newly discovered nearby
+// Bluetooth devices via Win32 bthprops.cpl + SetupDi + BLE/2.4GHz batteries — ZERO RequestAccessAsync!
+func discoverAllBluetoothDevicesNative(probe *platformProbe, activeScan bool) BluetoothStatus {
+	var st BluetoothStatus
+	if probe != nil {
+		st = probe.GetBluetoothStatus()
+	}
+	if st.Devices == nil {
+		st.Devices = []BluetoothDevice{}
+	}
+
+	// Mark existing SetupDi devices as paired
+	byKey := make(map[string]int, len(st.Devices))
+	for i := range st.Devices {
+		st.Devices[i].Paired = true
+		k := strings.ToLower(strings.TrimSpace(st.Devices[i].Name))
+		if k != "" {
+			byKey[k] = i
+		}
+	}
+
+	// Pure Win32 BluetoothFindFirstDevice — finds ALL connected, paired/offline, AND nearby unpaired devices!
+	params := winBtSearchParams{
+		DwSize:               uint32(unsafe.Sizeof(winBtSearchParams{})),
+		FReturnAuthenticated: 1,
+		FReturnRemembered:    1,
+		FReturnUnknown:       1,
+		FReturnConnected:     1,
+		FIssueInquiry:        0,
+		CTimeoutMultiplier:   2, // ~2.5s radio inquiry when activeScan=true
+	}
+	if activeScan {
+		params.FIssueInquiry = 1
+	}
+
+	var info winBtDeviceInfo
+	info.DwSize = uint32(unsafe.Sizeof(info))
+	hFind, _, _ := procBtFindFirstDevice.Call(uintptr(unsafe.Pointer(&params)), uintptr(unsafe.Pointer(&info)))
+	if hFind != 0 {
+		defer procBtFindDeviceClose.Call(hFind)
+		st.Available = true
+		st.Enabled = true
+		for count := 0; count < 64; count++ {
+			name := strings.TrimSpace(syscall.UTF16ToString(info.SzName[:]))
+			mac := formatBtMacAddr(info.Address)
+			if name == "" {
+				name = "Bluetooth " + mac
+			}
+			low := strings.ToLower(name)
+			connected := info.FConnected != 0
+			paired := info.FAuthenticated != 0 || info.FRemembered != 0
+			discovered := !paired
+
+			if idx, exists := byKey[low]; exists {
+				if connected {
+					st.Devices[idx].Connected = true
+					st.Devices[idx].Status = "OK"
+				}
+				if paired {
+					st.Devices[idx].Paired = true
+				}
+				if st.Devices[idx].Address == "" {
+					st.Devices[idx].Address = mac
+				}
+			} else {
+				statusLabel := "Найдено рядом"
+				if connected {
+					statusLabel = "OK"
+				} else if paired {
+					statusLabel = "Сопряжено"
+				}
+				st.Devices = append(st.Devices, BluetoothDevice{
+					Name:           name,
+					Status:         statusLabel,
+					Connected:      connected,
+					Paired:         paired,
+					Discovered:     discovered,
+					Address:        mac,
+					Class:          "Bluetooth",
+					DeviceType:     classifyBtClassCode(info.UlClassofDevice, name),
+					BatteryPercent: -1,
+					Transport:      "Bluetooth",
+					InstanceID:     mac,
+				})
+				byKey[low] = len(st.Devices) - 1
+			}
+
+			info = winBtDeviceInfo{DwSize: uint32(unsafe.Sizeof(info))}
+			ok, _, _ := procBtFindNextDevice.Call(hFind, uintptr(unsafe.Pointer(&info)))
+			if ok == 0 {
+				break
+			}
+		}
+	}
+
+	if st.Available && st.AdapterName == "" {
+		st.AdapterName = "Bluetooth Адаптер"
+	}
+	return st
+}
 
 func runNetshUTF8(timeout time.Duration, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -113,8 +343,8 @@ func getWifiStatusNative(rescan bool) WifiStatusSnapshot {
 	}
 
 	if rescan {
-		// Gentle passive scan trigger via native WlanScan without opening any Windows UI
-		_, _ = runNetshUTF8(3*time.Second, "wlan", "show", "networks", "mode=bssid")
+		// Real hardware 802.11 active scan via wlanapi.dll so ALL nearby networks refresh immediately!
+		triggerWin32WlanScan()
 	}
 
 	ifaceOut, ifaceErr := runNetshUTF8(3500*time.Millisecond, "wlan", "show", "interfaces")

@@ -221,21 +221,21 @@ export const KernelUIPanel: React.FC<{
                 ЯДРО UI · LUMA NITROGEN · N-7
               </div>
               <div className="text-lg font-extrabold tracking-tight truncate">
-                Luma OS 1.6.2b (Nitrogen)
+                Luma OS 1.6.3 (Nitrogen)
               </div>
               <div className={`text-xs font-mono truncate ${mutedCls}`}>
-                LumaCore {liveSystem?.kernel_engine_version || '1.5.2b'} · LumaShield 2.5 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
+                LumaCore {liveSystem?.kernel_engine_version || '1.5.3'} · LumaShield 2.5 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
               </div>
             </div>
           </div>
 
           <a
-            href="/LumaOS_1.6.2b.exe"
-            download="LumaOS_1.6.2b.exe"
+            href="/LumaOS_1.6.3.exe"
+            download="LumaOS_1.6.3.exe"
             className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
-            LumaOS_1.6.2b.exe
+            LumaOS_1.6.3.exe
           </a>
         </div>
 
@@ -289,23 +289,23 @@ export const KernelUIPanel: React.FC<{
           {/* 3. Версия ПО */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия ПО</div>
-            <div className="text-sm font-mono font-bold">1.6.2b (Nitrogen · N-7)</div>
+            <div className="text-sm font-mono font-bold">1.6.3 (Nitrogen · N-7)</div>
           </div>
 
-          {/* 4. Версия Ядра (1.5.2b) */}
+          {/* 4. Версия Ядра (1.5.3) */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия Ядра</div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-mono font-bold text-[var(--luma-accent)]">
-                {liveSystem?.kernel_engine_version || '1.5.2b'}
+                {liveSystem?.kernel_engine_version || '1.5.3'}
               </span>
-              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore 1.5.2b · Zero-WMI</span>
+              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore 1.5.3 · Zero-WMI</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Developer Mode & Administrator (UAC) Elevation Controls — Luma OS 1.6.2b Nitrogen */}
+      {/* Developer Mode & Administrator (UAC) Elevation Controls — Luma OS 1.6.3 Nitrogen */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
         <div className={`p-4 rounded-2xl border space-y-2.5 ${surfaceCls}`}>
           <div className="flex items-center justify-between gap-2">
@@ -378,7 +378,7 @@ export const KernelUIPanel: React.FC<{
           ['Оперативная память', liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ (${liveSystem.ram_percent}%)` : '—'],
           ['Платформа / Архитектура', `${liveSystem?.os_name || 'Luma OS'} · ${liveSystem?.arch || 'amd64'}`],
           ['Ядро безопасности', 'LumaShield 2.5 · 275+ Rules + Tasks & Stealer Shield'],
-          ['Шина ядра / ИИ', 'LumaCore 1.5.2b · TCP RPC :49215 · Luma AI 5.0 Nexus'],
+          ['Шина ядра / ИИ', 'LumaCore 1.5.3 · TCP RPC :49215 · Luma Ai Nitrogen'],
         ].map(([k, v]) => (
           <div key={k} className={`p-3.5 rounded-xl border space-y-1 ${surfaceCls}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>{k}</div>
@@ -413,11 +413,11 @@ export const BluetoothSettingsPanel: React.FC<{
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
 
-  const loadBt = async () => {
+  const loadBt = async (activeScan = false) => {
     setLoading(true);
     try {
       const [r1, r2] = await Promise.all([
-        fetch('/api/kernel/bluetooth'),
+        fetch(`/api/kernel/bluetooth/devices${activeScan ? '?scan=1' : ''}`),
         fetch('/api/kernel/wireless/batteries?refresh=1'),
       ]);
       if (r1.ok) {
@@ -438,7 +438,7 @@ export const BluetoothSettingsPanel: React.FC<{
   };
 
   useEffect(() => {
-    void loadBt();
+    void loadBt(false);
   }, []);
 
   const toggleBt = async () => {
@@ -492,10 +492,10 @@ export const BluetoothSettingsPanel: React.FC<{
             <BluetoothOff className={`w-5 h-5 shrink-0 ${mutedCls}`} />
           )}
           <div className="min-w-0">
-            <div className="text-sm font-bold">Bluetooth и Радиоканал 2.4GHz (LumaCore 1.5)</div>
+            <div className="text-sm font-bold">Bluetooth и Радиоканал 2.4GHz (LumaCore 1.5.3)</div>
             <div className={`text-xs truncate ${mutedCls}`}>
               {loading
-                ? 'Глубокое сканирование Bluetooth, BLE и 2.4GHz USB HID мышек/гарнитур...'
+                ? 'Активный поиск всех Bluetooth-устройств рядом (подключённые, сопряжённые и новые)...'
                 : bt?.available
                 ? bt.adapter_name || 'Адаптер Bluetooth обнаружен'
                 : 'Адаптер Bluetooth не найден (радиоканальные 2.4GHz устройства сканируются напрямую)'}
@@ -505,12 +505,12 @@ export const BluetoothSettingsPanel: React.FC<{
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => void loadBt()}
+            onClick={() => void loadBt(true)}
             disabled={loading}
             className={`px-3 py-1.5 rounded-lg border text-xs font-mono inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Сканировать
+            Найти все рядом
           </button>
           {bt?.available && (
             <button onClick={toggleBt} disabled={toggling} className="cursor-pointer">
@@ -565,7 +565,7 @@ export const BluetoothSettingsPanel: React.FC<{
                     </div>
                   ) : (
                     <div className={`text-[10px] font-mono ${mutedCls}`}>
-                      Активное соединение · драйвер не передаёт % АКБ в Windows
+                      Активное соединение · драйвер не передаёт % АКБ в ОС
                     </div>
                   )}
                 </div>
@@ -579,14 +579,14 @@ export const BluetoothSettingsPanel: React.FC<{
         <div className={`p-5 rounded-xl border space-y-2 text-xs ${surfaceCls}`}>
           <div className="font-bold">Модуль Bluetooth и 2.4GHz периферия не обнаружены</div>
           <div className={mutedCls}>
-            Ядро LumaCore 1.5.2b проверило Bluetooth, BLE и USB HID радиоканалы хоста. Подключите беспроводную мышь, клавиатуру или наушники и нажмите «Сканировать».
+            Ядро LumaCore 1.5.3 проверило Bluetooth, BLE и USB HID радиоканалы хоста. Включите Bluetooth на устройстве рядом и нажмите «Найти все рядом».
           </div>
           <button
-            onClick={() => void loadBt()}
+            onClick={() => void loadBt(true)}
             className={`mt-2 px-3 py-1.5 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            Повторить сканирование LumaCore
+            Повторить активный поиск LumaCore
           </button>
         </div>
       )}
@@ -594,35 +594,47 @@ export const BluetoothSettingsPanel: React.FC<{
       {bt?.available && (
         <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
           <div className="flex items-center justify-between text-xs">
-            <span className="font-bold">Обнаруженные и сопряжённые устройства ({bt.devices.length})</span>
+            <span className="font-bold">Все обнаруженные, сопряжённые и подключённые устройства ({bt.devices.length})</span>
             <button
-              onClick={() => void loadBt()}
+              onClick={() => void loadBt(true)}
               className={`px-2.5 py-1 rounded-lg border text-[11px] inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
             >
-              <RefreshCw className="w-3 h-3" /> Обновить список
+              <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> Поиск рядом
             </button>
           </div>
           {bt.devices.length === 0 ? (
             <div className={`py-6 text-center text-xs font-mono ${mutedCls}`}>
-              Сопряжённые устройства не найдены
+              Устройства не найдены — нажмите «Поиск рядом», чтобы просканировать эфир Bluetooth
             </div>
           ) : (
             <div className="space-y-2">
               {bt.devices.map((dev, idx) => {
+                const devEx = dev as BluetoothStatusInfo['devices'][number] & {
+                  paired?: boolean;
+                  discovered?: boolean;
+                  address?: string;
+                };
                 const hasBat = typeof dev.battery_percent === 'number' && dev.battery_percent >= 0;
                 const pct = hasBat ? Math.max(0, Math.min(100, dev.battery_percent!)) : 0;
+                const isDiscovered = Boolean(devEx.discovered) && !dev.connected && !devEx.paired;
                 return (
-                  <div key={`${dev.name}_${idx}`} className={`p-3 rounded-xl border space-y-2 text-xs ${btnCls}`}>
+                  <div key={`${dev.name}_${devEx.address || idx}`} className={`p-3 rounded-xl border space-y-2 text-xs ${btnCls}`}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="font-semibold truncate flex items-center gap-2">
+                        <div className="font-semibold truncate flex flex-wrap items-center gap-1.5">
                           <span>{dev.name}</span>
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono border ${surfaceCls} ${mutedCls}`}>
                             {kindTag(dev.device_type)}
                           </span>
+                          {isDiscovered && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-500/20 text-amber-400 border border-amber-400/30">
+                              Найдено рядом
+                            </span>
+                          )}
                         </div>
                         <div className={`text-[10px] font-mono ${mutedCls}`}>
                           {dev.transport || dev.class || 'Bluetooth'} · {dev.status}
+                          {devEx.address ? ` · ${devEx.address}` : ''}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
@@ -642,7 +654,7 @@ export const BluetoothSettingsPanel: React.FC<{
                         )}
                         <button
                           onClick={() => {
-                            const action = dev.connected ? 'disconnect' : 'connect';
+                            const action = dev.connected ? 'disconnect' : isDiscovered ? 'pair' : 'connect';
                             void fetch('/api/kernel/bluetooth/connect', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
@@ -662,12 +674,18 @@ export const BluetoothSettingsPanel: React.FC<{
                           className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold cursor-pointer border transition ${
                             dev.connected
                               ? 'bg-rose-500/15 border-rose-400/35 text-rose-300 hover:bg-rose-500/25'
+                              : isDiscovered
+                              ? 'bg-amber-500/20 border-amber-400/40 text-amber-300 hover:bg-amber-500/30'
                               : 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
                           }`}
                         >
-                          {dev.connected ? 'Отключить' : 'Подключить'}
+                          {dev.connected ? 'Отключить' : isDiscovered ? 'Сопрячь' : 'Подключить'}
                         </button>
-                        <StatusBadge active={dev.connected} onLabel="ПОДКЛ" offLabel="ГОТОВО" />
+                        <StatusBadge
+                          active={dev.connected}
+                          onLabel="ПОДКЛ"
+                          offLabel={isDiscovered ? 'РЯДОМ' : 'СОПРЯЖЕНО'}
+                        />
                       </div>
                     </div>
                     {hasBat && (
@@ -721,6 +739,54 @@ export const PowerSaverPanel: React.FC<{
   btnCls,
   mutedCls,
 }) => {
+  const [stopChargeCfg, setStopChargeCfg] = useState<{
+    enabled: boolean;
+    limit_percent: number;
+    stop_charging_now: boolean;
+    notify_at_limit: boolean;
+    auto_eco_at_limit: boolean;
+  }>({
+    enabled: false,
+    limit_percent: 80,
+    stop_charging_now: false,
+    notify_at_limit: true,
+    auto_eco_at_limit: true,
+  });
+  const [stopChargeMethod, setStopChargeMethod] = useState('');
+  const [stopChargeMsg, setStopChargeMsg] = useState('');
+
+  useEffect(() => {
+    void fetch('/api/kernel/power/charge-limit')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.config) setStopChargeCfg((prev) => ({ ...prev, ...d.config }));
+        if (d?.hardware_method) setStopChargeMethod(String(d.hardware_method));
+      })
+      .catch(() => {});
+  }, []);
+
+  const updateStopCharging = async (next: typeof stopChargeCfg) => {
+    setStopChargeCfg(next);
+    try {
+      const r = await fetch('/api/kernel/power/charge-limit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.config) setStopChargeCfg((prev) => ({ ...prev, ...d.config }));
+        if (d?.hardware_method) setStopChargeMethod(String(d.hardware_method));
+        if (d?.message) {
+          setStopChargeMsg(String(d.message));
+          window.setTimeout(() => setStopChargeMsg(''), 4000);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Live Battery & Charge Status */}
@@ -731,7 +797,11 @@ export const PowerSaverPanel: React.FC<{
             <div>
               <div className="text-sm font-bold">Питание и батарея</div>
               <div className={`text-xs font-mono ${mutedCls}`}>
-                {isCharging ? 'Подключено к электросети' : 'Работа от аккумулятора'}
+                {stopChargeCfg.stop_charging_now
+                  ? '🔌 Питание от сети · Зарядка батареи остановлена'
+                  : isCharging
+                  ? 'Подключено к электросети'
+                  : 'Работа от аккумулятора'}
               </div>
             </div>
           </div>
@@ -742,6 +812,71 @@ export const PowerSaverPanel: React.FC<{
             className="h-full bg-[var(--luma-accent)] transition-all duration-300"
             style={{ width: `${Math.max(4, Math.min(100, batteryLevel))}%` }}
           />
+        </div>
+      </div>
+
+      {/* Laptop Battery Stop-Charging Mode (100% Working Multi-Vendor Conservation Mode) */}
+      <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls} ${stopChargeCfg.stop_charging_now ? 'border-amber-400/50 bg-amber-500/10' : ''}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-bold flex flex-wrap items-center gap-2">
+              <span>🔌 Не заряжать батарею (Режим сбережения АКБ ноутбука)</span>
+              {stopChargeCfg.stop_charging_now && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-400/35">
+                  ЗАРЯДКА ОСТАНОВЛЕНА
+                </span>
+              )}
+            </div>
+            <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
+              Отключает зарядку аккумулятора при работе ноутбука от розетки (Lenovo EnergyDrv / ASUS ATKACPI / MSI / Acer / BIOS WMI + тепловая защита ACPI), чтобы батарея не изнашивалась.
+            </div>
+            {(stopChargeMethod || stopChargeMsg) && (
+              <div className="text-[10px] font-mono text-emerald-400 mt-1">
+                {stopChargeMsg || `Контроллер: ${stopChargeMethod}`}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const nextStop = !stopChargeCfg.stop_charging_now;
+              void updateStopCharging({
+                ...stopChargeCfg,
+                enabled: nextStop ? true : stopChargeCfg.enabled,
+                stop_charging_now: nextStop,
+                limit_percent: nextStop && stopChargeCfg.limit_percent > 80 ? 60 : stopChargeCfg.limit_percent,
+              });
+            }}
+            className="cursor-pointer shrink-0"
+          >
+            <StatusBadge active={stopChargeCfg.stop_charging_now} onLabel="НЕ ЗАРЯЖАТЬ" offLabel="ВЫКЛ" />
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span className={`font-semibold mr-1 ${mutedCls}`}>Лимит заряда:</span>
+          {[60, 80, 90, 100].map((pct) => {
+            const active = !stopChargeCfg.stop_charging_now && (pct === 100 ? !stopChargeCfg.enabled : stopChargeCfg.enabled && stopChargeCfg.limit_percent === pct);
+            return (
+              <button
+                key={pct}
+                type="button"
+                onClick={() =>
+                  void updateStopCharging({
+                    ...stopChargeCfg,
+                    enabled: pct < 100,
+                    stop_charging_now: false,
+                    limit_percent: pct,
+                  })
+                }
+                className={`px-2.5 py-1 rounded-lg border font-mono font-bold cursor-pointer transition ${
+                  active ? 'bg-emerald-500 border-emerald-400 text-white' : btnCls
+                }`}
+              >
+                {pct === 100 ? '100% (Обычно)' : `До ${pct}%`}
+              </button>
+            );
+          })}
         </div>
       </div>
 

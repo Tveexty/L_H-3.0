@@ -102,6 +102,9 @@ type BluetoothDevice struct {
 	Name           string `json:"name"`
 	Status         string `json:"status"`
 	Connected      bool   `json:"connected"`
+	Paired         bool   `json:"paired"`
+	Discovered     bool   `json:"discovered"`
+	Address        string `json:"address,omitempty"`
 	Class          string `json:"class"`
 	BatteryPercent int    `json:"battery_percent"` // -1 if unknown, 0-100 if reported
 	DeviceType     string `json:"device_type"`     // mouse | keyboard | headphones | gamepad | watch | phone | other

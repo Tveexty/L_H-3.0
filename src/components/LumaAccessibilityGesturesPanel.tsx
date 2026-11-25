@@ -83,7 +83,7 @@ export const GESTURE_ACTION_OPTIONS: { value: LumaGestureAction; label: string }
   { value: 'prev_desktop', label: '⬅️ Предыдущий рабочий стол' },
   { value: 'next_desktop', label: '➡️ Следующий рабочий стол' },
   { value: 'control_center', label: '🎛️ Панель управления Luma' },
-  { value: 'ai_assistant', label: '✨ Открыть Luma AI 5.0 Nexus' },
+  { value: 'ai_assistant', label: '✨ Открыть Luma Ai Nitrogen' },
   { value: 'spotlight', label: '⚡ Поиск по системе (Alt+R)' },
   { value: 'none', label: '— Не назначено —' },
 ];
@@ -101,6 +101,8 @@ interface LumaAccessibilityGesturesPanelProps {
   onChangeRmbConfig: (next: LumaRmbMenuConfig) => void;
   accessibilityConfig: LumaAccessibilityConfig;
   onChangeAccessibilityConfig: (next: LumaAccessibilityConfig) => void;
+  touchModeEnabled?: boolean;
+  onChangeTouchModeEnabled?: (next: boolean) => void;
   plugins: PluginItem[];
   onTogglePlugin: (id: string) => void;
   showPluginsInGrid: boolean;
@@ -123,6 +125,8 @@ export const LumaAccessibilityGesturesPanel: React.FC<LumaAccessibilityGesturesP
   onChangeRmbConfig,
   accessibilityConfig,
   onChangeAccessibilityConfig,
+  touchModeEnabled = false,
+  onChangeTouchModeEnabled,
   plugins,
   onTogglePlugin,
   showPluginsInGrid,
@@ -132,7 +136,7 @@ export const LumaAccessibilityGesturesPanel: React.FC<LumaAccessibilityGesturesP
   onOpenPluginsWindow,
 }) => {
   const [padDragStart, setPadDragStart] = useState<{ x: number; y: number } | null>(null);
-  const [padStatus, setPadStatus] = useState<string>('Зажмите кнопку мыши и проведите вниз / вверх / влево / вправо для теста жеста');
+  const [padStatus, setPadStatus] = useState<string>('Проведите пальцем, стилусом или мышью вниз / вверх / влево / вправо для теста жеста');
 
   const cardCls = isDark
     ? 'border-white/10 bg-white/[0.03]'
@@ -357,8 +361,6 @@ export const LumaAccessibilityGesturesPanel: React.FC<LumaAccessibilityGesturesP
           {(
             [
               { key: 'showLensSearch', label: 'Пункт «Luma Обвести для поиска»' },
-              { key: 'showAiQuick', label: 'Пункт «Спросить Luma AI 5.0»' },
-              { key: 'showScreenshot', label: 'Пункт «Сделать скриншот»' },
               { key: 'showOffice', label: 'Пункт «Luma Office Studio»' },
               { key: 'showStyleSwitch', label: 'Пункт «Сменить стиль оболочки»' },
             ] as const
@@ -463,7 +465,58 @@ export const LumaAccessibilityGesturesPanel: React.FC<LumaAccessibilityGesturesP
         </div>
       </div>
 
-      {/* 4. ACCESSIBILITY OPTIONS (СПЕЦВОЗМОЖНОСТИ) */}
+      {/* 4. TOUCHSCREEN & STYLUS (PEN) SUPPORT — LUMA OS 1.6.3 */}
+      <div className={`p-4 rounded-2xl border space-y-3 ${cardCls}`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-cyan-500/15 border border-cyan-400/30 text-cyan-400 flex items-center justify-center">
+              <Hand className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs font-black flex items-center gap-2">
+                <span>Сенсорный экран и стилус (Touch &amp; Pen)</span>
+                <span className="px-1.5 py-0.5 rounded-md bg-cyan-500/15 text-cyan-400 text-[9px] font-mono">1.6.3</span>
+              </div>
+              <div className={`text-[11px] ${mutedCls}`}>
+                Увеличенные кнопки, перетаскивание окон пальцем/стилусом, удержание = ПКМ и чувствительность к нажатию пера
+              </div>
+            </div>
+          </div>
+          {onChangeTouchModeEnabled && (
+            <label className="inline-flex items-center gap-2 text-xs font-bold cursor-pointer">
+              <input
+                type="checkbox"
+                checked={touchModeEnabled}
+                onChange={(e) => onChangeTouchModeEnabled(e.target.checked)}
+                className="accent-[var(--luma-accent)] w-4 h-4"
+              />
+              <span>{touchModeEnabled ? 'Активно' : 'Авто'}</span>
+            </label>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              void fetch('/api/kernel/launch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target: 'osk.exe' }),
+              }).catch(() => {});
+            }}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer ${btnCls}`}
+          >
+            ⌨️ Открыть экранную клавиатуру
+          </button>
+          <span className={`text-[11px] ${mutedCls}`}>
+            {typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0
+              ? `Обнаружен сенсорный ввод (${navigator.maxTouchPoints} касаний)`
+              : 'Поддержка стилуса, планшетов и сенсорных ноутбуков готова'}
+          </span>
+        </div>
+      </div>
+
+      {/* 5. ACCESSIBILITY OPTIONS (СПЕЦВОЗМОЖНОСТИ) */}
       <div className={`p-4 rounded-2xl border space-y-2.5 ${cardCls}`}>
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-400/30 text-amber-400 flex items-center justify-center">

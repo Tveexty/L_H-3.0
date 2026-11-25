@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strconv"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -157,4 +158,225 @@ func platformApplyIdleSleepConfig(cfg IdleSleepConfig) (bool, string) {
 	}
 
 	return appliedNative, fmt.Sprintf("Применено к Windows: экран %d/%d мин, сон %d/%d мин", cfg.DisplayOffACMin, cfg.DisplayOffDCMin, cfg.SleepACMin, cfg.SleepDCMin)
+}
+
+// ==================== LUMA OS 1.6.3: REAL MULTI-VENDOR LAPTOP HARDWARE CHARGE STOP / CONSERVATION MODE ====================
+// Stops battery charging directly via vendor EC/ACPI drivers (Lenovo \\.\EnergyDrv, ASUS \\.\ATKACPI,
+// Lenovo/ThinkPad/MSI/Dell/HP/Acer ACPI/WMI) + real Windows AC Eco thermal protection. ZERO RequestAccessAsync, ZERO NewCallback!
+
+var procDeviceIoControlPower = idleKernel32.NewProc("DeviceIoControl")
+
+func readLaptopManufacturerReg() string {
+	// Read HKLM\HARDWARE\DESCRIPTION\System\BIOS\SystemManufacturer via pure Win32 advapi32 (ZERO WMI!)
+	const (
+		hklm     = uintptr(0x80000002)
+		keyRead  = 0x20019
+		regSz    = 1
+	)
+	advapi := syscall.NewLazyDLL("advapi32.dll")
+	openKey := advapi.NewProc("RegOpenKeyExW")
+	queryVal := advapi.NewProc("RegQueryValueExW")
+	closeKey := advapi.NewProc("RegCloseKey")
+
+	subPtr, err := syscall.UTF16PtrFromString(`HARDWARE\DESCRIPTION\System\BIOS`)
+	if err != nil {
+		return "PC"
+	}
+	var hKey uintptr
+	if r, _, _ := openKey.Call(hklm, uintptr(unsafe.Pointer(subPtr)), 0, keyRead, uintptr(unsafe.Pointer(&hKey))); r != 0 || hKey == 0 {
+		return "PC"
+	}
+	defer closeKey.Call(hKey)
+
+	valPtr, _ := syscall.UTF16PtrFromString("SystemManufacturer")
+	var valType uint32
+	buf := make([]uint16, 128)
+	size := uint32(len(buf) * 2)
+	if r, _, _ := queryVal.Call(hKey, uintptr(unsafe.Pointer(valPtr)), 0, uintptr(unsafe.Pointer(&valType)), uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size))); r == 0 && valType == regSz {
+		return strings.TrimSpace(syscall.UTF16ToString(buf))
+	}
+	return "PC"
+}
+
+// Lenovo IdeaPad / Legion / Yoga / ThinkBook hardware Conservation Mode via \\.\EnergyDrv IOCTL 0x831020E8
+func tryLenovoEnergyDrv(stopCharge bool) bool {
+	pathPtr, err := syscall.UTF16PtrFromString(`\\.\EnergyDrv`)
+	if err != nil {
+		return false
+	}
+	h, err := syscall.CreateFile(pathPtr, syscall.GENERIC_READ|syscall.GENERIC_WRITE, syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE, nil, syscall.OPEN_EXISTING, 0, 0)
+	if err != nil || h == syscall.InvalidHandle {
+		return false
+	}
+	defer syscall.CloseHandle(h)
+
+	// 0x03 = Enable Conservation Mode (STOP CHARGING immediately), 0x05 = Disable Conservation Mode (normal charge to 100%)
+	var inVal uint32 = 0x05
+	if stopCharge {
+		inVal = 0x03
+	}
+	var bytesRet uint32
+	r, _, _ := procDeviceIoControlPower.Call(
+		uintptr(h),
+		0x831020E8,
+		uintptr(unsafe.Pointer(&inVal)),
+		unsafe.Sizeof(inVal),
+		0,
+		0,
+		uintptr(unsafe.Pointer(&bytesRet)),
+		0,
+	)
+	return r != 0
+}
+
+// ASUS VivoBook / ZenBook / ROG / TUF hardware Battery Health Charging via \\.\ATKACPI IOCTL (DEVS 0x00120057)
+func tryAsusAtkAcpi(limitPct uint32) bool {
+	pathPtr, err := syscall.UTF16PtrFromString(`\\.\ATKACPI`)
+	if err != nil {
+		return false
+	}
+	h, err := syscall.CreateFile(pathPtr, syscall.GENERIC_READ|syscall.GENERIC_WRITE, syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE, nil, syscall.OPEN_EXISTING, 0, 0)
+	if err != nil || h == syscall.InvalidHandle {
+		return false
+	}
+	defer syscall.CloseHandle(h)
+
+	// ATKACPI DEVS packet: [4B "DEVS"][4B argLen=8][4B devID=0x00120057][4B threshold]
+	var inBuf [16]byte
+	copy(inBuf[0:4], []byte("DEVS"))
+	inBuf[4] = 8
+	// 0x00120057 little-endian
+	inBuf[8] = 0x57
+	inBuf[9] = 0x00
+	inBuf[10] = 0x12
+	inBuf[11] = 0x00
+	inBuf[12] = byte(limitPct)
+
+	var outBuf [16]byte
+	var bytesRet uint32
+	const ioctlAtkAcpi = 0x0022240C
+	r, _, _ := procDeviceIoControlPower.Call(
+		uintptr(h),
+		ioctlAtkAcpi,
+		uintptr(unsafe.Pointer(&inBuf[0])),
+		uintptr(len(inBuf)),
+		uintptr(unsafe.Pointer(&outBuf[0])),
+		uintptr(len(outBuf)),
+		uintptr(unsafe.Pointer(&bytesRet)),
+		0,
+	)
+	return r != 0
+}
+
+func platformApplyChargeLimit(cfg ChargeLimitConfig, batteryPct int) (bool, string, string, string) {
+	vendor := readLaptopManufacturerReg()
+	vLow := strings.ToLower(vendor)
+	stopActive := cfg.StopChargingNow || cfg.Enabled
+
+	targetPct := cfg.LimitPercent
+	if !stopActive {
+		targetPct = 100
+	} else if cfg.StopChargingNow {
+		// Force threshold at or below current level (min 50%) to halt charging immediately on AC power!
+		if batteryPct >= 45 && batteryPct < targetPct {
+			targetPct = batteryPct
+		}
+		if targetPct > 60 {
+			targetPct = 60
+		}
+	}
+
+	// 1. Direct Win32 Driver IOCTLs (fastest, zero PowerShell!)
+	if strings.Contains(vLow, "lenovo") || tryLenovoEnergyDrv(stopActive) {
+		if tryLenovoEnergyDrv(stopActive) {
+			if stopActive {
+				return true, vendor, "Lenovo EnergyDrv ACPI", "Аппаратный режим сбережения Lenovo включён — зарядка аккумулятора от сети остановлена"
+			}
+			return true, vendor, "Lenovo EnergyDrv ACPI", "Аппаратный режим сбережения Lenovo выключен — зарядка до 100%"
+		}
+	}
+
+	if strings.Contains(vLow, "asus") {
+		if tryAsusAtkAcpi(uint32(targetPct)) {
+			if stopActive {
+				return true, vendor, "ASUS ATKACPI EC", fmt.Sprintf("Аппаратный контроллер ASUS ограничил зарядку до %d%% (работа от сети без заряда АКБ)", targetPct)
+			}
+			return true, vendor, "ASUS ATKACPI EC", "Контроллер ASUS восстановлен на 100% заряд"
+		}
+	}
+
+	// 2. Vendor ACPI / WMI BIOS fallback (MSI / Acer / Dell / HP / ThinkPad / Huawei / Samsung)
+	psCmd := fmt.Sprintf(`
+$applied = ''
+$en = %v
+$lim = %d
+try {
+  # Lenovo ThinkPad / Vantage BIOS WMI
+  $lw = Get-WmiObject -Namespace root\wmi -Class Lenovo_SetBiosSetting -ErrorAction SilentlyContinue
+  if ($lw) {
+    $val = if ($en) { "BatteryChargeThreshold,$lim" } else { "BatteryChargeThreshold,100" }
+    $lw.SetBiosSetting($val) | Out-Null
+    $save = Get-WmiObject -Namespace root\wmi -Class Lenovo_SaveBiosSettings -ErrorAction SilentlyContinue
+    if ($save) { $save.SaveBiosSettings() | Out-Null }
+    $applied = 'Lenovo BIOS WMI'
+  }
+} catch {}
+if (-not $applied) {
+  try {
+    # MSI Center / Dragon Center Battery Master WMI
+    $msi = Get-WmiObject -Namespace root\wmi -Class MSI_Battery -ErrorAction SilentlyContinue
+    if ($msi -and $msi.PSObject.Methods['SetChargeThreshold']) {
+      $msi.SetChargeThreshold($lim) | Out-Null
+      $applied = 'MSI Battery EC'
+    }
+  } catch {}
+}
+if (-not $applied) {
+  try {
+    # ASUS System Control Interface WMI
+    $as = Get-WmiObject -Namespace root\wmi -Class AsusAtkWmi_WMNB -ErrorAction SilentlyContinue
+    if ($as) {
+      $as.DEVS(0x00120057, $lim) | Out-Null
+      $applied = 'ASUS WMI DEVS'
+    }
+  } catch {}
+}
+if (-not $applied) {
+  try {
+    # Acer Care Center WMI
+    $ac = Get-WmiObject -Namespace root\wmi -Class Acer_GamingFunction -ErrorAction SilentlyContinue
+    if ($ac -and $ac.PSObject.Methods['SetBatteryChargeLimit']) {
+      $ac.SetBatteryChargeLimit([int]$en) | Out-Null
+      $applied = 'Acer ACPI'
+    }
+  } catch {}
+}
+Write-Output $applied
+`, stopActive, targetPct)
+
+	out, _ := runHiddenPowerShell(psCmd)
+	method := strings.TrimSpace(out)
+
+	// 3. Always apply Windows AC Thermal & Battery Saver Guard so laptop stays cool & never stresses battery while plugged in!
+	if stopActive {
+		_ = runHiddenPowercfg("/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PROCTHROTTLEMAX", "75")
+		_ = runHiddenPowercfg("/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFBOOSTMODE", "0")
+		_ = runHiddenPowercfg("/setactive", "SCHEME_CURRENT")
+	} else {
+		_ = runHiddenPowercfg("/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PROCTHROTTLEMAX", "100")
+		_ = runHiddenPowercfg("/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFBOOSTMODE", "2")
+		_ = runHiddenPowercfg("/setactive", "SCHEME_CURRENT")
+	}
+
+	if method != "" {
+		if stopActive {
+			return true, vendor, method, fmt.Sprintf("Аппаратная блокировка заряда активирована (%s · порог %d%%)", method, targetPct)
+		}
+		return true, vendor, method, fmt.Sprintf("Аппаратный лимит снят (%s · 100%%)", method)
+	}
+
+	if stopActive {
+		return false, vendor, "Luma Eco AC Guard", fmt.Sprintf("Режим «Не заряжать» активен (порог %d%% + охлаждение AC). Для аппаратного отключения контроллера заряда на %s запустите Luma OS от Администратора.", targetPct, vendor)
+	}
+	return false, vendor, "Standard AC", "Стандартный режим зарядки (до 100%)"
 }

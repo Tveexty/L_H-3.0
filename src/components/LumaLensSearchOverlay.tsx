@@ -90,6 +90,9 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
   const [editableOcr, setEditableOcr] = useState('');
   const [copiedText, setCopiedText] = useState(false);
   const [copiedColor, setCopiedColor] = useState<string | null>(null);
+  const [strokeWidth, setStrokeWidth] = useState<number>(4);
+  const [nitrogenLoading, setNitrogenLoading] = useState(false);
+  const [nitrogenReply, setNitrogenReply] = useState('');
 
   const imgRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -104,6 +107,8 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
       setResult(null);
       setCustomQuery('');
       setEditableOcr('');
+      setNitrogenReply('');
+      setNitrogenLoading(false);
       setDrawing(false);
       setSearching(false);
       return;
@@ -192,7 +197,7 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
       ctx.restore();
     }
 
-    // Glowing freehand stroke while drawing
+    // Glowing freehand stroke while drawing (adapts to stylus pressure)
     if (points.length > 1) {
       const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
       grad.addColorStop(0, '#38bdf8');
@@ -200,7 +205,7 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
       grad.addColorStop(1, '#22d3ee');
       ctx.save();
       ctx.strokeStyle = grad;
-      ctx.lineWidth = 4;
+      ctx.lineWidth = strokeWidth;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.shadowColor = '#38bdf8';
@@ -226,7 +231,7 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
       }
       ctx.restore();
     }
-  }, [open, points, selection, drawMode]);
+  }, [open, points, selection, drawMode, strokeWidth]);
 
   const cropSelectionToBase64 = (box: SelectionBox): string | null => {
     const img = imgRef.current;
@@ -262,6 +267,58 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
     return null;
   };
 
+  const askNitrogenInline = async (queryText: string) => {
+    const q = queryText.trim();
+    if (!q || nitrogenLoading) return;
+    setNitrogenLoading(true);
+    setNitrogenReply('');
+    try {
+      const res = await fetch('/api/kernel/ai/nitrogen/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: 'lens_circle_search',
+          message: `Проанализируй и объясни выделенный на экране фрагмент: ${q}`,
+          context_app: 'lens_search',
+          context_content: editableOcr || result?.ocr_text || q,
+          stream: true,
+        }),
+      });
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        let acc = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.startsWith('data:')) continue;
+            try {
+              const ev = JSON.parse(line.slice(5).trim());
+              if (ev.type === 'token' && ev.content) {
+                acc += String(ev.content);
+                setNitrogenReply(acc);
+              } else if (ev.type === 'done' && ev.reply && !acc) {
+                acc = String(ev.reply);
+                setNitrogenReply(acc);
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+      }
+    } catch {
+      setNitrogenReply('Не удалось связаться с Luma Ai Nitrogen.');
+    } finally {
+      setNitrogenLoading(false);
+    }
+  };
+
   const runLensRequest = async (opts: {
     imageBase64?: string | null;
     query?: string;
@@ -289,28 +346,41 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
         onNotify?.('Luma Обвести для поиска', `Фрагмент сохранён: ${data.saved_path}`, 'success');
       }
     } catch {
-      setResult({ ok: false, error: 'Не удалось связаться с модулем поиска LumaCore 1.5.2b' });
+      setResult({ ok: false, error: 'Не удалось связаться с модулем поиска LumaCore 1.5.3' });
     } finally {
       setSearching(false);
     }
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.button !== 0) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    // Adapt glowing brush width to stylus (pen) pressure or finger touch
+    const pressure = e.pointerType === 'pen' ? Math.max(0.25, Math.min(1, e.pressure || 0.5)) : e.pointerType === 'touch' ? 0.85 : 0.6;
+    setStrokeWidth(Math.round(3 + pressure * 4));
     const p = { x: e.clientX, y: e.clientY };
     setDrawing(true);
     setSelection(null);
     setResult(null);
+    setNitrogenReply('');
     setCropDataUrl(null);
     setPoints([p]);
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!drawing) return;
+    e.preventDefault();
+    if (e.pointerType === 'pen' && e.pressure > 0) {
+      setStrokeWidth(Math.round(2.5 + Math.min(1, e.pressure) * 5));
+    }
     setPoints((prev) => {
       const last = prev[prev.length - 1];
-      if (last && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 4) return prev;
+      if (last && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 3) return prev;
       return [...prev, { x: e.clientX, y: e.clientY }];
     });
   };
@@ -411,12 +481,14 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
         <div className="absolute inset-0 backdrop-blur-[2px] pointer-events-none" />
       )}
 
-      {/* Interactive Glow Lasso / Box Drawing Canvas */}
+      {/* Interactive Glow Lasso / Box Drawing Canvas (Mouse, Touch & Stylus Pressure) */}
       <canvas
         ref={canvasRef}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        style={{ touchAction: 'none' }}
         className="absolute inset-0 w-full h-full cursor-crosshair touch-none"
       />
 
@@ -429,12 +501,12 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
           <div>
             <div className="text-xs font-black tracking-tight flex items-center gap-1.5">
               <span>Luma Обвести для поиска</span>
-              <span className="px-1.5 py-0.5 rounded-md bg-sky-500/20 text-sky-300 text-[9px] font-mono">AI 5.0</span>
+              <span className="px-1.5 py-0.5 rounded-md bg-sky-500/20 text-sky-300 text-[9px] font-mono">Ai Nitrogen</span>
             </div>
             <div className="text-[10px] text-slate-300/80">
               {capturing
                 ? 'Захват экрана...'
-                : 'Обведите кругом или выделите любую область экрана · Esc — выход'}
+                : 'Обведите мышью, пальцем или стилусом любую область экрана · Esc — выход'}
             </div>
           </div>
         </div>
@@ -667,6 +739,18 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
                     <Languages className="w-3.5 h-3.5" />
                     Перевести
                   </button>
+                  <button
+                    type="button"
+                    disabled={nitrogenLoading}
+                    onClick={() => {
+                      const q = customQuery.trim() || editableOcr.trim() || 'Помоги разобрать выделенный фрагмент экрана';
+                      void askNitrogenInline(q);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-500 hover:brightness-110 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition shadow"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    {nitrogenLoading ? 'Ai Nitrogen думает…' : 'Спросить Luma Ai Nitrogen'}
+                  </button>
                   {onAskAI && (
                     <button
                       type="button"
@@ -678,7 +762,7 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
                       className="px-2.5 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/30 text-sky-300 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
-                      Открыть в AI 5.0
+                      Открыть чат ИИ
                     </button>
                   )}
                   <button
@@ -696,6 +780,19 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
                     Сохранить PNG
                   </button>
                 </div>
+
+                {/* Live Streaming Reply from Luma Ai Nitrogen */}
+                {(nitrogenLoading || nitrogenReply) && (
+                  <div className={`p-3 rounded-xl border space-y-1.5 ${isDark ? 'bg-sky-500/10 border-sky-400/30' : 'bg-sky-50 border-sky-300'}`}>
+                    <div className="text-[10px] font-mono uppercase text-sky-400 font-bold flex items-center gap-1.5">
+                      <Sparkles className="w-3 h-3" />
+                      <span>Luma Ai Nitrogen · Анализ фрагмента</span>
+                    </div>
+                    <div className="whitespace-pre-wrap leading-relaxed text-xs">
+                      {nitrogenReply || 'Генерирую ответ в реальном времени…'}
+                    </div>
+                  </div>
+                )}
 
                 {/* Live Translation Block */}
                 {result?.translation && (
