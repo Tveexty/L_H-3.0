@@ -1907,7 +1907,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
   };
 
   const runningAppsCount = useMemo(() => apps.filter((a) => a.isRunning).length, [apps]);
-  const isPixel = designStyle === 'pixelbook';
+  const isPixel = designStyle === 'glass';
 
   // Design-Adaptive Surface Tokens (Theme RGB Driven!)
   const cardCls = isPixel
@@ -5678,7 +5678,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
 
           <button
             onClick={() => {
-              onSetDesignStyle(designStyle === 'nothing' ? 'pixelbook' : 'nothing');
+              onSetDesignStyle(designStyle === 'matrix' ? 'glass' : designStyle === 'glass' ? 'nova' : 'matrix');
               setCtxMenu(null);
             }}
             className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
@@ -5690,7 +5690,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
               <span>Стиль оболочки</span>
             </span>
             <span className="text-[10px] font-mono uppercase text-[var(--luma-accent)]">
-              {designStyle === 'nothing' ? 'Классический' : 'Модерн'}
+              {designStyle === 'nova' ? 'Luma Nova' : designStyle === 'glass' ? 'Luma Glass' : 'Luma Matrix'}
             </span>
           </button>
 

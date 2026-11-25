@@ -300,12 +300,19 @@ func parseSteamACFManifests(extraDirs ...string) []DockProgressTask {
 			bytesStaged, _ := strconv.ParseInt(kv["bytesstaged"], 10, 64)
 
 			// StateFlags == 4 alone means Fully Installed & idle — skip!
-			isDownloading := (stateFlags&1024) != 0 || (bytesToDL > 0 && bytesDL < bytesToDL)
-			isStaging := (stateFlags&2048) != 0 || (stateFlags&65536) != 0 || (stateFlags&16) != 0 || (bytesToStage > 0 && bytesStaged < bytesToStage)
-			isPaused := (stateFlags&512) != 0
-			isUpdateQueued := (stateFlags&2) != 0 || (stateFlags&256) != 0
+			// Also skip idle update-queued (StateFlags=2) manifests with 0 bytes scheduled so ghost "0%" pills never appear!
+			isDownloading := (stateFlags&1024) != 0 && (bytesToDL > 0 && bytesDL < bytesToDL)
+			if !isDownloading && bytesToDL > 0 && bytesDL < bytesToDL && (stateFlags&4) == 0 {
+				isDownloading = true
+			}
+			isStaging := ((stateFlags&2048) != 0 || (stateFlags&65536) != 0 || (stateFlags&16) != 0) && (bytesToStage > 0 || bytesToDL > 0)
+			if !isStaging && bytesToStage > 0 && bytesStaged < bytesToStage {
+				isStaging = true
+			}
+			isPaused := (stateFlags&512) != 0 && (bytesToDL > 0 || bytesToStage > 0)
+			isErr := (stateFlags & 32768) != 0
 
-			if !isDownloading && !isStaging && !isPaused && !isUpdateQueued {
+			if !isDownloading && !isStaging && !isPaused && !isErr {
 				continue
 			}
 			seenApp[appID] = true
@@ -406,12 +413,15 @@ func scanBrowserPartialDownloads(extraDirs ...string) []DockProgressTask {
 			if err2 != nil || info == nil {
 				continue
 			}
-			// Ignore abandoned stale partial files older than 2 hours
+			// Ignore abandoned stale partial files older than 2 hours or empty 0-byte placeholders
 			if now.Sub(info.ModTime()) > 2*time.Hour {
 				continue
 			}
 			fullPath := filepath.Join(dir, e.Name())
 			sz := info.Size()
+			if sz == 0 && now.Sub(info.ModTime()) > 10*time.Second {
+				continue
+			}
 			prev, seen := browserPrevBytes[fullPath]
 			speedMBs := 0.0
 			state := "active"
@@ -777,7 +787,21 @@ func registerNitrogen16Routes(mux *http.ServeMux, kernel *LumaKernel, notifBridg
 		})
 	})
 
-	// Item 6: Luma AI 3.8 FlashLite Contextual Assist API
+	// Item 6: Luma AI 4.0 Autonomous Agent & Contextual Assist APIs
+	mux.HandleFunc("/api/kernel/ai/agent", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req AIChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(HandleAIChatRequest(req, kernel))
+	})
 	mux.HandleFunc("/api/kernel/ai/assist", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if r.Method != http.MethodPost {

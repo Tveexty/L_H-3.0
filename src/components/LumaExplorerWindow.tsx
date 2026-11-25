@@ -836,11 +836,11 @@ export const LumaExplorerWindow: React.FC<{
           <button
             disabled={!singleSelectedEntry}
             onClick={() => singleSelectedEntry && triggerQuickLookForEntry(singleSelectedEntry)}
-            title="Быстрый просмотр Quick Look (Space)"
+            title="Быстрый просмотр Luma Peek (Space)"
             className={`px-2 py-1 rounded-lg border disabled:opacity-35 inline-flex items-center gap-1 cursor-pointer ${btnCls}`}
           >
             <Eye className="w-3.5 h-3.5 text-sky-400" />
-            <span className="hidden xl:inline text-[11px] font-semibold">Quick Look</span>
+            <span className="hidden xl:inline text-[11px] font-semibold">Luma Peek</span>
           </button>
           <button
             disabled={!singleSelectedEntry}
@@ -1325,7 +1325,7 @@ export const LumaExplorerWindow: React.FC<{
           <span>Элементов: {visibleEntries.length}</span>
           <span>Скрытых в папке: {hiddenCount}</span>
           {selectedPaths.length > 0 && <span className="text-[var(--luma-accent)] font-bold">Выбрано: {selectedPaths.length}</span>}
-          {extraShutters.length > 0 && <span className="text-emerald-400 font-bold">Шторок: {extraShutters.length + 1} (перетащите файл · Space = Quick Look)</span>}
+          {extraShutters.length > 0 && <span className="text-emerald-400 font-bold">Шторок: {extraShutters.length + 1} (перетащите файл · Space = Luma Peek)</span>}
         </div>
         <span className="truncate max-w-[320px]">{isSearchResults ? `Поиск: «${searchQuery}»` : activeTab.path}</span>
       </div>
@@ -1357,7 +1357,7 @@ export const LumaExplorerWindow: React.FC<{
               }}
               className="w-full px-2.5 py-1.5 rounded-lg hover:bg-sky-500/15 text-sky-400 font-semibold text-left flex items-center gap-2 cursor-pointer"
             >
-              <Eye className="w-3.5 h-3.5" /> Quick Look (Space)
+              <Eye className="w-3.5 h-3.5" /> Luma Peek (Space)
             </button>
           )}
           <button
@@ -1367,12 +1367,12 @@ export const LumaExplorerWindow: React.FC<{
                   detail: { prompt: `Объясни назначение файла «${ctxMenu.entry.name}» (${ctxMenu.entry.path})` },
                 })
               );
-              onPushToast('Luma AI 3.8', `Файл «${ctxMenu.entry.name}» отправлен в AI 3.8`, 'info');
+              onPushToast('Luma AI 4.0', `Файл «${ctxMenu.entry.name}» отправлен в AI 4.0`, 'info');
               setCtxMenu(null);
             }}
             className="w-full px-2.5 py-1.5 rounded-lg hover:bg-indigo-500/15 text-indigo-300 font-semibold text-left flex items-center gap-2 cursor-pointer"
           >
-            <Sparkles className="w-3.5 h-3.5" /> Объяснить через AI 3.8
+            <Sparkles className="w-3.5 h-3.5" /> Объяснить через AI 4.0
           </button>
           <button
             onClick={() => {
@@ -1720,7 +1720,7 @@ const ExplorerShutterPane: React.FC<{
                         onSelectForQuickLook?.(candidates, idx);
                         onQuickLook(candidates, idx);
                       }}
-                      title="Quick Look (Space)"
+                      title="Luma Peek (Space)"
                       className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-sky-500/20 text-sky-400 cursor-pointer"
                     >
                       <Eye className="w-3 h-3" />

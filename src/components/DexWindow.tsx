@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Columns2, Maximize2, Minimize2, Minus, MoreHorizontal, Pin, X } from 'lucide-react';
 
 export type TaskbarPosition = 'bottom' | 'left' | 'right' | 'top';
-export type DesignStyle = 'nothing' | 'pixelbook' | 'ubuntu';
+export type DesignStyle = 'matrix' | 'glass' | 'nova';
 export type WindowControlsStyle = 'classic' | 'dots3' | 'menu3';
 
 export type SnapZone =
@@ -62,7 +62,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
   subtitle,
   icon,
   isDark,
-  designStyle = 'nothing',
+  designStyle = 'matrix',
   windowControlsStyle = 'classic',
   taskbarPosition = 'bottom',
   taskbarSizePx = 56,
@@ -356,8 +356,8 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
   };
 
   const { padTop, padBottom, padLeft, padRight } = getInsets();
-  const isPixel = designStyle === 'pixelbook';
-  const isUbuntu = designStyle === 'ubuntu';
+  const isGlass = designStyle === 'glass';
+  const isNova = designStyle === 'nova';
 
   const style: React.CSSProperties = maximized
     ? {
@@ -367,7 +367,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
         right: padRight,
         bottom: padBottom,
         zIndex,
-        borderRadius: isPixel ? '22px' : isUbuntu ? '14px' : 'var(--luma-radius)',
+        borderRadius: isGlass ? '22px' : isNova ? '16px' : 'var(--luma-radius)',
       }
     : {
         position: 'fixed',
@@ -376,14 +376,14 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
         width: rect.w,
         height: rect.h,
         zIndex,
-        borderRadius: isPixel ? '24px' : isUbuntu ? '16px' : 'var(--luma-radius)',
+        borderRadius: isGlass ? '24px' : isNova ? '18px' : 'var(--luma-radius)',
       };
 
-  const winSurface = isUbuntu
+  const winSurface = isNova
     ? isDark
-      ? 'dex-window-ubuntu-dark text-zinc-100'
-      : 'dex-window-ubuntu-light text-zinc-900'
-    : isPixel
+      ? 'dex-window-nova-dark text-zinc-100'
+      : 'dex-window-nova-light text-zinc-900'
+    : isGlass
     ? isDark
       ? 'dex-window-pixel-dark text-slate-100'
       : 'dex-window-pixel-light text-slate-900'
@@ -424,11 +424,11 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
           onPointerDown={startDrag}
           onDoubleClick={() => setMaximized((m) => !m)}
           className={`h-11 px-4 flex items-center justify-between gap-3 border-b shrink-0 cursor-grab active:cursor-grabbing relative ${
-            isUbuntu
+            isNova
               ? isDark
-                ? 'border-white/[0.09] bg-[#2c2c2e]/95'
-                : 'border-zinc-300 bg-[#ebebeb]/95'
-              : isPixel
+                ? 'border-sky-400/[0.14] bg-[#0e1526]/95'
+                : 'border-sky-900/[0.12] bg-[#eaf1f9]/95'
+              : isGlass
               ? isDark
                 ? 'border-blue-300/[0.1] bg-blue-400/[0.04]'
                 : 'border-blue-900/[0.1] bg-slate-200/55'
@@ -439,7 +439,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <span
-              style={{ color: isUbuntu ? '#E95420' : isPixel ? 'var(--luma-accent)' : undefined }}
+              style={{ color: isNova || isGlass ? 'var(--luma-accent)' : undefined }}
               className={isDark ? 'text-zinc-300' : 'text-zinc-700'}
             >
               {icon}
@@ -466,7 +466,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
                   onToggleAlwaysOnTop();
                 }}
                 title={alwaysOnTop ? 'Открепить (Поверх всех окон: ВКЛ)' : 'Закрепить поверх всех окон (Always on Top)'}
-                className={`w-7 h-7 ${isPixel || isUbuntu ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
+                className={`w-7 h-7 ${isGlass || isNova ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
                   alwaysOnTop
                     ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/40'
                     : isDark
@@ -486,7 +486,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
                 setSnapMenuOpen((v) => !v);
               }}
               title="Макеты привязки окон (Snap Layouts)"
-              className={`w-7 h-7 ${isPixel || isUbuntu ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
+              className={`w-7 h-7 ${isGlass || isNova ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
                 snapMenuOpen
                   ? 'bg-[var(--luma-accent)] text-white'
                   : isDark
@@ -534,7 +534,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
                     setDotsMenuOpen((v) => !v);
                   }}
                   title="Управление окном (3 точки)"
-                  className={`w-7 h-7 ${isPixel || isUbuntu ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
+                  className={`w-7 h-7 ${isGlass || isNova ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
                     dotsMenuOpen
                       ? 'bg-[var(--luma-accent)] text-white'
                       : isDark
@@ -614,7 +614,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
                 <button
                   onClick={onMinimize}
                   title="Свернуть"
-                  className={`w-7 h-7 ${isPixel ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
+                  className={`w-7 h-7 ${isGlass ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
                     isDark ? 'text-zinc-400 hover:bg-white/10 hover:text-white' : 'text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900'
                   }`}
                 >
@@ -623,7 +623,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
                 <button
                   onClick={() => setMaximized((m) => !m)}
                   title={maximized ? 'Восстановить' : 'Развернуть'}
-                  className={`w-7 h-7 ${isPixel ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
+                  className={`w-7 h-7 ${isGlass ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center transition cursor-pointer ${
                     isDark ? 'text-zinc-400 hover:bg-white/10 hover:text-white' : 'text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900'
                   }`}
                 >
@@ -632,7 +632,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
                 <button
                   onClick={onClose}
                   title="Закрыть"
-                  className={`w-7 h-7 ${isPixel ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center text-zinc-400 hover:bg-[var(--luma-accent)] hover:text-white transition cursor-pointer`}
+                  className={`w-7 h-7 ${isGlass ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center text-zinc-400 hover:bg-[var(--luma-accent)] hover:text-white transition cursor-pointer`}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>

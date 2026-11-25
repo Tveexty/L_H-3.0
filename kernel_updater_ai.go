@@ -725,8 +725,8 @@ type AIChatMessage struct {
 }
 
 type AIChatRequest struct {
-	Provider       string          `json:"provider"`  // luma_local | gemini | openai | claude | deepseek | openrouter | groq | ollama | custom
-	Mode           string          `json:"mode"`      // language | code | auto | flashlite
+	Provider       string          `json:"provider"`  // luma_local | autonomous | gemini | openai | claude | deepseek | openrouter | groq | ollama | custom
+	Mode           string          `json:"mode"`      // language | code | auto | flashlite | autonomous
 	Verbosity      string          `json:"verbosity"` // brief | balanced | detailed
 	APIKey         string          `json:"api_key"`
 	BaseURL        string          `json:"base_url"`
@@ -734,6 +734,8 @@ type AIChatRequest struct {
 	SystemPrompt   string          `json:"system_prompt"`
 	Temperature    float64         `json:"temperature"`
 	IncludeContext bool            `json:"include_context"`
+	Autonomous     *bool           `json:"autonomous,omitempty"`
+	WebSearch      *bool           `json:"web_search,omitempty"`
 	Prompt         string          `json:"prompt,omitempty"`
 	Message        string          `json:"message,omitempty"`
 	Messages       []AIChatMessage `json:"messages"`
@@ -756,9 +758,17 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 			req.Messages = []AIChatMessage{{Role: "user", Content: single}}
 		}
 	}
+	autonomousMode := true
+	if req.Autonomous != nil {
+		autonomousMode = *req.Autonomous
+	}
+	webSearchEnabled := true
+	if req.WebSearch != nil {
+		webSearchEnabled = *req.WebSearch
+	}
 	provider := strings.ToLower(strings.TrimSpace(req.Provider))
-	if provider == "" || provider == "luma_local" || provider == "offline" || provider == "local" || provider == "flashlite" {
-		return RunLumaLocalAI(req.Messages, req.Mode, req.Verbosity, kernel)
+	if provider == "" || provider == "luma_local" || provider == "offline" || provider == "local" || provider == "flashlite" || provider == "autonomous" || provider == "luma_40" {
+		return RunLumaAI40Autonomous(req.Messages, req.Mode, req.Verbosity, autonomousMode, webSearchEnabled, kernel)
 	}
 	apiKey := strings.TrimSpace(req.APIKey)
 	model := strings.TrimSpace(req.Model)
@@ -771,11 +781,11 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 	if sysPrompt == "" {
 		switch normalizeLocalAIMode(req.Mode) {
 		case "code":
-			sysPrompt = "Ты — Luma AI 3.8 FlashLite (Code), системный ИИ-программист Luma OS 1.6 (Nitrogen). Пиши чистый, современный, готовый к запуску код с пояснениями."
+			sysPrompt = "Ты — Luma AI 4.0 Autonomous (Code), системный ИИ-программист Luma OS 1.6.1 (Nitrogen). Пиши чистый, современный, готовый к запуску код с пояснениями."
 		case "language":
-			sysPrompt = "Ты — Luma AI 3.8 FlashLite, языковой и справочный ИИ-ассистент Luma OS 1.6 (Nitrogen). Отвечай грамотно, информативно, естественно и по сути вопроса."
+			sysPrompt = "Ты — Luma AI 4.0 Autonomous, умный думающий ИИ-агент Luma OS 1.6.1 (Nitrogen). Отвечай грамотно, информативно, естественно и по сути вопроса."
 		default:
-			sysPrompt = "Ты — встроенный системный ИИ-ассистент Luma OS 1.2.2 (Lithium). Отвечай чётко, по делу и помогай пользователю со знаниями, ПК, командами и кодом."
+			sysPrompt = "Ты — автономный ИИ-агент Luma AI 4.0 в Luma OS 1.6.1 (Nitrogen). Думай пошагово, отвечай чётко и помогай пользователю с задачами, ПК, поиском и кодом."
 		}
 	}
 	switch normalizeAIVerbosity(req.Verbosity) {

@@ -128,7 +128,7 @@ export const LumaVirtualMemoryPanel: React.FC<LumaVirtualMemoryPanelProps> = ({
       const d = await r.json();
       if (d?.status?.ok) setStatus(d.status);
       if (d?.ok) {
-        onPushToast('Виртуальная память (RAM Plus)', d.message || 'Настройки применены', d.requires_admin ? 'warning' : 'success');
+        onPushToast('Виртуальная память (Luma SwapBoost)', d.message || 'Настройки применены', d.requires_admin ? 'warning' : 'success');
       } else {
         onPushToast('Виртуальная память', d?.error || 'Не удалось применить настройки', 'warning');
       }
@@ -161,7 +161,7 @@ export const LumaVirtualMemoryPanel: React.FC<LumaVirtualMemoryPanelProps> = ({
         <div>
           <div className="text-sm font-extrabold flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-[var(--luma-accent)]" />
-            Виртуальная память · RAM Plus (2 / 4 / 6 ГБ с SSD/HDD)
+            Виртуальная память · Luma SwapBoost (2 / 4 / 6 ГБ с SSD/HDD)
           </div>
           <div className={`text-xs ${mutedCls}`}>
             Бережно к SSD: фиксированный pagefile (Min == Max), сжатие памяти Windows, ClearPageFileAtShutdown = 0 и расчёт TBW
@@ -177,13 +177,13 @@ export const LumaVirtualMemoryPanel: React.FC<LumaVirtualMemoryPanelProps> = ({
         </button>
       </div>
 
-      {/* Physical RAM + RAM Plus Combined Bar */}
+      {/* Physical RAM + Luma SwapBoost Combined Bar */}
       <div className={`p-3.5 rounded-xl border space-y-2 ${isDark ? 'bg-black/25 border-white/10' : 'bg-black/[0.03] border-zinc-900/10'}`}>
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2 font-mono font-bold">
             <Cpu className="w-3.5 h-3.5 text-cyan-400" />
             <span>ОЗУ: {physGB} ГБ</span>
-            <span className="text-[var(--luma-accent)]">+ {sizeGB > 0 ? `${sizeGB} ГБ RAM Plus` : 'Авто'}</span>
+            <span className="text-[var(--luma-accent)]">+ {sizeGB > 0 ? `${sizeGB} ГБ Luma SwapBoost` : 'Авто'}</span>
             <span>= {effGB} ГБ</span>
           </div>
           <span className="text-[11px] font-mono opacity-75">
@@ -232,7 +232,7 @@ export const LumaVirtualMemoryPanel: React.FC<LumaVirtualMemoryPanelProps> = ({
       {/* Drive Selection & SSD-Friendly Protection Toggles */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
         <div className="space-y-1.5">
-          <label className={`text-[11px] font-mono uppercase ${mutedCls}`}>Диск для RAM Plus</label>
+          <label className={`text-[11px] font-mono uppercase ${mutedCls}`}>Диск для Luma SwapBoost</label>
           <select
             value={drive}
             onChange={(e) => setDrive(e.target.value)}
@@ -358,7 +358,7 @@ export const LumaVirtualMemoryPanel: React.FC<LumaVirtualMemoryPanelProps> = ({
           className="ml-auto px-4 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-lg"
         >
           <Sparkles className="w-3.5 h-3.5" />
-          {applying ? 'Применение...' : `Применить RAM Plus (${sizeGB > 0 ? `+${sizeGB} ГБ` : 'Авто'})`}
+          {applying ? 'Применение...' : `Применить Luma SwapBoost (${sizeGB > 0 ? `+${sizeGB} ГБ` : 'Авто'})`}
         </button>
       </div>
     </div>

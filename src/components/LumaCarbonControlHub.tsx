@@ -120,7 +120,7 @@ export const ALL_HUB_TILES: { id: ControlHubTileId; label: string; desc: string 
   { id: 'dual_bar', label: 'Двойная панель', desc: 'Верх: утилиты, Низ: окна' },
   { id: 'trash', label: 'Корзина', desc: 'Удалённые файлы Luma' },
   { id: 'code_studio', label: 'Code Studio', desc: 'IDE + Диагностика + Терминал' },
-  { id: 'cut_studio', label: 'Cut Studio', desc: 'Видеоредактор CapCut-класса' },
+  { id: 'cut_studio', label: 'Cut Studio', desc: 'Многодорожечный видеоредактор Pro' },
   { id: 'power_saver', label: 'Энергосбережение', desc: 'План питания ОС' },
   { id: 'features_mgr', label: 'Функции ОС', desc: 'Вкл/Выкл модулей системы' },
 ];

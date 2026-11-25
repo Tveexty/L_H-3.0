@@ -286,7 +286,7 @@ export const LumaQuickLookModal: React.FC<LumaQuickLookModalProps> = ({
             <div className="min-w-0">
               <div className="text-sm font-extrabold truncate">{current.name}</div>
               <div className="text-[10px] font-mono opacity-60 truncate">
-                Quick Look · {data?.size_human || '…'} · {data?.mod_time || ''} · {activeIndex + 1} / {items.length}
+                Luma Peek · {data?.size_human || '…'} · {data?.mod_time || ''} · {activeIndex + 1} / {items.length}
               </div>
             </div>
           </div>
@@ -346,7 +346,7 @@ export const LumaQuickLookModal: React.FC<LumaQuickLookModalProps> = ({
                   type="button"
                   onClick={() => {
                     void navigator.clipboard?.writeText(data.text_preview || '');
-                    onPushToast?.('Quick Look', 'Содержимое файла скопировано', 'success');
+                    onPushToast?.('Luma Peek', 'Содержимое файла скопировано', 'success');
                   }}
                   className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer"
                 >
@@ -358,7 +358,7 @@ export const LumaQuickLookModal: React.FC<LumaQuickLookModalProps> = ({
                   className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 text-white text-[11px] font-bold inline-flex items-center gap-1.5 shadow cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
-                  Объяснить через AI 3.8
+                  Объяснить через AI 4.0
                 </button>
               </>
             )}
@@ -514,7 +514,7 @@ export const LumaQuickLookModal: React.FC<LumaQuickLookModalProps> = ({
         <div className={`px-4 py-1.5 border-t text-[10px] font-mono flex items-center justify-between opacity-65 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
           <span>Space / Esc — закрыть</span>
           <span>← → — соседние файлы ({activeIndex + 1}/{items.length})</span>
-          {data?.kind === 'image' ? <span>Колесо / +/- — зум · R — поворот</span> : <span>Luma Quick Look 1.6</span>}
+          {data?.kind === 'image' ? <span>Колесо / +/- — зум · R — поворот</span> : <span>Luma Peek 1.6.1</span>}
         </div>
       </div>
     </div>

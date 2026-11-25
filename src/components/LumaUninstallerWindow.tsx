@@ -306,7 +306,7 @@ export const LumaUninstallerWindow: React.FC<LumaUninstallerWindowProps> = ({
               </span>
             </div>
             <div className={`text-[11px] ${muted}`}>
-              Аналог Revo / BCUninstaller: AppData · ProgramData · Program Files · Реестр HKCU/HKLM · Службы и Задачи
+              Luma Deep Uninstaller: AppData · ProgramData · Program Files · Реестр HKCU/HKLM · Службы и Задачи
             </div>
           </div>
         </div>

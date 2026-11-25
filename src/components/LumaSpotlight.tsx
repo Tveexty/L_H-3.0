@@ -161,6 +161,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
     reply: string;
     model?: string;
     sources: { title: string; url: string; provider: string }[];
+    actions?: { label: string }[];
   } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -172,18 +173,22 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       const r = await fetch('/api/kernel/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, mode: 'flashlite' }),
+        body: JSON.stringify({ prompt, mode: 'autonomous', autonomous: true, web_search: true }),
       });
       if (r.ok) {
         const d = await r.json();
+        if (Array.isArray(d.ui_actions) && d.ui_actions.length > 0) {
+          window.dispatchEvent(new CustomEvent('luma-ai-agent-actions', { detail: d.ui_actions }));
+        }
         setAiResult({
           reply: String(d.reply || ''),
-          model: d.model || 'Luma AI 3.8 FlashLite',
+          model: d.model || 'Luma AI 4.0 Autonomous',
           sources: Array.isArray(d.sources) ? d.sources : [],
+          actions: Array.isArray(d.actions) ? d.actions : [],
         });
       }
     } catch {
-      setAiResult({ reply: 'Не удалось получить ответ от Luma AI 3.8 FlashLite.', sources: [] });
+      setAiResult({ reply: 'Не удалось получить ответ от Luma AI 4.0 Autonomous.', sources: [] });
     } finally {
       setAiLoading(false);
     }
@@ -297,9 +302,9 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'set_appearance',
         group: 'Настройки системы',
-        title: 'Оформление, Стиль Ubuntu, Обои Nitrogen 1.6 и Анимации',
-        subtitle: 'Стили Классический / Модерн / Ubuntu, QHD-коллекция Nitrogen, 3 точки, анимации',
-        keywords: 'темы обои фон цвет прозрачность blur анимации оформление виджеты wallpaper theme nitrogen ubuntu 3 точки',
+        title: 'Оформление, Стиль Luma Nova, Обои Nitrogen 2.5D и Анимации',
+        subtitle: 'Стили Luma Matrix / Luma Glass / Luma Nova, 2.5D обои Nitrogen, 3 точки, анимации',
+        keywords: 'темы обои фон цвет прозрачность blur анимации оформление виджеты wallpaper theme nitrogen nova matrix glass 3 точки',
         icon: <Palette className="w-4 h-4" />,
         run: () => openSetting('appearance'),
       },
@@ -351,9 +356,9 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'set_storage',
         group: 'Настройки системы',
-        title: 'Виртуальная память (RAM Plus 2/4/6 ГБ), Диски и Файлы',
+        title: 'Виртуальная память (Luma SwapBoost 2/4/6 ГБ), Диски и Файлы',
         subtitle: 'Фиксированный pagefile Min==Max для SSD, сжатие памяти, расчёт TBW и диски',
-        keywords: 'память диски файлы хранилище storage ram виртуальная память ram plus pagefile подкачка ssd tbw',
+        keywords: 'память диски файлы хранилище storage ram виртуальная память swapboost pagefile подкачка ssd tbw',
         icon: <HardDrive className="w-4 h-4" />,
         run: () => openSetting('storage'),
       },
@@ -401,9 +406,9 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'svc_gamepad_studio',
         group: 'Службы и утилиты',
         title: 'Luma Gamepad Studio (DS4 / DualSense / Xbox)',
-        subtitle: 'Аналог DS4Windows: 60 FPS визуализатор, кривые, RGB Lightbar, вибрация, эмуляция мыши',
+        subtitle: 'Центр контроллеров Luma: 60 FPS визуализатор, кривые, RGB Lightbar, вибрация, эмуляция мыши',
         badge: 'GAMEPAD',
-        keywords: 'геймпад контроллер ds4 dualsense xbox ds4windows джойстик вибрация lightbar стики gamepad',
+        keywords: 'геймпад контроллер ds4 dualsense xbox джойстик вибрация lightbar стики gamepad',
         icon: <Gamepad2 className="w-4 h-4 text-sky-400" />,
         run: () => onOpenWindow('gamepad'),
       },
@@ -411,9 +416,9 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         id: 'svc_uninstaller',
         group: 'Службы и утилиты',
         title: 'Luma Uninstaller (Очистка хвостов программ)',
-        subtitle: 'Аналог Revo / BCUninstaller: 4-этапный сканер остатков, реестр, службы и автобэкап',
+        subtitle: 'Luma Deep Uninstaller: 4-этапный сканер остатков, реестр, службы и автобэкап',
         badge: 'CLEANER',
-        keywords: 'удаление программ очистка хвостов revo uninstaller bcuninstaller остатки реестр бэкап',
+        keywords: 'удаление программ очистка хвостов uninstaller деинсталлятор остатки реестр бэкап',
         icon: <Trash2 className="w-4 h-4 text-rose-400" />,
         run: () => onOpenWindow('uninstaller'),
       },
@@ -448,8 +453,8 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'svc_code_studio',
         group: 'Службы и утилиты',
-        title: 'Luma Code Studio (Редактор кода · AI 3.8)',
-        subtitle: 'Файловое дерево ПК, вкладки, подсветка, HTML-превью, AI 3.8 и встроенный терминал',
+        title: 'Luma Code Studio (Редактор кода · AI 4.0)',
+        subtitle: 'Файловое дерево ПК, вкладки, подсветка, HTML-превью, AI 4.0 и встроенный терминал',
         badge: 'IDE',
         keywords: 'код редактор vscode code studio ide программирование js python go html ai',
         icon: <Code2 className="w-4 h-4" />,
@@ -458,10 +463,10 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'svc_cut_studio',
         group: 'Службы и утилиты',
-        title: 'Luma Cut Studio (Видеоредактор · CapCut)',
+        title: 'Luma Cut Studio Pro (Видеоредактор)',
         subtitle: 'Таймлайн, нарезка, 10 LUT фильтров, титры, переходы и экспорт .webm',
         badge: 'VIDEO',
-        keywords: 'видео видеоредактор монтаж capcut cut studio экспорт фильтры титры',
+        keywords: 'видео видеоредактор монтаж cut studio экспорт фильтры титры',
         icon: <Sparkles className="w-4 h-4" />,
         run: () => onOpenWindow('cut_studio'),
       },
@@ -884,10 +889,10 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
                 onClick={() => void askSpotlightAI38()}
                 disabled={aiLoading}
                 className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-500 hover:brightness-110 text-white text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-60"
-                title="Спросить Luma AI 3.8 FlashLite (проверенные факты и источники)"
+                title="Спросить Luma AI 4.0 Autonomous (думает, действует, ищет по всему интернету)"
               >
                 <Sparkles className="w-3 h-3" />
-                {aiLoading ? 'AI…' : 'AI 3.8'}
+                {aiLoading ? 'AI…' : 'AI 4.0'}
               </button>
               <button
                 onClick={() => {
@@ -920,7 +925,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-[11px] font-black text-sky-400">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>{aiResult?.model || 'Luma AI 3.8 FlashLite · Проверенные источники'}</span>
+                <span>{aiResult?.model || 'Luma AI 4.0 Autonomous · Весь интернет и Агент'}</span>
               </div>
               <button
                 onClick={() => setAiResult(null)}
@@ -973,7 +978,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
               isDark ? 'border-white/[0.07] bg-white/[0.02] text-zinc-400' : 'border-zinc-900/[0.07] bg-black/[0.02] text-zinc-500'
             }`}
           >
-            <span>Приложения ПК · Настройки · Luma AI 3.8 · Поиск в Интернете</span>
+            <span>Приложения ПК · Настройки · Luma AI 4.0 · Поиск в Интернете</span>
             <span>ESC — закрыть</span>
           </div>
         ) : (

@@ -205,7 +205,7 @@ export const KernelUIPanel: React.FC<{
       {/* Flagship Sculpted 3D Nitrogen 1.6 QHD Hero Artwork — Click for Easter Egg Mini-Game! */}
       <LumaHeliumHeroCard
         onTriggerEasterEgg={() => onTriggerEasterEgg?.()}
-        kernelVersion={liveSystem?.kernel_engine_version || '1.5.0'}
+        kernelVersion={liveSystem?.kernel_engine_version || '1.5.1'}
         securityVersion="2.5"
       />
 
@@ -221,21 +221,21 @@ export const KernelUIPanel: React.FC<{
                 ЯДРО UI · LUMA NITROGEN · N-7
               </div>
               <div className="text-lg font-extrabold tracking-tight truncate">
-                Luma OS 1.6 (Nitrogen)
+                Luma OS 1.6.1 (Nitrogen)
               </div>
               <div className={`text-xs font-mono truncate ${mutedCls}`}>
-                LumaCore {liveSystem?.kernel_engine_version || '1.5.0'} · LumaShield 2.5 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
+                LumaCore {liveSystem?.kernel_engine_version || '1.5.1'} · LumaShield 2.5 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
               </div>
             </div>
           </div>
 
           <a
-            href="/LumaOS_1.6.exe"
-            download="LumaOS_1.6.exe"
+            href="/LumaOS_1.6.1.exe"
+            download="LumaOS_1.6.1.exe"
             className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
-            LumaOS_1.6.exe
+            LumaOS_1.6.1.exe
           </a>
         </div>
 
@@ -289,7 +289,7 @@ export const KernelUIPanel: React.FC<{
           {/* 3. Версия ПО */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия ПО</div>
-            <div className="text-sm font-mono font-bold">1.6 (Nitrogen · N-7)</div>
+            <div className="text-sm font-mono font-bold">1.6.1 (Nitrogen · N-7)</div>
           </div>
 
           {/* 4. Версия Ядра (1.5.0) */}
@@ -299,7 +299,7 @@ export const KernelUIPanel: React.FC<{
               <span className="text-sm font-mono font-bold text-[var(--luma-accent)]">
                 {liveSystem?.kernel_engine_version || '1.5.0'}
               </span>
-              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore 1.5.0 · Zero-WMI</span>
+              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore 1.5.1 · Zero-WMI</span>
             </div>
           </div>
         </div>
@@ -345,7 +345,7 @@ export const KernelUIPanel: React.FC<{
           <p className={`text-[11px] leading-relaxed ${mutedCls}`}>
             {adminInfo?.is_admin
               ? `Текущая сессия (${adminInfo.user || 'User'}) запущена с повышенными правами Администратора (${adminInfo.integrity_level}). Доступны Виртуальная память, Реестр HKLM и Службы.`
-              : `Обычный пользователь (${adminInfo?.user || 'User'}). Для настройки файла подкачки (RAM Plus), очистки HKLM и системных служб перезапустите от Администратора.`}
+              : `Обычный пользователь (${adminInfo?.user || 'User'}). Для настройки виртуальной памяти (Luma SwapBoost), очистки HKLM и системных служб перезапустите от Администратора.`}
           </p>
           <button
             disabled={elevating || Boolean(adminInfo?.is_admin)}
@@ -378,7 +378,7 @@ export const KernelUIPanel: React.FC<{
           ['Оперативная память', liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ (${liveSystem.ram_percent}%)` : '—'],
           ['Платформа / Архитектура', `${liveSystem?.os_name || 'Luma OS'} · ${liveSystem?.arch || 'amd64'}`],
           ['Ядро безопасности', 'LumaShield 2.5 · 235+ Rules + Tasks & Stealer Shield'],
-          ['Шина ядра / ИИ', 'LumaCore 1.5.0 · TCP RPC :49215 · Luma AI 3.8 FlashLite'],
+          ['Шина ядра / ИИ', 'LumaCore 1.5.1 · TCP RPC :49215 · Luma AI 4.0 Autonomous'],
         ].map(([k, v]) => (
           <div key={k} className={`p-3.5 rounded-xl border space-y-1 ${surfaceCls}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>{k}</div>

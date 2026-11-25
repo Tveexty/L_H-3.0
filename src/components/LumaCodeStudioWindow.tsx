@@ -974,7 +974,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({ isDa
         setAiSources(Array.isArray(d.sources) ? d.sources : []);
       }
     } catch {
-      setAiAnswer('Не удалось связаться с Luma AI 3.8 FlashLite.');
+      setAiAnswer('Не удалось связаться с Luma AI 4.0 Autonomous.');
     } finally {
       setAiLoading(false);
     }
@@ -994,7 +994,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({ isDa
         dragOver ? 'ring-2 ring-inset ring-cyan-400' : ''
       }`}
     >
-      {/* Floating Luma AI 3.8 Code Assistant Drawer */}
+      {/* Floating Luma AI 4.0 Code Assistant Drawer */}
       {aiDrawerOpen && (
         <div
           className={`absolute right-3 top-12 bottom-10 w-80 sm:w-96 z-40 rounded-2xl border shadow-2xl flex flex-col overflow-hidden backdrop-blur-2xl ${
@@ -1003,7 +1003,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({ isDa
         >
           <div className="px-3.5 py-2.5 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-sky-500/15 to-indigo-500/15">
             <div className="flex items-center gap-1.5 text-xs font-black text-sky-400">
-              <Sparkles size={14} /> Luma AI 3.8 FlashLite · Код
+              <Sparkles size={14} /> Luma AI 4.0 Autonomous · Код
             </div>
             <button onClick={() => setAiDrawerOpen(false)} className="p-1 rounded hover:bg-white/10 cursor-pointer">
               <X size={14} />
@@ -1066,7 +1066,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({ isDa
             <input
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
-              placeholder="Спросить AI 3.8 о коде…"
+              placeholder="Спросить AI 4.0 о коде…"
               className={`flex-1 px-2.5 py-1.5 rounded-xl border text-xs outline-none ${isDark ? 'bg-slate-900 border-white/10' : 'bg-slate-50 border-slate-300'}`}
             />
             <button
@@ -1175,9 +1175,9 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({ isDa
                 ? 'bg-gradient-to-r from-sky-500 to-indigo-500 text-white'
                 : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 border border-sky-400/35'
             }`}
-            title="Открыть помощника Luma AI 3.8 FlashLite"
+            title="Открыть помощника Luma AI 4.0 Autonomous"
           >
-            <Sparkles size={11} /> AI 3.8
+            <Sparkles size={11} /> AI 4.0
           </button>
         </div>
 
@@ -1632,7 +1632,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({ isDa
       {/* Pro IDE Status Bar */}
       <div className="px-3 py-1 bg-gradient-to-r from-cyan-700 to-blue-800 text-white text-[10px] font-mono flex items-center justify-between shrink-0 gap-2">
         <div className="flex items-center gap-3">
-          <span className="font-bold">Luma Code Studio 1.6 Pro · AI 3.8</span>
+          <span className="font-bold">Luma Code Studio 1.6.1 Pro · AI 4.0</span>
           <select
             value={activeTab?.language || 'plaintext'}
             onChange={(e) => updateActiveLanguage(e.target.value)}

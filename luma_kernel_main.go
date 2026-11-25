@@ -48,9 +48,9 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.6.0"
+	KernelVersion       = "1.6.1"
 	KernelCodename      = "Nitrogen"
-	KernelEngineVersion = "1.5.0"
+	KernelEngineVersion = "1.5.1"
 	SecurityCoreVersion = "2.5"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
@@ -3106,12 +3106,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.1.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.6.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.4.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.5.3.exe", serveExe)
@@ -3176,9 +3177,9 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.6 (NITROGEN · N-7) — LUMACORE 1.5.0 & LUMASHIELD 2.5")
-	log.Printf("  - Ubuntu Style, Dev HUD & UAC Admin, RAM Plus, AI 3.8 FlashLite, Always-on-Top")
-	log.Printf("  - Gamepad Studio, 4-Stage Uninstaller, Quick Look (Space), Win Key & Smart Dock")
+	log.Printf("  LUMA OS 1.6.1 (NITROGEN · N-7) — LUMACORE 1.5.1 & LUMASHIELD 2.5")
+	log.Printf("  - Luma Nova Style, Dev HUD & UAC Admin, Luma SwapBoost, Luma AI 4.0 Autonomous")
+	log.Printf("  - Gamepad Studio, Deep Uninstaller, Luma Peek (Space), Win Key & Hover Smart Dock")
 	log.Printf("  - Desktop Environment:          http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:    http://%s/api/kernel/status", addr)

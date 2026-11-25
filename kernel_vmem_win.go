@@ -210,7 +210,7 @@ func configureVirtualMemory(req VMemConfigureRequest, kernel *LumaKernel) map[st
 			"ok":             true,
 			"applied":        false,
 			"requires_admin": true,
-			"message":        "Профиль RAM Plus сохранён. Для изменения pagefile.sys, Memory Compression и реестра Windows перезапустите Luma OS от имени Администратора (UAC).",
+			"message":        "Профиль Luma SwapBoost сохранён. Для изменения pagefile.sys, Memory Compression и реестра Windows перезапустите Luma OS от имени Администратора (UAC).",
 			"status":         getVirtualMemoryStatus(kernel, true),
 		}
 	}

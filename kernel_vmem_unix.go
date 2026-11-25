@@ -159,7 +159,7 @@ func configureVirtualMemory(req VMemConfigureRequest, kernel *LumaKernel) map[st
 		"ok":           true,
 		"applied":      true,
 		"needs_reboot": false,
-		"message":      fmt.Sprintf("Профиль виртуальной памяти RAM Plus сохранён (%d ГБ · Min==Max=%d МБ · MemoryCompression=%v · ClearPageFileAtShutdown=0).", req.SizeGB, mb, cfg.MemoryCompression),
+		"message":      fmt.Sprintf("Профиль виртуальной памяти Luma SwapBoost сохранён (%d ГБ · Min==Max=%d МБ · MemoryCompression=%v · ClearPageFileAtShutdown=0).", req.SizeGB, mb, cfg.MemoryCompression),
 		"status":       getVirtualMemoryStatus(kernel, true),
 	}
 }

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Folder, FileText, Image as ImageIcon, Film, Music, FileCode2,
   Eye, LayoutGrid, Fan, ExternalLink, Plus, X, ArrowUpRight,
-  Download, Pause, AlertCircle, PackageOpen,
+  Download, Pause, AlertCircle, PackageOpen, Layers, ChevronUp,
 } from 'lucide-react';
 import type { QuickLookCandidate } from './LumaQuickLookModal';
 
@@ -47,6 +47,13 @@ export interface SmartDockStatus {
   checked_at: string;
 }
 
+// ---- Filter out idle 0% phantom tasks unless explicitly paused or errored ----
+function isRealVisibleTask(t: DockProgressTask | null | undefined): t is DockProgressTask {
+  if (!t || t.state === 'done') return false;
+  if (t.state === 'paused' || t.state === 'error') return true;
+  return (t.percent || 0) > 0 || (t.bytes_done || 0) > 0 || (t.speed_mb_s || 0) > 0;
+}
+
 // ---- Reusable Messenger Unread Badge for Dock / Taskbar Icons ----
 export const DockMessengerBadge: React.FC<{ count: number }> = ({ count }) => {
   if (!count || count <= 0) return null;
@@ -62,7 +69,7 @@ export const DockMessengerBadge: React.FC<{ count: number }> = ({ count }) => {
 
 // ---- Reusable Live Progress Bar Overlay on Dock / Taskbar Icons ----
 export const DockIconProgressBar: React.FC<{ task?: DockProgressTask | null }> = ({ task }) => {
-  if (!task || task.state === 'done') return null;
+  if (!isRealVisibleTask(task)) return null;
   const pct = Math.max(4, Math.min(100, Math.round(task.percent || 0)));
   const colorMap: Record<string, { bar: string; glow: string; label: string }> = {
     active: { bar: 'bg-sky-400', glow: 'shadow-[0_0_8px_rgba(56,189,248,0.85)]', label: 'Загрузка' },
@@ -73,7 +80,7 @@ export const DockIconProgressBar: React.FC<{ task?: DockProgressTask | null }> =
   const style = colorMap[task.state] || colorMap.active;
   return (
     <div
-      className="absolute left-1 right-1 -bottom-1 h-[4px] rounded-full bg-slate-950/85 overflow-hidden ring-1 ring-white/20 pointer-events-none z-20"
+      className="absolute left-1 right-1 -bottom-1 h-[3.5px] rounded-full bg-slate-950/85 overflow-hidden ring-1 ring-white/20 pointer-events-none z-20"
       title={`${task.app_name}: ${task.title} — ${style.label} ${pct}%${task.speed_mb_s > 0 ? ` (${task.speed_mb_s.toFixed(1)} МБ/с)` : ''}`}
     >
       <div
@@ -89,6 +96,7 @@ export function matchDockTaskForApp(tasks: DockProgressTask[], appNameOrKey: str
   if (!tasks || tasks.length === 0) return undefined;
   const low = (appNameOrKey || '').toLowerCase();
   return tasks.find((t) => {
+    if (!isRealVisibleTask(t)) return false;
     const k = (t.app_key || '').toLowerCase();
     if (!k) return false;
     if (low === k || low.includes(k)) return true;
@@ -155,10 +163,17 @@ interface LumaSmartDockStacksProps {
   onNotify?: (title: string, message: string) => void;
 }
 
+/**
+ * Luma OS 1.6.1 (Nitrogen) — Ultra-Clean Hover-Reveal Smart Dock Shelf.
+ * Keeps the taskbar completely minimalist (one tiny sleek glass handle);
+ * on hover (or drag-over), smoothly reveals Folder Stacks (Fan / Grid + Luma Peek Space)
+ * and live Downloads & Installs (Steam / Browsers / Luma OS) inside a frosted-glass drawer.
+ */
 export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
   kernelBase, stacks, tasks, isDarkTheme, onStacksChanged,
   onOpenFolderInExplorer, onOpenFile, onQuickLook, onNotify,
 }) => {
+  const [shelfOpen, setShelfOpen] = useState(false);
   const [openStackId, setOpenStackId] = useState<string | null>(null);
   const [stackItems, setStackItems] = useState<DockStackFileItem[]>([]);
   const [loadingStack, setLoadingStack] = useState(false);
@@ -167,10 +182,35 @@ export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
   const [showAddStack, setShowAddStack] = useState(false);
   const [newStackName, setNewStackName] = useState('');
   const [newStackPath, setNewStackPath] = useState('');
-  const [showTasksPopover, setShowTasksPopover] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const leaveTimerRef = useRef<number | null>(null);
 
   const openStack = stacks.find((s) => s.id === openStackId) || null;
+  const activeTasks = tasks.filter(isRealVisibleTask);
+
+  const cancelClose = () => {
+    if (leaveTimerRef.current) {
+      window.clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
+  };
+
+  const handleMouseEnter = () => {
+    cancelClose();
+    setShelfOpen(true);
+  };
+
+  const handleMouseLeave = () => {
+    cancelClose();
+    // Keep open while adding a custom stack so user can type cleanly
+    if (showAddStack) return;
+    leaveTimerRef.current = window.setTimeout(() => {
+      setShelfOpen(false);
+      setOpenStackId(null);
+    }, 260);
+  };
+
+  useEffect(() => () => cancelClose(), []);
 
   const loadStackContents = async (stack: DockFolderStackConfig) => {
     setLoadingStack(true);
@@ -188,8 +228,7 @@ export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
     }
   };
 
-  const toggleStack = (stack: DockFolderStackConfig) => {
-    setShowTasksPopover(false);
+  const selectStack = (stack: DockFolderStackConfig) => {
     if (openStackId === stack.id) {
       setOpenStackId(null);
       return;
@@ -198,19 +237,21 @@ export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
     loadStackContents(stack);
   };
 
-  // Close popover on outside click + handle Space Quick Look & Arrow navigation inside open Stack!
+  // Close on outside click + handle Space Luma Peek & Arrow navigation inside open Stack!
   useEffect(() => {
-    if (!openStackId && !showTasksPopover) return;
+    if (!shelfOpen && !openStackId) return;
     const onDocClick = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShelfOpen(false);
         setOpenStackId(null);
-        setShowTasksPopover(false);
+        setShowAddStack(false);
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (!openStackId) return;
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || el?.isContentEditable) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         setOpenStackId(null);
@@ -233,6 +274,7 @@ export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
         if (item.is_dir) onOpenFolderInExplorer(item.path);
         else onOpenFile(item.path);
         setOpenStackId(null);
+        setShelfOpen(false);
       }
     };
     window.addEventListener('mousedown', onDocClick);
@@ -241,7 +283,7 @@ export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
       window.removeEventListener('mousedown', onDocClick);
       window.removeEventListener('keydown', onKeyDown, true);
     };
-  }, [openStackId, showTasksPopover, stackItems, selectedIdx, onQuickLook, onOpenFolderInExplorer, onOpenFile]);
+  }, [shelfOpen, openStackId, stackItems, selectedIdx, onQuickLook, onOpenFolderInExplorer, onOpenFile]);
 
   const persistStacks = async (next: DockFolderStackConfig[]) => {
     onStacksChanged(next);
@@ -265,7 +307,7 @@ export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
     const name = newStackName.trim() || newStackPath.split(/[/\\]/).filter(Boolean).pop() || 'Папка';
     const next: DockFolderStackConfig[] = [
       ...stacks,
-      { id: `stack_${Date.now()}`, name, path: newStackPath.trim(), view_mode: 'grid', color: '#06b6d4' },
+      { id: `stack_${Date.now()}`, name, path: newStackPath.trim(), view_mode: 'grid', color: '#38bdf8' },
     ];
     persistStacks(next);
     setNewStackName('');
@@ -291,67 +333,364 @@ export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
         body: JSON.stringify({ src: srcPath, dst: stack.path, move: e.shiftKey }),
       });
       if (r.ok) {
-        onNotify?.('Умный Dock · Стек', `Файл ${e.shiftKey ? 'перемещён' : 'скопирован'} в «${stack.name}»`);
+        onNotify?.('Полка Luma Dock', `Файл ${e.shiftKey ? 'перемещён' : 'скопирован'} в «${stack.name}»`);
         if (openStackId === stack.id) loadStackContents(stack);
       }
     } catch { /* ignore */ }
   };
 
-  const activeTasks = tasks.filter((t) => t.state !== 'done');
+  const topTask = activeTasks[0] || null;
+  const dotColor = topTask
+    ? topTask.state === 'error'
+      ? 'bg-rose-400 shadow-[0_0_8px_#fb7185]'
+      : topTask.state === 'paused'
+        ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24]'
+        : topTask.state === 'extracting'
+          ? 'bg-violet-400 shadow-[0_0_8px_#a78bfa]'
+          : 'bg-sky-400 shadow-[0_0_8px_#38bdf8]'
+    : '';
 
   return (
-    <div ref={containerRef} className="relative flex items-center gap-1.5 pl-1.5 border-l border-white/15">
-      {/* Live Downloads / Installs Summary Pill (Steam / Browsers / Luma) */}
-      {activeTasks.length > 0 && (
-        <div className="relative">
-          <button
-            onClick={() => { setOpenStackId(null); setShowTasksPopover((v) => !v); }}
-            className={`relative h-9 px-2.5 rounded-xl flex items-center gap-1.5 text-[11px] font-bold border transition-all ${
-              isDarkTheme
-                ? 'bg-sky-500/15 border-sky-400/35 text-sky-300 hover:bg-sky-500/25'
-                : 'bg-sky-50 border-sky-300 text-sky-700 hover:bg-sky-100'
-            }`}
-            title="Активные загрузки и установки (Steam / Браузеры / Luma OS)"
-          >
-            {activeTasks[0].state === 'error' ? (
-              <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-            ) : activeTasks[0].state === 'paused' ? (
-              <Pause className="w-3.5 h-3.5 text-amber-400" />
-            ) : activeTasks[0].state === 'extracting' ? (
-              <PackageOpen className="w-3.5 h-3.5 text-violet-400 animate-pulse" />
-            ) : (
-              <Download className="w-3.5 h-3.5 text-sky-400 animate-bounce" />
-            )}
-            <span>{Math.round(activeTasks[0].percent)}%</span>
-            <DockIconProgressBar task={activeTasks[0]} />
-          </button>
+    <div
+      ref={containerRef}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onDragOver={(e) => {
+        e.preventDefault();
+        handleMouseEnter();
+      }}
+      className="relative flex items-center pl-1.5 border-l border-white/10"
+    >
+      {/* Ultra-Clean Minimalist Taskbar Handle (everything hides inside & glides out on hover!) */}
+      <button
+        type="button"
+        onClick={() => setShelfOpen((v) => !v)}
+        className={`group relative h-8 px-2.5 rounded-xl flex items-center gap-1.5 border transition-all duration-200 cursor-pointer ${
+          shelfOpen
+            ? isDarkTheme
+              ? 'bg-sky-500/20 border-sky-400/45 text-sky-200 shadow-lg shadow-sky-500/15'
+              : 'bg-sky-100 border-sky-400 text-sky-800 shadow-sm'
+            : isDarkTheme
+              ? 'bg-white/[0.04] border-white/10 text-slate-300/80 hover:bg-white/12 hover:text-white hover:border-white/20'
+              : 'bg-slate-900/[0.04] border-slate-300/70 text-slate-600 hover:bg-slate-900/10 hover:text-slate-900'
+        }`}
+        title="Наведите, чтобы открыть Полку папок и активные загрузки"
+      >
+        <Layers className="w-3.5 h-3.5 transition-transform duration-200 group-hover:scale-110" />
+        {topTask && (
+          <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${dotColor}`} />
+        )}
+        <ChevronUp
+          className={`w-3 h-3 opacity-65 transition-transform duration-200 ${shelfOpen ? 'rotate-180 text-sky-400 opacity-100' : ''}`}
+        />
+      </button>
 
-          {showTasksPopover && (
-            <div
-              className={`absolute bottom-12 right-0 w-80 rounded-2xl border p-3 shadow-2xl backdrop-blur-2xl z-[9600] ${
-                isDarkTheme ? 'bg-slate-950/92 border-white/15 text-slate-100' : 'bg-white/95 border-slate-200 text-slate-900'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-black">Загрузки & Установки ({activeTasks.length})</span>
-                <button onClick={() => setShowTasksPopover(false)} className="p-1 rounded-lg hover:bg-white/10">
-                  <X className="w-3.5 h-3.5" />
+      {/* Smooth Hover-Reveal Frosted-Glass Shelf Drawer (invisible pb-2 bridge prevents hover gaps!) */}
+      <div
+        className={`absolute bottom-8 right-0 pb-2.5 z-[9600] transition-all duration-200 ease-out origin-bottom-right ${
+          shelfOpen
+            ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
+            : 'opacity-0 translate-y-2 scale-95 pointer-events-none'
+        }`}
+      >
+        <div
+          className={`w-[360px] max-w-[92vw] rounded-2xl border shadow-[0_24px_70px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden ${
+            isDarkTheme
+              ? 'bg-slate-950/92 border-white/15 text-slate-100'
+              : 'bg-white/95 border-slate-200 text-slate-900'
+          }`}
+        >
+          {/* Shelf Header */}
+          <div className={`px-3.5 py-2.5 border-b flex items-center justify-between gap-2 ${isDarkTheme ? 'border-white/10 bg-white/[0.03]' : 'border-slate-200 bg-slate-50/80'}`}>
+            <div className="flex items-center gap-2">
+              <Layers className="w-3.5 h-3.5 text-sky-400" />
+              <span className="text-[11px] font-black tracking-wide uppercase">Полка Luma Dock</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setShowAddStack((v) => !v)}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition ${
+                  showAddStack
+                    ? 'bg-sky-500 text-white'
+                    : isDarkTheme ? 'bg-white/10 hover:bg-white/20 text-slate-200' : 'bg-slate-200/80 hover:bg-slate-300 text-slate-700'
+                }`}
+                title="Добавить папку на полку"
+              >
+                <Plus className="w-3 h-3" /> Папка
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShelfOpen(false); setOpenStackId(null); setShowAddStack(false); }}
+                className="p-1 rounded-lg hover:bg-white/10 cursor-pointer"
+                title="Скрыть полку"
+              >
+                <X className="w-3.5 h-3.5 opacity-70" />
+              </button>
+            </div>
+          </div>
+
+          {/* Add Custom Folder Stack Inline Form */}
+          {showAddStack && (
+            <div className={`p-3 border-b space-y-2 ${isDarkTheme ? 'border-white/10 bg-sky-500/[0.06]' : 'border-slate-200 bg-sky-50/70'}`}>
+              <div className="grid grid-cols-2 gap-1.5">
+                <input
+                  value={newStackName}
+                  onChange={(e) => setNewStackName(e.target.value)}
+                  placeholder="Название (Проекты)"
+                  className={`px-2.5 py-1.5 rounded-lg text-xs border outline-none ${isDarkTheme ? 'bg-black/40 border-white/15' : 'bg-white border-slate-300'}`}
+                />
+                <input
+                  value={newStackPath}
+                  onChange={(e) => setNewStackPath(e.target.value)}
+                  placeholder="Путь (C:\\Projects)"
+                  className={`px-2.5 py-1.5 rounded-lg text-xs border outline-none ${isDarkTheme ? 'bg-black/40 border-white/15' : 'bg-white border-slate-300'}`}
+                />
+              </div>
+              <div className="flex justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowAddStack(false)}
+                  className="px-2.5 py-1 rounded-lg text-[11px] opacity-70 hover:opacity-100 cursor-pointer"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddStack}
+                  className="px-3 py-1 rounded-lg bg-sky-500 hover:bg-sky-400 text-white text-[11px] font-bold cursor-pointer"
+                >
+                  Добавить
                 </button>
               </div>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
+            </div>
+          )}
+
+          {/* Sleek Folder Stacks Strip (Supports Click to Expand + Drag & Drop) */}
+          <div className="p-3">
+            <div className="grid grid-cols-3 gap-2">
+              {stacks.map((stack) => {
+                const isSelected = openStackId === stack.id;
+                const isDropTarget = dragOverStackId === stack.id;
+                return (
+                  <button
+                    key={stack.id}
+                    type="button"
+                    onClick={() => selectStack(stack)}
+                    onDragOver={(e) => { e.preventDefault(); setDragOverStackId(stack.id); }}
+                    onDragLeave={() => setDragOverStackId(null)}
+                    onDrop={(e) => handleDropIntoStack(e, stack)}
+                    className={`group relative px-2.5 py-2.5 rounded-xl border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                      isDropTarget
+                        ? 'scale-105 bg-sky-500/25 border-sky-400 shadow-lg shadow-sky-500/25'
+                        : isSelected
+                          ? 'bg-sky-500/18 border-sky-400/50 shadow-md'
+                          : isDarkTheme
+                            ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.1] hover:border-white/20 hover:-translate-y-0.5'
+                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100 hover:-translate-y-0.5'
+                    }`}
+                    title={`Открыть стек «${stack.name}» (${stack.view_mode === 'fan' ? 'Веер' : 'Сетка'}) · Перетащите файл сюда`}
+                  >
+                    <div className="relative w-8 h-7 flex items-center justify-center">
+                      <span className="absolute w-6 h-5 rounded-md bg-white/10 -rotate-6 -translate-y-0.5 transition-transform group-hover:-rotate-12" />
+                      <span className="absolute w-6 h-5 rounded-md bg-white/15 rotate-6 transition-transform group-hover:rotate-12" />
+                      <Folder className="w-5 h-5 relative z-10 drop-shadow" style={{ color: stack.color || '#38bdf8' }} />
+                    </div>
+                    <span className="text-[11px] font-bold truncate w-full text-center">{stack.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Expanded Folder Stack View (FAN / GRID + Luma Peek via Space!) */}
+          {openStack && (
+            <div className={`border-t ${isDarkTheme ? 'border-white/10 bg-black/25' : 'border-slate-200 bg-slate-50/70'}`}>
+              <div className={`px-3 py-2 flex items-center justify-between gap-2 border-b ${isDarkTheme ? 'border-white/10' : 'border-slate-200'}`}>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: openStack.color }} />
+                  <span className="text-xs font-black truncate">{openStack.name}</span>
+                  <span className="text-[10px] opacity-55">({stackItems.length})</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => toggleViewMode(openStack)}
+                    className="px-2 py-0.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                    title="Переключить режим Веер / Сетка"
+                  >
+                    {openStack.view_mode === 'fan' ? <LayoutGrid className="w-3 h-3" /> : <Fan className="w-3 h-3" />}
+                    {openStack.view_mode === 'fan' ? 'Сетка' : 'Веер'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenFolderInExplorer(openStack.path);
+                      setOpenStackId(null);
+                      setShelfOpen(false);
+                    }}
+                    className="p-1 rounded-lg hover:bg-white/10 cursor-pointer"
+                    title="Открыть в Проводнике"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-2.5 max-h-[260px] overflow-y-auto">
+                {loadingStack ? (
+                  <div className="py-6 text-center text-xs opacity-60">Загрузка содержимого...</div>
+                ) : stackItems.length === 0 ? (
+                  <div className="py-6 text-center text-xs opacity-60">Папка пуста</div>
+                ) : openStack.view_mode === 'fan' ? (
+                  /* FAN VIEW (Веер) */
+                  <div className="space-y-1.5 py-0.5">
+                    {stackItems.slice(0, 10).map((it, idx) => {
+                      const angle = Math.min(5, Math.max(-5, (idx - 4) * 0.9));
+                      const isSel = idx === selectedIdx;
+                      return (
+                        <div
+                          key={it.path}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('application/x-luma-fs', JSON.stringify({ path: it.path, name: it.name, isDir: it.is_dir }));
+                            e.dataTransfer.setData('text/plain', it.path);
+                          }}
+                          onMouseEnter={() => setSelectedIdx(idx)}
+                          onClick={() => {
+                            if (it.is_dir) onOpenFolderInExplorer(it.path);
+                            else onOpenFile(it.path);
+                            setOpenStackId(null);
+                            setShelfOpen(false);
+                          }}
+                          style={{ transform: `rotate(${isSel ? 0 : angle * 0.3}deg)` }}
+                          className={`group flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl border cursor-pointer transition-all ${
+                            isSel
+                              ? 'bg-sky-500/20 border-sky-400/50 scale-[1.01] shadow-md'
+                              : isDarkTheme ? 'bg-white/[0.04] border-white/10 hover:bg-white/10' : 'bg-white border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {it.thumb_url ? (
+                            <img src={`${kernelBase}${it.thumb_url}`} alt="" className="w-7 h-7 rounded-lg object-cover shrink-0" />
+                          ) : (
+                            <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
+                              {getFileIcon(it)}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-semibold truncate">{it.name}</div>
+                            <div className="text-[10px] opacity-55">{it.mod_time}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const cands: QuickLookCandidate[] = stackItems.map((x) => ({ path: x.path, name: x.name, isDir: x.is_dir }));
+                              onQuickLook(cands, idx);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/35 text-sky-300 transition cursor-pointer"
+                            title="Luma Peek (Space)"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* GRID VIEW (Сетка) */
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {stackItems.slice(0, 18).map((it, idx) => {
+                      const isSel = idx === selectedIdx;
+                      return (
+                        <div
+                          key={it.path}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('application/x-luma-fs', JSON.stringify({ path: it.path, name: it.name, isDir: it.is_dir }));
+                            e.dataTransfer.setData('text/plain', it.path);
+                          }}
+                          onMouseEnter={() => setSelectedIdx(idx)}
+                          onClick={() => {
+                            if (it.is_dir) onOpenFolderInExplorer(it.path);
+                            else onOpenFile(it.path);
+                            setOpenStackId(null);
+                            setShelfOpen(false);
+                          }}
+                          className={`group relative p-2 rounded-xl border flex flex-col items-center text-center gap-1 cursor-pointer transition ${
+                            isSel
+                              ? 'bg-sky-500/20 border-sky-400/50'
+                              : isDarkTheme ? 'bg-white/[0.04] border-white/10 hover:bg-white/10' : 'bg-white border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {it.thumb_url ? (
+                            <img src={`${kernelBase}${it.thumb_url}`} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center">
+                              {getFileIcon(it)}
+                            </div>
+                          )}
+                          <span className="text-[10px] font-semibold line-clamp-2 leading-tight break-all">{it.name}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const cands: QuickLookCandidate[] = stackItems.map((x) => ({ path: x.path, name: x.name, isDir: x.is_dir }));
+                              onQuickLook(cands, idx);
+                            }}
+                            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 rounded-md bg-slate-900/80 text-sky-300 cursor-pointer"
+                            title="Luma Peek (Space)"
+                          >
+                            <Eye className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className={`px-3 py-1.5 border-t flex items-center justify-between text-[10px] opacity-65 ${isDarkTheme ? 'border-white/10' : 'border-slate-200'}`}>
+                <span>Space — Luma Peek · Перетаскивание</span>
+                <button
+                  type="button"
+                  onClick={() => { onOpenFolderInExplorer(openStack.path); setOpenStackId(null); setShelfOpen(false); }}
+                  className="text-sky-400 hover:underline flex items-center gap-0.5 font-semibold cursor-pointer"
+                >
+                  Проводник <ArrowUpRight className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Live Downloads & Installs Section (Hidden cleanly inside the hover shelf!) */}
+          <div className={`px-3 py-2.5 border-t ${isDarkTheme ? 'border-white/10 bg-white/[0.02]' : 'border-slate-200 bg-slate-50/50'}`}>
+            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider opacity-65 mb-1.5">
+              <span className="flex items-center gap-1.5">
+                <Download className="w-3 h-3 text-sky-400" />
+                Загрузки и установки ({activeTasks.length})
+              </span>
+              {activeTasks.length === 0 && <span className="font-normal normal-case">Нет активных</span>}
+            </div>
+            {activeTasks.length > 0 && (
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
                 {activeTasks.map((t) => {
                   const barCls = t.state === 'error' ? 'bg-rose-500' : t.state === 'paused' ? 'bg-amber-400' : t.state === 'extracting' ? 'bg-violet-400' : 'bg-sky-400';
                   const stLabel = t.state === 'error' ? 'Ошибка' : t.state === 'paused' ? 'Пауза' : t.state === 'extracting' ? 'Распаковка' : 'Активно';
+                  const Icon = t.state === 'error' ? AlertCircle : t.state === 'paused' ? Pause : t.state === 'extracting' ? PackageOpen : Download;
                   return (
-                    <div key={t.id} className={`p-2.5 rounded-xl border ${isDarkTheme ? 'bg-white/[0.04] border-white/10' : 'bg-slate-50 border-slate-200'}`}>
-                      <div className="flex items-center justify-between gap-2 text-xs">
-                        <span className="font-bold truncate">{t.title}</span>
-                        <span className="font-mono text-[11px] font-black shrink-0">{Math.round(t.percent)}%</span>
+                    <div key={t.id} className={`p-2 rounded-xl border ${isDarkTheme ? 'bg-white/[0.04] border-white/10' : 'bg-white border-slate-200'}`}>
+                      <div className="flex items-center justify-between gap-2 text-[11px]">
+                        <span className="font-bold truncate flex items-center gap-1.5">
+                          <Icon className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+                          {t.title}
+                        </span>
+                        <span className="font-mono font-black shrink-0">{Math.round(t.percent)}%</span>
                       </div>
-                      <div className="mt-1.5 h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                        <div className={`h-full rounded-full transition-all ${barCls}`} style={{ width: `${Math.max(4, Math.min(100, t.percent))}%` }} />
+                      <div className="mt-1.5 h-1.5 rounded-full bg-slate-800/80 overflow-hidden">
+                        <div className={`h-full rounded-full transition-all duration-300 ${barCls}`} style={{ width: `${Math.max(4, Math.min(100, t.percent))}%` }} />
                       </div>
-                      <div className="mt-1 flex items-center justify-between text-[10px] text-slate-400">
+                      <div className="mt-1 flex items-center justify-between text-[10px] opacity-60">
                         <span>{t.app_name} · {stLabel}</span>
                         <span>{t.speed_mb_s > 0 ? `${t.speed_mb_s.toFixed(1)} МБ/с` : t.detail || ''}</span>
                       </div>
@@ -359,233 +698,9 @@ export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
                   );
                 })}
               </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Folder Stack Icons in Dock */}
-      {stacks.map((stack) => {
-        const isOpen = openStackId === stack.id;
-        const isDropTarget = dragOverStackId === stack.id;
-        return (
-          <div key={stack.id} className="relative">
-            <button
-              onClick={() => toggleStack(stack)}
-              onDragOver={(e) => { e.preventDefault(); setDragOverStackId(stack.id); }}
-              onDragLeave={() => setDragOverStackId(null)}
-              onDrop={(e) => handleDropIntoStack(e, stack)}
-              className={`relative w-9 h-9 rounded-xl flex items-center justify-center border transition-all ${
-                isDropTarget
-                  ? 'scale-115 bg-sky-500/30 border-sky-400 shadow-lg shadow-sky-500/30'
-                  : isOpen
-                    ? 'bg-white/20 border-white/35 scale-105'
-                    : isDarkTheme
-                      ? 'bg-white/[0.07] border-white/10 hover:bg-white/15 hover:-translate-y-0.5'
-                      : 'bg-slate-900/5 border-slate-300 hover:bg-slate-900/10 hover:-translate-y-0.5'
-              }`}
-              title={`Стек папки «${stack.name}» (${stack.view_mode === 'fan' ? 'Веер' : 'Сетка'}) · Перетащите файл сюда`}
-            >
-              {/* Layered mini-cards icon signifying a Dock Folder Stack */}
-              <span className="absolute w-5 h-4 rounded bg-white/15 -rotate-6 -translate-y-1 pointer-events-none" />
-              <span className="absolute w-5 h-4 rounded bg-white/20 rotate-6 -translate-y-0.5 pointer-events-none" />
-              <Folder className="w-4 h-4 relative z-10" style={{ color: stack.color || '#38bdf8' }} />
-            </button>
-
-            {/* Open Stack Popover: FAN (Веер) OR GRID (Сетка) */}
-            {isOpen && openStack && (
-              <div
-                className={`absolute bottom-12 right-0 z-[9600] ${
-                  openStack.view_mode === 'fan' ? 'w-72' : 'w-[370px]'
-                } rounded-2xl border shadow-2xl backdrop-blur-2xl overflow-hidden ${
-                  isDarkTheme ? 'bg-slate-950/92 border-white/15 text-slate-100' : 'bg-white/95 border-slate-200 text-slate-900'
-                }`}
-              >
-                {/* Stack Header */}
-                <div className={`px-3 py-2 border-b flex items-center justify-between gap-2 ${isDarkTheme ? 'border-white/10 bg-white/[0.03]' : 'border-slate-200 bg-slate-50'}`}>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Folder className="w-4 h-4 shrink-0" style={{ color: openStack.color }} />
-                    <span className="text-xs font-black truncate">{openStack.name}</span>
-                    <span className="text-[10px] text-slate-400">({stackItems.length})</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => toggleViewMode(openStack)}
-                      className="px-2 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 text-[10px] font-bold flex items-center gap-1"
-                      title="Переключить режим Веер / Сетка"
-                    >
-                      {openStack.view_mode === 'fan' ? <LayoutGrid className="w-3 h-3" /> : <Fan className="w-3 h-3" />}
-                      {openStack.view_mode === 'fan' ? 'Сетка' : 'Веер'}
-                    </button>
-                    <button
-                      onClick={() => { onOpenFolderInExplorer(openStack.path); setOpenStackId(null); }}
-                      className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white"
-                      title="Открыть в Проводнике"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Stack Body */}
-                <div className="p-2.5 max-h-[360px] overflow-y-auto">
-                  {loadingStack ? (
-                    <div className="py-8 text-center text-xs text-slate-400">Загрузка файлов…</div>
-                  ) : stackItems.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-slate-400">Папка пуста</div>
-                  ) : openStack.view_mode === 'fan' ? (
-                    /* FAN (Веер) Curved Cascading Layout */
-                    <div className="flex flex-col-reverse gap-1.5 py-1">
-                      {stackItems.slice(0, 10).map((item, idx) => {
-                        const curveShift = Math.round(Math.pow(idx, 1.35) * 2.2);
-                        const rot = -(idx * 1.15);
-                        const selected = idx === selectedIdx;
-                        return (
-                          <div
-                            key={item.path}
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData('application/x-luma-fs', JSON.stringify({ path: item.path, name: item.name, isDir: item.is_dir }));
-                              e.dataTransfer.setData('text/plain', item.path);
-                            }}
-                            onClick={() => setSelectedIdx(idx)}
-                            onDoubleClick={() => {
-                              if (item.is_dir) onOpenFolderInExplorer(item.path);
-                              else onOpenFile(item.path);
-                              setOpenStackId(null);
-                            }}
-                            style={{
-                              transform: `translateX(-${Math.min(20, curveShift)}px) rotate(${Math.max(-8, rot)}deg)`,
-                            }}
-                            className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-2.5 cursor-pointer transition-all hover:scale-[1.02] ${
-                              selected
-                                ? 'bg-sky-500/20 border-sky-400/50 shadow-md'
-                                : isDarkTheme ? 'bg-slate-900/90 border-white/10 hover:bg-slate-800' : 'bg-white border-slate-200 hover:bg-slate-50'
-                            }`}
-                          >
-                            {item.thumb_url ? (
-                              <img src={`${kernelBase}${item.thumb_url}`} alt="" className="w-7 h-7 rounded-lg object-cover shrink-0" />
-                            ) : (
-                              <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                                {getFileIcon(item)}
-                              </div>
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-bold truncate">{item.name}</div>
-                              <div className="text-[10px] text-slate-400">{item.mod_time}</div>
-                            </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onQuickLook(stackItems.map((x) => ({ path: x.path, name: x.name, isDir: x.is_dir })), idx);
-                              }}
-                              className="p-1 rounded-lg hover:bg-sky-500/25 text-sky-400"
-                              title="Quick Look (Space)"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    /* GRID (Сетка) Visual Tile Layout */
-                    <div className="grid grid-cols-3 gap-2">
-                      {stackItems.slice(0, 18).map((item, idx) => {
-                        const selected = idx === selectedIdx;
-                        return (
-                          <div
-                            key={item.path}
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData('application/x-luma-fs', JSON.stringify({ path: item.path, name: item.name, isDir: item.is_dir }));
-                              e.dataTransfer.setData('text/plain', item.path);
-                            }}
-                            onClick={() => setSelectedIdx(idx)}
-                            onDoubleClick={() => {
-                              if (item.is_dir) onOpenFolderInExplorer(item.path);
-                              else onOpenFile(item.path);
-                              setOpenStackId(null);
-                            }}
-                            className={`group relative p-2 rounded-xl border flex flex-col items-center text-center cursor-pointer transition-all ${
-                              selected
-                                ? 'bg-sky-500/20 border-sky-400/50'
-                                : isDarkTheme ? 'bg-white/[0.04] border-white/10 hover:bg-white/10' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                            }`}
-                          >
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onQuickLook(stackItems.map((x) => ({ path: x.path, name: x.name, isDir: x.is_dir })), idx);
-                              }}
-                              className="absolute top-1 right-1 p-1 rounded-md bg-slate-950/75 text-sky-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                              title="Quick Look (Space)"
-                            >
-                              <Eye className="w-3 h-3" />
-                            </button>
-                            {item.thumb_url ? (
-                              <img src={`${kernelBase}${item.thumb_url}`} alt="" className="w-12 h-10 rounded-lg object-cover mb-1.5" />
-                            ) : (
-                              <div className="w-12 h-10 rounded-lg bg-white/5 flex items-center justify-center mb-1.5">
-                                {getFileIcon(item)}
-                              </div>
-                            )}
-                            <span className="text-[10px] font-semibold line-clamp-2 leading-tight break-all">{item.name}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Stack Footer hint */}
-                <div className={`px-3 py-1.5 border-t flex items-center justify-between text-[10px] text-slate-400 ${isDarkTheme ? 'border-white/10 bg-white/[0.02]' : 'border-slate-200 bg-slate-50'}`}>
-                  <span>Space — Quick Look · Перетаскивание включено</span>
-                  <button
-                    onClick={() => { onOpenFolderInExplorer(openStack.path); setOpenStackId(null); }}
-                    className="text-sky-400 hover:underline font-bold inline-flex items-center gap-0.5"
-                  >
-                    Открыть всё <ArrowUpRight className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
             )}
           </div>
-        );
-      })}
-
-      {/* Add Folder Stack button */}
-      <div className="relative">
-        <button
-          onClick={() => setShowAddStack((v) => !v)}
-          className={`w-7 h-7 rounded-lg flex items-center justify-center border transition-colors ${
-            isDarkTheme ? 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10' : 'bg-slate-200/70 border-slate-300 text-slate-600'
-          }`}
-          title="Закрепить папку как Стек в Умном Dock"
-        >
-          <Plus className="w-3.5 h-3.5" />
-        </button>
-        {showAddStack && (
-          <div className={`absolute bottom-11 right-0 w-64 rounded-2xl border p-3 shadow-2xl backdrop-blur-2xl z-[9600] space-y-2 ${isDarkTheme ? 'bg-slate-950/95 border-white/15 text-slate-100' : 'bg-white border-slate-200 text-slate-900'}`}>
-            <div className="text-xs font-black">Добавить Стек папки</div>
-            <input
-              value={newStackName}
-              onChange={(e) => setNewStackName(e.target.value)}
-              placeholder="Название (напр. Проекты)"
-              className={`w-full px-2.5 py-1.5 rounded-lg border text-xs ${isDarkTheme ? 'bg-slate-900 border-white/10' : 'bg-slate-50 border-slate-300'}`}
-            />
-            <input
-              value={newStackPath}
-              onChange={(e) => setNewStackPath(e.target.value)}
-              placeholder="Путь (C:\Projects или ~/Projects)"
-              className={`w-full px-2.5 py-1.5 rounded-lg border text-xs ${isDarkTheme ? 'bg-slate-900 border-white/10' : 'bg-slate-50 border-slate-300'}`}
-            />
-            <div className="flex justify-end gap-1.5">
-              <button onClick={() => setShowAddStack(false)} className="px-2.5 py-1 rounded-lg text-xs text-slate-400">Отмена</button>
-              <button onClick={handleAddStack} className="px-3 py-1 rounded-lg bg-sky-500 text-white text-xs font-bold">Добавить</button>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

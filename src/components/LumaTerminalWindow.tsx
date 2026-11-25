@@ -230,31 +230,41 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
 
     if (head === 'ai') {
       if (!rest) {
-        appendToTab(tid, 'Использование: ai <ваш вопрос>  (пример: ai курс доллара | ai погода в Москве | ai статус пк | ai что такое Rust)', 'accent');
+        appendToTab(tid, 'Использование: ai <задача или вопрос>  (пример: ai поставь громкость 60 и найди курс биткоина | ai погода в Москве | ai проверь безопасность)', 'accent');
         return;
       }
       setBusy(true);
-      appendToTab(tid, '✦ Luma AI 3.8 FlashLite — запрос к проверенным источникам…', 'accent');
+      appendToTab(tid, '✦ Luma AI 4.0 Autonomous — думаю, выполняю действия и ищу в интернете…', 'accent');
       try {
         const r = await fetch('/api/kernel/ai/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: rest, mode: 'flashlite' }),
+          body: JSON.stringify({ prompt: rest, mode: 'autonomous', autonomous: true, web_search: true }),
         });
         const d = await r.json();
-        const replyText = String(d.reply || d.error || 'Нет ответа от Luma AI 3.8');
+        if (Array.isArray(d.ui_actions) && d.ui_actions.length > 0) {
+          window.dispatchEvent(new CustomEvent('luma-ai-agent-actions', { detail: d.ui_actions }));
+        }
+        const replyText = String(d.reply || d.error || 'Нет ответа от Luma AI 4.0');
         const sources: { title: string; url: string; provider: string }[] = Array.isArray(d.sources) ? d.sources : [];
-        const linesOut = [replyText];
+        const steps: { step: number; title: string; detail: string }[] = Array.isArray(d.thinking_steps) ? d.thinking_steps : [];
+        const linesOut: string[] = [];
+        if (steps.length > 0) {
+          linesOut.push('── ХОД МЫСЛЕЙ (AI 4.0) ────────────────────────────────');
+          steps.forEach((st) => linesOut.push(`  [${st.step}] ${st.title}: ${st.detail}`));
+          linesOut.push('');
+        }
+        linesOut.push(replyText);
         if (sources.length > 0) {
           linesOut.push('');
-          linesOut.push('── ПРОВЕРЕННЫЕ ИСТОЧНИКИ ──────────────────────────────');
+          linesOut.push('── ИСТОЧНИКИ ИЗ ИНТЕРНЕТА И ЯДРА ──────────────────────');
           sources.forEach((s, idx) => {
             linesOut.push(`  [${idx + 1}] (${s.provider}) ${s.title} -> ${s.url}`);
           });
         }
         appendToTab(tid, linesOut.join('\n'), 'out');
       } catch {
-        appendToTab(tid, 'Не удалось связаться с Luma AI 3.8 (/api/kernel/ai/chat).', 'err');
+        appendToTab(tid, 'Не удалось связаться с Luma AI 4.0 (/api/kernel/ai/chat).', 'err');
       } finally {
         setBusy(false);
       }
@@ -265,9 +275,9 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
       appendToTab(
         tid,
         [
-          'LUMA PRO TERMINAL 1.6 NITROGEN — СПРАВОЧНИК КОМАНД (55+):',
-          '  ── ИСКУССТВЕННЫЙ ИНТЕЛЛЕКТ (LUMA AI 3.8 FLASHLITE) ─────────────────',
-          '  ai <вопрос>            — проверенные факты (Wiki/DDG/MDN/GitHub/ЦБ РФ/Погода/Телеметрия)',
+          'LUMA PRO TERMINAL 1.6.1 NITROGEN — СПРАВОЧНИК КОМАНД (55+):',
+          '  ── АВТОНОМНЫЙ ИИ-АГЕНТ (LUMA AI 4.0 AUTONOMOUS) ─────────────────────',
+          '  ai <задача/вопрос>     — думает, выполняет действия в ОС и ищет по всему интернету',
           '  ── СИСТЕМА И ЖЕЛЕЗО ────────────────────────────────────────────────',
           '  neofetch               — паспорт системы, железо и версии ядер',
           '  sys / disks / loc      — CPU, GPU, RAM, диски, авто-регион',
@@ -310,7 +320,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
           `  ██╗     ██╗   ██╗███╗   ███╗ █████╗      luma@${hostName}`,
           `  ██║     ██║   ██║████╗ ████║██╔══██╗     ──────────────────────────`,
           `  ██║     ██║   ██║██╔████╔██║███████║     OS      : Luma OS 1.6 Nitrogen (${os})`,
-          `  ██║     ██║   ██║██║╚██╔╝██║██╔══██║     STYLE   : ${designStyle === 'ubuntu' ? 'UBUNTU' : designStyle === 'nothing' ? 'КЛАССИЧЕСКИЙ' : 'МОДЕРН'} · TASKBAR ${taskbarPosition.toUpperCase()}`,
+          `  ██║     ██║   ██║██║╚██╔╝██║██╔══██║     STYLE   : ${designStyle === 'nova' ? 'LUMA NOVA' : designStyle === 'matrix' ? 'LUMA MATRIX' : 'LUMA GLASS'} · TASKBAR ${taskbarPosition.toUpperCase()}`,
           `  ███████╗╚██████╔╝██║ ╚═╝ ██║██║  ██║     CPU     : ${cpu}`,
           `  ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝     GPU     : ${gpu}`,
           `                                           RAM     : ${ram}`,
@@ -589,14 +599,15 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
       if (arg === 'dark' || arg === 'light') {
         onSetThemeMode?.(arg);
         appendToTab(tid, `THEME MODE -> ${arg.toUpperCase()}`);
-      } else if (arg === 'nothing' || arg === 'pixelbook') {
-        onSetDesignStyle?.(arg);
-        appendToTab(tid, `DESIGN STYLE -> ${arg.toUpperCase()}`);
+      } else if (arg === 'matrix' || arg === 'glass' || arg === 'nova' || arg === 'nothing' || arg === 'pixelbook') {
+        const mapped = arg === 'nothing' ? 'matrix' : arg === 'pixelbook' ? 'glass' : arg;
+        onSetDesignStyle?.(mapped);
+        appendToTab(tid, `DESIGN STYLE -> LUMA ${mapped.toUpperCase()}`);
       } else if (['nothing_mono', 'nothing_paper', 'm3_expressive', 'amoled', 'purple', 'spring'].includes(arg)) {
         onSelectTheme?.(arg);
         appendToTab(tid, `THEME -> ${arg}`);
       } else {
-        appendToTab(tid, 'Темы: nothing_mono | nothing_paper | m3_expressive | dark | amoled | light | purple | spring | nothing | pixelbook');
+        appendToTab(tid, 'Темы: nothing_mono | nothing_paper | m3_expressive | dark | amoled | light | purple | spring | matrix | glass | nova');
       }
       return;
     }

@@ -213,7 +213,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
           </div>
 
           <div className="text-[11px] text-zinc-400 font-mono">
-            Все виджеты, папки, приложения и темы автоматически сохраняются · LumaCore 1.5.0 · LumaShield 2.5
+            Все виджеты, папки, приложения и темы автоматически сохраняются · LumaCore 1.5.1 · LumaShield 2.5 · Luma AI 4.0
           </div>
         </div>
       </div>

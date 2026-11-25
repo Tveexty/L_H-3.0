@@ -24,6 +24,9 @@ import {
   BookOpen,
   Power,
   ExternalLink,
+  Brain,
+  ChevronDown,
+  CheckCircle2,
 } from 'lucide-react';
 
 export type AIProviderId =
@@ -46,6 +49,29 @@ export interface AISourceLinkItem {
   snippet?: string;
 }
 
+export interface AIThinkingStepItem {
+  step: number;
+  title: string;
+  detail: string;
+  duration_ms: number;
+  status: string;
+}
+
+export interface AIExecutedActionItem {
+  id: string;
+  tool: string;
+  label: string;
+  status: string;
+  detail: string;
+}
+
+export interface AIUIActionItem {
+  type: string;
+  target?: string;
+  value?: unknown;
+  label: string;
+}
+
 export interface AIProviderPreset {
   id: AIProviderId;
   label: string;
@@ -60,13 +86,13 @@ export interface AIProviderPreset {
 export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
   {
     id: 'luma_local',
-    label: 'Luma AI 3.8 FlashLite (Проверенные источники + Code 3.8)',
-    badge: 'AI 3.8',
-    defaultModel: 'luma-3.8-flashlite',
-    models: ['luma-3.8-flashlite', 'luma-3.8-code', 'luma-3.8-research'],
-    defaultBaseUrl: 'internal://luma-ai-3.8-flashlite',
+    label: 'Luma AI 4.0 Autonomous (Думает · Действует · Весь интернет)',
+    badge: 'AI 4.0',
+    defaultModel: 'luma-4.0-autonomous',
+    models: ['luma-4.0-autonomous', 'luma-4.0-code', 'luma-4.0-research'],
+    defaultBaseUrl: 'internal://luma-ai-4.0-autonomous',
     needsKey: false,
-    hint: 'Обновлённая Luma AI 3.8 FlashLite в ядре LumaCore 1.5.0: получение фактов из проверенных источников (Wikipedia RU/EN, DuckDuckGo, MDN, GitHub, Open-Meteo, курсы ЦБ РФ + живая телеметрия ПК) с кликабельными ссылками и интеграцией в Office, Code Studio, Терминал, Quick Look и Alt+R.',
+    hint: 'Автономная думающая нейросеть Luma AI 4.0 в ядре LumaCore 1.5.1: пошаговый ход мыслей (Thinking), самостоятельное выполнение действий в ОС (окна, звук, яркость, файлы, аудит, настройки, таймеры) и поиск информации в реальном времени по ЛЮБЫМ сайтам интернета с чтением страниц и ссылками.',
   },
   {
     id: 'gemini',
@@ -177,7 +203,7 @@ export const DEFAULT_LUMA_AI_CONFIG: LumaAIConfig = {
   models: {},
   baseUrls: {},
   systemPrompt:
-    'Ты — встроенный системный ИИ-ассистент Luma AI 3.8 FlashLite в Luma OS 1.6 (Nitrogen · N-7 · LumaCore 1.5.0). Отвечай точно, опираясь на проверенные источники.',
+    'Ты — автономная думающая нейросеть Luma AI 4.0 в Luma OS 1.6.1 (Nitrogen · N-7 · LumaCore 1.5.1). Думай пошагово, выполняй действия в ОС и ищи факты в любых источниках интернета.',
   temperature: 0.7,
   includeSystemContext: true,
 };
@@ -189,6 +215,9 @@ interface ChatMsg {
   time: string;
   model?: string;
   sources?: AISourceLinkItem[];
+  thinkingSteps?: AIThinkingStepItem[];
+  actions?: AIExecutedActionItem[];
+  elapsedMs?: number;
 }
 
 interface ChatThread {
@@ -249,6 +278,9 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
   onRunInTerminal,
   onPushToast,
 }) => {
+  const [autonomousAgent, setAutonomousAgent] = useState<boolean>(true);
+  const [universalWebSearch, setUniversalWebSearch] = useState<boolean>(true);
+  const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const [threads, setThreads] = useState<ChatThread[]>(() => {
     try {
       const raw = localStorage.getItem(THREADS_KEY);
@@ -478,15 +510,24 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           system_prompt: config.systemPrompt,
           temperature: config.temperature,
           include_context: config.includeSystemContext,
+          autonomous: autonomousAgent,
+          web_search: universalWebSearch,
           messages: updatedMessages.slice(-16).map((m) => ({ role: m.role, content: m.content })),
         }),
       });
       const data = await r.json();
       const replyText = data?.ok
         ? data.reply
-        : `Ошибка (${preset.label}): ${data?.error || 'Не удалось получить ответ'}.\n\nСовет: используйте встроенную **Luma AI 3.8 FlashLite** (работает без API-ключей с проверенными источниками прямо в ядре).`;
+        : `Ошибка (${preset.label}): ${data?.error || 'Не удалось получить ответ'}.\n\nСовет: используйте встроенную **Luma AI 4.0 Autonomous** (думает, выполняет действия и ищет в любых источниках интернета без API-ключей).`;
       const sourcesList: AISourceLinkItem[] | undefined =
         Array.isArray(data?.sources) && data.sources.length > 0 ? data.sources : undefined;
+      const thinkingList: AIThinkingStepItem[] | undefined =
+        Array.isArray(data?.thinking_steps) && data.thinking_steps.length > 0 ? data.thinking_steps : undefined;
+      const actionsList: AIExecutedActionItem[] | undefined =
+        Array.isArray(data?.actions) && data.actions.length > 0 ? data.actions : undefined;
+      if (Array.isArray(data?.ui_actions) && data.ui_actions.length > 0) {
+        window.dispatchEvent(new CustomEvent('luma-ai-agent-actions', { detail: data.ui_actions }));
+      }
       const botMsg: ChatMsg = {
         id: `m_${Date.now()}_a`,
         role: 'assistant',
@@ -494,6 +535,9 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
         time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
         model: data?.model || currentModel,
         sources: sourcesList,
+        thinkingSteps: thinkingList,
+        actions: actionsList,
+        elapsedMs: typeof data?.elapsed_ms === 'number' ? data.elapsed_ms : undefined,
       };
       setThreads((prev) =>
         prev.map((t) => (t.id === activeThread.id ? { ...t, messages: [...t.messages, botMsg] } : t))
@@ -502,10 +546,10 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
         speakText(replyText, botMsg.id);
       }
       if (!data?.ok) {
-        onPushToast('Luma AI 3.8', data?.error || 'Требуется настройка провайдера', 'warning');
+        onPushToast('Luma AI 4.0', data?.error || 'Требуется настройка провайдера', 'warning');
       }
     } catch {
-      onPushToast('Luma AI 3.8', 'Нет ответа от шлюза LumaCore 1.5.0', 'warning');
+      onPushToast('Luma AI 4.0', 'Нет ответа от шлюза LumaCore 1.5.1', 'warning');
     } finally {
       setLoading(false);
     }
@@ -628,8 +672,60 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
   const renderMessageContent = (msg: ChatMsg) => {
     const parts = msg.content.split(/(```[\s\S]*?```)/g);
     const isUserBubble = msg.role === 'user';
+    const isThinkingOpen = Boolean(expandedThinking[msg.id]);
     return (
       <div className="space-y-2 text-xs leading-relaxed break-words">
+        {/* Luma AI 4.0 Collapsible Chain-of-Thought (Ход мыслей) */}
+        {!isUserBubble && msg.thinkingSteps && msg.thinkingSteps.length > 0 && (
+          <div className={`rounded-xl border overflow-hidden ${isDark ? 'bg-indigo-500/[0.07] border-indigo-400/25' : 'bg-indigo-50/80 border-indigo-200'}`}>
+            <button
+              type="button"
+              onClick={() => setExpandedThinking((prev) => ({ ...prev, [msg.id]: !prev[msg.id] }))}
+              className="w-full px-2.5 py-1.5 flex items-center justify-between gap-2 text-[10px] font-bold cursor-pointer hover:bg-indigo-500/10 transition"
+            >
+              <span className="inline-flex items-center gap-1.5 text-indigo-400">
+                <Brain className="w-3.5 h-3.5" />
+                Ход мыслей AI 4.0 · {msg.thinkingSteps.length} шага{msg.elapsedMs ? ` · ${msg.elapsedMs} мс` : ''}
+              </span>
+              <ChevronDown className={`w-3.5 h-3.5 text-indigo-400 transition-transform ${isThinkingOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isThinkingOpen && (
+              <div className={`px-2.5 pb-2 pt-1 space-y-1.5 border-t ${isDark ? 'border-indigo-400/15' : 'border-indigo-200/80'}`}>
+                {msg.thinkingSteps.map((st) => (
+                  <div key={st.step} className="flex items-start gap-2 text-[10px]">
+                    <span className="font-mono font-black text-indigo-400 shrink-0">{st.step}.</span>
+                    <div className="min-w-0 flex-1">
+                      <span className="font-bold">{st.title}</span>
+                      <span className="opacity-65"> — {st.detail}</span>
+                    </div>
+                    <span className="font-mono text-[9px] opacity-50 shrink-0">{st.duration_ms}ms</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Luma AI 4.0 Autonomous Executed OS Actions */}
+        {!isUserBubble && msg.actions && msg.actions.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {msg.actions.map((act) => (
+              <span
+                key={act.id}
+                title={act.detail}
+                className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold inline-flex items-center gap-1 ${
+                  isDark
+                    ? 'bg-emerald-500/12 border-emerald-400/30 text-emerald-300'
+                    : 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                }`}
+              >
+                <CheckCircle2 className="w-3 h-3 shrink-0" />
+                <span>{act.label}</span>
+              </span>
+            ))}
+          </div>
+        )}
+
         {parts.map((part, idx) => {
           if (part.startsWith('```') && part.endsWith('```')) {
             const raw = part.slice(3, -3);
@@ -678,11 +774,11 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           return renderMarkdownSegment(part, idx, isUserBubble);
         })}
 
-        {/* Verified Clickable Source Chips from Luma AI 3.8 FlashLite */}
+        {/* Universal Internet Sources from Luma AI 4.0 */}
         {!isUserBubble && msg.sources && msg.sources.length > 0 && (
           <div className="pt-2 mt-2 border-t border-white/10 space-y-1.5">
             <div className="text-[10px] font-mono uppercase tracking-wider text-sky-400 font-bold">
-              Проверенные источники ({msg.sources.length})
+              Источники из интернета и ядра ({msg.sources.length})
             </div>
             <div className="flex flex-wrap gap-1.5">
               {msg.sources.map((src, sIdx) => (
@@ -751,27 +847,57 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           Новый диалог
         </button>
 
-        {/* Quick 2-Engine Model Switcher (Luma Lang 1.2 vs Luma Code 1.2) */}
+        {/* Quick Luma AI 4.0 Autonomous / Web Search Switches */}
+        <div className="grid grid-cols-2 gap-1">
+          <button
+            type="button"
+            onClick={() => setAutonomousAgent((v) => !v)}
+            className={`py-1.5 px-2 rounded-xl border text-[10px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
+              autonomousAgent
+                ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-400'
+                : btnCls
+            }`}
+            title="Автономный режим: ИИ сам открывает окна, меняет громкость/яркость/стиль/обои, создаёт файлы и запускает аудит"
+          >
+            <Zap className="w-3 h-3 shrink-0" />
+            <span>Агент</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setUniversalWebSearch((v) => !v)}
+            className={`py-1.5 px-2 rounded-xl border text-[10px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
+              universalWebSearch
+                ? 'border-sky-500/60 bg-sky-500/15 text-sky-400'
+                : btnCls
+            }`}
+            title="Поиск по всему интернету и чтение страниц из любых сайтов в реальном времени"
+          >
+            <Globe className="w-3 h-3 shrink-0" />
+            <span>Интернет</span>
+          </button>
+        </div>
+
+        {/* Quick 2-Engine Model Switcher (Luma AI 4.0 General vs Code) */}
         <div className="grid grid-cols-2 gap-1">
           <button
             onClick={() => {
               onChangeConfig({ ...config, provider: 'luma_local', aiMode: 'language' });
-              onPushToast('Luma Lang 1.2', 'Активна языковая и справочная модель', 'success');
+              onPushToast('Luma AI 4.0', 'Активен универсальный думающий режим', 'success');
             }}
             className={`py-1.5 px-2 rounded-xl border text-[10px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
               config.provider === 'luma_local' && activeMode === 'language'
-                ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-400'
+                ? 'border-indigo-500/60 bg-indigo-500/15 text-indigo-400'
                 : btnCls
             }`}
-            title="Языковая модель: знания, энциклопедия, математика, диалог"
+            title="Универсальный агент: мышление, поиск по вебу, управление ПК"
           >
             <BookOpen className="w-3 h-3 shrink-0" />
-            <span>Языковая</span>
+            <span>Мыслитель</span>
           </button>
           <button
             onClick={() => {
               onChangeConfig({ ...config, provider: 'luma_local', aiMode: 'code' });
-              onPushToast('Luma Code 1.2', 'Активна модель программиста (12 языков)', 'success');
+              onPushToast('Luma AI 4.0 Code', 'Активен режим программиста (12 языков)', 'success');
             }}
             className={`py-1.5 px-2 rounded-xl border text-[10px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
               config.provider === 'luma_local' && activeMode === 'code'
