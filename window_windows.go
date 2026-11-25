@@ -422,7 +422,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.6.3 (Nitrogen)",
+			Title:  "Luma OS 1.6.4 (Nitrogen)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,
@@ -465,10 +465,11 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		})();
 	`)
 
-	// Native Win32 hotkey + instant keyboard layout push monitor + Luma Alt+Tab Switcher Hook!
+	// Native Win32 hotkey + instant keyboard layout push monitor + Luma Alt+Tab Hook + Precision Touchpad HID Gestures!
 	stopHotkeys := make(chan struct{})
 	go startWin32AltRListener(w, hwnd, stopHotkeys)
 	go startWin32AltTabHook(w, hwnd, stopHotkeys)
+	go startNativeTouchpadRawInputListener(w, hwnd, stopHotkeys)
 
 	// Apply persisted shell mode (fullscreen, hide Windows taskbar, reserve work area, touchpad gesture override)
 	if cfg.ReplaceHotkeys {

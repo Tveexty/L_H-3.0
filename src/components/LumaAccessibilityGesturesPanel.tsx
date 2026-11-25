@@ -137,6 +137,33 @@ export const LumaAccessibilityGesturesPanel: React.FC<LumaAccessibilityGesturesP
 }) => {
   const [padDragStart, setPadDragStart] = useState<{ x: number; y: number } | null>(null);
   const [padStatus, setPadStatus] = useState<string>('Проведите пальцем, стилусом или мышью вниз / вверх / влево / вправо для теста жеста');
+  const [nativeTpStatus, setNativeTpStatus] = useState<{
+    raw_input_active?: boolean;
+    gestures_detected?: number;
+    last_gesture?: string;
+    platform?: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const r = await fetch('/api/kernel/gestures/status');
+        if (r.ok && alive) {
+          const d = await r.json();
+          setNativeTpStatus(d);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    void poll();
+    const id = window.setInterval(poll, 4000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
 
   const cardCls = isDark
     ? 'border-white/10 bg-white/[0.03]'
@@ -156,32 +183,32 @@ export const LumaAccessibilityGesturesPanel: React.FC<LumaAccessibilityGesturesP
   }[] = [
     {
       key: 'threeFingersDown',
-      title: '3 пальца вниз (или ПКМ + свайп вниз)',
-      subtitle: 'Быстрое действие при смахивании вниз',
+      title: '3 пальца вниз (тачпад HID / экран / Alt+ПКМ)',
+      subtitle: 'Быстрое действие при смахивании тремя пальцами вниз',
     },
     {
       key: 'circleOrThreeTap',
-      title: 'Круг / 3 пальца тап (или ПКМ + круг)',
+      title: 'Круг / 3 пальца тап (или Alt+ПКМ + круг)',
       subtitle: 'Мгновенный запуск «Luma Обвести для поиска»',
     },
     {
       key: 'threeFingersUp',
-      title: '3 пальца вверх (или ПКМ + свайп вверх)',
+      title: '3 пальца вверх (тачпад HID / экран / Alt+ПКМ)',
       subtitle: 'Открыть обзор окон или панель',
     },
     {
       key: 'threeFingersLeft',
-      title: '3 пальца влево (или ПКМ + свайп влево)',
+      title: '3 пальца влево (тачпад HID / экран / Alt+ПКМ)',
       subtitle: 'Переключение на предыдущий рабочий стол',
     },
     {
       key: 'threeFingersRight',
-      title: '3 пальца вправо (или ПКМ + свайп вправо)',
+      title: '3 пальца вправо (тачпад HID / экран / Alt+ПКМ)',
       subtitle: 'Переключение на следующий рабочий стол',
     },
     {
       key: 'fourFingersDown',
-      title: '4 пальца вниз',
+      title: '4 пальца вниз (тачпад HID / сенсор)',
       subtitle: 'Быстро показать чистый рабочий стол',
     },
   ];
@@ -223,12 +250,24 @@ export const LumaAccessibilityGesturesPanel: React.FC<LumaAccessibilityGesturesP
               <Hand className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-xs font-black flex items-center gap-2">
+              <div className="text-xs font-black flex flex-wrap items-center gap-2">
                 <span>Управление жестами и Luma Обвести для поиска</span>
-                <span className="px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400 text-[9px] font-mono">1.6.2</span>
+                <span className="px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400 text-[9px] font-mono">1.6.4 · HID</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded-md text-[9px] font-mono ${
+                    nativeTpStatus?.raw_input_active
+                      ? 'bg-emerald-500/15 text-emerald-400'
+                      : 'bg-indigo-500/15 text-indigo-300'
+                  }`}
+                >
+                  {nativeTpStatus?.raw_input_active
+                    ? `Win32 HID активен · событий: ${nativeTpStatus.gestures_detected || 0}`
+                    : 'Touch + Pointer + HID готовы'}
+                </span>
               </div>
               <div className={`text-[11px] ${mutedCls}`}>
-                Мультитач тачпада/сенсора и жесты мышью (ПКМ + движение) работают по всей системе
+                Нативный захват Precision Touchpad (Win32 Raw Input HID) + по-пальцевый сенсорный трекер и жесты мышью (Alt+ПКМ)
+                {nativeTpStatus?.last_gesture ? ` · Последний жест: ${nativeTpStatus.last_gesture}` : ''}
               </div>
             </div>
           </div>

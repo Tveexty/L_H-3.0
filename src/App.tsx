@@ -231,6 +231,7 @@ import {
   DockFolderStackConfig,
   DockIconProgressBar,
   DockMessengerBadge,
+  DockProgressTask,
   LumaSmartDockStacks,
   matchDockTaskForApp,
   matchMessengerBadgeForApp,
@@ -680,6 +681,140 @@ export default function App() {
     } catch { /* ignore */ }
     return 'right';
   });
+  const [autoHideNoiseEnabled, setAutoHideNoiseEnabled] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('luma_auto_hide_noise_v1');
+      if (v !== null) return v === 'true';
+    } catch { /* ignore */ }
+    return true;
+  });
+  const [magneticDockEnabled, setMagneticDockEnabled] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('luma_magnetic_dock_v1');
+      if (v !== null) return v === 'true';
+    } catch { /* ignore */ }
+    return true;
+  });
+  const [visualNoiseHidden, setVisualNoiseHidden] = useState<boolean>(false);
+  const [mediaVideoPlaying, setMediaVideoPlaying] = useState<boolean>(false);
+  const [bouncingDockIds, setBouncingDockIds] = useState<Record<string, boolean>>({});
+  const [renderDockTask, setRenderDockTask] = useState<DockProgressTask | null>(null);
+  const magneticRafRef = useRef<number | null>(null);
+
+  const triggerDockBounce = useCallback((dockKey: string) => {
+    if (!dockKey) return;
+    setBouncingDockIds((prev) => ({ ...prev, [dockKey]: true }));
+    window.setTimeout(() => {
+      setBouncingDockIds((prev) => {
+        if (!prev[dockKey]) return prev;
+        const next = { ...prev };
+        delete next[dockKey];
+        return next;
+      });
+    }, 680);
+  }, []);
+
+  // Zero-lag GPU magnetic Dock magnification & cursor attraction (Gaussian spring curve)
+  const handleDockMagneticMove = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!magneticDockEnabled) return;
+      const container = e.currentTarget;
+      const clientX = e.clientX;
+      if (magneticRafRef.current !== null) cancelAnimationFrame(magneticRafRef.current);
+      magneticRafRef.current = requestAnimationFrame(() => {
+        const items = container.querySelectorAll<HTMLElement>('[data-dock-item="1"]');
+        const radius = 148;
+        items.forEach((el) => {
+          const rect = el.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const dx = clientX - cx;
+          const absDx = Math.abs(dx);
+          if (absDx < radius) {
+            const norm = absDx / radius;
+            const wave = Math.cos((norm * Math.PI) / 2);
+            const strength = wave * wave; // smooth bell curve
+            const scale = 1 + 0.24 * strength;
+            const liftY = -5.5 * strength;
+            const pullX = Math.max(-4, Math.min(4, (dx / radius) * 9.5 * strength));
+            el.style.transform = `translate3d(${pullX.toFixed(2)}px, ${liftY.toFixed(2)}px, 0) scale(${scale.toFixed(3)})`;
+            el.style.zIndex = String(Math.round(10 + strength * 20));
+          } else {
+            el.style.transform = '';
+            el.style.zIndex = '';
+          }
+        });
+      });
+    },
+    [magneticDockEnabled]
+  );
+
+  const handleDockMagneticLeave = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (magneticRafRef.current !== null) {
+      cancelAnimationFrame(magneticRafRef.current);
+      magneticRafRef.current = null;
+    }
+    const items = e.currentTarget.querySelectorAll<HTMLElement>('[data-dock-item="1"]');
+    items.forEach((el) => {
+      el.style.transform = '';
+      el.style.zIndex = '';
+    });
+  }, []);
+
+  // Listen to Cut Studio live video render progress & video playback events
+  useEffect(() => {
+    const onRenderProgress = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ active?: boolean; percent?: number; title?: string }>).detail;
+      if (!detail || !detail.active) {
+        setRenderDockTask(null);
+        return;
+      }
+      setRenderDockTask({
+        id: 'luma_cut_studio_render',
+        app_key: 'cut_studio',
+        app_name: 'Luma Cut Studio',
+        title: detail.title || 'Рендер видео',
+        source: 'luma',
+        state: 'rendering',
+        percent: Math.max(2, Math.min(100, Math.round(detail.percent || 0))),
+        bytes_done: 0,
+        bytes_total: 0,
+        speed_mb_s: 0,
+        updated_at: Date.now(),
+      });
+    };
+    const onMediaPlaying = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ playing?: boolean }>).detail;
+      setMediaVideoPlaying(Boolean(detail?.playing));
+    };
+    const syncDomVideos = () => {
+      const videos = Array.from(document.querySelectorAll('video'));
+      const anyActive = videos.some((v) => !v.paused && !v.ended && v.readyState >= 2);
+      if (anyActive) setMediaVideoPlaying(true);
+    };
+    const onDomPlay = (e: Event) => {
+      if ((e.target as HTMLElement)?.tagName === 'VIDEO') setMediaVideoPlaying(true);
+    };
+    const onDomPauseOrEnd = (e: Event) => {
+      if ((e.target as HTMLElement)?.tagName === 'VIDEO') {
+        const videos = Array.from(document.querySelectorAll('video'));
+        setMediaVideoPlaying(videos.some((v) => !v.paused && !v.ended && v.readyState >= 2));
+      }
+    };
+    window.addEventListener('luma-render-progress', onRenderProgress);
+    window.addEventListener('luma-media-playing', onMediaPlaying);
+    document.addEventListener('play', onDomPlay, true);
+    document.addEventListener('pause', onDomPauseOrEnd, true);
+    document.addEventListener('ended', onDomPauseOrEnd, true);
+    syncDomVideos();
+    return () => {
+      window.removeEventListener('luma-render-progress', onRenderProgress);
+      window.removeEventListener('luma-media-playing', onMediaPlaying);
+      document.removeEventListener('play', onDomPlay, true);
+      document.removeEventListener('pause', onDomPauseOrEnd, true);
+      document.removeEventListener('ended', onDomPauseOrEnd, true);
+    };
+  }, []);
+
   const [lensSearchOpen, setLensSearchOpen] = useState<boolean>(false);
   const [gestureConfig, setGestureConfig] = useState<LumaGestureConfig>(() => {
     try {
@@ -709,11 +844,13 @@ export default function App() {
       localStorage.setItem('luma_folder_slot_v1', lumaFolderSlot);
       localStorage.setItem('luma_show_smart_dock_v1', String(showSmartDockShelf));
       localStorage.setItem('luma_smart_dock_side_v1', smartDockSide);
+      localStorage.setItem('luma_auto_hide_noise_v1', String(autoHideNoiseEnabled));
+      localStorage.setItem('luma_magnetic_dock_v1', String(magneticDockEnabled));
       localStorage.setItem('luma_gesture_config_v1', JSON.stringify(gestureConfig));
       localStorage.setItem('luma_rmb_config_v1', JSON.stringify(rmbConfig));
       localStorage.setItem('luma_accessibility_config_v1', JSON.stringify(accessibilityConfig));
     } catch { /* ignore */ }
-  }, [showLumaSysFolder, lumaFolderSlot, showSmartDockShelf, smartDockSide, gestureConfig, rmbConfig, accessibilityConfig]);
+  }, [showLumaSysFolder, lumaFolderSlot, showSmartDockShelf, smartDockSide, autoHideNoiseEnabled, magneticDockEnabled, gestureConfig, rmbConfig, accessibilityConfig]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -958,6 +1095,10 @@ export default function App() {
     stacks: [],
     checked_at: '',
   });
+  const effectiveDockTasks = useMemo<DockProgressTask[]>(
+    () => (renderDockTask ? [renderDockTask, ...smartDock.tasks] : smartDock.tasks),
+    [renderDockTask, smartDock.tasks]
+  );
   const [winKeyToLuma, setWinKeyToLuma] = useState<boolean>(true);
 
   useEffect(() => {
@@ -1117,8 +1258,8 @@ export default function App() {
       source: 'system',
       appName: 'Luma OS 1.6.2',
       sender: 'Luma OS 1.6.2 Nitrogen',
-      title: 'Добро пожаловать в Luma OS 1.6.3 (Nitrogen · N-7)!',
-      body: 'LumaCore 1.5.3 · LumaShield 2.5 (275 правил) · Стиль Luma Nova · Luma AI 5.0 · Gamepad Studio · Очистка хвостов · Luma Peek (Space) · Умный Dock и Стеки.',
+      title: 'Добро пожаловать в Luma OS 1.6.4 (Nitrogen · N-7)!',
+      body: 'LumaCore 1.5.4 · LumaShield 2.5 (275 правил) · Стиль Luma Nova · Luma AI 5.0 · Gamepad Studio · Очистка хвостов · Luma Peek (Space) · Умный Dock и Стеки.',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       dateLabel: 'Сегодня',
       timestamp: Date.now(),
@@ -1366,7 +1507,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.6.3 (Nitrogen · N-7) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.6.4 (Nitrogen · N-7) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -1399,7 +1540,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.6.3 (Nitrogen · N-7)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.6.4 (Nitrogen · N-7)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -1414,8 +1555,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 1.5.3',
-      message: 'Инициализация оболочки Luma OS 1.6.3 (Nitrogen · N-7), LumaCore 1.5.3, LumaShield 2.5 и AI 5.0',
+      source: 'LumaCore 1.5.4',
+      message: 'Инициализация оболочки Luma OS 1.6.4 (Nitrogen · N-7), LumaCore 1.5.4, LumaShield 2.5 и AI 5.0',
       level: 'success',
     },
   ]);
@@ -1512,6 +1653,7 @@ export default function App() {
   // --- DeX Window Controls & Multitasking Manager ---
   const openWindow = (id: DexWinId, tab?: SettingsTabId) => {
     if (id === 'settings' && tab) setSettingsTab(tab);
+    triggerDockBounce(id);
     zCounterRef.current += 1;
     const nextZ = zCounterRef.current;
     touchWindowMru(`luma_${id}`);
@@ -1707,7 +1849,7 @@ export default function App() {
           total_bytes: 23.4 * 1024 * 1024,
           speed_mbps: 14.8,
           target_version: '1.6.1 (Nitrogen · N-7)',
-          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.6.2...',
+          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.6.4...',
         },
       },
       {
@@ -1716,11 +1858,11 @@ export default function App() {
           running: true,
           stage: 'downloading',
           percent: 29,
-          downloaded_bytes: 6.8 * 1024 * 1024,
-          total_bytes: 23.4 * 1024 * 1024,
-          speed_mbps: 24.2,
-          target_version: '1.6.1 (Nitrogen · N-7)',
-          message: 'Загрузка образа LumaOS_1.6.2.exe (LumaCore 1.5.3 + LumaShield 2.5)...',
+          downloaded_bytes: 9.2 * 1024 * 1024,
+          total_bytes: 31.8 * 1024 * 1024,
+          speed_mbps: 26.4,
+          target_version: '1.6.4 (Nitrogen · N-7)',
+          message: 'Загрузка сборки LumaOS_1.6.4.exe (LumaCore 1.5.4 + Win32 HID Жесты + Gemini SSE)...',
         },
       },
       {
@@ -1728,12 +1870,12 @@ export default function App() {
         data: {
           running: true,
           stage: 'downloading',
-          percent: 64,
-          downloaded_bytes: 15.0 * 1024 * 1024,
-          total_bytes: 23.4 * 1024 * 1024,
-          speed_mbps: 31.6,
-          target_version: '1.6.1 (Nitrogen · N-7)',
-          message: 'Потоковая загрузка ресурсов и коллекции обоев Nitrogen QHD...',
+          percent: 66,
+          downloaded_bytes: 21.0 * 1024 * 1024,
+          total_bytes: 31.8 * 1024 * 1024,
+          speed_mbps: 34.8,
+          target_version: '1.6.4 (Nitrogen · N-7)',
+          message: 'Потоковая загрузка пружинной физики, магнитного Dock и 20 обоев QHD...',
         },
       },
       {
@@ -1741,13 +1883,13 @@ export default function App() {
         data: {
           running: true,
           stage: 'verifying',
-          percent: 89,
-          downloaded_bytes: 23.4 * 1024 * 1024,
-          total_bytes: 23.4 * 1024 * 1024,
-          speed_mbps: 0,
-          target_version: '1.6.1 (Nitrogen · N-7)',
-          sha256: 'b5f9e20a7c14d389a6e1f2c904b77d21',
-          message: 'Криптографическая проверка SHA-256 и заголовка PE32+ (LumaShield 2.5)...',
+          percent: 88,
+          downloaded_bytes: 31.8 * 1024 * 1024,
+          total_bytes: 31.8 * 1024 * 1024,
+          speed_mbps: 18.2,
+          target_version: '1.6.4 (Nitrogen · N-7)',
+          sha256: 'c7e4a91f38b06d24e91a5f802b4c1d7e',
+          message: 'Криптографическая проверка SHA-256 и подписи PE32+ (LumaShield 2.5)...',
         },
       },
       {
@@ -1756,12 +1898,12 @@ export default function App() {
           running: true,
           stage: 'restarting',
           percent: 100,
-          downloaded_bytes: 23.4 * 1024 * 1024,
-          total_bytes: 23.4 * 1024 * 1024,
+          downloaded_bytes: 31.8 * 1024 * 1024,
+          total_bytes: 31.8 * 1024 * 1024,
           speed_mbps: 0,
-          target_version: '1.6.1 (Nitrogen · N-7)',
-          sha256: 'b5f9e20a7c14d389a6e1f2c904b77d21',
-          message: 'Сборка Luma OS 1.6.3 (Nitrogen · N-7) проверена и готова к мгновенному запуску!',
+          target_version: '1.6.4 (Nitrogen · N-7)',
+          sha256: 'c7e4a91f38b06d24e91a5f802b4c1d7e',
+          message: 'Сборка Luma OS 1.6.4 (Nitrogen · N-7) проверена и готова к мгновенному запуску!',
         },
       },
     ];
@@ -3604,7 +3746,7 @@ export default function App() {
           void pollHostWindows();
         }
       } catch {
-        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.5.3', 'warning');
+        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.5.4', 'warning');
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3819,71 +3961,234 @@ export default function App() {
   executeGestureRef.current = executeGestureAction;
 
   useEffect(() => {
-    let touchFingerCount = 0;
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let touchLastX = 0;
-    let touchLastY = 0;
-    let touchStartAt = 0;
+    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 1.5.4 WM_INPUT + SSE fallback)
+    let lastNativeFireAt = 0;
+    let lastNativeKey = '';
+    const dispatchMappedGesture = (gestureName: string, sourceTag: string) => {
+      const cfg = gestureConfigRef.current;
+      if (!cfg.enabled) return;
+      const now = Date.now();
+      if (gestureName === lastNativeKey && now - lastNativeFireAt < 260) return;
+      lastNativeFireAt = now;
+      lastNativeKey = gestureName;
+
+      const labelMap: Record<string, { action: LumaGestureAction; label: string }> = {
+        three_fingers_down: { action: cfg.threeFingersDown, label: `${sourceTag}: 3 пальца вниз` },
+        three_fingers_up: { action: cfg.threeFingersUp, label: `${sourceTag}: 3 пальца вверх` },
+        three_fingers_left: { action: cfg.threeFingersLeft, label: `${sourceTag}: 3 пальца влево` },
+        three_fingers_right: { action: cfg.threeFingersRight, label: `${sourceTag}: 3 пальца вправо` },
+        four_fingers_down: { action: cfg.fourFingersDown, label: `${sourceTag}: 4 пальца вниз` },
+        three_fingers_tap: { action: cfg.circleOrThreeTap, label: `${sourceTag}: 3 пальца тап` },
+      };
+      const mapped = labelMap[gestureName];
+      if (!mapped || mapped.action === 'none') return;
+      triggerIslandPulse('Жест', mapped.label, 'info');
+      executeGestureRef.current(mapped.action, mapped.label);
+    };
+
+    const onNativeGestureEvent = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ gesture?: string; source?: string }>).detail;
+      if (detail?.gesture) {
+        dispatchMappedGesture(detail.gesture, 'Тачпад HID');
+      }
+    };
+    window.addEventListener('luma-native-gesture', onNativeGestureEvent);
+
+    let gestureSse: EventSource | null = null;
+    try {
+      gestureSse = new EventSource('/api/kernel/gestures/events');
+      gestureSse.onmessage = (ev) => {
+        try {
+          const payload = JSON.parse(ev.data);
+          if (payload?.gesture) {
+            dispatchMappedGesture(String(payload.gesture), 'Тачпад HID');
+          }
+        } catch {
+          /* ignore malformed SSE frame */
+        }
+      };
+    } catch {
+      gestureSse = null;
+    }
+
+    // 2. Per-Finger Multi-Touch Engine (TouchEvent + PointerEvent pointerType==='touch')
+    // Eliminates centroid jump when fingers lift 10-40ms apart!
+    interface TrackedFinger {
+      startX: number;
+      startY: number;
+      lastX: number;
+      lastY: number;
+    }
+    const activeFingers = new Map<number, TrackedFinger>();
+    const finishedFingers: TrackedFinger[] = [];
+    let peakFingers = 0;
+    let gestureStartAt = 0;
+    let multiTouchHandledByTouchEvents = false;
+
+    const finalizeFingerGesture = (sourceTag: string) => {
+      if (peakFingers < 3) {
+        peakFingers = 0;
+        finishedFingers.length = 0;
+        return;
+      }
+      const samples = finishedFingers.length > 0 ? finishedFingers.slice() : Array.from(activeFingers.values());
+      const fingers = peakFingers;
+      const dt = Date.now() - gestureStartAt;
+      peakFingers = 0;
+      finishedFingers.length = 0;
+      if (samples.length === 0) return;
+
+      let sumDx = 0;
+      let sumDy = 0;
+      for (const f of samples) {
+        sumDx += f.lastX - f.startX;
+        sumDy += f.lastY - f.startY;
+      }
+      const dx = sumDx / samples.length;
+      const dy = sumDy / samples.length;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist < 26 && dt < 380 && fingers === 3) {
+        dispatchMappedGesture('three_fingers_tap', sourceTag);
+        return;
+      }
+      if (dist < 42) return;
+      if (fingers >= 4 && dy > 48 && Math.abs(dy) > Math.abs(dx)) {
+        dispatchMappedGesture('four_fingers_down', sourceTag);
+      } else if (Math.abs(dy) >= Math.abs(dx)) {
+        dispatchMappedGesture(dy > 0 ? 'three_fingers_down' : 'three_fingers_up', sourceTag);
+      } else {
+        dispatchMappedGesture(dx < 0 ? 'three_fingers_left' : 'three_fingers_right', sourceTag);
+      }
+    };
 
     const onTouchStart = (e: TouchEvent) => {
       if (!gestureConfigRef.current.enabled) return;
-      if (e.touches.length >= 3) {
-        touchFingerCount = e.touches.length;
-        let sx = 0;
-        let sy = 0;
-        for (let i = 0; i < e.touches.length; i++) {
-          sx += e.touches[i].clientX;
-          sy += e.touches[i].clientY;
+      multiTouchHandledByTouchEvents = true;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        activeFingers.set(t.identifier, {
+          startX: t.clientX,
+          startY: t.clientY,
+          lastX: t.clientX,
+          lastY: t.clientY,
+        });
+      }
+      if (activeFingers.size > peakFingers) {
+        if (peakFingers < 3 && activeFingers.size >= 3) {
+          gestureStartAt = Date.now();
+          // Re-anchor start coordinates when 3rd finger lands to avoid pre-gesture drift
+          activeFingers.forEach((f) => {
+            f.startX = f.lastX;
+            f.startY = f.lastY;
+          });
+          finishedFingers.length = 0;
         }
-        touchStartX = sx / e.touches.length;
-        touchStartY = sy / e.touches.length;
-        touchLastX = touchStartX;
-        touchLastY = touchStartY;
-        touchStartAt = Date.now();
+        peakFingers = activeFingers.size;
       }
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (touchFingerCount < 3 || e.touches.length < 2) return;
-      let sx = 0;
-      let sy = 0;
-      for (let i = 0; i < e.touches.length; i++) {
-        sx += e.touches[i].clientX;
-        sy += e.touches[i].clientY;
-      }
-      touchLastX = sx / e.touches.length;
-      touchLastY = sy / e.touches.length;
-    };
-
-    const onTouchEnd = () => {
-      if (touchFingerCount < 3) return;
-      const cfg = gestureConfigRef.current;
-      const fingers = touchFingerCount;
-      const dx = touchLastX - touchStartX;
-      const dy = touchLastY - touchStartY;
-      const dt = Date.now() - touchStartAt;
-      touchFingerCount = 0;
-      if (!cfg.enabled) return;
-      const dist = Math.hypot(dx, dy);
-      if (dist < 28 && dt < 360 && fingers === 3) {
-        executeGestureRef.current(cfg.circleOrThreeTap, 'Жест: 3 пальца тап');
-        return;
-      }
-      if (dist < 48) return;
-      if (fingers >= 4 && dy > 55 && Math.abs(dy) > Math.abs(dx)) {
-        executeGestureRef.current(cfg.fourFingersDown, 'Жест: 4 пальца вниз');
-      } else if (Math.abs(dy) >= Math.abs(dx)) {
-        if (dy > 0) executeGestureRef.current(cfg.threeFingersDown, 'Жест: 3 пальца вниз');
-        else executeGestureRef.current(cfg.threeFingersUp, 'Жест: 3 пальца вверх');
-      } else if (dx < 0) {
-        executeGestureRef.current(cfg.threeFingersLeft, 'Жест: 3 пальца влево');
-      } else {
-        executeGestureRef.current(cfg.threeFingersRight, 'Жест: 3 пальца вправо');
+      if (activeFingers.size === 0) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        const rec = activeFingers.get(t.identifier);
+        if (rec) {
+          rec.lastX = t.clientX;
+          rec.lastY = t.clientY;
+        }
       }
     };
 
-    // Mouse Gestures for Desktop PCs without touchpads: Hold Alt + Right Mouse Button and swipe or draw a circle!
+    const onTouchEndOrCancel = (e: TouchEvent) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        const rec = activeFingers.get(t.identifier);
+        if (rec) {
+          rec.lastX = t.clientX;
+          rec.lastY = t.clientY;
+          if (peakFingers >= 3) finishedFingers.push({ ...rec });
+          activeFingers.delete(t.identifier);
+        }
+      }
+      if (activeFingers.size === 0 && peakFingers >= 3) {
+        finalizeFingerGesture('Сенсор');
+      } else if (activeFingers.size === 0) {
+        peakFingers = 0;
+        finishedFingers.length = 0;
+      }
+    };
+
+    // PointerEvent touch fallback (WebView2 / Windows Precision Touch screens that dispatch PointerEvents)
+    const ptrFingers = new Map<number, TrackedFinger>();
+    const ptrFinished: TrackedFinger[] = [];
+    let ptrPeak = 0;
+    let ptrStartAt = 0;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch' || multiTouchHandledByTouchEvents) return;
+      if (!gestureConfigRef.current.enabled) return;
+      ptrFingers.set(e.pointerId, { startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY });
+      if (ptrFingers.size > ptrPeak) {
+        if (ptrPeak < 3 && ptrFingers.size >= 3) {
+          ptrStartAt = Date.now();
+          ptrFingers.forEach((f) => {
+            f.startX = f.lastX;
+            f.startY = f.lastY;
+          });
+          ptrFinished.length = 0;
+        }
+        ptrPeak = ptrFingers.size;
+      }
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch' || multiTouchHandledByTouchEvents) return;
+      const rec = ptrFingers.get(e.pointerId);
+      if (rec) {
+        rec.lastX = e.clientX;
+        rec.lastY = e.clientY;
+      }
+    };
+
+    const onPointerUpOrCancel = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch' || multiTouchHandledByTouchEvents) return;
+      const rec = ptrFingers.get(e.pointerId);
+      if (rec) {
+        rec.lastX = e.clientX;
+        rec.lastY = e.clientY;
+        if (ptrPeak >= 3) ptrFinished.push({ ...rec });
+        ptrFingers.delete(e.pointerId);
+      }
+      if (ptrFingers.size === 0 && ptrPeak >= 3) {
+        const samples = ptrFinished.slice();
+        const fingers = ptrPeak;
+        const dt = Date.now() - ptrStartAt;
+        ptrPeak = 0;
+        ptrFinished.length = 0;
+        if (samples.length > 0) {
+          const dx = samples.reduce((s, f) => s + (f.lastX - f.startX), 0) / samples.length;
+          const dy = samples.reduce((s, f) => s + (f.lastY - f.startY), 0) / samples.length;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 26 && dt < 380 && fingers === 3) {
+            dispatchMappedGesture('three_fingers_tap', 'Сенсор');
+          } else if (dist >= 42) {
+            if (fingers >= 4 && dy > 48 && Math.abs(dy) > Math.abs(dx)) {
+              dispatchMappedGesture('four_fingers_down', 'Сенсор');
+            } else if (Math.abs(dy) >= Math.abs(dx)) {
+              dispatchMappedGesture(dy > 0 ? 'three_fingers_down' : 'three_fingers_up', 'Сенсор');
+            } else {
+              dispatchMappedGesture(dx < 0 ? 'three_fingers_left' : 'three_fingers_right', 'Сенсор');
+            }
+          }
+        }
+      } else if (ptrFingers.size === 0) {
+        ptrPeak = 0;
+        ptrFinished.length = 0;
+      }
+    };
+
+    // 3. Mouse Gestures for Desktop PCs without touchpads: Hold Alt + Right Mouse Button and swipe or draw a circle!
     let mouseActive = false;
     let mousePoints: { x: number; y: number }[] = [];
     let suppressNextContextMenu = false;
@@ -3960,27 +4265,104 @@ export default function App() {
 
     window.addEventListener('touchstart', onTouchStart, { passive: true });
     window.addEventListener('touchmove', onTouchMove, { passive: true });
-    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('touchend', onTouchEndOrCancel, { passive: true });
+    window.addEventListener('touchcancel', onTouchEndOrCancel, { passive: true });
+    window.addEventListener('pointerdown', onPointerDown, { passive: true });
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('pointerup', onPointerUpOrCancel, { passive: true });
+    window.addEventListener('pointercancel', onPointerUpOrCancel, { passive: true });
     window.addEventListener('mousedown', onMouseDown, true);
     window.addEventListener('mousemove', onMouseMove, true);
     window.addEventListener('mouseup', onMouseUp, true);
     window.addEventListener('contextmenu', onContextMenuGuard, true);
     return () => {
+      window.removeEventListener('luma-native-gesture', onNativeGestureEvent);
+      if (gestureSse) {
+        try { gestureSse.close(); } catch { /* ignore */ }
+      }
       window.removeEventListener('touchstart', onTouchStart);
       window.removeEventListener('touchmove', onTouchMove);
-      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchend', onTouchEndOrCancel);
+      window.removeEventListener('touchcancel', onTouchEndOrCancel);
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUpOrCancel);
+      window.removeEventListener('pointercancel', onPointerUpOrCancel);
       window.removeEventListener('mousedown', onMouseDown, true);
       window.removeEventListener('mousemove', onMouseMove, true);
       window.removeEventListener('mouseup', onMouseUp, true);
       window.removeEventListener('contextmenu', onContextMenuGuard, true);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // --- Luma OS 1.6.4: Auto-Hide Visual Noise (dissolves bars/panels after 2.6s cursor idle in video/fullscreen) ---
+  useEffect(() => {
+    const anyMenuOpen =
+      startMenuOpen ||
+      controlCenterOpen ||
+      carbonHubOpen ||
+      notifShadeOpen ||
+      sysFolderOpen ||
+      novaPanelOpen ||
+      spotlightOpen ||
+      multitaskingOpen;
+    const shouldImmerse = autoHideNoiseEnabled && (isFullscreen || mediaVideoPlaying) && !anyMenuOpen;
+    if (!shouldImmerse) {
+      setVisualNoiseHidden(false);
+      return;
+    }
+
+    let idleTimer: number | null = null;
+    const armIdleTimer = (clientX?: number, clientY?: number) => {
+      if (idleTimer !== null) window.clearTimeout(idleTimer);
+      setVisualNoiseHidden(false);
+      // Do not hide while cursor rests directly on top/bottom/side reveal zone
+      const nearEdge =
+        clientY !== undefined &&
+        clientX !== undefined &&
+        (clientY < 54 ||
+          clientY > window.innerHeight - 62 ||
+          clientX < 42 ||
+          clientX > window.innerWidth - 42);
+      if (nearEdge) return;
+      idleTimer = window.setTimeout(() => {
+        setVisualNoiseHidden(true);
+      }, 2600);
+    };
+
+    const onPointerActivity = (e: PointerEvent) => armIdleTimer(e.clientX, e.clientY);
+    const onKeyActivity = () => armIdleTimer();
+    armIdleTimer();
+
+    window.addEventListener('pointermove', onPointerActivity, { passive: true });
+    window.addEventListener('pointerdown', onPointerActivity, { passive: true });
+    window.addEventListener('keydown', onKeyActivity, { passive: true });
+    return () => {
+      if (idleTimer !== null) window.clearTimeout(idleTimer);
+      window.removeEventListener('pointermove', onPointerActivity);
+      window.removeEventListener('pointerdown', onPointerActivity);
+      window.removeEventListener('keydown', onKeyActivity);
+    };
+  }, [
+    autoHideNoiseEnabled,
+    isFullscreen,
+    mediaVideoPlaying,
+    startMenuOpen,
+    controlCenterOpen,
+    carbonHubOpen,
+    notifShadeOpen,
+    sysFolderOpen,
+    novaPanelOpen,
+    spotlightOpen,
+    multitaskingOpen,
+  ]);
 
   // --- Native Custom Alt+Tab (True MRU Order + Live Window Previews + Zero Double-Switch) + Win+D Return to Luma OS Home (1.6 Nitrogen) ---
   const altTabEntries: AltTabEntry[] = useMemo(() => {
     const lumaTitles: Partial<Record<DexWinId, string>> = {
       apps: 'Приложения', explorer: 'Проводник', taskmgr: 'Диспетчер задач', terminal: 'Терминал',
-      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.5.3', settings: 'Настройки', plugins: 'Расширения',
+      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.5.4', settings: 'Настройки', plugins: 'Расширения',
       island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma AI 5.0 Nexus', utilities: 'Службы ОС',
       calculator: 'Калькулятор', calendar: 'Календарь', trash: 'Корзина', scenarios: 'Сценарии',
       code_studio: 'Code Studio Pro', cut_studio: 'Cut Studio Pro', office: 'Luma Office Pro',
@@ -4638,7 +5020,7 @@ export default function App() {
         );
       }
     } catch {
-      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.6.3.exe)', 'info');
+      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.6.4.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -4660,7 +5042,7 @@ export default function App() {
     }
   };
 
-  // --- Luma OS 1.6.3: 100% Native Wi-Fi & Bluetooth Connectivity Handlers (ZERO Windows Settings!) ---
+  // --- Luma OS 1.6.4: 100% Native Wi-Fi & Bluetooth Connectivity Handlers (ZERO Windows Settings!) ---
   const fetchWifiStatus = useCallback(async (rescan = false) => {
     setWifiLoading(true);
     try {
@@ -4736,7 +5118,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.3' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.4' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4828,7 +5210,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.3' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.4' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5168,6 +5550,7 @@ export default function App() {
   };
 
   const handleLaunchApp = (app: AppItem) => {
+    triggerDockBounce(app.id);
     setApps((prev) =>
       prev.map((a) => (a.id === app.id ? { ...a, isRunning: !a.isRunning } : a))
     );
@@ -5845,7 +6228,9 @@ export default function App() {
       {dynamicIslandEnabled && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`fixed ${islandAnchorCls} left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5`}
+          className={`fixed ${islandAnchorCls} left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 luma-noise-surface ${
+            visualNoiseHidden ? 'luma-noise-hidden-top' : ''
+          }`}
         >
           <div
             key={islandPulse ? `pulse_${islandPulse.id}` : 'island_idle'}
@@ -6780,7 +7165,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 1.5.3`,
+                        sub: `${ramLoad}% занято · LumaCore 1.5.4`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -6806,8 +7191,8 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.6.3 (Nitrogen · N-7)'],
-                      ['Версия Ядра', 'LumaCore 1.5.3 (1.6.3)'],
+                      ['Версия ПО', '1.6.4 (Nitrogen · N-7)'],
+                      ['Версия Ядра', 'LumaCore 1.5.4 (1.6.4)'],
                       ['Безопасность', `LumaShield 2.5 (${kernelDiag?.security_rules ?? 275}+ правил)`],
                       ['Developer SDK', `v3.0 (${kernelDiag?.sdk_themes ?? Object.keys(customThemes).length} тем / ${kernelDiag?.sdk_plugins ?? plugins.length} плаг.)`],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
@@ -7233,7 +7618,7 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.6.3 (Nitrogen · N-7 · LumaCore 1.5.3 · LumaShield 2.5)"
+          subtitle="Luma OS 1.6.4 (Nitrogen · N-7 · LumaCore 1.5.4 · LumaShield 2.5)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -8016,7 +8401,7 @@ export default function App() {
                     </button>
                   </div>
 
-                  {/* Flagship 1.6.3 Master Toggle: Замена горячих клавиш и жестов тачпада Windows */}
+                  {/* Flagship 1.6.4 Master Toggle: Замена горячих клавиш и жестов тачпада Windows */}
                   <div
                     onClick={() =>
                       !shellModeSaving &&
@@ -8037,7 +8422,7 @@ export default function App() {
                           <Keyboard className="w-4 h-4 text-[var(--luma-accent)] shrink-0" />
                           <span>Замена горячих клавиш</span>
                           <span className="px-1.5 py-0.5 rounded-md text-[9px] font-mono bg-[var(--luma-accent)] text-white">
-                            1.6.3
+                            1.6.4
                           </span>
                         </div>
                         <div className={`text-[11px] mt-1 leading-relaxed ${mutedCls}`}>
@@ -8126,7 +8511,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.6.3.exe).
+                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.6.4.exe).
                   </div>
                 </div>
               )}
@@ -8413,6 +8798,47 @@ export default function App() {
                           </button>
                         ))}
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Luma OS 1.6.4 Nitrogen: Auto-Hide Visual Noise & Interactive Magnetic Dock */}
+                  <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="font-bold flex items-center gap-2">
+                          <span>Авто-скрытие визуального шума и Магнитный Dock</span>
+                          <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 text-[9px] font-mono">1.6.4</span>
+                        </div>
+                        <div className={`text-[11px] ${mutedCls}`}>
+                          Плавное растворение панелей в полноэкранном режиме / видео и магнитное увеличение иконок Dock с отскоком
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <label className={`flex items-center justify-between gap-2.5 p-2.5 rounded-xl border cursor-pointer ${btnCls}`}>
+                        <div>
+                          <div className="text-xs font-bold">Авто-скрытие визуального шума</div>
+                          <div className={`text-[10px] ${mutedCls}`}>Уводит верхнюю панель, Island и Dock через 2.6с в видео/F11</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={autoHideNoiseEnabled}
+                          onChange={(e) => setAutoHideNoiseEnabled(e.target.checked)}
+                          className="accent-[var(--luma-accent)] w-4 h-4 shrink-0"
+                        />
+                      </label>
+                      <label className={`flex items-center justify-between gap-2.5 p-2.5 rounded-xl border cursor-pointer ${btnCls}`}>
+                        <div>
+                          <div className="text-xs font-bold">Магнитная физика Dock</div>
+                          <div className={`text-[10px] ${mutedCls}`}>Плавное притяжение к курсору, пружинный отскок и ореол рендера</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={magneticDockEnabled}
+                          onChange={(e) => setMagneticDockEnabled(e.target.checked)}
+                          className="accent-[var(--luma-accent)] w-4 h-4 shrink-0"
+                        />
+                      </label>
                     </div>
                   </div>
 
@@ -8788,14 +9214,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.6.3 (Nitrogen)',
-                        message: 'Система оповещений Luma OS 1.6.3 (Nitrogen) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.6.4 (Nitrogen)',
+                        message: 'Система оповещений Luma OS 1.6.4 (Nitrogen) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.6.3 (Nitrogen)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.6.4 (Nitrogen)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -8807,7 +9233,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.6.3 (Nitrogen · N-7) · LumaCore 1.5.3</div>
+                      <div className="text-sm font-bold">Luma OS 1.6.4 (Nitrogen · N-7) · LumaCore 1.5.4</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -10365,14 +10791,14 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.6.3 (NITROGEN · N-7)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.6.4 (NITROGEN · N-7)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5.3 · LumaShield 2.5 (275 правил) · Luma Ai Nitrogen · Touch &amp; Stylus · Стиль Luma Nova · Gamepad Studio · Luma Peek
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5.4 · LumaShield 2.5 (275 правил) · Luma Ai Nitrogen · Touch &amp; Stylus · Стиль Luma Nova · Gamepad Studio · Luma Peek
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.6.3.exe"
-                      download="LumaOS_1.6.3.exe"
+                      href="/LumaOS_1.6.4.exe"
+                      download="LumaOS_1.6.4.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
@@ -11503,10 +11929,14 @@ export default function App() {
           onMouseEnter={openTaskbarHover}
           onMouseLeave={scheduleTaskbarHoverClose}
           style={{ width: `${taskbarSizePx}px` }}
-          className={`fixed inset-y-0 z-[8900] flex flex-col items-center justify-between py-2.5 gap-2 transition-transform duration-200 ease-out ${
+          className={`fixed inset-y-0 z-[8900] flex flex-col items-center justify-between py-2.5 gap-2 luma-noise-surface ${
             taskbarPosition === 'right' ? 'right-0 border-l' : 'left-0 border-r'
           } ${
-            isTaskbarShown
+            visualNoiseHidden
+              ? taskbarPosition === 'right'
+                ? 'luma-noise-hidden-right'
+                : 'luma-noise-hidden-left'
+              : isTaskbarShown
               ? 'translate-x-0'
               : taskbarPosition === 'right'
               ? 'translate-x-full pointer-events-none'
@@ -11944,7 +12374,7 @@ export default function App() {
           onMouseEnter={openTaskbarHover}
           onMouseLeave={scheduleTaskbarHoverClose}
           style={{ height: `${taskbarSizePx}px` }}
-          className={`fixed z-[8900] flex items-center justify-between px-2.5 gap-2 transition-[transform,background,border-color] duration-200 ease-out ${
+          className={`fixed z-[8900] flex items-center justify-between px-2.5 gap-2 luma-noise-surface ${
             isPixel
               ? taskbarPosition === 'top'
                 ? 'top-2 inset-x-3 rounded-full border shadow-xl'
@@ -11953,7 +12383,11 @@ export default function App() {
               ? 'top-0 inset-x-0 border-b'
               : 'bottom-0 inset-x-0 border-t'
           } ${
-            isTaskbarShown
+            visualNoiseHidden
+              ? taskbarPosition === 'top'
+                ? 'luma-noise-hidden-top'
+                : 'luma-noise-hidden-bottom'
+              : isTaskbarShown
               ? 'translate-y-0'
               : taskbarPosition === 'top'
               ? '-translate-y-[calc(100%+16px)] pointer-events-none'
@@ -12049,7 +12483,7 @@ export default function App() {
                     setTaskbarHostWinPid(null);
                     setTaskbarCtxMenu(null);
                   }}
-                  title={`${t('start', 'Пуск')} · Приложения и Обзор окон (Luma OS 1.6.3 Nitrogen)`}
+                  title={`${t('start', 'Пуск')} · Приложения и Обзор окон (Luma OS 1.6.4 Nitrogen)`}
                   className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
                     startMenuOpen
                       ? 'bg-[var(--luma-accent)] text-white'
@@ -12083,12 +12517,12 @@ export default function App() {
             </div>
           )}
 
-          {/* Optional Left-Aligned Smart Dock Shelf + Live Download Indicator */}
+          {/* Optional Left-Aligned Smart Dock Shelf + Live Download & Render Indicator */}
           {showSmartDockShelf && smartDockSide === 'left' && (
             <LumaSmartDockStacks
               kernelBase=""
               stacks={smartDock.stacks}
-              tasks={smartDock.tasks}
+              tasks={effectiveDockTasks}
               isDarkTheme={isDark}
               align="left"
               onStacksChanged={(next: DockFolderStackConfig[]) =>
@@ -12107,7 +12541,7 @@ export default function App() {
             />
           )}
 
-          {/* Center: Smart-Compressing OS Tabs Strip + Direct Launch Pinned Apps (Handles 100+ open apps cleanly!) */}
+          {/* Center: Interactive Magnetic Dock & Smart-Compressing OS Tabs Strip */}
           <div className="flex-1 min-w-0 flex items-center gap-1">
             {totalBarTabsCount > 9 && (
               <button
@@ -12121,12 +12555,14 @@ export default function App() {
 
             <div
               ref={taskbarStripRef}
+              onMouseMove={handleDockMagneticMove}
+              onMouseLeave={handleDockMagneticLeave}
               onWheel={(e) => {
                 if (Math.abs(e.deltaY) > 0) {
                   e.currentTarget.scrollLeft += e.deltaY;
                 }
               }}
-              className={`flex-1 min-w-0 flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5 ${
+              className={`flex-1 min-w-0 flex items-center gap-1 overflow-x-auto no-scrollbar py-1 ${
                 taskbarCenterIcons || dualTaskbarMode ? 'justify-center' : ''
               }`}
             >
@@ -12150,6 +12586,7 @@ export default function App() {
               {(showLumaSysFolder || taskbarCollapseSysFolder) && lumaFolderSlot === 'before_apps' && (
                 <button
                   draggable
+                  data-dock-item="1"
                   onDragStart={(e) => {
                     e.dataTransfer.setData('application/x-luma-folder', '1');
                     e.dataTransfer.effectAllowed = 'move';
@@ -12166,9 +12603,9 @@ export default function App() {
                     setTaskbarHostWinPid(null);
                   }}
                   title={`Папка «Luma» (${taskbarApps.length} приложений · открыто: ${openSystemWindowsList.length} · перетащите мышью)`}
-                  className={`relative h-8 sm:h-9 px-2.5 ${
+                  className={`luma-dock-magnetic-item relative h-8 sm:h-9 px-2.5 ${
                     isPixel ? 'rounded-full' : 'rounded-xl'
-                  } border flex items-center gap-1.5 text-xs font-semibold transition cursor-grab active:cursor-grabbing shrink-0 ${
+                  } border flex items-center gap-1.5 text-xs font-semibold cursor-grab active:cursor-grabbing shrink-0 ${
                     sysFolderOpen
                       ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white shadow'
                       : btnCls
@@ -12193,7 +12630,7 @@ export default function App() {
                 </button>
               )}
 
-              {/* Luma OS 1.6.2 Smart Dock: Direct 1-Click Pinned Apps Launcher + Live Messenger Badges + Download Progress Bars */}
+              {/* Luma OS 1.6.4 Interactive Magnetic Smart Dock: Direct 1-Click Pinned Apps Launcher + Bounce + Live Badges & Progress Halo */}
               {taskbarDirectLaunch && taskbarDirectAppIds.length > 0 && (
                 <>
                   {taskbarDirectAppIds
@@ -12201,13 +12638,14 @@ export default function App() {
                     .filter((a): a is AppItem => Boolean(a))
                     .map((app) => {
                       const badgeCount = matchMessengerBadgeForApp(smartDock.badges, app.name);
-                      const dlTask = matchDockTaskForApp(smartDock.tasks, app.name);
+                      const dlTask = matchDockTaskForApp(effectiveDockTasks, app.name);
                       return (
                         <button
                           key={`direct_${app.id}`}
+                          data-dock-item="1"
                           onClick={() => handleLaunchApp(app)}
                           title={`Открыть сразу: ${app.name}${dlTask ? ` · ${Math.round(dlTask.percent)}% (${dlTask.title})` : ''}${badgeCount > 0 ? ` · ${badgeCount} новых` : ''}`}
-                          className={`relative h-8 sm:h-9 px-2 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center gap-1.5 text-xs transition cursor-pointer shrink-0 ${
+                          className={`luma-dock-magnetic-item ${bouncingDockIds[app.id] ? 'luma-dock-bounce' : ''} relative h-8 sm:h-9 px-2 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center gap-1.5 text-xs cursor-pointer shrink-0 ${
                             app.isRunning
                               ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold'
                               : btnCls
@@ -12296,10 +12734,11 @@ export default function App() {
                   const isFocused = st.open && !st.minimized && st.z === topVisibleZ;
                   const isDragged = draggedTaskbarId === item.id;
                   const showLbl = taskbarShowLabels && barCompression !== 'icons';
-                  const sysTask = matchDockTaskForApp(smartDock.tasks, item.id);
+                  const sysTask = matchDockTaskForApp(effectiveDockTasks, item.id);
                   return (
                     <button
                       key={item.id}
+                      data-dock-item="1"
                       draggable
                       onDragStart={() => setDraggedTaskbarId(item.id)}
                       onDragOver={(e) => e.preventDefault()}
@@ -12323,7 +12762,7 @@ export default function App() {
                           ? `${item.label}${st.alwaysOnTop ? ' (📌 Поверх всех окон)' : ''} (ПКМ — закрыть · перетащите для порядка)`
                           : `${item.label} (перетащите для изменения порядка)`
                       }
-                      className={`relative h-8 sm:h-9 ${
+                      className={`luma-dock-magnetic-item ${bouncingDockIds[item.id] ? 'luma-dock-bounce' : ''} relative h-8 sm:h-9 ${
                         showLbl
                           ? barCompression === 'compact'
                             ? 'px-2 max-w-[84px] min-w-[34px] shrink'
@@ -12331,7 +12770,7 @@ export default function App() {
                           : 'w-8 sm:w-9 justify-center shrink-0'
                       } ${
                         isPixel ? 'rounded-full' : 'rounded-xl'
-                      } flex items-center gap-1.5 text-xs transition cursor-pointer whitespace-nowrap overflow-hidden ${
+                      } flex items-center gap-1.5 text-xs cursor-pointer whitespace-nowrap overflow-hidden ${
                         isDragged ? 'opacity-50 ring-2 ring-[var(--luma-accent)]' : ''
                       } ${
                         st.alwaysOnTop ? 'ring-1 ring-amber-400/60' : ''
@@ -12370,10 +12809,11 @@ export default function App() {
                     const activePop = taskbarAppMenuId === app.id;
                     const showLbl = taskbarShowLabels && barCompression !== 'icons';
                     const badgeCount = matchMessengerBadgeForApp(smartDock.badges, app.name);
-                    const dlTask = matchDockTaskForApp(smartDock.tasks, app.name);
+                    const dlTask = matchDockTaskForApp(effectiveDockTasks, app.name);
                     return (
                       <button
                         key={app.id}
+                        data-dock-item="1"
                         onClick={() => {
                           setTaskbarAppMenuId((cur) => (cur === app.id ? null : app.id));
                           setTaskbarHostWinPid(null);
@@ -12389,13 +12829,13 @@ export default function App() {
                           handleStopApp(app.id);
                         }}
                         title={`${app.name} · ${formatLiveClock(app.elapsedSeconds)} (ЛКМ — управление, ПКМ — закрыть)`}
-                        className={`relative h-8 sm:h-9 ${
+                        className={`luma-dock-magnetic-item ${bouncingDockIds[app.id] ? 'luma-dock-bounce' : ''} relative h-8 sm:h-9 ${
                           showLbl
                             ? barCompression === 'compact'
                               ? 'px-2 max-w-[76px] min-w-[32px] shrink'
                               : 'px-2.5 max-w-[110px] min-w-[36px] shrink'
                             : 'w-8 sm:w-9 justify-center shrink-0'
-                        } ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center gap-1.5 text-xs transition cursor-pointer whitespace-nowrap border ${
+                        } ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center gap-1.5 text-xs cursor-pointer whitespace-nowrap border ${
                           activePop
                             ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] text-[var(--luma-accent)] font-semibold'
                             : isDark
@@ -12429,10 +12869,11 @@ export default function App() {
                     const showLbl = taskbarShowLabels && !compactMode;
                     const monoInitial = (friendlyName || hw.name || 'W').slice(0, 2).toUpperCase();
                     const badgeCount = matchMessengerBadgeForApp(smartDock.badges, `${friendlyName} ${hw.name}`);
-                    const dlTask = matchDockTaskForApp(smartDock.tasks, `${friendlyName} ${hw.name}`);
+                    const dlTask = matchDockTaskForApp(effectiveDockTasks, `${friendlyName} ${hw.name}`);
                     return (
                       <button
                         key={`host_${hw.pid}`}
+                        data-dock-item="1"
                         draggable
                         onDragStart={() => setDraggedHostWinKey(key)}
                         onDragOver={(e) => e.preventDefault()}
@@ -12459,7 +12900,7 @@ export default function App() {
                           handleKillHostProcess(hw.pid, false);
                         }}
                         title={`${friendlyName}${hw.topmost ? ' [📌 Поверх всех окон]' : ''}${hw.title && hw.title !== friendlyName ? ` — ${hw.title}` : ''} (${hw.name} · PID ${hw.pid} · ${hw.mem_mb.toFixed(0)} МБ)\nПеретащите мышкой для порядка · ЛКМ — управлять · ПКМ — закрыть`}
-                        className={`relative h-8 sm:h-9 ${
+                        className={`luma-dock-magnetic-item relative h-8 sm:h-9 ${
                           showLbl
                             ? hostWinLabelMode === 'window_title'
                               ? 'px-2.5 max-w-[168px] min-w-[44px] shrink'
@@ -12467,7 +12908,7 @@ export default function App() {
                               ? 'px-2 max-w-[96px] min-w-[40px] shrink'
                               : 'px-2.5 max-w-[132px] min-w-[44px] shrink'
                             : 'w-8 sm:w-9 justify-center shrink-0'
-                        } ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center gap-1.5 text-xs transition cursor-pointer whitespace-nowrap border ${
+                        } ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center gap-1.5 text-xs cursor-pointer whitespace-nowrap border ${
                           isDragged ? 'opacity-50 ring-2 ring-emerald-400' : ''
                         } ${
                           hw.topmost ? 'ring-1 ring-amber-400/70' : ''
@@ -12522,6 +12963,7 @@ export default function App() {
               {(showLumaSysFolder || taskbarCollapseSysFolder) && lumaFolderSlot === 'right' && (
                 <button
                   draggable
+                  data-dock-item="1"
                   onDragStart={(e) => {
                     e.dataTransfer.setData('application/x-luma-folder', '1');
                     e.dataTransfer.effectAllowed = 'move';
@@ -12538,9 +12980,9 @@ export default function App() {
                     setTaskbarHostWinPid(null);
                   }}
                   title={`Папка «Luma» (${taskbarApps.length} приложений · открыто: ${openSystemWindowsList.length} · перетащите мышью)`}
-                  className={`relative h-8 sm:h-9 px-2.5 ${
+                  className={`luma-dock-magnetic-item relative h-8 sm:h-9 px-2.5 ${
                     isPixel ? 'rounded-full' : 'rounded-xl'
-                  } border flex items-center gap-1.5 text-xs font-semibold transition cursor-grab active:cursor-grabbing shrink-0 ${
+                  } border flex items-center gap-1.5 text-xs font-semibold cursor-grab active:cursor-grabbing shrink-0 ${
                     sysFolderOpen
                       ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white shadow'
                       : btnCls
@@ -12566,12 +13008,12 @@ export default function App() {
               )}
             </div>
 
-            {/* Smart Dock Folder Stacks (Fan/Grid + Luma Peek + Drag-and-Drop) & Visible Live Downloads Indicator */}
+            {/* Smart Dock Folder Stacks (Fan/Grid + Luma Peek + Drag-and-Drop) & Visible Live Downloads/Render Indicator */}
             {showSmartDockShelf && smartDockSide === 'right' && (
               <LumaSmartDockStacks
                 kernelBase=""
                 stacks={smartDock.stacks}
-                tasks={smartDock.tasks}
+                tasks={effectiveDockTasks}
                 isDarkTheme={isDark}
                 align="right"
                 onStacksChanged={(next: DockFolderStackConfig[]) =>
@@ -12893,9 +13335,11 @@ export default function App() {
       {dualTaskbarMode && (
         <header
           onClick={(e) => e.stopPropagation()}
-          className={`fixed top-0 inset-x-0 h-11 z-[8900] px-3 border-b flex items-center justify-between gap-2 select-none ${taskbarGlassCls}`}
+          className={`fixed top-0 inset-x-0 h-11 z-[8900] px-3 border-b flex items-center justify-between gap-2 select-none luma-noise-surface ${
+            visualNoiseHidden ? 'luma-noise-hidden-top' : ''
+          } ${taskbarGlassCls}`}
         >
-          {/* Top-Left: Start (hidden in Ubuntu style), Search, Desktops & System Tools */}
+          {/* Top-Left: Start (hidden in Nova style), Search, Desktops & System Tools */}
           <div className="flex items-center gap-1.5 min-w-0">
             {!isNova && (
               <button
@@ -12905,13 +13349,13 @@ export default function App() {
                   setCarbonHubOpen(false);
                   setNotifShadeOpen(false);
                 }}
-                title="Пуск · Приложения и Обзор окон (Luma OS 1.6.3 Nitrogen)"
+                title="Пуск · Приложения и Обзор окон (Luma OS 1.6.4 Nitrogen)"
                 className={`h-8 px-2.5 rounded-xl flex items-center gap-1.5 text-xs font-bold cursor-pointer transition ${
                   startMenuOpen ? 'bg-[var(--luma-accent)] text-white' : btnCls + ' border'
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-current" />
-                <span>Luma 1.6.3</span>
+                <span>Luma 1.6.4</span>
               </button>
             )}
             <button
@@ -13855,7 +14299,7 @@ export default function App() {
       {startMenuOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`luma-animate-in fixed z-[9500] w-[490px] max-w-[calc(100vw-24px)] border p-4 space-y-3.5 ${popoverShellCls} ${
+          className={`luma-spring-menu fixed z-[9500] w-[490px] max-w-[calc(100vw-24px)] border p-4 space-y-3.5 ${popoverShellCls} ${
             taskbarPosition === 'left'
               ? 'top-3 left-[72px]'
               : taskbarPosition === 'right'
@@ -14120,7 +14564,7 @@ export default function App() {
               {!startSearch.trim() && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                    <span className={mutedCls}>Luma OS 1.6.3 (Nitrogen · N-7)</span>
+                    <span className={mutedCls}>Luma OS 1.6.4 (Nitrogen · N-7)</span>
                     <div className="flex items-center gap-1.5">
                       {enabledFeatures.privateVault && (
                         <button
@@ -14133,7 +14577,7 @@ export default function App() {
                           🔒 Приватный стол
                         </button>
                       )}
-                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.5.3</span>
+                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.5.4</span>
                     </div>
                   </div>
                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
@@ -14240,7 +14684,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.6.3 (Nitrogen)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.6.4 (Nitrogen)'}
                   </div>
                 </div>
               </div>
@@ -14350,7 +14794,7 @@ export default function App() {
               setControlCenterOpen(false);
             }, 280);
           }}
-          className={`luma-animate-in fixed z-[9500] w-80 max-h-[86vh] overflow-y-auto border p-4 space-y-3.5 ${popoverShellCls} ${
+          className={`luma-spring-menu fixed z-[9500] w-80 max-h-[86vh] overflow-y-auto border p-4 space-y-3.5 ${popoverShellCls} ${
             taskbarPosition === 'left'
               ? 'bottom-3 left-[68px]'
               : taskbarPosition === 'right'
@@ -15518,8 +15962,13 @@ export default function App() {
         onNotify={(title, msg, level) => pushToast(title, msg, level || 'info')}
       />
 
-      {/* ==================== LUMA OS 1.6.1 (NITROGEN) LUMA NOVA STYLE TOP-RIGHT PILL & COMPACT PANEL (ITEM 3 & 11) ==================== */}
+      {/* ==================== LUMA OS 1.6.4 (NITROGEN) LUMA NOVA STYLE TOP-RIGHT PILL & COMPACT PANEL ==================== */}
       {isNova && (
+        <div
+          className={`transition-opacity duration-300 ${
+            visualNoiseHidden && !novaPanelOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          }`}
+        >
         <LumaNovaPanel
           open={novaPanelOpen}
           onToggleOpen={() => {
@@ -15592,6 +16041,7 @@ export default function App() {
             void handleExecutePowerAction(act);
           }}
         />
+        </div>
       )}
 
       {/* ==================== LUMA OS 1.6.1 (NITROGEN) QUICK LOOK MODAL (SPACE IN EXPLORER, SHUTTERS, DESKTOP & DOCK — ITEM 10) ==================== */}
@@ -15712,7 +16162,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.6.3 (Nitrogen · N-7) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
+                  Luma OS 1.6.4 (Nitrogen · N-7) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
                 </div>
               </div>
             </div>

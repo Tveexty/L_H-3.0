@@ -192,6 +192,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
   const [snapMenuOpen, setSnapMenuOpen] = useState(false);
   const [dotsMenuOpen, setDotsMenuOpen] = useState(false);
   const [snapPreviewZone, setSnapPreviewZone] = useState<SnapZone | null>(null);
+  const [isInteracting, setIsInteracting] = useState(false);
   const snapPreviewRef = useRef<SnapZone | null>(null);
   const snapSeqRef = useRef<number>(0);
 
@@ -232,6 +233,13 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
     dir?: ResizeDir;
     startX: number;
     startY: number;
+    lastX: number;
+    lastY: number;
+    lastT: number;
+    vx: number;
+    vy: number;
+    curX: number;
+    curY: number;
     orig: WinRect;
   } | null>(null);
 
@@ -259,8 +267,9 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
     };
 
     const onMove = (e: PointerEvent) => {
-      if (!dragRef.current) return;
-      const { mode, dir, startX, startY, orig } = dragRef.current;
+      const st = dragRef.current;
+      if (!st) return;
+      const { mode, dir, startX, startY, orig } = st;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
       const vw = window.innerWidth;
@@ -270,8 +279,20 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
       const maxRight = vw - padRight;
 
       if (mode === 'drag') {
+        const now = performance.now();
+        const dt = Math.max(4, now - st.lastT);
+        const instVx = (e.clientX - st.lastX) / dt; // px per ms
+        const instVy = (e.clientY - st.lastY) / dt;
+        st.vx = st.vx * 0.55 + instVx * 0.45;
+        st.vy = st.vy * 0.55 + instVy * 0.45;
+        st.lastX = e.clientX;
+        st.lastY = e.clientY;
+        st.lastT = now;
+
         const nx = Math.max(padLeft - orig.w + 180, Math.min(vw - 140, orig.x + dx));
         const ny = Math.max(padTop, Math.min(maxBottom - 42, orig.y + dy));
+        st.curX = nx;
+        st.curY = ny;
         setRect((r) => ({ ...r, x: nx, y: ny }));
         const z = detectEdgeSnap(e.clientX, e.clientY);
         snapPreviewRef.current = z;
@@ -301,10 +322,28 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
     };
 
     const onUp = () => {
-      if (dragRef.current?.mode === 'drag' && snapPreviewRef.current) {
-        applySnap(snapPreviewRef.current);
-      }
+      const st = dragRef.current;
       dragRef.current = null;
+      setIsInteracting(false);
+      if (st?.mode === 'drag') {
+        if (snapPreviewRef.current) {
+          applySnap(snapPreviewRef.current);
+        } else {
+          // Spring-physics flick inertia: react organically to drag velocity on release!
+          const speed = Math.hypot(st.vx, st.vy);
+          const staleMs = performance.now() - st.lastT;
+          if (speed > 0.22 && staleMs < 85) {
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const { padTop, padBottom, padLeft } = getInsets();
+            const throwX = Math.max(-130, Math.min(130, st.vx * 92));
+            const throwY = Math.max(-96, Math.min(96, st.vy * 92));
+            const targetX = Math.round(Math.max(padLeft - st.orig.w + 180, Math.min(vw - 140, st.curX + throwX)));
+            const targetY = Math.round(Math.max(padTop, Math.min(vh - padBottom - 42, st.curY + throwY)));
+            setRect((r) => ({ ...r, x: targetX, y: targetY }));
+          }
+        }
+      }
       snapPreviewRef.current = null;
       setSnapPreviewZone(null);
     };
@@ -330,6 +369,8 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
     }
     onFocus();
     setSnapMenuOpen(false);
+    setIsInteracting(true);
+    const now = performance.now();
     if (maximized) {
       // Smoothly unmaximize under finger / stylus / cursor
       const ratio = e.clientX / Math.max(1, window.innerWidth);
@@ -338,13 +379,32 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
       const restored = { ...rect, x: nx, y: ny };
       setMaximized(false);
       setRect(restored);
-      dragRef.current = { mode: 'drag', startX: e.clientX, startY: e.clientY, orig: restored };
+      dragRef.current = {
+        mode: 'drag',
+        startX: e.clientX,
+        startY: e.clientY,
+        lastX: e.clientX,
+        lastY: e.clientY,
+        lastT: now,
+        vx: 0,
+        vy: 0,
+        curX: restored.x,
+        curY: restored.y,
+        orig: restored,
+      };
       return;
     }
     dragRef.current = {
       mode: 'drag',
       startX: e.clientX,
       startY: e.clientY,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      lastT: now,
+      vx: 0,
+      vy: 0,
+      curX: rect.x,
+      curY: rect.y,
       orig: { ...rect },
     };
   };
@@ -360,11 +420,19 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
     }
     onFocus();
     setSnapMenuOpen(false);
+    setIsInteracting(true);
     dragRef.current = {
       mode: 'resize',
       dir,
       startX: e.clientX,
       startY: e.clientY,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      lastT: performance.now(),
+      vx: 0,
+      vy: 0,
+      curX: rect.x,
+      curY: rect.y,
       orig: { ...rect },
     };
   };
@@ -421,7 +489,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
             zIndex: zIndex - 1,
             borderColor: 'var(--luma-accent)',
           }}
-          className="pointer-events-none rounded-2xl border-2 bg-[var(--luma-accent)]/15 backdrop-blur-md transition-all duration-150 shadow-2xl"
+          className="pointer-events-none rounded-2xl border-2 bg-[var(--luma-accent)]/15 backdrop-blur-md transition-all duration-200 shadow-2xl"
         />
       )}
 
@@ -429,7 +497,9 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
         style={style}
         onPointerDown={onFocus}
         onContextMenu={(e) => e.stopPropagation()}
-        className={`luma-animate-in flex flex-col overflow-hidden select-none ${winSurface} ${
+        className={`luma-animate-in flex flex-col overflow-hidden select-none ${
+          isInteracting ? '' : 'luma-win-spring-motion'
+        } ${winSurface} ${
           alwaysOnTop ? 'ring-1 ring-amber-400/65 shadow-[0_24px_80px_rgba(245,158,11,0.22)]' : ''
         }`}
       >

@@ -108,13 +108,13 @@ export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
   },
   {
     id: 'gemini',
-    label: 'Google Gemini Flash-Lite',
+    label: 'Google Gemini',
     badge: 'Cloud',
-    defaultModel: 'gemini-2.5-flash-lite',
-    models: ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
-    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    defaultModel: 'gemini-2.5-flash',
+    models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro', 'gemini-2.0-flash'],
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     needsKey: true,
-    hint: 'Ключ на aistudio.google.com/apikey',
+    hint: 'Поддерживает нативный Gemini API (SSE: /v1beta) и OpenAI-совместимый путь (/v1beta/openai). Ключ на aistudio.google.com/apikey',
   },
   {
     id: 'openai',
@@ -205,7 +205,7 @@ export const DEFAULT_LUMA_AI_CONFIG: LumaAIConfig = {
   models: {},
   baseUrls: {},
   systemPrompt:
-    'Ты — Luma Ai Nitrogen, универсальный личный ассистент, программист и помощник в Luma OS 1.6.3 (Nitrogen · N-7). Отвечай чётко, без воды, с Markdown-кодом, используй долговременную память и помогай с системой, Офисом, Календарём и поиском.',
+    'Ты — Luma Ai Nitrogen, универсальный личный ассистент, программист и помощник в Luma OS 1.6.4 (Nitrogen · N-7). Отвечай чётко, без воды, с Markdown-кодом, используй долговременную память и помогай с системой, Офисом, Календарём и поиском.',
   temperature: 0.7,
   includeSystemContext: true,
 };
@@ -648,9 +648,16 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
     setInput('');
     setLoading(true);
 
-    // Use true SSE Token Streaming via Luma Ai Nitrogen gateway for Nitrogen/Ollama/OpenAI-compatible providers
+    // Use true SSE Token Streaming via Luma Ai Nitrogen gateway for Nitrogen/Gemini/Ollama/OpenAI-compatible providers
+    const cleanSelectedModel =
+      config.provider === 'gemini'
+        ? (currentModel || preset.defaultModel).trim().replace(/^(?:models\/)+/i, '')
+        : (currentModel || preset.defaultModel).trim();
+    const dynamicErrorHeader = `${preset.label} · ${cleanSelectedModel}`;
+
     const useNitrogenStream =
       config.provider === 'luma_local' ||
+      config.provider === 'gemini' ||
       config.provider === 'ollama' ||
       config.provider === 'custom' ||
       config.provider === 'groq' ||
@@ -666,7 +673,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
         role: 'assistant',
         content: '',
         time: botTime,
-        model: `Luma Ai Nitrogen (${currentModel})`,
+        model: `${preset.label} (${cleanSelectedModel})`,
       };
       setThreads((prev) =>
         prev.map((t) => (t.id === targetThreadId ? { ...t, messages: [...t.messages, initialBot] } : t))
@@ -678,11 +685,12 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             session_id: targetThreadId,
+            provider: config.provider,
             message: content,
             history: updatedMessages.slice(-16).map((m) => ({ role: m.role, content: m.content })),
             base_url: currentBaseUrl,
             api_key: currentKey,
-            model: currentModel,
+            model: cleanSelectedModel,
             mode: config.aiMode || 'auto',
             verbosity: config.verbosity || 'balanced',
             temperature: config.temperature,
@@ -696,7 +704,8 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           const decoder = new TextDecoder();
           let buffer = '';
           let fullText = '';
-          let modelLabel = `Luma Ai Nitrogen (${currentModel})`;
+          let streamErr = '';
+          let modelLabel = `${preset.label} (${cleanSelectedModel})`;
           let sourcesList: AISourceLinkItem[] | undefined;
           let thinkingList: AIThinkingStepItem[] | undefined;
           let actionsList: AIExecutedActionItem[] | undefined;
@@ -737,8 +746,14 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
               if (!rawLine.startsWith('data:')) continue;
               try {
                 const ev = JSON.parse(rawLine.slice(5).trim());
-                if (ev.type === 'token' && ev.content) {
-                  fullText += String(ev.content);
+                const tok = ev.content ?? ev.text;
+                if (ev.type === 'token' && tok) {
+                  fullText += String(tok);
+                  patchBot();
+                } else if (ev.type === 'error' && ev.error) {
+                  streamErr = String(ev.error);
+                  if (ev.model) modelLabel = `${preset.label} (${String(ev.model)})`;
+                  fullText = `Ошибка (${preset.label} · ${ev.model || cleanSelectedModel}): ${streamErr}\n\nСовет: проверьте API-ключ, модель и BASE_URL (\`https://generativelanguage.googleapis.com/v1beta\` или \`.../v1beta/openai\`), либо используйте **Luma Ai Nitrogen** без ключа.`;
                   patchBot();
                 } else if (ev.type === 'tool_result' && ev.tool) {
                   if (String(ev.tool).includes('calendar')) {
@@ -765,6 +780,11 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
             }
           }
 
+          if (streamErr) {
+            onPushToast(dynamicErrorHeader, streamErr, 'warning');
+            setLoading(false);
+            return;
+          }
           if (!fullText.trim()) {
             fullText = 'Готово! Запрос обработан Luma Ai Nitrogen.';
             patchBot();
@@ -794,7 +814,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           verbosity: config.verbosity || 'balanced',
           api_key: currentKey,
           base_url: currentBaseUrl,
-          model: currentModel,
+          model: cleanSelectedModel,
           system_prompt: config.systemPrompt,
           temperature: config.temperature,
           include_context: config.includeSystemContext,
@@ -804,9 +824,11 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
         }),
       });
       const data = await r.json();
+      const resolvedModel = data?.model || cleanSelectedModel;
+      const errDetail = (data?.error && String(data.error).trim()) || `HTTP ${r.status} ${r.statusText || 'Не удалось получить ответ'}`;
       const replyText = data?.ok
         ? data.reply
-        : `Ошибка (${preset.label}): ${data?.error || 'Не удалось получить ответ'}.\n\nСовет: используйте **Luma Ai Nitrogen** (Ollama Qwen 2.5 3B / Llama 3.2 3B или встроенный режим без API-ключей).`;
+        : `Ошибка (${preset.label} · ${resolvedModel}): ${errDetail}\n\nСовет: используйте **Luma Ai Nitrogen** (Ollama Qwen 2.5 3B / Llama 3.2 3B или встроенный режим без API-ключей).`;
       const sourcesList: AISourceLinkItem[] | undefined =
         Array.isArray(data?.sources) && data.sources.length > 0 ? data.sources : undefined;
       const thinkingList: AIThinkingStepItem[] | undefined =
@@ -821,7 +843,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
         role: 'assistant',
         content: replyText,
         time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-        model: data?.model || currentModel,
+        model: resolvedModel,
         sources: sourcesList,
         thinkingSteps: thinkingList,
         actions: actionsList,
@@ -835,10 +857,10 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
         speakText(replyText, botMsg.id);
       }
       if (!data?.ok) {
-        onPushToast('Luma Ai Nitrogen', data?.error || 'Требуется настройка провайдера', 'warning');
+        onPushToast(`${preset.label} · ${resolvedModel}`, errDetail, 'warning');
       }
     } catch {
-      onPushToast('Luma Ai Nitrogen', 'Нет ответа от шлюза LumaCore 1.5.3', 'warning');
+      onPushToast('Luma Ai Nitrogen', 'Нет ответа от шлюза LumaCore 1.5.4', 'warning');
     } finally {
       setLoading(false);
     }
@@ -1675,7 +1697,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
               <label className="block space-y-1 text-xs">
                 <span className={`text-[11px] font-mono flex items-center gap-1 ${mutedCls}`}>
                   <Globe className="w-3 h-3" />
-                  BASE_URL (OpenAI-совместимый API: Ollama / Gemini Flash-Lite / Groq / OpenRouter)
+                  BASE_URL (Ollama / Google Gemini /v1beta или /v1beta/openai / Groq / OpenRouter)
                 </span>
                 <input
                   value={currentBaseUrl}

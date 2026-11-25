@@ -67,27 +67,45 @@ export const DockMessengerBadge: React.FC<{ count: number }> = ({ count }) => {
   );
 };
 
-// ---- Reusable Live Progress Bar Overlay on Dock / Taskbar Icons ----
+// ---- Reusable Live Progress Bar & Outer Progress Halo on Dock / Taskbar Icons ----
 export const DockIconProgressBar: React.FC<{ task?: DockProgressTask | null }> = ({ task }) => {
   if (!isRealVisibleTask(task)) return null;
   const pct = Math.max(4, Math.min(100, Math.round(task.percent || 0)));
-  const colorMap: Record<string, { bar: string; glow: string; label: string }> = {
-    active: { bar: 'bg-sky-400', glow: 'shadow-[0_0_8px_rgba(56,189,248,0.85)]', label: 'Загрузка' },
-    extracting: { bar: 'bg-violet-400', glow: 'shadow-[0_0_8px_rgba(167,139,250,0.85)]', label: 'Распаковка' },
-    paused: { bar: 'bg-amber-400', glow: 'shadow-[0_0_8px_rgba(251,191,36,0.8)]', label: 'Пауза' },
-    error: { bar: 'bg-rose-500', glow: 'shadow-[0_0_8px_rgba(244,63,94,0.9)]', label: 'Ошибка' },
+  const colorMap: Record<string, { bar: string; hex: string; glow: string; label: string }> = {
+    active: { bar: 'bg-sky-400', hex: '#38bdf8', glow: 'shadow-[0_0_9px_rgba(56,189,248,0.9)]', label: 'Загрузка' },
+    rendering: { bar: 'bg-fuchsia-400', hex: '#e879f9', glow: 'shadow-[0_0_10px_rgba(232,121,249,0.9)]', label: 'Рендер видео' },
+    extracting: { bar: 'bg-violet-400', hex: '#a78bfa', glow: 'shadow-[0_0_9px_rgba(167,139,250,0.9)]', label: 'Распаковка' },
+    paused: { bar: 'bg-amber-400', hex: '#fbbf24', glow: 'shadow-[0_0_8px_rgba(251,191,36,0.85)]', label: 'Пауза' },
+    error: { bar: 'bg-rose-500', hex: '#f43f5e', glow: 'shadow-[0_0_9px_rgba(244,63,94,0.9)]', label: 'Ошибка' },
   };
   const style = colorMap[task.state] || colorMap.active;
+  const deg = Math.round((pct / 100) * 360);
   return (
-    <div
-      className="absolute left-1 right-1 -bottom-1 h-[3.5px] rounded-full bg-slate-950/85 overflow-hidden ring-1 ring-white/20 pointer-events-none z-20"
-      title={`${task.app_name}: ${task.title} — ${style.label} ${pct}%${task.speed_mb_s > 0 ? ` (${task.speed_mb_s.toFixed(1)} МБ/с)` : ''}`}
-    >
-      <div
-        className={`h-full rounded-full transition-all duration-300 ${style.bar} ${style.glow}`}
-        style={{ width: `${pct}%` }}
+    <>
+      {/* Subtle conic progress ring glow directly around the dock icon */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute -inset-[2.5px] rounded-[inherit] z-10 opacity-90"
+        style={{
+          background: `conic-gradient(${style.hex} ${deg}deg, rgba(255,255,255,0.08) ${deg}deg)`,
+          WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+          WebkitMaskComposite: 'xor',
+          maskComposite: 'exclude',
+          padding: '2px',
+          filter: `drop-shadow(0 0 5px ${style.hex}99)`,
+        }}
       />
-    </div>
+      {/* Bottom micro progress bar with percentage tooltip */}
+      <div
+        className="absolute left-1 right-1 -bottom-1 h-[3.5px] rounded-full bg-slate-950/90 overflow-hidden ring-1 ring-white/20 pointer-events-none z-20"
+        title={`${task.app_name}: ${task.title} — ${style.label} ${pct}%${task.speed_mb_s > 0 ? ` (${task.speed_mb_s.toFixed(1)} МБ/с)` : ''}`}
+      >
+        <div
+          className={`h-full rounded-full transition-all duration-300 ${style.bar} ${style.glow}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </>
   );
 };
 
@@ -104,6 +122,7 @@ export function matchDockTaskForApp(tasks: DockProgressTask[], appNameOrKey: str
     if (k === 'firefox' && (low.includes('firefox') || low.includes('librewolf') || low.includes('zen'))) return true;
     if (k === 'opera' && low.includes('opera')) return true;
     if (k === 'steam' && low.includes('steam')) return true;
+    if (k === 'cut_studio' && (low.includes('cut') || low.includes('video') || low.includes('render') || low.includes('монтаж'))) return true;
     if (k === 'luma_updater' && low.includes('settings')) return true;
     return false;
   });

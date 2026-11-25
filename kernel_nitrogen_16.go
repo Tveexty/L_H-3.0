@@ -35,7 +35,7 @@ var (
 	devReqSeq       uint64
 	devReqLogMu     sync.Mutex
 	devReqLogs      = make([]DevRequestLog, 0, 48)
-	devActiveRoutes = 108
+	devActiveRoutes = 110
 )
 
 type devStatusWriter struct {

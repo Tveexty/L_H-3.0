@@ -1065,3 +1065,143 @@ html.luma-touch-mode ::-webkit-scrollbar {
   font-weight: 700;
   letter-spacing: 0.04em;
 }
+
+/* ==================== 1.6.4 (NITROGEN) SPRING PHYSICS, MAGNETIC DOCK & AUTO-HIDE VISUAL NOISE ==================== */
+:root {
+  --luma-spring-snappy: cubic-bezier(0.22, 1.24, 0.36, 1);
+  --luma-spring-gentle: cubic-bezier(0.2, 1.14, 0.32, 1);
+  --luma-spring-dock: cubic-bezier(0.34, 1.48, 0.52, 1);
+  --luma-spring-exit: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Default animations now use crisp spring physics instead of flat linear/ease */
+@keyframes lumaNitrogenSpringPop {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.945);
+  }
+  62% {
+    opacity: 1;
+    transform: translate3d(0, -2px, 0) scale(1.012);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+html:not([data-anim="none"]):not([data-anim="glide"]):not([data-anim="silk"]):not([data-anim="elastic"]):not([data-anim="harmony7"]) .luma-animate-in {
+  animation: lumaNitrogenSpringPop 0.32s var(--luma-spring-snappy) forwards;
+}
+
+.luma-spring-panel {
+  animation: lumaNitrogenSpringPop 0.34s var(--luma-spring-snappy) forwards;
+  will-change: transform, opacity;
+}
+
+.luma-spring-menu {
+  animation: lumaNitrogenSpringPop 0.28s var(--luma-spring-dock) forwards;
+  transform-origin: bottom center;
+  will-change: transform, opacity;
+}
+
+/* Magnetic Dock icon smooth GPU spring transform + elastic launch bounce */
+.luma-dock-magnetic-item {
+  transition:
+    transform 210ms var(--luma-spring-dock),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 220ms ease;
+  will-change: transform;
+}
+
+@keyframes lumaDockLaunchBounce {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  24% {
+    transform: translate3d(0, -13px, 0) scale(1.16, 0.94);
+  }
+  48% {
+    transform: translate3d(0, 2px, 0) scale(0.95, 1.07);
+  }
+  70% {
+    transform: translate3d(0, -6px, 0) scale(1.06, 0.98);
+  }
+  86% {
+    transform: translate3d(0, 1px, 0) scale(0.99, 1.02);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.luma-dock-bounce {
+  animation: lumaDockLaunchBounce 0.64s var(--luma-spring-dock);
+}
+
+/* Auto-Hide Visual Noise: spring glide off-edge during video playback / fullscreen */
+.luma-noise-surface {
+  transition:
+    transform 460ms var(--luma-spring-gentle),
+    opacity 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 380ms ease;
+}
+
+.luma-noise-hidden-top {
+  opacity: 0 !important;
+  transform: translate3d(0, -135%, 0) scale(0.96) !important;
+  pointer-events: none !important;
+  filter: blur(4px);
+}
+
+.luma-noise-hidden-bottom {
+  opacity: 0 !important;
+  transform: translate3d(0, 135%, 0) scale(0.96) !important;
+  pointer-events: none !important;
+  filter: blur(4px);
+}
+
+.luma-noise-hidden-left {
+  opacity: 0 !important;
+  transform: translate3d(-135%, 0, 0) scale(0.96) !important;
+  pointer-events: none !important;
+  filter: blur(4px);
+}
+
+.luma-noise-hidden-right {
+  opacity: 0 !important;
+  transform: translate3d(135%, 0, 0) scale(0.96) !important;
+  pointer-events: none !important;
+  filter: blur(4px);
+}
+
+/* DexWindow velocity-aware inertia & snap spring transition */
+.luma-win-spring-motion {
+  transition:
+    left 420ms var(--luma-spring-gentle),
+    top 420ms var(--luma-spring-gentle),
+    width 380ms var(--luma-spring-gentle),
+    height 380ms var(--luma-spring-gentle),
+    border-radius 280ms ease,
+    box-shadow 260ms ease;
+}
+
+/* Update screen shimmer accent */
+@keyframes lumaShimmerSweep {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(220%); }
+}
+.luma-shimmer-bar {
+  position: relative;
+  overflow: hidden;
+}
+.luma-shimmer-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.48), transparent);
+  animation: lumaShimmerSweep 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+

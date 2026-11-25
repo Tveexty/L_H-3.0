@@ -75,6 +75,13 @@ export const LumaCutStudioWindow: React.FC<LumaCutStudioWindowProps> = ({ isDark
   const [selectedTextId, setSelectedTextId] = useState<string>('txt_1');
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('luma-media-playing', { detail: { playing, source: 'cut_studio' } }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('luma-media-playing', { detail: { playing: false, source: 'cut_studio' } }));
+    };
+  }, [playing]);
   const [aspect, setAspect] = useState<'16:9' | '9:16' | '1:1' | '4:3' | '21:9'>('16:9');
   const [zoomPxPerSec, setZoomPxPerSec] = useState(64);
 
@@ -991,13 +998,15 @@ export const LumaCutStudioWindow: React.FC<LumaCutStudioWindowProps> = ({ isDark
     setStatusMsg('Long-to-Shorts: 9:16 + хайлайт-цветокор + Hormozi субтитры готовы! ⚡');
   };
 
-  // Real Video Export with Converter & Smart Compressor
+  // Real Video Export with Converter, Smart Compressor & Live Dock Render Progress
   const handleExportVideo = async () => {
     const canvas = canvasRef.current;
     if (!canvas || typeof canvas.captureStream !== 'function' || exporting) return;
     setExporting(true);
     setExportProgress(0);
     setPlaying(false);
+    const renderTitle = `Рендер ${exportRes} · ${exportCodec.toUpperCase()}`;
+    window.dispatchEvent(new CustomEvent('luma-render-progress', { detail: { active: true, percent: 2, title: renderTitle } }));
     try {
       const codecMeta = CODEC_OPTIONS.find((c) => c.id === exportCodec) || CODEC_OPTIONS[0];
       const mime = MediaRecorder.isTypeSupported(codecMeta.mime)
@@ -1017,7 +1026,9 @@ export const LumaCutStudioWindow: React.FC<LumaCutStudioWindowProps> = ({ isDark
       for (let i = 0; i <= totalSteps; i++) {
         const curT = (i / totalSteps) * totalDuration;
         drawFrameAt(curT);
-        setExportProgress(Math.round((i / totalSteps) * 100));
+        const pct = Math.round((i / totalSteps) * 100);
+        setExportProgress(pct);
+        window.dispatchEvent(new CustomEvent('luma-render-progress', { detail: { active: true, percent: Math.max(2, pct), title: renderTitle } }));
         await new Promise((r) => setTimeout(r, stepMs));
       }
       mr.stop();
@@ -1035,6 +1046,7 @@ export const LumaCutStudioWindow: React.FC<LumaCutStudioWindowProps> = ({ isDark
       setStatusMsg('Ошибка рендера видео');
     } finally {
       setExporting(false);
+      window.dispatchEvent(new CustomEvent('luma-render-progress', { detail: { active: false, percent: 100, title: renderTitle } }));
     }
   };
 

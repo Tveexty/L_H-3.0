@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -653,7 +654,7 @@ func uninstallLumaAI(removeMemory bool, kernel *LumaKernel) map[string]interface
 	return getAIManagerStatus(kernel)
 }
 
-// ---- 3. SSE Token Streaming Endpoint for Luma Ai Nitrogen ----
+// ---- 3. SSE Token Streaming Endpoint for Luma Ai Nitrogen (Native Gemini SSE + OpenAI-Compat + Python FastAPI + Built-in) ----
 
 func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, payload interface{}) {
 	b, err := json.Marshal(payload)
@@ -666,19 +667,171 @@ func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, payload interfac
 	}
 }
 
-func proxyOpenAICompatStream(w http.ResponseWriter, flusher http.Flusher, cfg NitrogenBrainConfig, messages []map[string]string) (string, bool) {
-	url := strings.TrimRight(cfg.BaseURL, "/") + "/chat/completions"
+func isGeminiTarget(provider, baseURL, model string) bool {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	b := strings.ToLower(strings.TrimSpace(baseURL))
+	m := strings.ToLower(strings.TrimSpace(model))
+	return p == "gemini" || strings.Contains(b, "generativelanguage.googleapis.com") || (p == "" && strings.HasPrefix(sanitizeGeminiModelID(m), "gemini-"))
+}
+
+// proxyNativeGeminiStream streams tokens from Google Gemini native SSE endpoint:
+// https://generativelanguage.googleapis.com/v1beta/models/{cleanModel}:streamGenerateContent?alt=sse&key={apiKey}
+func proxyNativeGeminiStream(
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	baseURL, apiKey, model, sysPrompt string,
+	temp float64,
+	messages []map[string]string,
+) (reply string, errMsg string, ok bool) {
+	cleanModel := sanitizeGeminiModelID(model)
+	if cleanModel == "" {
+		cleanModel = "gemini-2.5-flash"
+	}
+	if strings.TrimSpace(apiKey) == "" || strings.EqualFold(strings.TrimSpace(apiKey), "ollama") {
+		return "", fmt.Sprintf("Укажите API-ключ Google Gemini для модели %s (aistudio.google.com/apikey)", cleanModel), false
+	}
+
+	endpoint, sanitizedURL, isOpenAI := buildGeminiEndpoint(baseURL, cleanModel, apiKey, true)
+	if isOpenAI {
+		cfg := NitrogenBrainConfig{
+			BaseURL:     baseURL,
+			APIKey:      apiKey,
+			ModelName:   cleanModel,
+			Temperature: temp,
+		}
+		allMsgs := make([]map[string]string, 0, len(messages)+1)
+		if strings.TrimSpace(sysPrompt) != "" {
+			allMsgs = append(allMsgs, map[string]string{"role": "system", "content": sysPrompt})
+		}
+		allMsgs = append(allMsgs, messages...)
+		return proxyOpenAICompatStream(w, flusher, cfg, allMsgs)
+	}
+
+	log.Printf("[LumaCore AI][Gemini SSE] POST %s (model=%s)", sanitizedURL, cleanModel)
+
+	contents := make([]map[string]interface{}, 0, len(messages))
+	for _, m := range messages {
+		if m["role"] == "system" || strings.TrimSpace(m["content"]) == "" {
+			continue
+		}
+		role := "user"
+		if m["role"] == "assistant" || m["role"] == "model" {
+			role = "model"
+		}
+		contents = append(contents, map[string]interface{}{
+			"role":  role,
+			"parts": []map[string]string{{"text": m["content"]}},
+		})
+	}
+	bodyObj := map[string]interface{}{
+		"contents": contents,
+		"generationConfig": map[string]interface{}{
+			"temperature": temp,
+		},
+	}
+	if strings.TrimSpace(sysPrompt) != "" {
+		bodyObj["system_instruction"] = map[string]interface{}{
+			"parts": []map[string]string{{"text": sysPrompt}},
+		}
+	}
+	rawBody, _ := json.Marshal(bodyObj)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(rawBody))
+	if err != nil {
+		return "", fmt.Sprintf("Ошибка создания запроса Gemini (%s): %v", cleanModel, err), false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		return "", fmt.Sprintf("Ошибка сети Gemini (%s): %v", cleanModel, err), false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 128*1024))
+		formatted := formatGeminiHTTPError(resp.StatusCode, resp.Status, errBytes, cleanModel, sanitizedURL)
+		log.Printf("[LumaCore AI][Gemini SSE][ERROR] %s", formatted)
+		return "", formatted, false
+	}
+
+	var full strings.Builder
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		dataStr := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if dataStr == "" || dataStr == "[DONE]" {
+			continue
+		}
+		var chunk struct {
+			Candidates []struct {
+				Content struct {
+					Parts []struct {
+						Text string `json:"text"`
+					} `json:"parts"`
+				} `json:"content"`
+			} `json:"candidates"`
+			Error *struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+				Status  string `json:"status"`
+			} `json:"error"`
+		}
+		if json.Unmarshal([]byte(dataStr), &chunk) == nil {
+			if chunk.Error != nil && chunk.Error.Message != "" {
+				return full.String(), fmt.Sprintf("Gemini (%s): %s", cleanModel, chunk.Error.Message), false
+			}
+			for _, cand := range chunk.Candidates {
+				for _, part := range cand.Content.Parts {
+					if part.Text != "" {
+						full.WriteString(part.Text)
+						writeSSEEvent(w, flusher, map[string]interface{}{
+							"type":    "token",
+							"content": part.Text,
+							"text":    part.Text,
+						})
+					}
+				}
+			}
+		}
+	}
+	if full.Len() == 0 {
+		return "", fmt.Sprintf("Gemini (%s) вернул пустой поток ответа", cleanModel), false
+	}
+	return full.String(), "", true
+}
+
+func proxyOpenAICompatStream(w http.ResponseWriter, flusher http.Flusher, cfg NitrogenBrainConfig, messages []map[string]string) (string, string, bool) {
+	base := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
+	endpoint := base
+	if !strings.HasSuffix(strings.ToLower(endpoint), "/chat/completions") {
+		endpoint += "/chat/completions"
+	}
+	modelName := strings.TrimSpace(cfg.ModelName)
+	if strings.Contains(strings.ToLower(endpoint), "generativelanguage.googleapis.com") {
+		modelName = sanitizeGeminiModelID(modelName)
+	}
+	sanitizedURL := maskURLSecret(endpoint)
+	log.Printf("[LumaCore AI][OpenAI-Compat SSE] POST %s (model=%s)", sanitizedURL, modelName)
+
 	reqBody, _ := json.Marshal(map[string]interface{}{
-		"model":       cfg.ModelName,
+		"model":       modelName,
 		"messages":    messages,
 		"temperature": cfg.Temperature,
 		"stream":      true,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(reqBody))
 	if err != nil {
-		return "", false
+		return "", fmt.Sprintf("Ошибка формирования запроса (%s): %v", modelName, err), false
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if cfg.APIKey != "" {
@@ -687,11 +840,14 @@ func proxyOpenAICompatStream(w http.ResponseWriter, flusher http.Flusher, cfg Ni
 
 	resp, err := (&http.Client{}).Do(req)
 	if err != nil {
-		return "", false
+		return "", fmt.Sprintf("Ошибка сети (%s): %v", modelName, err), false
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return "", false
+	if resp.StatusCode != http.StatusOK {
+		errBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 128*1024))
+		formatted := formatGeminiHTTPError(resp.StatusCode, resp.Status, errBytes, modelName, sanitizedURL)
+		log.Printf("[LumaCore AI][OpenAI-Compat SSE][ERROR] %s", formatted)
+		return "", formatted, false
 	}
 
 	var full strings.Builder
@@ -717,11 +873,18 @@ func proxyOpenAICompatStream(w http.ResponseWriter, flusher http.Flusher, cfg Ni
 			tok := chunk.Choices[0].Delta.Content
 			if tok != "" {
 				full.WriteString(tok)
-				writeSSEEvent(w, flusher, map[string]interface{}{"type": "token", "text": tok})
+				writeSSEEvent(w, flusher, map[string]interface{}{
+					"type":    "token",
+					"content": tok,
+					"text":    tok,
+				})
 			}
 		}
 	}
-	return full.String(), full.Len() > 0
+	if full.Len() == 0 {
+		return "", fmt.Sprintf("Модель %s вернула пустой ответ", modelName), false
+	}
+	return full.String(), "", true
 }
 
 func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
@@ -798,7 +961,7 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "config": loadNitrogenBrainConfig()})
 	})
 
-	// 4. AI Install / Download / Uninstall Manager API (Download Ollama + Qwen 2.5 3B / Llama 3.2 3B OR Delete AI!)
+	// 4. AI Install / Download / Uninstall Manager API
 	mux.HandleFunc("/api/kernel/ai/manage", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if r.Method == http.MethodPost {
@@ -834,27 +997,42 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 		_ = json.NewEncoder(w).Encode(getAIManagerStatus(kernel))
 	})
 
-	// 5. Luma Ai Nitrogen True SSE Token Streaming Endpoint (Python FastAPI -> Local Ollama/OpenAI -> Built-in Engine)
+	// 5. Luma Ai Nitrogen True SSE Token Streaming Endpoint (Native Gemini SSE / OpenAI-Compat / Python FastAPI / Built-in)
 	mux.HandleFunc("/api/kernel/ai/nitrogen/stream", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		var req struct {
-			Message      string `json:"message"`
-			SessionID    string `json:"session_id"`
-			ExtraContext string `json:"extra_context"`
-			BaseURL      string `json:"base_url"`
-			APIKey       string `json:"api_key"`
-			ModelName    string `json:"model_name"`
-			Messages     []struct {
+			Provider       string  `json:"provider"`
+			Message        string  `json:"message"`
+			SessionID      string  `json:"session_id"`
+			ExtraContext   string  `json:"extra_context"`
+			ContextContent string  `json:"context_content"`
+			SystemPrompt   string  `json:"system_prompt"`
+			Temperature    float64 `json:"temperature"`
+			BaseURL        string  `json:"base_url"`
+			APIKey         string  `json:"api_key"`
+			Model          string  `json:"model"`
+			ModelName      string  `json:"model_name"`
+			Messages       []struct {
 				Role    string `json:"role"`
 				Content string `json:"content"`
 			} `json:"messages"`
+			History []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"history"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
+		}
+		if len(req.Messages) == 0 && len(req.History) > 0 {
+			req.Messages = req.History
+		}
+		if req.ExtraContext == "" && req.ContextContent != "" {
+			req.ExtraContext = req.ContextContent
 		}
 		userMsg := strings.TrimSpace(req.Message)
 		if userMsg == "" && len(req.Messages) > 0 {
@@ -868,12 +1046,14 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 
 		cfg := loadNitrogenBrainConfig()
 		if !cfg.Enabled || (kernel != nil && !kernel.IsAIEnabled()) {
+			msg := "Модуль **Luma Ai Nitrogen** сейчас удалён или отключён. Нажмите **«Скачать / Включить Luma Ai Nitrogen»** в верхней панели или в Настройках."
 			writeSSEEvent(w, flusher, map[string]interface{}{
-				"type":  "token",
-				"text":  "Модуль **Luma Ai Nitrogen** сейчас удалён или отключён. Нажмите **«Скачать / Включить Luma Ai Nitrogen»** в верхней панели или в Настройках.",
-				"model": "disabled",
+				"type":    "token",
+				"content": msg,
+				"text":    msg,
+				"model":   "disabled",
 			})
-			writeSSEEvent(w, flusher, map[string]interface{}{"type": "done", "model": "disabled"})
+			writeSSEEvent(w, flusher, map[string]interface{}{"type": "done", "model": "disabled", "reply": msg})
 			return
 		}
 		if strings.TrimSpace(req.BaseURL) != "" {
@@ -882,31 +1062,47 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 		if strings.TrimSpace(req.APIKey) != "" {
 			cfg.APIKey = strings.TrimSpace(req.APIKey)
 		}
-		if strings.TrimSpace(req.ModelName) != "" {
-			cfg.ModelName = strings.TrimSpace(req.ModelName)
+		reqModel := strings.TrimSpace(req.ModelName)
+		if reqModel == "" {
+			reqModel = strings.TrimSpace(req.Model)
 		}
+		if reqModel != "" {
+			cfg.ModelName = reqModel
+		}
+		if req.Temperature > 0 {
+			cfg.Temperature = req.Temperature
+		}
+		provider := strings.ToLower(strings.TrimSpace(req.Provider))
 
-		// Step A: Direct Calendar Tool execution (instant, deterministic, syncs UI immediately!)
-		if handled, calReply, _, uiAct := tryHandleCalendarIntent(userMsg); handled {
-			writeSSEEvent(w, flusher, map[string]interface{}{"type": "meta", "model": "Luma Ai Nitrogen · Calendar Tool", "engine": "calendar"})
-			words := strings.Split(calReply, " ")
-			for i, wd := range words {
-				tok := wd
-				if i < len(words)-1 {
-					tok += " "
+		// Step A: Direct Calendar Tool execution (only for local/nitrogen mode, never hijack explicit cloud API queries unless Calendar context!)
+		if provider == "" || provider == "luma_local" || provider == "ollama" {
+			if handled, calReply, _, uiAct := tryHandleCalendarIntent(userMsg); handled {
+				writeSSEEvent(w, flusher, map[string]interface{}{"type": "meta", "model": "Luma Ai Nitrogen · Calendar Tool", "engine": "calendar"})
+				words := strings.Split(calReply, " ")
+				for i, wd := range words {
+					tok := wd
+					if i < len(words)-1 {
+						tok += " "
+					}
+					writeSSEEvent(w, flusher, map[string]interface{}{"type": "token", "content": tok, "text": tok})
 				}
-				writeSSEEvent(w, flusher, map[string]interface{}{"type": "token", "text": tok})
+				uiActs := []interface{}{}
+				if uiAct != nil {
+					uiActs = append(uiActs, uiAct)
+				}
+				writeSSEEvent(w, flusher, map[string]interface{}{
+					"type":             "done",
+					"model":            "Luma Ai Nitrogen",
+					"reply":            calReply,
+					"calendar_updated": true,
+					"ui_actions":       uiActs,
+				})
+				return
 			}
-			uiActs := []interface{}{}
-			if uiAct != nil {
-				uiActs = append(uiActs, uiAct)
-			}
-			writeSSEEvent(w, flusher, map[string]interface{}{"type": "done", "model": "Luma Ai Nitrogen", "ui_actions": uiActs})
-			return
 		}
 
-		// Step B: If Python luma_ai_nitrogen FastAPI server is running on :49225 -> proxy its SSE stream transparently!
-		if probePythonNitrogenServer(cfg.PythonServerURL) {
+		// Step B: If Python luma_ai_nitrogen FastAPI server is running on :49225 (for local/nitrogen mode) -> proxy its SSE stream transparently!
+		if (provider == "" || provider == "luma_local") && probePythonNitrogenServer(cfg.PythonServerURL) {
 			pyPayload, _ := json.Marshal(map[string]interface{}{
 				"message":       userMsg,
 				"session_id":    req.SessionID,
@@ -934,10 +1130,14 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 			}
 		}
 
-		// Step C: Build 3-tier memory + Calendar + Live Telemetry system context & try direct OpenAI-compat/Ollama SSE stream!
+		// Step C: Build 3-tier memory + Calendar + Live Telemetry system context
 		memSnap := GetAIMemorySnapshot()
 		var sysCtx strings.Builder
-		sysCtx.WriteString("Ты — Luma Ai Nitrogen, встроенный универсальный ИИ-ассистент и программист в Luma OS 1.6.3. Отвечай чётко, умно, без воды, с чистым Markdown для кода. Текущее время: " + time.Now().Format("2006-01-02 15:04") + ".\n")
+		if strings.TrimSpace(req.SystemPrompt) != "" {
+			sysCtx.WriteString(strings.TrimSpace(req.SystemPrompt) + "\n")
+		} else {
+			sysCtx.WriteString("Ты — Luma Ai Nitrogen, встроенный универсальный ИИ-ассистент и программист в Luma OS 1.6.4. Отвечай чётко, умно, без воды, с чистым Markdown для кода. Текущее время: " + time.Now().Format("2006-01-02 15:04") + ".\n")
+		}
 		if len(memSnap.Facts) > 0 {
 			sysCtx.WriteString("Долговременная память о пользователе:\n")
 			for i, f := range memSnap.Facts {
@@ -960,18 +1160,45 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 			sysCtx.WriteString("Контекст активного окна:\n" + req.ExtraContext + "\n")
 		}
 
-		llmMsgs := []map[string]string{{"role": "system", "content": sysCtx.String()}}
+		chatOnlyMsgs := make([]map[string]string, 0, len(req.Messages)+1)
 		for _, m := range req.Messages {
 			if m.Role != "" && m.Content != "" {
-				llmMsgs = append(llmMsgs, map[string]string{"role": m.Role, "content": m.Content})
+				chatOnlyMsgs = append(chatOnlyMsgs, map[string]string{"role": m.Role, "content": m.Content})
 			}
 		}
-		if len(req.Messages) == 0 && userMsg != "" {
-			llmMsgs = append(llmMsgs, map[string]string{"role": "user", "content": userMsg})
+		if len(chatOnlyMsgs) == 0 && userMsg != "" {
+			chatOnlyMsgs = append(chatOnlyMsgs, map[string]string{"role": "user", "content": userMsg})
 		}
 
-		if reply, ok := proxyOpenAICompatStream(w, flusher, cfg, llmMsgs); ok {
-			// Background fact extraction into Luma memory
+		// Step C1: Native Google Gemini SSE Streaming (handles both native v1beta/models/{model}:streamGenerateContent?alt=sse AND v1beta/openai/chat/completions!)
+		if isGeminiTarget(provider, cfg.BaseURL, cfg.ModelName) {
+			cleanModel := sanitizeGeminiModelID(cfg.ModelName)
+			if cleanModel == "" {
+				cleanModel = "gemini-2.5-flash"
+			}
+			writeSSEEvent(w, flusher, map[string]interface{}{"type": "meta", "model": cleanModel, "engine": "gemini_sse"})
+			reply, errMsg, ok := proxyNativeGeminiStream(w, flusher, cfg.BaseURL, cfg.APIKey, cleanModel, sysCtx.String(), cfg.Temperature, chatOnlyMsgs)
+			if ok {
+				writeSSEEvent(w, flusher, map[string]interface{}{
+					"type":  "done",
+					"model": cleanModel,
+					"reply": reply,
+				})
+				return
+			}
+			// Always report the REAL Gemini API error verbatim so user never sees empty 404 or hidden failure!
+			writeSSEEvent(w, flusher, map[string]interface{}{
+				"type":  "error",
+				"model": cleanModel,
+				"error": errMsg,
+			})
+			return
+		}
+
+		// Step C2: Direct OpenAI-Compatible / Local Ollama SSE Streaming
+		llmMsgs := append([]map[string]string{{"role": "system", "content": sysCtx.String()}}, chatOnlyMsgs...)
+		reply, oaiErr, ok := proxyOpenAICompatStream(w, flusher, cfg, llmMsgs)
+		if ok {
 			go func(u string) {
 				if strings.Contains(strings.ToLower(u), "запомни") || strings.Contains(strings.ToLower(u), "меня зовут") {
 					AddAIMemoryFact("user_note", u)
@@ -985,7 +1212,18 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 			return
 		}
 
-		// Step D: Built-in Luma Ai Nitrogen Offline + Web Autonomous Fallback (streamed smoothly word-by-word so UI NEVER fails!)
+		// For explicit external cloud providers, report the real upstream HTTP error directly!
+		isExplicitCloud := provider == "openai" || provider == "deepseek" || provider == "openrouter" || provider == "groq" || provider == "custom"
+		if isExplicitCloud && oaiErr != "" {
+			writeSSEEvent(w, flusher, map[string]interface{}{
+				"type":  "error",
+				"model": cfg.ModelName,
+				"error": oaiErr,
+			})
+			return
+		}
+
+		// Step D: Built-in Luma Ai Nitrogen Offline + Web Autonomous Fallback (when local Ollama isn't running yet)
 		writeSSEEvent(w, flusher, map[string]interface{}{"type": "meta", "model": "Luma Ai Nitrogen (Встроенное ядро)", "engine": "builtin_nitrogen"})
 		var history []AIChatMessage
 		for _, m := range req.Messages {
@@ -1007,11 +1245,12 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 			if end > len(runes) {
 				end = len(runes)
 			}
-			writeSSEEvent(w, flusher, map[string]interface{}{"type": "token", "text": string(runes[i:end])})
+			chunk := string(runes[i:end])
+			writeSSEEvent(w, flusher, map[string]interface{}{"type": "token", "content": chunk, "text": chunk})
 		}
 		writeSSEEvent(w, flusher, map[string]interface{}{
 			"type":           "done",
-			"model":          "Luma Ai Nitrogen (LumaCore 1.5.3)",
+			"model":          "Luma Ai Nitrogen (LumaCore 1.5.4)",
 			"reply":          replyText,
 			"sources":        res["sources"],
 			"thinking_steps": res["thinking_steps"],
@@ -1019,4 +1258,42 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 			"ui_actions":     res["ui_actions"],
 		})
 	})
+
+	// 6. Native Precision Touchpad Gesture Status & Live SSE Event Stream (Luma OS 1.6.4)
+	mux.HandleFunc("/api/kernel/gestures/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(getNativeTouchpadGestureStatus())
+	})
+
+	mux.HandleFunc("/api/kernel/gestures/events", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		flusher, _ := w.(http.Flusher)
+
+		subID, ch := subscribeNativeTouchpadGestures()
+		defer unsubscribeNativeTouchpadGestures(subID)
+
+		writeSSEEvent(w, flusher, map[string]interface{}{"type": "connected", "engine": "LumaCore 1.5.4 Touchpad HID"})
+		keepalive := time.NewTicker(25 * time.Second)
+		defer keepalive.Stop()
+
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case ev, ok := <-ch:
+				if !ok {
+					return
+				}
+				writeSSEEvent(w, flusher, ev)
+			case <-keepalive.C:
+				_, _ = fmt.Fprint(w, ": ping\n\n")
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+		}
+	})
 }
+

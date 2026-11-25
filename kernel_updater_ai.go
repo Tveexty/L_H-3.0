@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -531,6 +533,7 @@ func ListRollbackReleases(repoURL string) []RollbackReleaseEntry {
 	baseRaw := fmt.Sprintf("https://github.com/%s/%s/raw/main", owner, repo)
 
 	curated := []RollbackReleaseEntry{
+		{Version: "1.6.4", Tag: "v1.6.4", Title: "Luma OS 1.6.4 (Nitrogen)", DownloadURL: baseRaw + "/LumaOS_1.6.4.exe", Summary: "Нативный Win32 HID-движок многопальцевых жестов тачпада и переработанный сенсорный трекер, полное исправление Google Gemini API (стриминг SSE + OpenAI-compat + чистые URL и полные ошибки), авто-скрытие визуального шума при просмотре видео и в полноэкранном режиме, интерактивный магнитный Dock с отскоком запуска и индикатором рендера/загрузки, пружинная физика окон и меню с инерцией и полностью обновлённый информативный экран обновления Luma OS"},
 		{Version: "1.6.3", Tag: "v1.6.3", Title: "Luma OS 1.6.3 (Nitrogen)", DownloadURL: baseRaw + "/LumaOS_1.6.3.exe", Summary: "Модульный Luma Ai Nitrogen (OpenAI/Ollama Qwen 2.5 3B · SSE стриминг · 3-уровневая память SQLite+RAG · Function Calling · Календарь · Office Studio · Luma Обвести для поиска) с опцией Скачать/Удалить ИИ, полное отключение всех жестов тачпада Windows, список всех найденных Wi-Fi и Bluetooth устройств, аппаратная остановка зарядки ноутбука (Режим сбережения), поддержка сенсора и стилуса, многостраничный Word A4, Обзор окон в меню Пуск, реальное закрепление окон поверх Chrome и очищенное меню ПКМ"},
 		{Version: "1.6.2b", Tag: "v1.6.2b", Title: "Luma OS 1.6.2b (Nitrogen)", DownloadURL: baseRaw + "/LumaOS_1.6.2b.exe", Summary: "100% нативные Wi-Fi и Bluetooth с выбором сетей, вводом пароля и списком устройств по ПКМ прямо в Панели управления и Центре управления (без Windows), новая настройка «Замена горячих клавиш» в «Оболочка Windows» (Win → Пуск Luma, Alt+Tab → окно Luma, Win+D → стол Luma, отключение жестов тачпада Windows) и полное устранение самопроизвольного открытия Настроек Windows"},
 		{Version: "1.6.2", Tag: "v1.6.2", Title: "Luma OS 1.6.2 (Nitrogen)", DownloadURL: baseRaw + "/LumaOS_1.6.2.exe", Summary: "Luma AI 5.0 Nexus с долгосрочной памятью и глубоким управлением ПК, Luma Обвести для поиска (OCR + веб-поиск по экрану), Управление жестами и Спецвозможности (Плагины + ПКМ), живой индикатор загрузок на панели, безопасная Корзина для всех удалений, фикс перетаскивания приложений в папки и гибкая Папка «Luma Система» слева"},
@@ -746,6 +749,163 @@ type AIChatRequest struct {
 	Messages       []AIChatMessage `json:"messages"`
 }
 
+// sanitizeGeminiModelID strips accidental leading/repeated "models/" prefixes and trailing ":action" suffixes
+// so Google Gemini URLs NEVER become ".../v1beta/models/models/gemini-...".
+func sanitizeGeminiModelID(model string) string {
+	clean := strings.TrimSpace(model)
+	clean = strings.Trim(clean, "/")
+	for {
+		lower := strings.ToLower(clean)
+		if strings.HasPrefix(lower, "models/") {
+			clean = strings.TrimPrefix(clean, clean[:len("models/")])
+			clean = strings.TrimLeft(clean, "/")
+			continue
+		}
+		break
+	}
+	if idx := strings.Index(clean, ":"); idx > 0 && strings.HasPrefix(strings.ToLower(clean), "gemini") {
+		clean = strings.TrimSpace(clean[:idx])
+	}
+	return clean
+}
+
+// maskURLSecret masks sensitive query params (key=..., api_key=...) before writing URLs to logs/errors.
+func maskURLSecret(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	q := u.Query()
+	changed := false
+	for k := range q {
+		lk := strings.ToLower(k)
+		if lk == "key" || lk == "api_key" || lk == "apikey" || lk == "token" {
+			q.Set(k, "***")
+			changed = true
+		}
+	}
+	if changed {
+		u.RawQuery = q.Encode()
+	}
+	return u.String()
+}
+
+// buildGeminiEndpoint builds a strictly valid Google Gemini URL matching either:
+//   - OpenAI-compatible endpoint: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
+//   - Native Gemini SSE:          https://generativelanguage.googleapis.com/v1beta/models/{cleanModel}:streamGenerateContent?alt=sse&key={apiKey}
+//   - Native Gemini REST:         https://generativelanguage.googleapis.com/v1beta/models/{cleanModel}:generateContent?key={apiKey}
+func buildGeminiEndpoint(baseURL, model, apiKey string, stream bool) (endpoint string, sanitizedURL string, isOpenAICompat bool) {
+	cleanModel := sanitizeGeminiModelID(model)
+	if cleanModel == "" {
+		cleanModel = "gemini-2.5-flash"
+	}
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if base == "" {
+		base = "https://generativelanguage.googleapis.com/v1beta"
+	}
+	lowerBase := strings.ToLower(base)
+
+	// Detect OpenAI-compatible Gemini endpoint (e.g. .../v1beta/openai or .../v1beta/openai/chat/completions)
+	if strings.Contains(lowerBase, "/openai") || strings.HasSuffix(lowerBase, "/chat/completions") {
+		if strings.HasSuffix(lowerBase, "/chat/completions") {
+			endpoint = base
+		} else {
+			endpoint = base + "/chat/completions"
+		}
+		return endpoint, maskURLSecret(endpoint), true
+	}
+
+	// Native Google Gemini REST / SSE API:
+	// Strip accidental trailing "/models" or "/models/{anything}" if pasted into BaseURL
+	if idx := strings.Index(lowerBase, "/models"); idx >= 0 {
+		base = strings.TrimRight(base[:idx], "/")
+		lowerBase = strings.ToLower(base)
+	}
+	// Ensure API version prefix (/v1beta or /v1) is present on official Google host
+	if strings.Contains(lowerBase, "generativelanguage.googleapis.com") &&
+		!strings.HasSuffix(lowerBase, "/v1beta") &&
+		!strings.HasSuffix(lowerBase, "/v1") &&
+		!strings.HasSuffix(lowerBase, "/v1alpha") {
+		base += "/v1beta"
+	}
+
+	action := "generateContent"
+	query := "key=" + url.QueryEscape(strings.TrimSpace(apiKey))
+	if stream {
+		action = "streamGenerateContent"
+		query = "alt=sse&" + query
+	}
+	endpoint = fmt.Sprintf("%s/models/%s:%s?%s", base, url.PathEscape(cleanModel), action, query)
+	return endpoint, maskURLSecret(endpoint), false
+}
+
+// formatGeminiHTTPError extracts the exact Google/OpenAI error message from any non-200 HTTP response body.
+// Guarantees the returned text is never empty after the colon (no more "Gemini HTTP 404: .").
+func formatGeminiHTTPError(statusCode int, statusText string, body []byte, model, sanitizedURL string) string {
+	raw := strings.TrimSpace(string(body))
+	detail := ""
+	if raw != "" {
+		// 1. Standard Google / OpenAI JSON object: {"error": {"code":..., "message":..., "status":...}}
+		var objErr struct {
+			Error *struct {
+				Code    interface{} `json:"code"`
+				Message string      `json:"message"`
+				Status  string      `json:"status"`
+			} `json:"error"`
+			Message string `json:"message"`
+		}
+		if json.Unmarshal([]byte(raw), &objErr) == nil {
+			if objErr.Error != nil && strings.TrimSpace(objErr.Error.Message) != "" {
+				detail = strings.TrimSpace(objErr.Error.Message)
+				if st := strings.TrimSpace(objErr.Error.Status); st != "" {
+					detail += " [" + st + "]"
+				}
+			} else if strings.TrimSpace(objErr.Message) != "" {
+				detail = strings.TrimSpace(objErr.Message)
+			}
+		}
+		// 2. Google OpenAI-compat / SSE array format: [{"error": {"message":...}}]
+		if detail == "" && strings.HasPrefix(raw, "[") {
+			var arrErr []struct {
+				Error *struct {
+					Message string `json:"message"`
+					Status  string `json:"status"`
+				} `json:"error"`
+			}
+			if json.Unmarshal([]byte(raw), &arrErr) == nil && len(arrErr) > 0 && arrErr[0].Error != nil && strings.TrimSpace(arrErr[0].Error.Message) != "" {
+				detail = strings.TrimSpace(arrErr[0].Error.Message)
+				if st := strings.TrimSpace(arrErr[0].Error.Status); st != "" {
+					detail += " [" + st + "]"
+				}
+			}
+		}
+		// 3. Plain text / stripped HTML fallback
+		if detail == "" {
+			clean := strings.ReplaceAll(raw, "\r", " ")
+			clean = strings.ReplaceAll(clean, "\n", " ")
+			for strings.Contains(clean, "  ") {
+				clean = strings.ReplaceAll(clean, "  ", " ")
+			}
+			clean = strings.TrimSpace(clean)
+			if len(clean) > 420 {
+				clean = clean[:420] + "…"
+			}
+			detail = clean
+		}
+	}
+	if detail == "" {
+		st := strings.TrimSpace(statusText)
+		if st == "" {
+			st = fmt.Sprintf("%d %s", statusCode, http.StatusText(statusCode))
+		}
+		detail = fmt.Sprintf("пустой ответ сервера (%s) — проверьте URL %s и модель %s", st, sanitizedURL, model)
+	}
+	if model != "" {
+		return fmt.Sprintf("HTTP %d (%s): %s", statusCode, model, detail)
+	}
+	return fmt.Sprintf("HTTP %d: %s", statusCode, detail)
+}
+
 func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]interface{} {
 	if kernel != nil && !kernel.IsAIEnabled() {
 		return map[string]interface{}{
@@ -838,80 +998,92 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 
 	client := &http.Client{Timeout: 60 * time.Second}
 
-	// ---- A. Native Google Gemini REST API ----
+	// ---- A. Google Gemini API (Native REST or OpenAI-Compatible Endpoint) ----
+	geminiUseOpenAI := false
+	geminiOpenAIEndpoint := ""
 	if provider == "gemini" {
 		if apiKey == "" {
 			return map[string]interface{}{"ok": false, "error": "Укажите API-ключ Google Gemini (aistudio.google.com/apikey)"}
 		}
+		model = sanitizeGeminiModelID(model)
 		if model == "" {
 			model = "gemini-2.5-flash"
 		}
-		base := strings.TrimRight(strings.TrimSpace(req.BaseURL), "/")
-		if base == "" {
-			base = "https://generativelanguage.googleapis.com/v1beta"
-		}
-		endpoint := fmt.Sprintf("%s/models/%s:generateContent?key=%s", base, model, apiKey)
+		endpoint, sanitizedURL, isOpenAI := buildGeminiEndpoint(req.BaseURL, model, apiKey, false)
+		if isOpenAI {
+			// User configured OpenAI-compatible endpoint (.../v1beta/openai): route via Section C!
+			geminiUseOpenAI = true
+			geminiOpenAIEndpoint = endpoint
+		} else {
+			log.Printf("[LumaCore AI][Gemini REST] POST %s (model=%s)", sanitizedURL, model)
 
-		contents := make([]map[string]interface{}, 0, len(req.Messages))
-		for _, m := range req.Messages {
-			role := "user"
-			if m.Role == "assistant" || m.Role == "model" {
-				role = "model"
+			contents := make([]map[string]interface{}, 0, len(req.Messages))
+			for _, m := range req.Messages {
+				role := "user"
+				if m.Role == "assistant" || m.Role == "model" {
+					role = "model"
+				}
+				contents = append(contents, map[string]interface{}{
+					"role":  role,
+					"parts": []map[string]string{{"text": m.Content}},
+				})
 			}
-			contents = append(contents, map[string]interface{}{
-				"role":  role,
-				"parts": []map[string]string{{"text": m.Content}},
-			})
-		}
-		bodyObj := map[string]interface{}{
-			"system_instruction": map[string]interface{}{
-				"parts": []map[string]string{{"text": sysPrompt}},
-			},
-			"contents": contents,
-			"generationConfig": map[string]interface{}{
-				"temperature": temp,
-			},
-		}
-		rawBody, _ := json.Marshal(bodyObj)
-		httpReq, _ := http.NewRequest("POST", endpoint, bytes.NewReader(rawBody))
-		httpReq.Header.Set("Content-Type", "application/json")
-		resp, err := client.Do(httpReq)
-		if err != nil {
-			return map[string]interface{}{"ok": false, "error": fmt.Sprintf("Ошибка сети Gemini: %v", err)}
-		}
-		defer resp.Body.Close()
-		respBytes, _ := io.ReadAll(resp.Body)
+			bodyObj := map[string]interface{}{
+				"system_instruction": map[string]interface{}{
+					"parts": []map[string]string{{"text": sysPrompt}},
+				},
+				"contents": contents,
+				"generationConfig": map[string]interface{}{
+					"temperature": temp,
+				},
+			}
+			rawBody, _ := json.Marshal(bodyObj)
+			httpReq, reqErr := http.NewRequest("POST", endpoint, bytes.NewReader(rawBody))
+			if reqErr != nil {
+				return map[string]interface{}{"ok": false, "error": fmt.Sprintf("Ошибка создания запроса Gemini (%s): %v", model, reqErr), "model": model}
+			}
+			httpReq.Header.Set("Content-Type", "application/json")
+			resp, err := client.Do(httpReq)
+			if err != nil {
+				return map[string]interface{}{"ok": false, "error": fmt.Sprintf("Ошибка сети Gemini (%s): %v", model, err), "model": model}
+			}
+			defer resp.Body.Close()
+			respBytes, _ := io.ReadAll(resp.Body)
 
-		var parsed struct {
-			Candidates []struct {
-				Content struct {
-					Parts []struct {
-						Text string `json:"text"`
-					} `json:"parts"`
-				} `json:"content"`
-			} `json:"candidates"`
-			Error *struct {
-				Message string `json:"message"`
-			} `json:"error"`
-		}
-		_ = json.Unmarshal(respBytes, &parsed)
-		if parsed.Error != nil && parsed.Error.Message != "" {
-			return map[string]interface{}{"ok": false, "error": "Gemini: " + parsed.Error.Message}
-		}
-		if resp.StatusCode >= 400 {
-			return map[string]interface{}{"ok": false, "error": fmt.Sprintf("Gemini HTTP %d: %s", resp.StatusCode, string(respBytes))}
-		}
-		var sb strings.Builder
-		if len(parsed.Candidates) > 0 {
-			for _, p := range parsed.Candidates[0].Content.Parts {
-				sb.WriteString(p.Text)
+			if resp.StatusCode != http.StatusOK {
+				formatted := formatGeminiHTTPError(resp.StatusCode, resp.Status, respBytes, model, sanitizedURL)
+				log.Printf("[LumaCore AI][Gemini REST][ERROR] %s", formatted)
+				return map[string]interface{}{"ok": false, "error": formatted, "provider": "gemini", "model": model}
 			}
+
+			var parsed struct {
+				Candidates []struct {
+					Content struct {
+						Parts []struct {
+							Text string `json:"text"`
+						} `json:"parts"`
+					} `json:"content"`
+				} `json:"candidates"`
+				Error *struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			_ = json.Unmarshal(respBytes, &parsed)
+			if parsed.Error != nil && parsed.Error.Message != "" {
+				return map[string]interface{}{"ok": false, "error": fmt.Sprintf("Gemini (%s): %s", model, parsed.Error.Message), "provider": "gemini", "model": model}
+			}
+			var sb strings.Builder
+			if len(parsed.Candidates) > 0 {
+				for _, p := range parsed.Candidates[0].Content.Parts {
+					sb.WriteString(p.Text)
+				}
+			}
+			reply := strings.TrimSpace(sb.String())
+			if reply == "" {
+				return map[string]interface{}{"ok": false, "error": fmt.Sprintf("Gemini (%s) вернул пустой ответ", model), "provider": "gemini", "model": model}
+			}
+			return map[string]interface{}{"ok": true, "reply": reply, "provider": "gemini", "model": model}
 		}
-		reply := strings.TrimSpace(sb.String())
-		if reply == "" {
-			return map[string]interface{}{"ok": false, "error": "Gemini вернул пустой ответ"}
-		}
-		return map[string]interface{}{"ok": true, "reply": reply, "provider": "gemini", "model": model}
 	}
 
 	// ---- B. Native Anthropic Claude API ----
@@ -955,6 +1127,11 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 		defer resp.Body.Close()
 		respBytes, _ := io.ReadAll(resp.Body)
 
+		if resp.StatusCode != http.StatusOK {
+			formatted := formatGeminiHTTPError(resp.StatusCode, resp.Status, respBytes, model, maskURLSecret(endpoint))
+			return map[string]interface{}{"ok": false, "error": formatted, "provider": "claude", "model": model}
+		}
+
 		var parsed struct {
 			Content []struct {
 				Text string `json:"text"`
@@ -967,9 +1144,6 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 		if parsed.Error != nil && parsed.Error.Message != "" {
 			return map[string]interface{}{"ok": false, "error": "Claude: " + parsed.Error.Message}
 		}
-		if resp.StatusCode >= 400 {
-			return map[string]interface{}{"ok": false, "error": fmt.Sprintf("Claude HTTP %d", resp.StatusCode)}
-		}
 		var sb strings.Builder
 		for _, c := range parsed.Content {
 			sb.WriteString(c.Text)
@@ -977,9 +1151,19 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 		return map[string]interface{}{"ok": true, "reply": strings.TrimSpace(sb.String()), "provider": "claude", "model": model}
 	}
 
-	// ---- C. OpenAI-Compatible APIs (OpenAI, DeepSeek, OpenRouter, Groq, Ollama, Custom) ----
+	// ---- C. OpenAI-Compatible APIs (Gemini OpenAI-compat, OpenAI, DeepSeek, OpenRouter, Groq, Ollama, Custom) ----
 	baseURL := strings.TrimRight(strings.TrimSpace(req.BaseURL), "/")
 	switch provider {
+	case "gemini":
+		if geminiUseOpenAI && geminiOpenAIEndpoint != "" {
+			baseURL = geminiOpenAIEndpoint
+		} else if baseURL == "" {
+			baseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
+		}
+		model = sanitizeGeminiModelID(model)
+		if model == "" {
+			model = "gemini-2.5-flash"
+		}
 	case "openai":
 		if baseURL == "" {
 			baseURL = "https://api.openai.com/v1"
@@ -1013,7 +1197,7 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 			baseURL = "http://127.0.0.1:11434/v1"
 		}
 		if model == "" {
-			model = "llama3.2"
+			model = "qwen2.5:3b"
 		}
 	default: // custom
 		if baseURL == "" {
@@ -1029,9 +1213,14 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 	}
 
 	endpoint := baseURL
-	if !strings.HasSuffix(endpoint, "/chat/completions") {
+	if !strings.HasSuffix(strings.ToLower(endpoint), "/chat/completions") {
 		endpoint += "/chat/completions"
 	}
+	if strings.Contains(strings.ToLower(endpoint), "generativelanguage.googleapis.com") {
+		model = sanitizeGeminiModelID(model)
+	}
+	sanitizedURL := maskURLSecret(endpoint)
+	log.Printf("[LumaCore AI][OpenAI-Compat] POST %s (provider=%s, model=%s)", sanitizedURL, provider, model)
 
 	oaiMsgs := []map[string]string{{"role": "system", "content": sysPrompt}}
 	for _, m := range req.Messages {
@@ -1047,22 +1236,31 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 		"messages":    oaiMsgs,
 	}
 	rawBody, _ := json.Marshal(bodyObj)
-	httpReq, _ := http.NewRequest("POST", endpoint, bytes.NewReader(rawBody))
+	httpReq, reqErr := http.NewRequest("POST", endpoint, bytes.NewReader(rawBody))
+	if reqErr != nil {
+		return map[string]interface{}{"ok": false, "error": fmt.Sprintf("Ошибка создания запроса (%s): %v", model, reqErr), "provider": provider, "model": model}
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	if provider == "openrouter" {
 		httpReq.Header.Set("HTTP-Referer", "https://github.com/Tveexty/L_H-3.0")
-		httpReq.Header.Set("X-Title", "Luma OS 1.2.0 Lithium")
+		httpReq.Header.Set("X-Title", "Luma OS 1.6.4 Nitrogen")
 	}
 
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		return map[string]interface{}{"ok": false, "error": fmt.Sprintf("Ошибка подключения к %s: %v", provider, err)}
+		return map[string]interface{}{"ok": false, "error": fmt.Sprintf("Ошибка подключения к %s (%s): %v", provider, model, err), "provider": provider, "model": model}
 	}
 	defer resp.Body.Close()
 	respBytes, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		formatted := formatGeminiHTTPError(resp.StatusCode, resp.Status, respBytes, model, sanitizedURL)
+		log.Printf("[LumaCore AI][OpenAI-Compat][ERROR] %s", formatted)
+		return map[string]interface{}{"ok": false, "error": formatted, "provider": provider, "model": model}
+	}
 
 	var parsed struct {
 		Choices []struct {
@@ -1076,13 +1274,10 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 	}
 	_ = json.Unmarshal(respBytes, &parsed)
 	if parsed.Error != nil && parsed.Error.Message != "" {
-		return map[string]interface{}{"ok": false, "error": parsed.Error.Message}
-	}
-	if resp.StatusCode >= 400 {
-		return map[string]interface{}{"ok": false, "error": fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(respBytes))}
+		return map[string]interface{}{"ok": false, "error": parsed.Error.Message, "provider": provider, "model": model}
 	}
 	if len(parsed.Choices) == 0 {
-		return map[string]interface{}{"ok": false, "error": "Пустой ответ от модели"}
+		return map[string]interface{}{"ok": false, "error": fmt.Sprintf("Пустой ответ от модели %s", model), "provider": provider, "model": model}
 	}
 	return map[string]interface{}{
 		"ok":       true,

@@ -68,8 +68,15 @@ PROVIDER_PRESETS: Dict[str, Dict[str, str]] = {
         "model_name": "qwen2.5-3b-instruct",
         "embed_model": "text-embedding-nomic-embed-text-v1.5",
     },
+    "gemini": {
+        "name": "Google Gemini (Native SSE /v1beta)",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta",
+        "api_key": "",
+        "model_name": "gemini-2.5-flash",
+        "embed_model": "",
+    },
     "gemini_flash_lite": {
-        "name": "Google Gemini Flash-Lite (OpenAI-compat)",
+        "name": "Google Gemini (OpenAI-compat /v1beta/openai)",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
         "api_key": "",
         "model_name": "gemini-2.5-flash-lite",

@@ -94,7 +94,7 @@ export const LumaTrashWindow: React.FC<LumaTrashWindowProps> = ({
         onCountChange?.(list.length);
       }
     } catch {
-      setStatusMsg('Нет связи с подсистемой Корзины LumaCore 1.5.3');
+      setStatusMsg('Нет связи с подсистемой Корзины LumaCore 1.5.4');
     } finally {
       setLoading(false);
     }
