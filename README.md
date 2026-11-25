@@ -1,65 +1,60 @@
 <div align="center">
 
-<img src="public/luma-nitrogen-hero.jpg" alt="Luma OS 1.6.2 (Nitrogen · N-7 · 2.5D Cryo-Glass QHD)" width="100%" style="border-radius: 18px;" />
+<img src="public/luma-nitrogen-hero.jpg" alt="Luma OS 1.6.2b (Nitrogen · N-7 · 2.5D Cryo-Glass QHD)" width="100%" style="border-radius: 18px;" />
 
 <br />
 
-# Luma OS 1.6.2 — **Nitrogen · N-7**
+# Luma OS 1.6.2b — **Nitrogen · N-7**
 
-**Флагманская настольная операционная среда для Windows 10 / 11 на ядре `LumaCore 1.5.2` и защите `LumaShield 2.5` (275 правил), с умной нейросетью `Luma AI 5.0 Nexus` (долгосрочная память · глубокое управление ПК · весь интернет), «Luma Обвести для поиска» (OCR + перевод + веб-поиск по экрану), Управлением жестами и Спецвозможностями, живым индикатором загрузок, безопасной Корзиной Luma OS, гибкой перетаскиваемой «Папкой Luma», фирменными стилями `Luma Matrix` / `Luma Glass` / `Luma Nova` и 2.5D обоями Nitrogen Cryo-Glass**
+**Флагманская настольная операционная среда для Windows 10 / 11 на ядре `LumaCore 1.5.2b` и защите `LumaShield 2.5` (275 правил): 100% нативные Wi-Fi и Bluetooth (выбор сетей, ввод пароля и устройства по ПКМ без Windows), единый режим «Замена горячих клавиш» (`Win` · `Alt+Tab` · `Win+D` · отключение жестов тачпада Windows), умная нейросеть `Luma AI 5.0 Nexus`, «Luma Обвести для поиска», Управление жестами и Спецвозможности, живой индикатор загрузок, безопасная Корзина и 2.5D обои Nitrogen Cryo-Glass**
 
 <p>
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.2"><img src="https://img.shields.io/badge/Release-v1.6.2%20(Nitrogen%20·%20N--7)-38bdf8?style=for-the-badge" alt="Release v1.6.2" /></a>
-  <img src="https://img.shields.io/badge/Kernel-LumaCore%201.5.2%20(v1.6.2)-10b981?style=for-the-badge" alt="LumaCore 1.5.2" />
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.2b"><img src="https://img.shields.io/badge/Release-v1.6.2b%20(Nitrogen%20·%20N--7)-38bdf8?style=for-the-badge" alt="Release v1.6.2b" /></a>
+  <img src="https://img.shields.io/badge/Kernel-LumaCore%201.5.2b%20(v1.6.2b)-10b981?style=for-the-badge" alt="LumaCore 1.5.2b" />
   <img src="https://img.shields.io/badge/Security-LumaShield%202.5%20(275%20Rules)-f43f5e?style=for-the-badge" alt="LumaShield 2.5" />
+  <img src="https://img.shields.io/badge/Connectivity-Native%20Wi--Fi%20%2B%20Bluetooth-06b6d4?style=for-the-badge" alt="Native Wi-Fi and Bluetooth" />
   <img src="https://img.shields.io/badge/AI-Luma%20AI%205.0%20Nexus-8b5cf6?style=for-the-badge" alt="Luma AI 5.0 Nexus" />
-  <img src="https://img.shields.io/badge/Lens-Обвести%20для%20поиска-0ea5e9?style=for-the-badge" alt="Luma Lens" />
-  <img src="https://img.shields.io/badge/Gestures-3%2F4%20пальца%20%2B%20Мышь-06b6d4?style=for-the-badge" alt="Gestures" />
+  <img src="https://img.shields.io/badge/Shell-Replace%20Hotkeys%20%2B%20Touchpad-0ea5e9?style=for-the-badge" alt="Replace Hotkeys" />
 </p>
 
 <h3>
-  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.2.exe">⬇️ Скачать LumaOS_1.6.2.exe (Portable · 1 файл · 0 зависимостей)</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.2b.exe">⬇️ Скачать LumaOS_1.6.2b.exe (Portable · 1 файл · 0 зависимостей)</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.2">📦 Релиз v1.6.2</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.2b">📦 Релиз v1.6.2b</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="PATCH_NOTES_1.6.2.md">📝 Патч-ноут 1.6.2</a>
+  <a href="PATCH_NOTES_1.6.2b.md">📝 Патч-ноут 1.6.2b</a>
 </h3>
 
 </div>
 
 ---
 
-## Что нового в **Luma OS 1.6.2 (Nitrogen · N-7 · `LumaCore 1.5.2` · `Luma AI 5.0 Nexus`)**
+## Что нового в **Luma OS 1.6.2b (Nitrogen · N-7 · `LumaCore 1.5.2b`)**
 
-| Модуль | Ключевые улучшения обновления 1.6.2 |
+| Модуль | Ключевые улучшения обновления 1.6.2b |
 | :--- | :--- |
-| **Фикс перетаскивания приложений в папки** | Устранён баг с появлением нерабочего `.png` в папке: иконки ярлыков защищены (`draggable={false}`, `pointer-events-none`), внутренние перетаскивания ярлыков (`application/x-luma-shortcut`) обрабатываются с приоритетом и переносят реальное рабочее приложение с сохранением его родной иконки. |
-| **Живой индикатор загрузок на панели** | При скачивании файлов в браузерах (`.crdownload`/`.part`/`.opdownload`/`.download`), торрентах (`.!qb`/`.!ut`/`.aria2`), Telegram, Steam или любых активно растущих файлов в `Downloads` на панели задач автоматически появляется неоновая капсула с названием, `%`, скоростью `МБ/с` и прогресс-баром; после завершения автоматически скрывается. |
-| **Luma AI 5.0 Nexus (Память · Система · Весь интернет)** | Долгосрочная память о пользователе (`%AppData%/LumaOS/ai_memory_v5.json` + менеджер «Память» в окне чата), контекст диалога, развёрнутые статьи Википедии RU/EN, переводчик на 50 языков, математика/уравнения и глубокое управление ПК (диагностика тормозов с топ-процессами, пинг, буфер обмена, завершение процессов, очистка Temp, Корзина, Luma Lens). |
-| **Управление · Спецвозможности (Жесты + ПКМ + Плагины)** | Новый единый раздел в Настройках: **Управление жестами** (3 пальца вниз = **Скриншот**, 3 пальца вверх = Обзор окон, влево/вправо = Рабочие столы, 4 пальца вниз = Рабочий стол, Круг / 3 пальца тап = **Luma Обвести для поиска**, плюс режим жестов мышью `Alt + ПКМ`), настройки меню **ПКМ**, управление **Плагинами** и опции доступности. |
-| **Luma Обвести для поиска (`Ctrl+Shift+L`)** | Полноценный визуальный поиск по экрану: захват экрана (`Win32 BitBlt`), свободное обведение кругом (лассо) или рамкой, офлайн-OCR текста (`RU+EN`), палитра доминирующих цветов, перевод в 1 клик, веб-поиск через `Luma AI 5.0`, сохранение вырезки PNG и визуальный поиск. |
-| **Гибкая «Папка Luma» слева** | Перемещена в крайне левый слот панели задач по умолчанию, свободно **перетаскивается мышью** между 4 позициями панели и скрывается / добавляется в 1 клик в Настройках → Панель задач. |
-| **Безопасное удаление в Корзину Luma OS** | Все удаляемые файлы и папки (Проводник, API ядра, Luma AI 5.0) безопасно перемещаются в **Корзину Luma OS** с мгновенным обновлением и восстановлением в 1 клик. |
+| **100% нативные Wi-Fi и Bluetooth (ПКМ + ввод пароля)** | В **Панель управления** (`Tab`) и в **Центр управления** в углу экрана добавлены живые плитки **Wi-Fi** и **Bluetooth**: ЛКМ включает/выключает адаптер, а **ПКМ** (или стрелка `›`) открывает встроенный список доступных сетей Wi-Fi и устройств Bluetooth с уровнем сигнала, зарядом, **встроенным полем ввода пароля Wi-Fi / PIN-кода Bluetooth** и отключением в 1 клик — полностью внутри Luma OS, без единого окна Параметров Windows. |
+| **Оболочка Windows → «Замена горячих клавиш»** | Новый единый переключатель в *Настройки → Оболочка Windows*: **`Win`** открывает Пуск Luma OS (или панель Luma Nova), **`Alt + Tab`** — фирменное окно переключения окон Luma OS, **`Win + D`** — возврат на рабочий стол Luma OS, а **жесты тачпада Windows (3/4 пальца) отключаются** на время работы и автоматически восстанавливаются при выключении опции, по `Ctrl + Alt + Shift + W` или закрытии `LumaOS_1.6.2b.exe`. |
+| **Фикс самопроизвольного открытия Настроек Windows** | Полностью устранены фоновые системные вызовы `RequestAccessAsync()` и внешние ссылки `ms-settings:`, а также добавлено самовосстановление флагов клавиши `Win` после UAC-окон — окно Настроек Windows больше никогда не открывается само по себе. |
+| **Улучшенная стабильность перехватчика `Alt + Tab` / `Win`** | Автоматический сброс активной сессии `Alt + Tab` при выборе окна мышью или потере фокуса, проверка модификаторов при одиночном нажатии `Win` и чистый UTF-8 парсер сетей Wi-Fi (`chcp 65001`) для кириллических SSID и русскоязычной Windows. |
 
 ---
 
 ## Все флагманские возможности ветки **1.6.x (Nitrogen · N-7)**
 
-- **Режим разработчика (`Ctrl + Shift + D`) и Режим Администратора (UAC):** живой Developer HUD (FPS, JS/Go RAM, горутины, лог IPC, DOM-инспектор) + определение прав Администратора и перезапуск через `runas`.
-- **Стиль системы `Luma Nova`:** панель задач без кнопки Пуск и компактная верхняя правая капсула (Язык · Wi-Fi · Батарея) с компактным Пуском/лаунчером, переключателем окон рабочего стола, `Alt + R`, рабочими столами `D1–D4`, звуком, яркостью и питанием.
-- **`Luma SwapBoost` (Виртуальная память 2 / 4 / 6 ГБ):** фиксированный `pagefile.sys` (`Min == Max`), сжатие памяти Windows, `ClearPageFileAtShutdown = 0` и расчёт ресурса **TBW**.
-- **Ядро `LumaCore 1.5.2` и защита `LumaShield 2.5`:** 275 эвристических и сигнатурных правил, аудит автозагрузки и Планировщика задач, 0 утечек Win32-колбэков (`syscall.NewCallback` строго синглтоны).
-- **«Поверх всех окон» (`📌 Always on Top`):** для всех 21 окна Luma OS и любых внешних окон Windows (`SetWindowPos HWND_TOPMOST/HWND_NOTOPMOST`).
-- **`Luma Gamepad Studio`:** DualShock 4, DualSense, Xbox (XInput) и HID, 60 FPS визуализатор, профили, кривые/мёртвые зоны, RGB Lightbar, вибрация, `125–1000 Гц` и эмуляция мыши/клавиатуры.
-- **`Luma Deep Uninstaller`:** список программ, деинсталлятор, 4-этапный сканер остатков (файлы, реестр HKCU/HKLM, службы/задачи), галочки, автобэкап и безопасное восстановление.
-- **`Luma Peek` по клавише `Space`:** фото (зум/поворот), видео и аудио (**HTTP 206 Range**), код с подсветкой + AI 5.0, PDF, Markdown, перелистывание стрелками.
-- **Клавиша `Win` и исправленный `Alt + Tab`:** одиночный `Win` открывает Пуск Luma OS / панель `Luma Nova` (сохраняя `Win+D`, `Win+L`, `Win+Shift+S`, `Win+Space`, `Win+E`), а `Alt + Tab` стабильно фокусируется поверх рабочего стола со стрелками/`Enter`/`Esc`.
+- **Luma AI 5.0 Nexus:** долгосрочная память о пользователе (`%AppData%/LumaOS/ai_memory_v5.json`), контекст диалога, веб-поиск, перевод на 50 языков и глубокое управление системой.
+- **Luma Обвести для поиска (`Ctrl + Shift + L`):** захват экрана, свободное обведение кругом (лассо) или рамкой, офлайн-OCR (`RU+EN`), палитра цветов, перевод и поиск через `Luma AI 5.0`.
+- **Управление жестами и Спецвозможности:** 3 пальца вниз = Скриншот, 3 пальца вверх = Обзор окон, влево/вправо = Рабочие столы, 4 пальца вниз = Рабочий стол, Круг = Luma Обвести для поиска, жесты мышью `Alt + ПКМ`, настройки ПКМ и Плагины.
+- **Живой индикатор загрузок и безопасная Корзина Luma OS:** неоновая капсула скачиваний на панели задач + безопасное удаление всех файлов в Корзину с восстановлением в 1 клик.
+- **Режим разработчика (`Ctrl + Shift + D`) и Режим Администратора (UAC):** живой Developer HUD (FPS, JS/Go RAM, горутины, лог IPC, DOM-инспектор) + перезапуск с правами Администратора (`runas`).
+- **Стиль системы `Luma Nova` и перетаскиваемая «Папка Luma»:** панель без кнопки Пуск + верхняя капсула `Luma Nova`, а также перетаскиваемая мышью Папка «Luma Система» слева.
+- **`Luma SwapBoost` (2 / 4 / 6 ГБ), `Luma Gamepad Studio`, `Luma Deep Uninstaller`, `Luma Peek` (`Space`) и «Поверх всех окон» (`📌`):** полный набор нативных утилит на ядре `LumaCore 1.5.2b` и защите `LumaShield 2.5` (275 правил, 0 утечек Win32-колбэков).
 
 ---
 
 ## Галерея обоев **Nitrogen (QHD 2560×1440)**
 
-> Все 20 обоев встроены в `LumaOS_1.6.2.exe` (включая полную коллекцию предыдущих версий).
+> Все 20 обоев встроены в `LumaOS_1.6.2b.exe` (включая полную коллекцию предыдущих версий).
 
 <table>
   <tr>
@@ -100,13 +95,14 @@
 
 ---
 
-## Скачать Luma OS (все 20 сборок сохранены)
+## Скачать Luma OS (все 21 сборка сохранены)
 
 Все исполняемые файлы автономны (**Single-Binary Portable EXE** — встроенный фронтенд + Go-ядро, установка не требуется):
 
 | Версия | Кодовое имя | Ядро / Возможности | Прямая ссылка |
 | :--- | :--- | :--- | :--- |
-| **1.6.2 (Актуальная)** | **Nitrogen · N-7** | `LumaCore 1.5.2` · `Luma AI 5.0 Nexus` · `Luma Обвести для поиска` · `Жесты & Спецвозможности` · `Live Загрузки` · `Безопасная Корзина` | [**LumaOS_1.6.2.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.2.exe) |
+| **1.6.2b (Актуальная)** | **Nitrogen · N-7** | `LumaCore 1.5.2b` · `Нативные Wi-Fi & Bluetooth (ПКМ + пароль)` · `Замена горячих клавиш + Тачпад` · `0 всплытий Настроек Windows` | [**LumaOS_1.6.2b.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.2b.exe) |
+| **1.6.2** | Nitrogen · N-7 | `LumaCore 1.5.2` · `Luma AI 5.0 Nexus` · `Luma Обвести для поиска` · `Жесты & Спецвозможности` · `Live Загрузки` · `Безопасная Корзина` | [LumaOS_1.6.2.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.2.exe) |
 | **1.6.1** | Nitrogen · N-7 | `LumaCore 1.5.1` · `LumaShield 2.5` · `Luma AI 4.0` · `2.5D Cryo-Glass` · `Hover Smart Dock` · `Luma Nova` | [LumaOS_1.6.1.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.1.exe) |
 | **1.6** | Nitrogen · N-7 | `LumaCore 1.5.0` · `LumaShield 2.5` · `Gamepad Studio` · `Deep Uninstaller` · `Luma Peek` · `Smart Dock` | [LumaOS_1.6.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.exe) |
 | **1.5.4** | Carbon · C-6 | `LumaCore 1.4.7` · `24/7 Stability` · `Шторка` · `140+ Excel` · `Battery Care` | [LumaOS_1.5.4.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.5.4.exe) |
@@ -134,5 +130,5 @@
 ```bash
 npm install
 npm run build
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui" -o LumaOS_1.6.1.exe .
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui" -o LumaOS_1.6.2b.exe .
 ```

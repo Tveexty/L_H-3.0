@@ -3,14 +3,11 @@
 package main
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -478,20 +475,10 @@ func (b *OSNotificationBridge) startWinLiveUIAToastWatcher() {
 	}()
 }
 
-// Engine 3: Windows Action Center WinRT UserNotificationListener fallback poller (runs quietly in background).
+// Engine 3 intentionally disabled in Luma OS 1.6.2b:
+// Calling WinRT UserNotificationListener.RequestAccessAsync() periodically from an unpackaged process
+// triggers Windows 11 SystemSettings.exe popups. Engines 1 (WPN DB/WAL) & 2 (COM UIA) run 100% silently.
 func (b *OSNotificationBridge) startWinActionCenterFallbackPoller() {
-	go func() {
-		defer func() { _ = recover() }()
-		time.Sleep(3 * time.Second)
-		ticker := time.NewTicker(4 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			func() {
-				defer func() { _ = recover() }()
-				b.pollWinRTActionCenterOnce()
-			}()
-		}
-	}()
 }
 
 func (b *OSNotificationBridge) winScanLiveToastBanners(uia, trueCond uintptr) {
@@ -608,120 +595,6 @@ func (b *OSNotificationBridge) winScanLiveToastBanners(uia, trueCond uintptr) {
 			Time:      now.Format("15:04"),
 			DateLabel: now.Format("02.01.2006"),
 			Timestamp: now.UnixMilli(),
-		})
-	}
-}
-
-func (b *OSNotificationBridge) pollWinRTActionCenterOnce() {
-	psScript := `
-$OutputEncoding = [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-try {
-  Add-Type -AssemblyName System.Runtime.WindowsRuntime | Out-Null
-  [void][Windows.UI.Notifications.Management.UserNotificationListener, Windows.UI.Notifications, ContentType=WindowsRuntime]
-  [void][Windows.UI.Notifications.NotificationKinds, Windows.UI.Notifications, ContentType=WindowsRuntime]
-  [void][Windows.UI.Notifications.KnownNotificationBindings, Windows.UI.Notifications, ContentType=WindowsRuntime]
-  $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation` + "`1" + `' })[0]
-  function AwaitOp($op, $t) {
-    $m = $asTaskGeneric.MakeGenericMethod($t)
-    $task = $m.Invoke($null, @($op))
-    $task.Wait(2200) | Out-Null
-    return $task.Result
-  }
-  $listener = [Windows.UI.Notifications.Management.UserNotificationListener]::Current
-  $acc = AwaitOp ($listener.RequestAccessAsync()) ([Windows.UI.Notifications.Management.UserNotificationListenerAccessStatus])
-  if ($acc.ToString() -ne 'Allowed') { Write-Output '[]'; exit 0 }
-  $list = AwaitOp ($listener.GetNotificationsAsync([Windows.UI.Notifications.NotificationKinds]::Toast)) ([System.Collections.Generic.IReadOnlyList[Windows.UI.Notifications.UserNotification]])
-  $out = @()
-  foreach ($n in $list) {
-    try {
-      $app = $n.AppInfo.DisplayInfo.DisplayName
-      $binding = $n.Notification.Visual.GetBinding([Windows.UI.Notifications.KnownNotificationBindings]::ToastGeneric)
-      $texts = @()
-      if ($binding) {
-        foreach ($el in $binding.GetTextElements()) {
-          if ($el.Text) { $texts += $el.Text }
-        }
-      }
-      if ($texts.Count -gt 0) {
-        $out += [PSCustomObject]@{
-          id = $n.Id
-          app = $app
-          title = $texts[0]
-          body = if ($texts.Count -gt 1) { ($texts[1..($texts.Count-1)] -join ' · ') } else { $texts[0] }
-          ts = $n.CreationTime.ToUnixTimeMilliseconds()
-        }
-      }
-    } catch {}
-  }
-  if ($out.Count -eq 0) { Write-Output '[]' } else { $out | ConvertTo-Json -Compress }
-} catch { Write-Output '[]' }
-`
-	ctx, cancel := context.WithTimeout(context.Background(), 3500*time.Millisecond)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", psScript)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
-	out, err := cmd.Output()
-	if err != nil || len(out) < 2 {
-		return
-	}
-	trimmed := strings.TrimSpace(string(out))
-	if trimmed == "" || trimmed == "[]" {
-		return
-	}
-	type winRTNotif struct {
-		ID    int64  `json:"id"`
-		App   string `json:"app"`
-		Title string `json:"title"`
-		Body  string `json:"body"`
-		TS    int64  `json:"ts"`
-	}
-	var list []winRTNotif
-	if strings.HasPrefix(trimmed, "{") {
-		var single winRTNotif
-		if json.Unmarshal([]byte(trimmed), &single) == nil {
-			list = append(list, single)
-		}
-	} else {
-		_ = json.Unmarshal([]byte(trimmed), &list)
-	}
-	for _, n := range list {
-		title := strings.TrimSpace(n.Title)
-		body := strings.TrimSpace(n.Body)
-		if title == "" && body == "" {
-			continue
-		}
-		if !isIncomingUserMessage(title, body, n.App) {
-			continue
-		}
-		appName, appKey := detectMessengerApp(n.App + " " + title + " " + body)
-		if appKey == "system" && strings.TrimSpace(n.App) != "" {
-			appName = strings.TrimSpace(n.App)
-		}
-		sender, chat := splitSenderAndChat(title)
-		ts := n.TS
-		if ts <= 0 {
-			ts = time.Now().UnixMilli()
-		}
-		t := time.UnixMilli(ts)
-		avatar := ""
-		if appKey == "telegram" {
-			avatar = winLatestTelegramAvatar()
-		}
-		b.pushUniqueRealMessage(OSNotificationItem{
-			ID:        fmt.Sprintf("winrt_%d_%d", n.ID, ts),
-			App:       appName,
-			AppKey:    appKey,
-			Sender:    truncateUTF8(sender, 64),
-			Chat:      truncateUTF8(chat, 64),
-			Title:     truncateUTF8(title, 96),
-			Body:      truncateUTF8(body, 320),
-			AvatarURL: avatar,
-			Direction: "incoming",
-			Level:     "info",
-			Source:    "winrt_center",
-			Time:      t.Format("15:04"),
-			DateLabel: t.Format("02.01.2006"),
-			Timestamp: ts,
 		})
 	}
 }

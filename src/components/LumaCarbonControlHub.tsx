@@ -49,6 +49,13 @@ import {
   Minimize2,
   Maximize2,
 } from 'lucide-react';
+import {
+  BluetoothDeviceItem,
+  BluetoothStatusSnapshot,
+  LumaBluetoothPickerPanel,
+  LumaWifiPickerPanel,
+  WifiStatusSnapshot,
+} from './LumaConnectivityPicker';
 
 export interface CarbonNotificationItem {
   id: string;
@@ -102,21 +109,21 @@ export type ControlHubTileId =
   | 'features_mgr';
 
 export const ALL_HUB_TILES: { id: ControlHubTileId; label: string; desc: string }[] = [
-  { id: 'wifi', label: 'Wi-Fi', desc: 'Сеть и интернет' },
-  { id: 'bluetooth', label: 'Bluetooth', desc: 'Беспроводные модули' },
-  { id: 'dnd', label: 'Не беспокоить', desc: 'Приглушить уведомления' },
+  { id: 'wifi', label: 'Wi-Fi', desc: 'Сеть · ПКМ — список и пароль' },
+  { id: 'bluetooth', label: 'Bluetooth', desc: 'ПКМ — список устройств' },
+  { id: 'dnd', label: 'Не беспокоить', desc: 'Приглушить звук и всплывающие окна' },
   { id: 'theme', label: 'Тема', desc: 'Светлая / Тёмная' },
   { id: 'night_light', label: 'Ночной свет', desc: 'Защита глаз от синего' },
   { id: 'gaming_boost', label: 'Игровой режим', desc: 'Приоритет CPU / RAM' },
   { id: 'mic_mute', label: 'Микрофон', desc: 'Быстрый Mute микрофона' },
-  { id: 'office', label: 'Office Studio', desc: 'Word · Excel · PowerPoint Pro' },
-  { id: 'security', label: 'LumaShield 2.0', desc: 'Антивирус и аудит' },
+  { id: 'office', label: 'Office Studio', desc: 'Docs · Sheets · Slides Pro' },
+  { id: 'security', label: 'LumaShield 2.5', desc: 'Антивирус и аудит (275+ правил)' },
   { id: 'screenshot', label: 'Скриншот', desc: 'Компактный JPEG (~120 КБ)' },
   { id: 'recorder', label: 'Запись экрана', desc: 'Zero-Freeze AVI · без зависаний' },
   { id: 'vault', label: 'Конфиденциальность', desc: 'Приватный стол AES-256' },
   { id: 'scenarios', label: 'Сценарии', desc: 'Если + И → Цепочка действий' },
   { id: 'mouse_dpi', label: 'DPI мыши', desc: 'Скорость и чувствительность' },
-  { id: 'island', label: 'Dynamic Island', desc: 'Живой остров сверху' },
+  { id: 'island', label: 'Luma Island', desc: 'Живой остров сверху' },
   { id: 'dual_bar', label: 'Двойная панель', desc: 'Верх: утилиты, Низ: окна' },
   { id: 'trash', label: 'Корзина', desc: 'Удалённые файлы Luma' },
   { id: 'code_studio', label: 'Code Studio', desc: 'IDE + Диагностика + Терминал' },
@@ -154,14 +161,14 @@ export interface SystemFeaturesMap {
 }
 
 export const SYSTEM_FEATURE_META: { key: keyof SystemFeaturesMap; label: string; desc: string }[] = [
-  { key: 'ai', label: 'Luma AI 3.0 Ассистент', desc: 'Luma Lang 3.0 + Luma Code 3.0 + Веб-синтез' },
-  { key: 'dynamicIsland', label: 'Dynamic Island', desc: 'Остров с резиновой анимацией уведомлений' },
+  { key: 'ai', label: 'Luma AI 5.0 Nexus', desc: 'Память, веб-поиск и глубокое управление системой' },
+  { key: 'dynamicIsland', label: 'Luma Island', desc: 'Живой остров с анимацией и таймером' },
   { key: 'calendar', label: 'Календарь и задачи', desc: 'День/Неделя/Месяц/Повестка и напоминания' },
   { key: 'scenarios', label: 'Сценарии (Автоматизация)', desc: 'Правила «Если + Условие → Цепочка действий»' },
   { key: 'codeStudio', label: 'Luma Code Studio', desc: 'IDE с live-диагностикой ошибок и Pro терминалом' },
   { key: 'cutStudio', label: 'Luma Cut Studio', desc: 'Видеомонтаж, маски, AI, озвучка, Design Studio' },
-  { key: 'trash', label: 'Корзина Luma OS', desc: 'Корзина с превью и автоочисткой' },
-  { key: 'wirelessScanner', label: 'Сканер BT / 2.4GHz', desc: 'Заряд мышек IO, Ajazz, Ardor, наушников' },
+  { key: 'trash', label: 'Корзина Luma OS', desc: 'Безопасная корзина с превью и восстановлением' },
+  { key: 'wirelessScanner', label: 'Сканер BT / 2.4GHz', desc: 'Заряд мышек, клавиатур и наушников' },
   { key: 'privateVault', label: 'Суперконфиденциальность', desc: 'Изолированный приватный рабочий стол' },
   { key: 'easterEgg', label: 'Мини-игра Пасхалка', desc: 'Секретная игра в разделе «О системе»' },
 ];
@@ -172,9 +179,27 @@ interface LumaCarbonControlHubProps {
   onClose: () => void;
   // System state
   wifiConnected: boolean;
+  wifiEnabled?: boolean;
   wifiName: string;
+  wifiStatus?: WifiStatusSnapshot | null;
+  wifiLoading?: boolean;
+  onToggleWifi?: (enabled?: boolean) => void;
+  onRefreshWifi?: (rescan?: boolean) => void;
+  onConnectWifi?: (
+    ssid: string,
+    password?: string
+  ) => Promise<{ ok: boolean; needs_password?: boolean; message?: string; error?: string }>;
+  onDisconnectWifi?: () => Promise<void>;
   bluetoothEnabled: boolean;
-  onToggleBluetooth: () => void;
+  bluetoothStatus?: BluetoothStatusSnapshot | null;
+  bluetoothLoading?: boolean;
+  onToggleBluetooth: (enabled?: boolean) => void;
+  onRefreshBluetooth?: () => void;
+  onBluetoothDeviceAction?: (
+    dev: BluetoothDeviceItem,
+    action: 'connect' | 'disconnect' | 'pair',
+    pin?: string
+  ) => Promise<{ ok: boolean; needs_pin?: boolean; message?: string; error?: string }>;
   dnd: boolean;
   onToggleDnd: () => void;
   volume: number;
@@ -232,9 +257,20 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   isDark,
   onClose,
   wifiConnected,
+  wifiEnabled = true,
   wifiName,
+  wifiStatus = null,
+  wifiLoading = false,
+  onToggleWifi,
+  onRefreshWifi,
+  onConnectWifi,
+  onDisconnectWifi,
   bluetoothEnabled,
+  bluetoothStatus = null,
+  bluetoothLoading = false,
   onToggleBluetooth,
+  onRefreshBluetooth,
+  onBluetoothDeviceAction,
   dnd,
   onToggleDnd,
   volume,
@@ -288,6 +324,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   });
   const [editMode, setEditMode] = useState(false);
   const [showFeaturesModal, setShowFeaturesModal] = useState(false);
+  const [activeConnectivityPicker, setActiveConnectivityPicker] = useState<'none' | 'wifi' | 'bluetooth'>('none');
   const [btCollapsed, setBtCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(HUB_BT_COLLAPSED_KEY) === '1';
@@ -305,7 +342,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   const [audioCollapsed, setAudioCollapsed] = useState(true);
   const [notifTab, setNotifTab] = useState<'all' | 'telegram' | 'system'>('all');
 
-  // Auto-close on mouse leave (paused during Edit Mode, Features Manager, or Screen Picker)
+  // Auto-close on mouse leave (paused during Edit Mode, Features Manager, Screen Picker, or Wi-Fi/BT Picker!)
   const leaveTimerRef = useRef<number | null>(null);
   const pickingScreenRef = useRef(false);
   const handleHubMouseEnter = () => {
@@ -315,12 +352,15 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
     }
   };
   const handleHubMouseLeave = () => {
-    if (editMode || showFeaturesModal || pickingScreenRef.current) return;
+    if (editMode || showFeaturesModal || activeConnectivityPicker !== 'none' || pickingScreenRef.current) return;
     if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current);
     leaveTimerRef.current = window.setTimeout(() => {
       onClose();
     }, 280);
   };
+  useEffect(() => {
+    if (!open) setActiveConnectivityPicker('none');
+  }, [open]);
   useEffect(() => {
     return () => {
       if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current);
@@ -703,26 +743,66 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
     let sub = '';
     let active = false;
     let onClick = () => {};
+    let onContextMenu: ((e: React.MouseEvent) => void) | undefined;
+    let onOpenList: ((e: React.MouseEvent) => void) | undefined;
+    let tileTitle: string | undefined;
 
     switch (id) {
-      case 'wifi':
+      case 'wifi': {
+        const wfOn = wifiStatus ? wifiStatus.enabled : wifiEnabled;
+        const wfConn = wifiStatus ? wifiStatus.connected : wifiConnected;
+        const wfSsid = wifiStatus?.active_ssid || (wfConn ? wifiName : '');
         icon = <Wifi size={14} />;
         label = 'Wi-Fi';
-        sub = wifiConnected ? wifiName || 'Онлайн' : 'Нет сети';
-        active = wifiConnected;
-        onClick = () => onOpenWindow('settings');
+        sub = !wfOn ? 'Выкл · ПКМ' : wfConn && wfSsid ? wfSsid : 'Сети · ПКМ';
+        active = wfOn;
+        tileTitle = 'ЛКМ — вкл/выкл Wi-Fi · ПКМ — выбрать сеть и ввести пароль';
+        onClick = () => {
+          if (onToggleWifi) onToggleWifi(!wfOn);
+          else {
+            setActiveConnectivityPicker((p) => (p === 'wifi' ? 'none' : 'wifi'));
+            onRefreshWifi?.(true);
+          }
+        };
+        onContextMenu = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setShowFeaturesModal(false);
+          setActiveConnectivityPicker((p) => {
+            const next = p === 'wifi' ? 'none' : 'wifi';
+            if (next === 'wifi') onRefreshWifi?.(true);
+            return next;
+          });
+        };
+        onOpenList = onContextMenu;
         break;
-      case 'bluetooth':
+      }
+      case 'bluetooth': {
+        const btOn = bluetoothStatus ? bluetoothStatus.enabled : bluetoothEnabled;
+        const connectedDev = bluetoothStatus?.devices?.find((d) => d.connected);
         icon = <Bluetooth size={14} />;
         label = 'Bluetooth';
-        sub = bluetoothEnabled ? 'Включён' : 'Выкл';
-        active = bluetoothEnabled;
-        onClick = onToggleBluetooth;
+        sub = !btOn ? 'Выкл · ПКМ' : connectedDev ? connectedDev.name : 'Устр. · ПКМ';
+        active = btOn;
+        tileTitle = 'ЛКМ — вкл/выкл Bluetooth · ПКМ — список устройств';
+        onClick = () => onToggleBluetooth(!btOn);
+        onContextMenu = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setShowFeaturesModal(false);
+          setActiveConnectivityPicker((p) => {
+            const next = p === 'bluetooth' ? 'none' : 'bluetooth';
+            if (next === 'bluetooth') onRefreshBluetooth?.();
+            return next;
+          });
+        };
+        onOpenList = onContextMenu;
         break;
+      }
       case 'dnd':
         icon = dnd ? <BellOff size={14} /> : <Bell size={14} />;
         label = 'Тишина';
-        sub = dnd ? 'Не беспокоить' : 'Уведомления';
+        sub = dnd ? 'Не беспокоить' : 'Активно';
         active = dnd;
         onClick = onToggleDnd;
         break;
@@ -767,7 +847,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       case 'security':
         icon = <ShieldCheck size={14} />;
         label = 'LumaShield';
-        sub = 'v2.0 · 175+';
+        sub = 'v2.5 · 275+';
         active = true;
         onClick = () => {
           onClose();
@@ -874,17 +954,30 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
         label = 'Функции';
         sub = 'Модули ОС';
         active = showFeaturesModal;
-        onClick = () => setShowFeaturesModal((v) => !v);
+        onClick = () => {
+          setActiveConnectivityPicker('none');
+          setShowFeaturesModal((v) => !v);
+        };
         break;
     }
+
+    const isPickerOpenForTile =
+      (id === 'wifi' && activeConnectivityPicker === 'wifi') ||
+      (id === 'bluetooth' && activeConnectivityPicker === 'bluetooth');
 
     return (
       <div
         key={id}
+        title={tileTitle}
         onClick={() => !editMode && onClick()}
+        onContextMenu={(e) => {
+          if (!editMode && onContextMenu) onContextMenu(e);
+        }}
         className={`relative p-2.5 rounded-2xl border transition cursor-pointer select-none flex flex-col justify-between min-h-[60px] ${
           id === 'recorder' && recording
             ? 'bg-rose-500/25 border-rose-400/60 text-rose-100 animate-pulse'
+            : isPickerOpenForTile
+            ? 'bg-cyan-500/25 border-cyan-400 text-white shadow-[0_0_16px_rgba(34,211,238,0.25)]'
             : active
             ? isDark
               ? 'bg-cyan-500/18 border-cyan-400/40 text-white'
@@ -901,8 +994,24 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             <button onClick={(e) => { e.stopPropagation(); toggleTileInDeck(id); }} className="p-0.5 rounded bg-rose-500/80 text-white hover:bg-rose-500" title="Убрать плитку"><X size={10} /></button>
           </div>
         )}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-1">
           <span className={active ? 'text-cyan-400' : subText}>{icon}</span>
+          {!editMode && onOpenList && (
+            <button
+              type="button"
+              onClick={onOpenList}
+              title="Открыть список (или нажмите ПКМ по плитке)"
+              className={`p-0.5 rounded-md transition cursor-pointer ${
+                isPickerOpenForTile
+                  ? 'bg-cyan-400/30 text-cyan-200'
+                  : isDark
+                  ? 'hover:bg-white/15 text-white/50 hover:text-white'
+                  : 'hover:bg-black/10 text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <ChevronRight size={11} className={isPickerOpenForTile ? 'rotate-90 transition-transform' : 'transition-transform'} />
+            </button>
+          )}
         </div>
         <div className="mt-1">
           <div className="text-[11px] font-semibold leading-tight truncate">{label}</div>
@@ -959,16 +1068,16 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
         className="fixed top-3 right-3 bottom-3 z-[945] flex flex-col gap-2.5 pointer-events-none"
         style={{ width: 'clamp(340px, 26vw, 440px)' }}
       >
-        {/* UPPER HALF: Fully Editable Carbon Control Deck */}
+        {/* UPPER HALF: Fully Editable Control Deck */}
         <div
           className={`pointer-events-auto rounded-3xl border backdrop-blur-2xl flex flex-col overflow-hidden luma-anim-harmony7 ${glassSurface}`}
-          style={{ height: notifCollapsed ? 'calc(100% - 62px)' : '54vh', minHeight: 330 }}
+          style={{ height: notifCollapsed ? 'calc(100% - 62px)' : '56vh', minHeight: 340 }}
         >
           {/* Header */}
           <div className={`px-3.5 py-2.5 border-b flex items-center justify-between gap-2 shrink-0 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]" />
-              <span className="text-xs font-bold tracking-tight truncate">Панель управления 1.5.4</span>
+              <span className="text-xs font-bold tracking-tight truncate">Панель управления 1.6.2b</span>
               <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-md border ${isDark ? 'bg-white/[0.06] border-white/10 text-white/60' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
                 TAB
               </span>
@@ -978,6 +1087,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                 onClick={() => {
                   setEditMode((v) => !v);
                   setShowFeaturesModal(false);
+                  setActiveConnectivityPicker('none');
                 }}
                 className={`px-2 py-1 rounded-xl text-[10px] font-semibold flex items-center gap-1 border transition ${
                   editMode
@@ -1001,7 +1111,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             {showFeaturesModal ? (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-cyan-400">Менеджер функций Luma OS 1.5.4</span>
+                  <span className="text-[11px] font-bold text-cyan-400">Менеджер функций Luma OS 1.6.2b</span>
                   <button onClick={() => setShowFeaturesModal(false)} className="text-[10px] px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/15">Назад</button>
                 </div>
                 {SYSTEM_FEATURE_META.map((feat) => {
@@ -1028,6 +1138,38 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                 <div className="grid grid-cols-3 gap-1.5">
                   {tiles.map((t, idx) => renderTileCard(t, idx))}
                 </div>
+
+                {/* Inline 100% Native Luma OS Wi-Fi & Bluetooth Picker (opened via RMB or tile chevron) */}
+                {activeConnectivityPicker === 'wifi' && (
+                  <LumaWifiPickerPanel
+                    isDark={isDark}
+                    status={wifiStatus}
+                    loading={wifiLoading}
+                    onRefresh={(rescan) => onRefreshWifi?.(rescan)}
+                    onToggleRadio={(en) => onToggleWifi?.(en)}
+                    onConnect={
+                      onConnectWifi ||
+                      (async () => ({ ok: false, error: 'Сервис Wi-Fi LumaCore недоступен' }))
+                    }
+                    onDisconnect={onDisconnectWifi || (async () => {})}
+                    onClose={() => setActiveConnectivityPicker('none')}
+                  />
+                )}
+
+                {activeConnectivityPicker === 'bluetooth' && (
+                  <LumaBluetoothPickerPanel
+                    isDark={isDark}
+                    status={bluetoothStatus}
+                    loading={bluetoothLoading}
+                    onRefresh={() => onRefreshBluetooth?.()}
+                    onToggleRadio={(en) => onToggleBluetooth(en)}
+                    onDeviceAction={
+                      onBluetoothDeviceAction ||
+                      (async () => ({ ok: false, error: 'Сервис Bluetooth LumaCore недоступен' }))
+                    }
+                    onClose={() => setActiveConnectivityPicker('none')}
+                  />
+                )}
 
                 {editMode && (
                   <div className={`p-2.5 rounded-2xl border space-y-1.5 ${isDark ? 'bg-cyan-500/[0.06] border-cyan-400/25' : 'bg-cyan-50 border-cyan-200'}`}>

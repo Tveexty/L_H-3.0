@@ -35,7 +35,7 @@ var (
 	devReqSeq       uint64
 	devReqLogMu     sync.Mutex
 	devReqLogs      = make([]DevRequestLog, 0, 48)
-	devActiveRoutes = 95
+	devActiveRoutes = 100
 )
 
 type devStatusWriter struct {
@@ -1255,4 +1255,7 @@ func registerNitrogen16Routes(mux *http.ServeMux, kernel *LumaKernel, notifBridg
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "memory": GetAIMemorySnapshot()})
 		}
 	})
+
+	// Luma OS 1.6.2b: 100% Native Wi-Fi & Bluetooth Picker/Connect Routes (ZERO Windows Settings!)
+	registerConnectivity162bRoutes(mux, kernel)
 }

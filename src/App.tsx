@@ -105,6 +105,7 @@ import {
   Volume2,
   VolumeX,
   Wifi,
+  WifiOff,
   Wrench,
   X,
   Zap,
@@ -156,6 +157,13 @@ import {
 import { LumaBatteryPanel } from './components/LumaBatteryPanel';
 import { LumaCalculatorWindow } from './components/LumaCalculatorWindow';
 import { LumaCalendarWindow } from './components/LumaCalendarWindow';
+import {
+  BluetoothDeviceItem,
+  BluetoothStatusSnapshot,
+  LumaBluetoothPickerPanel,
+  LumaWifiPickerPanel,
+  WifiStatusSnapshot,
+} from './components/LumaConnectivityPicker';
 import {
   CarbonNotificationItem,
   LumaCarbonControlHub,
@@ -358,6 +366,7 @@ interface ShellModeState {
   hide_windows_taskbar: boolean;
   reserve_work_area: boolean;
   always_on_top: boolean;
+  replace_hotkeys: boolean;
   taskbar_position: string;
   taskbar_size_px: number;
 }
@@ -881,6 +890,7 @@ export default function App() {
     hide_windows_taskbar: false,
     reserve_work_area: true,
     always_on_top: false,
+    replace_hotkeys: true,
     taskbar_position: 'bottom',
     taskbar_size_px: 52,
   });
@@ -1107,8 +1117,8 @@ export default function App() {
       source: 'system',
       appName: 'Luma OS 1.6.2',
       sender: 'Luma OS 1.6.2 Nitrogen',
-      title: 'Добро пожаловать в Luma OS 1.6.2 (Nitrogen · N-7)!',
-      body: 'LumaCore 1.5.2 · LumaShield 2.5 (275 правил) · Стиль Luma Nova · Luma AI 5.0 · Gamepad Studio · Очистка хвостов · Luma Peek (Space) · Умный Dock и Стеки.',
+      title: 'Добро пожаловать в Luma OS 1.6.2b (Nitrogen · N-7)!',
+      body: 'LumaCore 1.5.2b · LumaShield 2.5 (275 правил) · Стиль Luma Nova · Luma AI 5.0 · Gamepad Studio · Очистка хвостов · Luma Peek (Space) · Умный Dock и Стеки.',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       dateLabel: 'Сегодня',
       timestamp: Date.now(),
@@ -1185,6 +1195,11 @@ export default function App() {
   const [startMenuOpen, setStartMenuOpen] = useState<boolean>(false);
   const [startSearch, setStartSearch] = useState<string>('');
   const [controlCenterOpen, setControlCenterOpen] = useState<boolean>(false);
+  const [wifiStatus, setWifiStatus] = useState<WifiStatusSnapshot | null>(null);
+  const [wifiLoading, setWifiLoading] = useState<boolean>(false);
+  const [btStatus, setBtStatus] = useState<BluetoothStatusSnapshot | null>(null);
+  const [btLoading, setBtLoading] = useState<boolean>(false);
+  const [ccConnectivityPicker, setCcConnectivityPicker] = useState<'none' | 'wifi' | 'bluetooth'>('none');
   const [taskListOpen, setTaskListOpen] = useState<boolean>(false);
   const [taskbarAppMenuId, setTaskbarAppMenuId] = useState<string | null>(null);
   const [taskbarHostWinPid, setTaskbarHostWinPid] = useState<number | null>(null);
@@ -1281,7 +1296,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.6.2 (Nitrogen · N-7) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.6.2b (Nitrogen · N-7) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -1314,7 +1329,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.6.2 (Nitrogen · N-7)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.6.2b (Nitrogen · N-7)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -1329,8 +1344,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 1.5.2',
-      message: 'Инициализация оболочки Luma OS 1.6.2 (Nitrogen · N-7), LumaCore 1.5.2, LumaShield 2.5 и AI 5.0',
+      source: 'LumaCore 1.5.2b',
+      message: 'Инициализация оболочки Luma OS 1.6.2b (Nitrogen · N-7), LumaCore 1.5.2b, LumaShield 2.5 и AI 5.0',
       level: 'success',
     },
   ]);
@@ -1635,7 +1650,7 @@ export default function App() {
           total_bytes: 23.4 * 1024 * 1024,
           speed_mbps: 24.2,
           target_version: '1.6.1 (Nitrogen · N-7)',
-          message: 'Загрузка образа LumaOS_1.6.2.exe (LumaCore 1.5.2 + LumaShield 2.5)...',
+          message: 'Загрузка образа LumaOS_1.6.2.exe (LumaCore 1.5.2b + LumaShield 2.5)...',
         },
       },
       {
@@ -1676,7 +1691,7 @@ export default function App() {
           speed_mbps: 0,
           target_version: '1.6.1 (Nitrogen · N-7)',
           sha256: 'b5f9e20a7c14d389a6e1f2c904b77d21',
-          message: 'Сборка Luma OS 1.6.2 (Nitrogen · N-7) проверена и готова к мгновенному запуску!',
+          message: 'Сборка Luma OS 1.6.2b (Nitrogen · N-7) проверена и готова к мгновенному запуску!',
         },
       },
     ];
@@ -3500,7 +3515,7 @@ export default function App() {
           void pollHostWindows();
         }
       } catch {
-        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.5.2', 'warning');
+        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.5.2b', 'warning');
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3873,7 +3888,7 @@ export default function App() {
   const altTabEntries: AltTabEntry[] = useMemo(() => {
     const lumaTitles: Partial<Record<DexWinId, string>> = {
       apps: 'Приложения', explorer: 'Проводник', taskmgr: 'Диспетчер задач', terminal: 'Терминал',
-      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.5.2', settings: 'Настройки', plugins: 'Расширения',
+      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.5.2b', settings: 'Настройки', plugins: 'Расширения',
       island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma AI 5.0 Nexus', utilities: 'Службы ОС',
       calculator: 'Калькулятор', calendar: 'Календарь', trash: 'Корзина', scenarios: 'Сценарии',
       code_studio: 'Code Studio Pro', cut_studio: 'Cut Studio Pro', office: 'Luma Office Pro',
@@ -4487,18 +4502,24 @@ export default function App() {
     }
   };
 
-  // --- Windows Shell Mode Sync (Fullscreen-on-Start, Autostart, Hide Windows Taskbar + Work Area) ---
+  // --- Windows Shell Mode Sync (Fullscreen-on-Start, Autostart, Hide Windows Taskbar + Replace Hotkeys & Touchpad) ---
   useEffect(() => {
     fetch('/api/kernel/shell-mode')
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d?.ok && d?.config) setShellMode(d.config);
+        if (d?.ok && d?.config) {
+          setShellMode(d.config);
+          if (typeof d.config.replace_hotkeys === 'boolean') {
+            setWinKeyToLuma(d.config.replace_hotkeys);
+          }
+        }
       })
       .catch(() => {});
   }, []);
 
   const handleApplyShellMode = async (next: ShellModeState) => {
     setShellMode(next);
+    setWinKeyToLuma(next.replace_hotkeys);
     setShellModeSaving(true);
     try {
       const r = await fetch('/api/kernel/shell-mode', {
@@ -4513,10 +4534,19 @@ export default function App() {
       const d = await r.json();
       if (d?.ok && d?.config) {
         setShellMode(d.config);
-        pushToast('Режим оболочки Windows', 'Параметры применены к системе', 'success');
+        if (typeof d.config.replace_hotkeys === 'boolean') {
+          setWinKeyToLuma(d.config.replace_hotkeys);
+        }
+        pushToast(
+          'Оболочка Windows',
+          d.config.replace_hotkeys
+            ? 'Параметры применены (Win/Alt+Tab/Win+D → Luma OS, жесты тачпада Windows отключены)'
+            : 'Параметры оболочки применены к системе',
+          'success'
+        );
       }
     } catch {
-      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.6.2.exe)', 'info');
+      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.6.2b.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -4526,12 +4556,207 @@ export default function App() {
     try {
       const r = await fetch('/api/kernel/shell-restore', { method: 'POST' });
       const d = await r.json();
-      if (d?.ok && d?.config) setShellMode(d.config);
-      pushToast('Панель задач Windows', 'Штатная панель задач Windows восстановлена', 'success');
+      if (d?.ok && d?.config) {
+        setShellMode(d.config);
+        if (typeof d.config.replace_hotkeys === 'boolean') {
+          setWinKeyToLuma(d.config.replace_hotkeys);
+        }
+      }
+      pushToast('Оболочка Windows', 'Панель задач, горячие клавиши и жесты тачпада Windows восстановлены', 'success');
     } catch {
       // ignore
     }
   };
+
+  // --- Luma OS 1.6.2b: 100% Native Wi-Fi & Bluetooth Connectivity Handlers (ZERO Windows Settings!) ---
+  const fetchWifiStatus = useCallback(async (rescan = false) => {
+    setWifiLoading(true);
+    try {
+      const r = await fetch(`/api/kernel/wifi/status${rescan ? '?rescan=1' : ''}`);
+      if (r.ok) {
+        const d: WifiStatusSnapshot = await r.json();
+        setWifiStatus(d);
+      }
+    } catch {
+      // ignore offline
+    } finally {
+      setWifiLoading(false);
+    }
+  }, []);
+
+  const handleToggleWifi = useCallback(
+    async (explicitNext?: boolean) => {
+      const current = wifiStatus ? wifiStatus.enabled : true;
+      const next = typeof explicitNext === 'boolean' ? explicitNext : !current;
+      setWifiStatus((prev) =>
+        prev
+          ? { ...prev, enabled: next, connected: next ? prev.connected : false, active_ssid: next ? prev.active_ssid : '' }
+          : {
+              ok: true,
+              available: true,
+              enabled: next,
+              connected: false,
+              active_ssid: '',
+              interface_name: 'Wi-Fi',
+              signal: 0,
+              networks: [],
+            }
+      );
+      setWifiLoading(true);
+      try {
+        const r = await fetch('/api/kernel/wifi/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: next }),
+        });
+        if (r.ok) {
+          const d: WifiStatusSnapshot = await r.json();
+          setWifiStatus(d);
+          pushToast('Wi-Fi', d.enabled ? 'Адаптер Wi-Fi включён' : 'Адаптер Wi-Fi выключен', 'info');
+        }
+      } catch {
+        pushToast('Wi-Fi', 'Не удалось переключить адаптер Wi-Fi', 'warning');
+      } finally {
+        setWifiLoading(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [wifiStatus]
+  );
+
+  const handleConnectWifi = useCallback(
+    async (ssid: string, password?: string) => {
+      try {
+        const r = await fetch('/api/kernel/wifi/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ssid, password: password || '', disconnect: false }),
+        });
+        const d = await r.json();
+        if (d?.status) setWifiStatus(d.status);
+        if (d?.ok) {
+          pushToast('Wi-Fi', d.message || `Подключено к ${ssid}`, 'success');
+        }
+        return {
+          ok: Boolean(d?.ok),
+          needs_password: Boolean(d?.needs_password),
+          message: d?.message,
+          error: d?.error,
+        };
+      } catch {
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.2b' };
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  const handleDisconnectWifi = useCallback(async () => {
+    try {
+      const r = await fetch('/api/kernel/wifi/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ disconnect: true }),
+      });
+      const d = await r.json();
+      if (d?.status) setWifiStatus(d.status);
+      pushToast('Wi-Fi', 'Отключено от сети Wi-Fi', 'info');
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fetchBluetoothDevices = useCallback(async () => {
+    setBtLoading(true);
+    try {
+      const r = await fetch('/api/kernel/bluetooth/devices');
+      if (r.ok) {
+        const d: BluetoothStatusSnapshot = await r.json();
+        setBtStatus(d);
+        if (typeof d.enabled === 'boolean') setHubBluetoothEnabled(d.enabled);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setBtLoading(false);
+    }
+  }, []);
+
+  const handleToggleBluetoothRadio = useCallback(
+    async (explicitNext?: boolean) => {
+      const next = typeof explicitNext === 'boolean' ? explicitNext : !hubBluetoothEnabled;
+      setHubBluetoothEnabled(next);
+      setBtStatus((prev) => (prev ? { ...prev, enabled: next } : prev));
+      try {
+        const r = await fetch('/api/kernel/bluetooth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: next }),
+        });
+        if (r.ok) {
+          const d: BluetoothStatusSnapshot = await r.json();
+          setBtStatus(d);
+          if (typeof d.enabled === 'boolean') setHubBluetoothEnabled(d.enabled);
+          pushToast('Bluetooth', next ? 'Радиомодуль Bluetooth включён' : 'Радиомодуль Bluetooth выключен', 'info');
+        }
+      } catch {
+        // ignore
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hubBluetoothEnabled]
+  );
+
+  const handleBluetoothDeviceAction = useCallback(
+    async (dev: BluetoothDeviceItem, action: 'connect' | 'disconnect' | 'pair', pin?: string) => {
+      try {
+        const r = await fetch('/api/kernel/bluetooth/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: dev.name,
+            instance_id: dev.instance_id || '',
+            action,
+            pin: pin || '',
+          }),
+        });
+        const d = await r.json();
+        if (d?.status) {
+          setBtStatus(d.status);
+          if (typeof d.status.enabled === 'boolean') setHubBluetoothEnabled(d.status.enabled);
+        }
+        if (d?.ok) {
+          pushToast('Bluetooth', d.message || `Операция выполнена: ${dev.name}`, 'success');
+        }
+        return {
+          ok: Boolean(d?.ok),
+          needs_pin: Boolean(d?.needs_pin),
+          message: d?.message,
+          error: d?.error,
+        };
+      } catch {
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.2b' };
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  useEffect(() => {
+    void fetchWifiStatus(false);
+    void fetchBluetoothDevices();
+  }, [fetchWifiStatus, fetchBluetoothDevices]);
+
+  useEffect(() => {
+    if (controlCenterOpen || carbonHubOpen) {
+      void fetchWifiStatus(false);
+      void fetchBluetoothDevices();
+    }
+    if (!controlCenterOpen) {
+      setCcConnectivityPicker('none');
+    }
+  }, [controlCenterOpen, carbonHubOpen, fetchWifiStatus, fetchBluetoothDevices]);
 
   // Emergency Hotkey Ctrl+Alt+Shift+W to restore Windows Taskbar anytime
   useEffect(() => {
@@ -6463,7 +6688,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 1.5.2`,
+                        sub: `${ramLoad}% занято · LumaCore 1.5.2b`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -6489,9 +6714,9 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.6.1 (Nitrogen · N-7)'],
-                      ['Версия Ядра', 'LumaCore 1.5.2 (1.6.1)'],
-                      ['Безопасность', `LumaShield 2.5 (${kernelDiag?.security_rules ?? 235}+ правил)`],
+                      ['Версия ПО', '1.6.2b (Nitrogen · N-7)'],
+                      ['Версия Ядра', 'LumaCore 1.5.2b (1.6.2b)'],
+                      ['Безопасность', `LumaShield 2.5 (${kernelDiag?.security_rules ?? 275}+ правил)`],
                       ['Developer SDK', `v3.0 (${kernelDiag?.sdk_themes ?? Object.keys(customThemes).length} тем / ${kernelDiag?.sdk_plugins ?? plugins.length} плаг.)`],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
                       ['LumaGuard', `AES-256 #${cryptoKeyVersion}`],
@@ -6916,7 +7141,7 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.6.2 (Nitrogen · N-7 · LumaCore 1.5.2 · LumaShield 2.5)"
+          subtitle="Luma OS 1.6.2b (Nitrogen · N-7 · LumaCore 1.5.2b · LumaShield 2.5)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -7678,7 +7903,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* WINDOWS SHELL MODE (FULLSCREEN ON START, AUTOSTART, HIDE WINDOWS TASKBAR FOR CHROME/APPS) */}
+              {/* WINDOWS SHELL MODE (FULLSCREEN ON START, AUTOSTART, HIDE WINDOWS TASKBAR, REPLACE HOTKEYS & TOUCHPAD) */}
               {settingsTab === 'shell_mode' && (
                 <div className="space-y-4 text-xs">
                   <div className={`p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
@@ -7688,15 +7913,71 @@ export default function App() {
                         Режим оболочки поверх Windows
                       </div>
                       <div className={`mt-0.5 ${mutedCls}`}>
-                        Автозапуск с Windows, полный экран при старте и скрытие штатной панели задач Windows при работе с Chrome и другими программами.
+                        Замена системных горячих клавиш и жестов тачпада Windows, автозапуск, полный экран при старте и скрытие панели задач Windows.
                       </div>
                     </div>
                     <button
                       onClick={() => void handleRestoreWindowsTaskbar()}
                       className={`px-3 py-1.5 rounded-xl border font-semibold cursor-pointer ${btnCls}`}
                     >
-                      Восстановить панель Windows
+                      Восстановить оболочку Windows
                     </button>
+                  </div>
+
+                  {/* Flagship 1.6.2b Master Toggle: Замена горячих клавиш и жестов тачпада Windows */}
+                  <div
+                    onClick={() =>
+                      !shellModeSaving &&
+                      void handleApplyShellMode({
+                        ...shellMode,
+                        replace_hotkeys: !shellMode.replace_hotkeys,
+                      })
+                    }
+                    className={`p-4 rounded-2xl border cursor-pointer transition space-y-2.5 ${
+                      shellMode.replace_hotkeys
+                        ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                        : surfaceCls
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="font-bold text-[13px] flex items-center gap-2 flex-wrap">
+                          <Keyboard className="w-4 h-4 text-[var(--luma-accent)] shrink-0" />
+                          <span>Замена горячих клавиш</span>
+                          <span className="px-1.5 py-0.5 rounded-md text-[9px] font-mono bg-[var(--luma-accent)] text-white">
+                            1.6.2b
+                          </span>
+                        </div>
+                        <div className={`text-[11px] mt-1 leading-relaxed ${mutedCls}`}>
+                          Переводит ключевые системные клавиши в нативную оболочку Luma OS и отключает штатные жесты тачпада Windows на время работы (при выключении или закрытии Luma OS всё автоматически возвращается назад).
+                        </div>
+                      </div>
+                      <StatusPill active={Boolean(shellMode.replace_hotkeys)} />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1 text-[10px] font-mono">
+                      {[
+                        ['Win', 'Открывает меню Пуск Luma OS (или Luma Nova)'],
+                        ['Alt + Tab', 'Фирменное окно переключения окон Luma OS'],
+                        ['Win + D', 'Мгновенный возврат на рабочий стол Luma OS'],
+                        ['Тачпад Windows', 'Жесты Windows 3/4 пальца отключены (Luma активны)'],
+                      ].map(([k, desc]) => (
+                        <div
+                          key={k}
+                          className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-2 ${
+                            shellMode.replace_hotkeys
+                              ? isDark
+                                ? 'bg-black/30 border-cyan-400/30 text-cyan-100'
+                                : 'bg-white/80 border-cyan-500/35 text-slate-900'
+                              : `${btnCls} opacity-65`
+                          }`}
+                        >
+                          <span className="px-1.5 py-0.5 rounded bg-[var(--luma-accent)]/20 text-[var(--luma-accent)] font-bold shrink-0">
+                            {k}
+                          </span>
+                          <span className="truncate">{desc}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-2.5">
@@ -7716,19 +7997,19 @@ export default function App() {
                       {
                         key: 'hide_windows_taskbar' as const,
                         title: 'Скрыть панель задач Windows (поверх Windows)',
-                        desc: 'Скрывает Shell_TrayWnd / SecondaryTrayWnd во время работы Luma OS — при запуске Chrome и других программ панель Windows не видна. Автоматически восстанавливается при выходе из Luma OS или по Ctrl+Alt+Shift+W!',
+                        desc: 'Скрывает Shell_TrayWnd / SecondaryTrayWnd во время работы Luma OS — при запуске браузера и других программ панель Windows не видна. Автоматически восстанавливается при выходе из Luma OS или по Ctrl+Alt+Shift+W!',
                         val: shellMode.hide_windows_taskbar,
                       },
                       {
                         key: 'reserve_work_area' as const,
                         title: 'Резервировать место под панель задач Luma (SPI_SETWORKAREA)',
-                        desc: 'Развёрнутые окна (Chrome, VS Code, Проводник) останавливаются ровно у границы панели Luma и не перекрывают её',
+                        desc: 'Развёрнутые окна останавливаются ровно у границы панели Luma и не перекрывают её',
                         val: shellMode.reserve_work_area,
                       },
                       {
                         key: 'always_on_top' as const,
                         title: 'Закрепить окно Luma поверх других окон (Topmost)',
-                        desc: 'Удерживает оболочку поверх обычных окон (удобно на втором мониторе; выключите, если работаете в Chrome поверх рабочего стола)',
+                        desc: 'Удерживает оболочку поверх обычных окон (удобно на втором мониторе; выключите, если работаете в окнах поверх рабочего стола)',
                         val: shellMode.always_on_top,
                       },
                     ].map((opt) => (
@@ -7753,7 +8034,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.6.2.exe).
+                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.6.2b.exe).
                   </div>
                 </div>
               )}
@@ -8415,14 +8696,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.6.2 (Nitrogen)',
-                        message: 'Система оповещений Luma OS 1.6.2 (Nitrogen) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.6.2b (Nitrogen)',
+                        message: 'Система оповещений Luma OS 1.6.2b (Nitrogen) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.6.2 (Nitrogen)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.6.2b (Nitrogen)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -8434,7 +8715,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.6.2 (Nitrogen · N-7) · LumaCore 1.5.2</div>
+                      <div className="text-sm font-bold">Luma OS 1.6.2b (Nitrogen · N-7) · LumaCore 1.5.2b</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -9990,9 +10271,9 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.6.1 (NITROGEN · N-7)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.6.2B (NITROGEN · N-7)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5.2 · LumaShield 2.5 (275 правил) · Luma AI 5.0 · Стиль Luma Nova · Gamepad Studio · Очистка хвостов · Luma Peek
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5.2b · LumaShield 2.5 (275 правил) · Luma AI 5.0 · Стиль Luma Nova · Gamepad Studio · Очистка хвостов · Luma Peek
                       </div>
                     </div>
                     <a
@@ -13545,7 +13826,7 @@ export default function App() {
           {!startSearch.trim() && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                <span className={mutedCls}>Luma OS 1.6.2 (Nitrogen · N-7)</span>
+                <span className={mutedCls}>Luma OS 1.6.2b (Nitrogen · N-7)</span>
                 <div className="flex items-center gap-1.5">
                   {enabledFeatures.privateVault && (
                     <button
@@ -13663,7 +13944,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.6.2 (Nitrogen)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.6.2b (Nitrogen)'}
                   </div>
                 </div>
               </div>
@@ -13766,14 +14047,14 @@ export default function App() {
             }
           }}
           onMouseLeave={() => {
-            if (!ccHoverEnteredRef.current) return;
+            if (!ccHoverEnteredRef.current || ccConnectivityPicker !== 'none') return;
             if (ccLeaveTimerRef.current) window.clearTimeout(ccLeaveTimerRef.current);
             ccLeaveTimerRef.current = window.setTimeout(() => {
               ccHoverEnteredRef.current = false;
               setControlCenterOpen(false);
             }, 280);
           }}
-          className={`luma-animate-in fixed z-[9500] w-80 max-h-[84vh] overflow-y-auto border p-4 space-y-3.5 ${popoverShellCls} ${
+          className={`luma-animate-in fixed z-[9500] w-80 max-h-[86vh] overflow-y-auto border p-4 space-y-3.5 ${popoverShellCls} ${
             taskbarPosition === 'left'
               ? 'bottom-3 left-[68px]'
               : taskbarPosition === 'right'
@@ -13788,13 +14069,119 @@ export default function App() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.6.1 (NITROGEN)</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.6.2B (NITROGEN)</span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>
               {liveSystem?.location?.city || 'LOCAL'}
             </span>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs">
+            {/* Native Luma OS Wi-Fi Tile (LMB toggle · RMB or chevron -> network list & inline password) */}
+            {(() => {
+              const wfOn = wifiStatus ? wifiStatus.enabled : true;
+              const wfConn = Boolean(wifiStatus?.connected && wifiStatus?.active_ssid);
+              const wfOpen = ccConnectivityPicker === 'wifi';
+              const openWifiList = (e: React.MouseEvent) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setCcConnectivityPicker((p) => {
+                  const next = p === 'wifi' ? 'none' : 'wifi';
+                  if (next === 'wifi') void fetchWifiStatus(true);
+                  return next;
+                });
+              };
+              return (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => void handleToggleWifi(!wfOn)}
+                  onContextMenu={openWifiList}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void handleToggleWifi(!wfOn); } }}
+                  title="ЛКМ — вкл/выкл Wi-Fi · ПКМ — выбрать сеть и ввести пароль"
+                  className={`p-2.5 rounded-xl border flex items-center justify-between gap-1.5 text-left transition cursor-pointer select-none ${
+                    wfOpen
+                      ? 'bg-[var(--luma-accent)] border-cyan-300 text-white font-semibold shadow-md'
+                      : wfOn
+                      ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white font-semibold'
+                      : btnCls
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {wfOn ? <Wifi className="w-3.5 h-3.5 shrink-0" /> : <WifiOff className="w-3.5 h-3.5 shrink-0" />}
+                    <div className="min-w-0">
+                      <div className="truncate leading-tight">{wfConn ? wifiStatus!.active_ssid : 'Wi-Fi'}</div>
+                      <div className={`text-[9px] font-mono truncate ${wfOn ? 'text-white/75' : mutedCls}`}>
+                        {!wfOn ? 'Выкл · ПКМ' : wfConn ? 'Подкл. · ПКМ' : 'Сети · ПКМ'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openWifiList}
+                    title="Выбрать Wi-Fi сеть (или ПКМ)"
+                    className={`p-0.5 rounded-md shrink-0 cursor-pointer transition ${
+                      wfOn ? 'hover:bg-black/20 text-white/90' : 'hover:bg-white/15 opacity-75'
+                    }`}
+                  >
+                    <ChevronRight className={`w-3.5 h-3.5 transition-transform ${wfOpen ? 'rotate-90' : ''}`} />
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* Native Luma OS Bluetooth Tile (LMB toggle · RMB or chevron -> device list & inline PIN) */}
+            {(() => {
+              const btOn = btStatus ? btStatus.enabled : hubBluetoothEnabled;
+              const btActiveDev = btStatus?.devices?.find((d) => d.connected);
+              const btOpen = ccConnectivityPicker === 'bluetooth';
+              const openBtList = (e: React.MouseEvent) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setCcConnectivityPicker((p) => {
+                  const next = p === 'bluetooth' ? 'none' : 'bluetooth';
+                  if (next === 'bluetooth') void fetchBluetoothDevices();
+                  return next;
+                });
+              };
+              return (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => void handleToggleBluetoothRadio(!btOn)}
+                  onContextMenu={openBtList}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void handleToggleBluetoothRadio(!btOn); } }}
+                  title="ЛКМ — вкл/выкл Bluetooth · ПКМ — список устройств"
+                  className={`p-2.5 rounded-xl border flex items-center justify-between gap-1.5 text-left transition cursor-pointer select-none ${
+                    btOpen
+                      ? 'bg-[var(--luma-accent)] border-sky-300 text-white font-semibold shadow-md'
+                      : btOn
+                      ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white font-semibold'
+                      : btnCls
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Bluetooth className="w-3.5 h-3.5 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="truncate leading-tight">{btActiveDev ? btActiveDev.name : 'Bluetooth'}</div>
+                      <div className={`text-[9px] font-mono truncate ${btOn ? 'text-white/75' : mutedCls}`}>
+                        {!btOn ? 'Выкл · ПКМ' : btActiveDev ? 'Подкл. · ПКМ' : 'Устр. · ПКМ'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openBtList}
+                    title="Выбрать устройство Bluetooth (или ПКМ)"
+                    className={`p-0.5 rounded-md shrink-0 cursor-pointer transition ${
+                      btOn ? 'hover:bg-black/20 text-white/90' : 'hover:bg-white/15 opacity-75'
+                    }`}
+                  >
+                    <ChevronRight className={`w-3.5 h-3.5 transition-transform ${btOpen ? 'rotate-90' : ''}`} />
+                  </button>
+                </div>
+              );
+            })()}
+
             {[
               { label: isDark ? 'Тёмная' : 'Светлая', active: isDark, icon: isDark ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />, run: () => { const nxt = isDark ? 'nothing_paper' : 'nothing_mono'; setThemeKey(nxt); triggerIslandPulse('Тема', nxt === 'nothing_paper' ? 'Светлая' : 'Тёмная', 'theme'); } },
               {
@@ -13825,6 +14212,32 @@ export default function App() {
               </button>
             ))}
           </div>
+
+          {/* Inline 100% Native Luma OS Wi-Fi / Bluetooth Picker (opened via RMB or tile chevron) */}
+          {ccConnectivityPicker === 'wifi' && (
+            <LumaWifiPickerPanel
+              isDark={isDark}
+              status={wifiStatus}
+              loading={wifiLoading}
+              onRefresh={(rescan) => void fetchWifiStatus(Boolean(rescan))}
+              onToggleRadio={(en) => void handleToggleWifi(en)}
+              onConnect={handleConnectWifi}
+              onDisconnect={handleDisconnectWifi}
+              onClose={() => setCcConnectivityPicker('none')}
+            />
+          )}
+
+          {ccConnectivityPicker === 'bluetooth' && (
+            <LumaBluetoothPickerPanel
+              isDark={isDark}
+              status={btStatus}
+              loading={btLoading}
+              onRefresh={() => void fetchBluetoothDevices()}
+              onToggleRadio={(en) => void handleToggleBluetoothRadio(en)}
+              onDeviceAction={handleBluetoothDeviceAction}
+              onClose={() => setCcConnectivityPicker('none')}
+            />
+          )}
 
           {/* Volume + Real Audio Output & Input Device Switcher */}
           <div className="space-y-2">
@@ -14431,21 +14844,21 @@ export default function App() {
         open={carbonHubOpen}
         isDark={isDark}
         onClose={() => setCarbonHubOpen(false)}
-        wifiConnected={true}
-        wifiName={liveSystem?.hostname || 'Luma Net'}
-        bluetoothEnabled={hubBluetoothEnabled}
-        onToggleBluetooth={() => {
-          const next = !hubBluetoothEnabled;
-          setHubBluetoothEnabled(next);
-          void fetch('/api/kernel/bluetooth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled: next }),
-          })
-            .then((r) => (r.ok ? r.json() : null))
-            .then((d) => { if (d && typeof d.enabled === 'boolean') setHubBluetoothEnabled(d.enabled); })
-            .catch(() => {});
-        }}
+        wifiConnected={Boolean(wifiStatus?.connected)}
+        wifiEnabled={wifiStatus ? wifiStatus.enabled : true}
+        wifiName={wifiStatus?.active_ssid || (wifiStatus?.enabled === false ? 'Выкл' : 'Wi-Fi')}
+        wifiStatus={wifiStatus}
+        wifiLoading={wifiLoading}
+        onToggleWifi={(en) => void handleToggleWifi(en)}
+        onRefreshWifi={(rescan) => void fetchWifiStatus(Boolean(rescan))}
+        onConnectWifi={handleConnectWifi}
+        onDisconnectWifi={handleDisconnectWifi}
+        bluetoothEnabled={btStatus ? btStatus.enabled : hubBluetoothEnabled}
+        bluetoothStatus={btStatus}
+        bluetoothLoading={btLoading}
+        onToggleBluetooth={(en) => void handleToggleBluetoothRadio(en)}
+        onRefreshBluetooth={() => void fetchBluetoothDevices()}
+        onBluetoothDeviceAction={handleBluetoothDeviceAction}
         dnd={dndEnabled}
         onToggleDnd={() => setDndEnabled((v) => !v)}
         volume={volume}
@@ -15003,7 +15416,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.6.2 (Nitrogen · N-7) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
+                  Luma OS 1.6.2b (Nitrogen · N-7) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
                 </div>
               </div>
             </div>

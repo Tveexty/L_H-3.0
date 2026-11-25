@@ -1127,10 +1127,14 @@ func (p *platformProbe) GetBluetoothStatus() BluetoothStatus {
 
 func (p *platformProbe) SetBluetoothEnabled(enabled bool) BluetoothStatus {
 	state := "Off"
+	pnpCmd := "Disable-PnpDevice"
 	if enabled {
 		state = "On"
+		pnpCmd = "Enable-PnpDevice"
 	}
+	// NEVER call Radio::RequestAccessAsync() from an unpackaged process on Windows 11 — it can pop up SystemSettings.exe!
 	script := fmt.Sprintf(`
+$done = $false
 try {
   Add-Type -AssemblyName System.Runtime.WindowsRuntime | Out-Null
   $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`+"`"+`1' })[0]
@@ -1143,14 +1147,21 @@ try {
   [Windows.Devices.Radios.Radio,Windows.System.Devices,ContentType=WindowsRuntime] | Out-Null
   [Windows.Devices.Radios.RadioAccessStatus,Windows.System.Devices,ContentType=WindowsRuntime] | Out-Null
   [Windows.Devices.Radios.RadioState,Windows.System.Devices,ContentType=WindowsRuntime] | Out-Null
-  Await ([Windows.Devices.Radios.Radio]::RequestAccessAsync()) ([Windows.Devices.Radios.RadioAccessStatus]) | Out-Null
   $radios = Await ([Windows.Devices.Radios.Radio]::GetRadiosAsync()) ([System.Collections.Generic.IReadOnlyList[Windows.Devices.Radios.Radio]])
   $bt = $radios | Where-Object { $_.Kind -eq 'Bluetooth' } | Select-Object -First 1
   if ($bt) {
-    Await ($bt.SetStateAsync([Windows.Devices.Radios.RadioState]::%s)) ([Windows.Devices.Radios.RadioAccessStatus]) | Out-Null
+    $res = Await ($bt.SetStateAsync([Windows.Devices.Radios.RadioState]::%s)) ([Windows.Devices.Radios.RadioAccessStatus])
+    if ($res -eq 'Allowed') { $done = $true }
   }
 } catch {}
-`, state)
+if (-not $done) {
+  try {
+    Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -match 'Radio|Adapter|Intel|Realtek|Qualcomm|MediaTek|Broadcom|Bluetooth' -and $_.InstanceId -match '^(USB|PCI|ACPI)' } | ForEach-Object {
+      %s -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+    }
+  } catch {}
+}
+`, state, pnpCmd)
 	_, _ = runHiddenPowerShell(script)
 	st := p.GetBluetoothStatus()
 	if st.Available {

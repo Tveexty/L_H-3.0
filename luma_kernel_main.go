@@ -48,9 +48,9 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.6.2"
+	KernelVersion       = "1.6.2b"
 	KernelCodename      = "Nitrogen"
-	KernelEngineVersion = "1.5.2"
+	KernelEngineVersion = "1.5.2b"
 	SecurityCoreVersion = "2.5"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
@@ -1464,13 +1464,22 @@ func main() {
 			applied := applyShellModeConfig(cfg)
 			if kernel.security != nil {
 				kernel.security.LogAudit("info", "shell", "Обновлён режим оболочки Windows",
-					fmt.Sprintf("fullscreen=%v autostart=%v hide_win_bar=%v work_area=%v",
-						applied.StartFullscreen, applied.AutostartWithOS, applied.HideWindowsTaskbar, applied.ReserveWorkArea))
+					fmt.Sprintf("fullscreen=%v autostart=%v hide_win_bar=%v work_area=%v replace_hotkeys=%v",
+						applied.StartFullscreen, applied.AutostartWithOS, applied.HideWindowsTaskbar, applied.ReserveWorkArea, applied.ReplaceHotkeys))
 			}
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "config": applied})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":                         true,
+				"config":                     applied,
+				"touchpad_gestures_disabled": isWindowsTouchpadGesturesDisabled(),
+			})
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "config": getShellConfig(), "os": runtime.GOOS})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":                         true,
+			"config":                     getShellConfig(),
+			"os":                         runtime.GOOS,
+			"touchpad_gestures_disabled": isWindowsTouchpadGesturesDisabled(),
+		})
 	})
 
 	mux.HandleFunc("/api/kernel/shell-restore", func(w http.ResponseWriter, r *http.Request) {
@@ -1479,8 +1488,13 @@ func main() {
 		cfg := getShellConfig()
 		cfg.HideWindowsTaskbar = false
 		cfg.AlwaysOnTop = false
+		cfg.ReplaceHotkeys = false
 		applied := applyShellModeConfig(cfg)
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "config": applied})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":                         true,
+			"config":                     applied,
+			"touchpad_gestures_disabled": isWindowsTouchpadGesturesDisabled(),
+		})
 	})
 
 	// 2. LumaShield 1.1 Security Core & Zero-Conflict Local Antivirus
@@ -3114,12 +3128,12 @@ func main() {
 	// Luma Deep Uninstaller, Luma Peek, Win Key toggle, Luma Обвести для поиска, and Smart Dock!
 	registerNitrogen16Routes(mux, kernel, osNotifBridge)
 
-	// Serve standalone executable download for LumaOS_1.6.2.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.6.2b.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.2.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.2b.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -3127,12 +3141,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.2.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.2b.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.6.2b.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.2.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.exe", serveExe)

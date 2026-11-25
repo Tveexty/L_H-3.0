@@ -86,6 +86,7 @@ func defaultShellConfig() ShellModeConfig {
 		HideWindowsTaskbar: false,
 		ReserveWorkArea:    true,
 		AlwaysOnTop:        false,
+		ReplaceHotkeys:     true,
 		TaskbarPosition:    "bottom",
 		TaskbarSizePx:      54,
 	}
@@ -117,6 +118,10 @@ func loadShellConfig() ShellModeConfig {
 	nativeWinMu.Lock()
 	activeShellCfg = cfg
 	nativeWinMu.Unlock()
+
+	setCustomAltTabEnabled(cfg.ReplaceHotkeys)
+	setWinDToLumaEnabled(cfg.ReplaceHotkeys)
+	setWinKeyToLumaEnabled(cfg.ReplaceHotkeys)
 	return cfg
 }
 
@@ -222,6 +227,7 @@ func restoreWindowsShell() {
 	if hadOrig {
 		_, _, _ = procSystemParametersInf.Call(spiSetWorkArea, 0, uintptr(unsafe.Pointer(&orig)), spifSendChange)
 	}
+	restoreWindowsTouchpadGestures()
 }
 
 func isWindowsAutostartEnabled() bool {
@@ -251,6 +257,12 @@ func setWindowsAutostart(enabled bool, startFullscreen bool) error {
 func applyShellModeConfig(cfg ShellModeConfig) ShellModeConfig {
 	saveShellConfig(cfg)
 	_ = setWindowsAutostart(cfg.AutostartWithOS, cfg.StartFullscreen)
+
+	// Atomically sync all Luma OS hotkey replacements + Windows Precision Touchpad gesture suppression
+	setCustomAltTabEnabled(cfg.ReplaceHotkeys)
+	setWinDToLumaEnabled(cfg.ReplaceHotkeys)
+	setWinKeyToLumaEnabled(cfg.ReplaceHotkeys)
+	setWindowsTouchpadGesturesDisabled(cfg.ReplaceHotkeys)
 
 	// Hide or show native Windows taskbar (Shell_TrayWnd)
 	setWindowsTaskbarVisible(!cfg.HideWindowsTaskbar)
@@ -410,7 +422,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.6 (Nitrogen)",
+			Title:  "Luma OS 1.6.2b (Nitrogen)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,
@@ -458,7 +470,10 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 	go startWin32AltRListener(w, hwnd, stopHotkeys)
 	go startWin32AltTabHook(w, hwnd, stopHotkeys)
 
-	// Apply persisted shell mode (fullscreen, hide Windows taskbar, reserve work area)
+	// Apply persisted shell mode (fullscreen, hide Windows taskbar, reserve work area, touchpad gesture override)
+	if cfg.ReplaceHotkeys {
+		setWindowsTouchpadGesturesDisabled(true)
+	}
 	if cfg.HideWindowsTaskbar {
 		setWindowsTaskbarVisible(false)
 		applyDesktopWorkArea(cfg)
@@ -620,6 +635,10 @@ func forceBringLumaToFront(lumaHwnd uintptr, pinTopmost bool) {
 }
 
 func releaseAltTabTopmost() {
+	kbdHookStateMu.Lock()
+	kbdAltTabActive = false
+	kbdHookStateMu.Unlock()
+
 	customAltTabMu.Lock()
 	wasPinned := altTabPinnedTopmost
 	altTabPinnedTopmost = false
@@ -731,17 +750,18 @@ var (
 	kernel32HookDLL             = syscall.NewLazyDLL("kernel32.dll")
 	procHookGetCurrentThreadId  = kernel32HookDLL.NewProc("GetCurrentThreadId")
 
-	kbdHookStateMu   sync.Mutex
-	kbdHookHandle    uintptr
-	kbdHookWebView   webview2.WebView
-	kbdHookLumaHwnd  uintptr
-	kbdHookStopCh    <-chan struct{}
-	kbdAltTabActive  bool
-	kbdAltTabSeq     uint64
-	kbdLWinDown      bool
-	kbdRWinDown      bool
-	kbdWinComboUsed  bool
-	kbdLastWinTapMs  int64
+	kbdHookStateMu    sync.Mutex
+	kbdHookHandle     uintptr
+	kbdHookWebView    webview2.WebView
+	kbdHookLumaHwnd   uintptr
+	kbdHookStopCh     <-chan struct{}
+	kbdAltTabActive   bool
+	kbdAltTabOpenedMs int64
+	kbdAltTabSeq      uint64
+	kbdLWinDown       bool
+	kbdRWinDown       bool
+	kbdWinComboUsed   bool
+	kbdLastWinTapMs   int64
 
 	// Single permanent package-level Win32 keyboard hook callback (NEVER allocated inside any function/loop!)
 	kbdLLHookCallback = syscall.NewCallback(win32KbdLLHookProc)
@@ -790,7 +810,27 @@ func win32KbdLLHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
 		injected := (info.Flags & hkLlkhfInjected) != 0
 
 		if !injected {
-			// --- 1. Track Win Key & Solo Tap vs Combo (Item 11: Preserves Win+D, Win+L, Win+Shift+S, Win+Space, Win+E!) ---
+			// --- 0. Self-heal stale Win key flags (e.g. if an elevated UAC window swallowed WM_KEYUP) ---
+			if info.VkCode != hkVkLWin && kbdLWinDown {
+				st, _, _ := procHookGetAsyncKeyState.Call(hkVkLWin)
+				if (st & 0x8000) == 0 {
+					kbdLWinDown = false
+					if !kbdRWinDown {
+						kbdWinComboUsed = false
+					}
+				}
+			}
+			if info.VkCode != hkVkRWin && kbdRWinDown {
+				st, _, _ := procHookGetAsyncKeyState.Call(hkVkRWin)
+				if (st & 0x8000) == 0 {
+					kbdRWinDown = false
+					if !kbdLWinDown {
+						kbdWinComboUsed = false
+					}
+				}
+			}
+
+			// --- 1. Track Win Key & Solo Tap vs Combo (Win -> Luma Start / Win+D -> Luma Home; preserves Win+L/Shift+S/Space/E!) ---
 			if info.VkCode == hkVkLWin || info.VkCode == hkVkRWin {
 				if isDown {
 					wasDown := kbdLWinDown || kbdRWinDown
@@ -808,22 +848,27 @@ func win32KbdLLHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
 					} else {
 						kbdRWinDown = false
 					}
-					// Standalone Win key tap -> suppress native Windows Start Menu safely via 0xE8 mask & open Luma Start / Ubuntu Panel!
+					// Standalone Win key tap -> suppress native Windows Start Menu safely via 0xE8 mask & open Luma Start / Luma Nova Panel!
 					if !kbdWinComboUsed && !kbdLWinDown && !kbdRWinDown && isWinKeyToLumaEnabled() && !kbdAltTabActive {
-						nowMs := time.Now().UnixMilli()
-						if nowMs-kbdLastWinTapMs > 180 {
-							kbdLastWinTapMs = nowMs
-							// Synchronously pulse unassigned dummy VK 0xE8 BEFORE releasing Win keyup to Windows:
-							// Windows cancels its native Start Menu AND receives Win KEYUP cleanly (zero stuck Win key!).
-							_, _, _ = procHookKeybdEvent.Call(hkVkDummyMask, 0, 0, 0)
-							_, _, _ = procHookKeybdEvent.Call(hkVkDummyMask, 0, hkKeyeventfUp, 0)
-							go func() {
-								defer func() { _ = recover() }()
-								if lumaHwnd != 0 {
-									forceBringLumaToFront(lumaHwnd, false)
-								}
-								safeWebViewEval(wv, stopCh, `try{window.focus();}catch(e){} window.dispatchEvent(new CustomEvent('luma-win-start'));`)
-							}()
+						ctrlSt, _, _ := procHookGetAsyncKeyState.Call(hkVkControl)
+						altSt, _, _ := procHookGetAsyncKeyState.Call(hkVkMenu)
+						shiftSt, _, _ := procHookGetAsyncKeyState.Call(hkVkShift)
+						if (ctrlSt&0x8000) == 0 && (altSt&0x8000) == 0 && (shiftSt&0x8000) == 0 {
+							nowMs := time.Now().UnixMilli()
+							if nowMs-kbdLastWinTapMs > 180 {
+								kbdLastWinTapMs = nowMs
+								// Synchronously pulse unassigned dummy VK 0xE8 BEFORE releasing Win keyup to Windows:
+								// Windows cancels its native Start Menu AND receives Win KEYUP cleanly (zero stuck Win key!).
+								_, _, _ = procHookKeybdEvent.Call(hkVkDummyMask, 0, 0, 0)
+								_, _, _ = procHookKeybdEvent.Call(hkVkDummyMask, 0, hkKeyeventfUp, 0)
+								go func() {
+									defer func() { _ = recover() }()
+									if lumaHwnd != 0 {
+										forceBringLumaToFront(lumaHwnd, false)
+									}
+									safeWebViewEval(wv, stopCh, `try{window.focus();}catch(e){} window.dispatchEvent(new CustomEvent('luma-win-start'));`)
+								}()
+							}
 						}
 					}
 					kbdWinComboUsed = false
@@ -852,14 +897,22 @@ func win32KbdLLHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
 				// All other Win combos (Win+L, Win+Shift+S, Win+Space, Win+E, Win+V, Win+Arrows) pass straight to Windows!
 			}
 
-			// --- 2. Fixed Desktop & External Alt+Tab Switcher (Item 12: WebView2 Focus + Arrow/Enter/Esc Forwarding + Zero Double-Switch) ---
+			// --- 2. Fixed Desktop & External Alt+Tab Switcher (WebView2 Focus + Arrow/Enter/Esc Forwarding + Auto-Recovery Watchdog) ---
 			if isCustomAltTabEnabled() {
-				// Watchdog: if Alt was released externally while altTabActive was true, clean up
+				// Watchdog: if Alt was released externally (e.g. over an elevated window), auto-recover so keyboard is NEVER stuck!
 				if kbdAltTabActive && isDown && (info.Flags&hkLlkhfAltDown) == 0 {
 					altSt, _, _ := procHookGetAsyncKeyState.Call(hkVkMenu)
 					if (altSt & 0x8000) == 0 {
-						// Allow arrows/Enter/Esc even after user tapped Alt+Tab if switcher stays open,
-						// otherwise let regular typing continue
+						isNavKey := info.VkCode == hkVkEscape || info.VkCode == hkVkReturn ||
+							info.VkCode == hkVkLeft || info.VkCode == hkVkRight || info.VkCode == hkVkUp || info.VkCode == hkVkDown
+						if !isNavKey || (time.Now().UnixMilli()-kbdAltTabOpenedMs) > 12000 {
+							kbdAltTabActive = false
+							go func() {
+								defer func() { _ = recover() }()
+								releaseAltTabTopmost()
+								safeWebViewEval(wv, stopCh, `window.dispatchEvent(new CustomEvent('luma-alt-tab-cancel'));`)
+							}()
+						}
 					}
 				}
 
@@ -876,6 +929,7 @@ func win32KbdLLHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
 						}
 						fromExternal := !isOurs
 						kbdAltTabActive = true
+						kbdAltTabOpenedMs = time.Now().UnixMilli()
 						kbdAltTabSeq++
 						seq := kbdAltTabSeq
 						go func(rev, ext bool, s uint64) {
@@ -937,6 +991,9 @@ func win32KbdLLHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
 						safeWebViewEval(wv, stopCh, js)
 					}(seq)
 				}
+			} else if kbdAltTabActive {
+				// If user toggled ReplaceHotkeys OFF while Alt+Tab was active, cleanly disengage
+				kbdAltTabActive = false
 			}
 		}
 	}

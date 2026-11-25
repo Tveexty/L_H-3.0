@@ -17,6 +17,7 @@ var (
 		HideWindowsTaskbar: false,
 		ReserveWorkArea:    true,
 		AlwaysOnTop:        false,
+		ReplaceHotkeys:     true,
 		TaskbarPosition:    "bottom",
 		TaskbarSizePx:      54,
 	}
@@ -34,14 +35,19 @@ func unixShellCfgPath() string {
 
 func loadShellConfig() ShellModeConfig {
 	unixShellMu.Lock()
-	defer unixShellMu.Unlock()
 	if raw, err := os.ReadFile(unixShellCfgPath()); err == nil {
 		_ = json.Unmarshal(raw, &unixShellCfg)
 	}
 	if unixShellCfg.TaskbarSizePx < 38 || unixShellCfg.TaskbarSizePx > 96 {
 		unixShellCfg.TaskbarSizePx = 54
 	}
-	return unixShellCfg
+	unixAltTabEnabled = unixShellCfg.ReplaceHotkeys
+	unixWinDEnabled = unixShellCfg.ReplaceHotkeys
+	unixWinKeyEnabled = unixShellCfg.ReplaceHotkeys
+	out := unixShellCfg
+	unixShellMu.Unlock()
+	setWindowsTouchpadGesturesDisabled(out.ReplaceHotkeys)
+	return out
 }
 
 func getShellConfig() ShellModeConfig {
@@ -59,15 +65,21 @@ func applyShellModeConfig(cfg ShellModeConfig) ShellModeConfig {
 		cfg.TaskbarSizePx = 96
 	}
 	unixShellCfg = cfg
+	unixAltTabEnabled = cfg.ReplaceHotkeys
+	unixWinDEnabled = cfg.ReplaceHotkeys
+	unixWinKeyEnabled = cfg.ReplaceHotkeys
 	if raw, err := json.MarshalIndent(cfg, "", "  "); err == nil {
 		_ = os.WriteFile(unixShellCfgPath(), raw, 0o600)
 	}
 	out := unixShellCfg
 	unixShellMu.Unlock()
+	setWindowsTouchpadGesturesDisabled(out.ReplaceHotkeys)
 	return out
 }
 
-func restoreWindowsShell() {}
+func restoreWindowsShell() {
+	restoreWindowsTouchpadGestures()
+}
 
 func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 	return false

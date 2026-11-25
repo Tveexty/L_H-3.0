@@ -514,7 +514,7 @@ export const LumaQuickLookModal: React.FC<LumaQuickLookModalProps> = ({
         <div className={`px-4 py-1.5 border-t text-[10px] font-mono flex items-center justify-between opacity-65 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
           <span>Space / Esc — закрыть</span>
           <span>← → — соседние файлы ({activeIndex + 1}/{items.length})</span>
-          {data?.kind === 'image' ? <span>Колесо / +/- — зум · R — поворот</span> : <span>Luma Peek 1.6.2</span>}
+          {data?.kind === 'image' ? <span>Колесо / +/- — зум · R — поворот</span> : <span>Luma Peek 1.6.2b</span>}
         </div>
       </div>
     </div>

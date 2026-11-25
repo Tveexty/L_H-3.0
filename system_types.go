@@ -267,6 +267,7 @@ type ShellModeConfig struct {
 	HideWindowsTaskbar bool   `json:"hide_windows_taskbar"`
 	ReserveWorkArea    bool   `json:"reserve_work_area"`
 	AlwaysOnTop        bool   `json:"always_on_top"`
+	ReplaceHotkeys     bool   `json:"replace_hotkeys"`
 	TaskbarPosition    string `json:"taskbar_position"`
 	TaskbarSizePx      int    `json:"taskbar_size_px"`
 }
