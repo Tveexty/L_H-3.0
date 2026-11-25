@@ -28,20 +28,21 @@ import (
 //     WHEN (real Windows FILETIME or arrival timestamp + date), and circular Avatar!
 
 type OSNotificationItem struct {
-	ID        string `json:"id"`
-	App       string `json:"app"`
-	AppKey    string `json:"app_key"` // telegram | discord | whatsapp | vk | viber | steam | slack | teams | mail | browser | message
-	Sender    string `json:"sender"`
-	Chat      string `json:"chat,omitempty"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	AvatarURL string `json:"avatar_url,omitempty"`
-	Direction string `json:"direction"` // incoming
-	Level     string `json:"level"`     // info | ok | warn | danger
-	Source    string `json:"source"`    // wpn_db | live_toast_uia | manual
-	Time      string `json:"time"`      // HH:MM
-	DateLabel string `json:"date_label"` // DD.MM.YYYY
-	Timestamp int64  `json:"timestamp"` // Unix ms
+	ID          string `json:"id"`
+	App         string `json:"app"`
+	AppKey      string `json:"app_key"` // telegram | discord | whatsapp | vk | viber | steam | slack | teams | mail | browser | system | message
+	Sender      string `json:"sender"`
+	Chat        string `json:"chat,omitempty"`
+	Title       string `json:"title"`
+	Body        string `json:"body"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
+	Direction   string `json:"direction"` // incoming
+	Level       string `json:"level"`     // info | ok | warn | danger
+	Source      string `json:"source"`    // wpn_db | live_toast_uia | winrt_center | manual
+	Time        string `json:"time"`      // HH:MM
+	DateLabel   string `json:"date_label"` // DD.MM.YYYY
+	Timestamp   int64  `json:"timestamp"`    // Unix ms (real arrival / display time)
+	DeliveredAt int64  `json:"delivered_at"` // Strictly monotonic Unix ms for reliable ?since= polling
 }
 
 type OSNotificationDiagnostics struct {
@@ -56,44 +57,55 @@ type OSNotificationDiagnostics struct {
 }
 
 type OSNotificationBridge struct {
-	mu            sync.Mutex
-	probe         *platformProbe
-	items         []OSNotificationItem
-	seenHashes    map[string]bool
-	lastDBFP      string
-	lastWALFP     string
-	seededDB      bool
-	activeSources []string
-	diag          OSNotificationDiagnostics
+	mu              sync.Mutex
+	probe           *platformProbe
+	items           []OSNotificationItem
+	seenHashes      map[string]int64 // fingerprint -> last arrival/delivery unix ms
+	lastDeliveredAt int64
+	lastDBFP        string
+	lastWALFP       string
+	seededDB        bool
+	activeSources   []string
+	diag            OSNotificationDiagnostics
 }
 
 func NewOSNotificationBridge(probe *platformProbe) *OSNotificationBridge {
 	b := &OSNotificationBridge{
 		probe:      probe,
 		items:      []OSNotificationItem{},
-		seenHashes: map[string]bool{},
+		seenHashes: map[string]int64{},
 		activeSources: []string{
-			"Luma 1.5.4 Real-Text Notification Engine (Кто · Что · Когда, 0% спама из мута)",
+			"LumaCore Real-Time Notification Engine",
 		},
 	}
 	if runtime.GOOS == "windows" {
 		b.activeSources = append([]string{
-			"Windows WPN DB + WAL Share-Safe Direct XML & FILETIME Reader",
-			"Win32 COM UIAutomation Live Toast Banner Spy",
+			"Windows WPN DB + WAL Full-Hash Share-Safe XML Reader",
+			"Win32 COM UIAutomation Live Toast & Messenger Popup Spy",
+			"Windows Action Center Live Sync Bridge",
 		}, b.activeSources...)
 	}
-	// Seed recent real toast messages on startup so the Notification Shade immediately has real history
 	b.scanWPNDatabase(true)
 	go b.backgroundLoop()
 	if runtime.GOOS == "windows" {
 		b.startWinLiveUIAToastWatcher()
+		b.startWinActionCenterFallbackPoller()
 	}
 	return b
 }
 
+func (b *OSNotificationBridge) nextMonotonicMsLocked() int64 {
+	nowMs := time.Now().UnixMilli()
+	if nowMs <= b.lastDeliveredAt {
+		nowMs = b.lastDeliveredAt + 1
+	}
+	b.lastDeliveredAt = nowMs
+	return nowMs
+}
+
 func (b *OSNotificationBridge) backgroundLoop() {
 	defer func() { _ = recover() }()
-	ticker := time.NewTicker(900 * time.Millisecond)
+	ticker := time.NewTicker(600 * time.Millisecond)
 	defer ticker.Stop()
 	for range ticker.C {
 		func() {
@@ -108,7 +120,11 @@ func (b *OSNotificationBridge) List(sinceTs int64) []OSNotificationItem {
 	defer b.mu.Unlock()
 	out := make([]OSNotificationItem, 0, len(b.items))
 	for _, it := range b.items {
-		if sinceTs <= 0 || it.Timestamp > sinceTs {
+		cursor := it.DeliveredAt
+		if cursor == 0 {
+			cursor = it.Timestamp
+		}
+		if sinceTs <= 0 || cursor > sinceTs {
 			out = append(out, it)
 		}
 	}
@@ -138,17 +154,41 @@ func (b *OSNotificationBridge) Clear() {
 }
 
 func (b *OSNotificationBridge) pushUniqueRealMessage(it OSNotificationItem) {
+	// Include arrival bucket if available so genuinely new repeated messages ("Ок", "Привет") ALWAYS arrive!
 	fp := hashToastFingerprint(it.AppKey, it.Sender, it.Body)
+	now := time.Now()
+	nowMs := now.UnixMilli()
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.seenHashes[fp] {
-		return
+	if prevMs, exists := b.seenHashes[fp]; exists {
+		// Suppress exact duplicate across WPN/UIA/WinRT engines within 18 seconds,
+		// or identical WPN DB historical timestamp!
+		if it.Timestamp > 0 && prevMs == it.Timestamp {
+			return
+		}
+		if nowMs-prevMs < 18000 && (it.Timestamp == 0 || it.Timestamp-prevMs < 18000) {
+			return
+		}
 	}
-	b.seenHashes[fp] = true
-	now := time.Now()
+	if it.Timestamp > 0 {
+		b.seenHashes[fp] = it.Timestamp
+	} else {
+		b.seenHashes[fp] = nowMs
+	}
+	// Trim seen map periodically to avoid unbounded growth
+	if len(b.seenHashes) > 800 {
+		cutoff := nowMs - 30*60*1000
+		for k, v := range b.seenHashes {
+			if v < cutoff {
+				delete(b.seenHashes, k)
+			}
+		}
+	}
 	if it.Timestamp == 0 {
-		it.Timestamp = now.UnixMilli()
+		it.Timestamp = nowMs
 	}
+	it.DeliveredAt = b.nextMonotonicMsLocked()
 	if it.Time == "" {
 		it.Time = time.UnixMilli(it.Timestamp).Format("15:04")
 	}
@@ -156,8 +196,8 @@ func (b *OSNotificationBridge) pushUniqueRealMessage(it OSNotificationItem) {
 		it.DateLabel = time.UnixMilli(it.Timestamp).Format("02.01.2006")
 	}
 	b.items = append([]OSNotificationItem{it}, b.items...)
-	if len(b.items) > 120 {
-		b.items = b.items[:120]
+	if len(b.items) > 150 {
+		b.items = b.items[:150]
 	}
 }
 
@@ -192,32 +232,34 @@ func (b *OSNotificationBridge) PushManualRich(app, senderIn, chatIn, title, body
 		chat = strings.TrimSpace(chatIn)
 	}
 	now := time.Now()
-	it := OSNotificationItem{
-		ID:        fmt.Sprintf("osn_%d", now.UnixNano()),
-		App:       appName,
-		AppKey:    appKey,
-		Sender:    sender,
-		Chat:      chat,
-		Title:     cleanTitle,
-		Body:      strings.TrimSpace(body),
-		AvatarURL: strings.TrimSpace(avatarURL),
-		Direction: "incoming",
-		Level:     level,
-		Source:    "manual",
-		Time:      now.Format("15:04"),
-		DateLabel: now.Format("02.01.2006"),
-		Timestamp: now.UnixMilli(),
-	}
 	b.mu.Lock()
+	deliv := b.nextMonotonicMsLocked()
+	it := OSNotificationItem{
+		ID:          fmt.Sprintf("osn_%d", now.UnixNano()),
+		App:         appName,
+		AppKey:      appKey,
+		Sender:      sender,
+		Chat:        chat,
+		Title:       cleanTitle,
+		Body:        strings.TrimSpace(body),
+		AvatarURL:   strings.TrimSpace(avatarURL),
+		Direction:   "incoming",
+		Level:       level,
+		Source:      "manual",
+		Time:        now.Format("15:04"),
+		DateLabel:   now.Format("02.01.2006"),
+		Timestamp:   now.UnixMilli(),
+		DeliveredAt: deliv,
+	}
 	b.items = append([]OSNotificationItem{it}, b.items...)
-	if len(b.items) > 120 {
-		b.items = b.items[:120]
+	if len(b.items) > 150 {
+		b.items = b.items[:150]
 	}
 	b.mu.Unlock()
 	return it
 }
 
-// Engine 1: Share-Safe Windows WPN SQLite + WAL Direct XML & FILETIME Extractor
+// Engine 1: Share-Safe Windows WPN SQLite + WAL Direct XML & FILETIME Extractor (Full-Buffer Hash!)
 func (b *OSNotificationBridge) scanWPNDatabase(seedOnly bool) {
 	if runtime.GOOS != "windows" {
 		return
@@ -230,8 +272,8 @@ func (b *OSNotificationBridge) scanWPNDatabase(seedOnly bool) {
 	dbPath := filepath.Join(dir, "wpndatabase.db")
 	walPath := filepath.Join(dir, "wpndatabase.db-wal")
 
-	walRaw, walSize, walFP, walErr := winReadFileShareSafe(walPath, 10*1024*1024)
-	dbRaw, dbSize, dbFP, dbErr := winReadFileShareSafe(dbPath, 10*1024*1024)
+	walRaw, walSize, walFP, walErr := winReadFileShareSafe(walPath, 16*1024*1024)
+	dbRaw, dbSize, dbFP, dbErr := winReadFileShareSafe(dbPath, 16*1024*1024)
 
 	b.mu.Lock()
 	b.diag.WPNWALFound = walErr == nil && walSize > 0
@@ -265,45 +307,58 @@ func (b *OSNotificationBridge) scanWPNDatabase(seedOnly bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	now := time.Now()
+	nowMs := now.UnixMilli()
 	seededCount := 0
 	for _, it := range found {
 		fp := hashToastFingerprint(it.AppKey, it.Sender, it.Body)
-		if b.seenHashes[fp] {
-			continue
+		if prevMs, exists := b.seenHashes[fp]; exists {
+			if seedOnly {
+				continue
+			}
+			// If same historical timestamp or seen within 20s, skip duplicate;
+			// if genuinely newer FILETIME arrived, deliver it!
+			if it.Timestamp == 0 || it.Timestamp <= prevMs+20000 {
+				continue
+			}
 		}
-		b.seenHashes[fp] = true
+		if it.Timestamp > 0 {
+			b.seenHashes[fp] = it.Timestamp
+		} else {
+			b.seenHashes[fp] = nowMs
+		}
 		if seedOnly {
-			if seededCount < 15 {
+			if seededCount < 20 {
 				if it.Timestamp == 0 {
 					t := now.Add(-time.Duration(seededCount+2) * time.Minute)
 					it.Timestamp = t.UnixMilli()
 					it.Time = t.Format("15:04")
 					it.DateLabel = t.Format("02.01.2006")
 				}
+				it.DeliveredAt = it.Timestamp
 				b.items = append(b.items, it)
 				seededCount++
 			}
 			continue
 		}
-		if it.Timestamp == 0 || now.UnixMilli()-it.Timestamp > 3*60*1000 {
-			it.Timestamp = now.UnixMilli()
+		if it.Timestamp == 0 || nowMs-it.Timestamp > 5*60*1000 {
+			it.Timestamp = nowMs
 		}
+		it.DeliveredAt = b.nextMonotonicMsLocked()
 		t := time.UnixMilli(it.Timestamp)
 		it.Time = t.Format("15:04")
 		it.DateLabel = t.Format("02.01.2006")
 		b.items = append([]OSNotificationItem{it}, b.items...)
 	}
-	if len(b.items) > 120 {
-		b.items = b.items[:120]
+	if len(b.items) > 150 {
+		b.items = b.items[:150]
 	}
 	b.seededDB = true
 }
 
 // extractNearbyFiletime scans adjacent SQLite record bytes around a <toast> blob for a realistic Windows FILETIME
-// (big-endian 64-bit integer in SQLite record payload: 100ns ticks since 1601-01-01 -> years 2023..2035).
+// (checks both big-endian SQLite 8-byte int and little-endian raw FILETIME -> years 2023..2036).
 func extractNearbyFiletime(raw []byte, start, end int) int64 {
 	const (
-		// Windows FILETIME ticks between 1601-01-01 and 1970-01-01
 		epochDiffTicks = int64(116444736000000000)
 		minTicks       = int64(133170048000000000) // ~2023-01-01
 		maxTicks       = int64(137273184000000000) // ~2036-01-01
@@ -319,18 +374,24 @@ func extractNearbyFiletime(raw []byte, start, end int) int64 {
 			hi = len(raw)
 		}
 		for i := lo; i+8 <= hi; i++ {
-			// SQLite stores 8-byte integers in BIG-ENDIAN!
-			v := int64(binary.BigEndian.Uint64(raw[i : i+8]))
-			if v >= minTicks && v <= maxTicks {
-				unixMs := (v - epochDiffTicks) / 10000
+			vBE := int64(binary.BigEndian.Uint64(raw[i : i+8]))
+			if vBE >= minTicks && vBE <= maxTicks {
+				unixMs := (vBE - epochDiffTicks) / 10000
+				if unixMs <= nowMs && unixMs > bestMs {
+					bestMs = unixMs
+				}
+			}
+			vLE := int64(binary.LittleEndian.Uint64(raw[i : i+8]))
+			if vLE >= minTicks && vLE <= maxTicks {
+				unixMs := (vLE - epochDiffTicks) / 10000
 				if unixMs <= nowMs && unixMs > bestMs {
 					bestMs = unixMs
 				}
 			}
 		}
 	}
-	scanRange(end, end+96)
-	scanRange(start-96, start)
+	scanRange(end, end+140)
+	scanRange(start-140, start)
 	return bestMs
 }
 
@@ -455,7 +516,13 @@ func parseToastChunk(xmlChunk []byte, contextText string, runningMessengers []st
 	title := strings.TrimSpace(meta.Texts[0])
 	body := ""
 	chat := ""
-	if len(meta.Texts) == 2 {
+	if len(meta.Texts) == 1 {
+		// Single-line notifications (stickers, calls, browser/system alerts)
+		body = title
+		if meta.HeaderTitle != "" {
+			title = meta.HeaderTitle
+		}
+	} else if len(meta.Texts) == 2 {
 		body = strings.TrimSpace(meta.Texts[1])
 	} else if len(meta.Texts) >= 3 {
 		body = strings.TrimSpace(meta.Texts[1])
@@ -465,8 +532,11 @@ func parseToastChunk(xmlChunk []byte, contextText string, runningMessengers []st
 		}
 	}
 
-	if title == "" || body == "" {
+	if title == "" && body == "" {
 		return OSNotificationItem{}, false
+	}
+	if title == "" {
+		title = body
 	}
 	if !isIncomingUserMessage(title, body, contextText+" "+meta.LaunchAttr+" "+meta.HeaderTitle) {
 		return OSNotificationItem{}, false
@@ -476,28 +546,21 @@ func parseToastChunk(xmlChunk []byte, contextText string, runningMessengers []st
 	appName, appKey := detectMessengerApp(fullHint)
 
 	if appKey == "system" {
-		looksLikeRealChat := meta.HasReplyBox || meta.HasCircleImg || meta.AvatarSrc != "" || meta.HeaderTitle != ""
-		if !looksLikeRealChat {
-			lowLaunch := strings.ToLower(meta.LaunchAttr)
-			if strings.Contains(lowLaunch, "windows.") || strings.Contains(lowLaunch, "settings") || strings.Contains(lowLaunch, "defender") || strings.Contains(lowLaunch, "update") {
-				return OSNotificationItem{}, false
-			}
-		}
 		if meta.HeaderTitle != "" {
 			hApp, hKey := detectMessengerApp(meta.HeaderTitle)
 			if hKey != "system" {
 				appName, appKey = hApp, hKey
 			} else {
 				appName = meta.HeaderTitle
-				appKey = "message"
+				appKey = "system"
 			}
-		} else if len(runningMessengers) == 1 {
-			appKey = runningMessengers[0]
-			appName = prettyAppName(appKey)
 		} else if strings.Contains(strings.ToLower(meta.AvatarSrc), "tdata") || strings.Contains(strings.ToLower(meta.LaunchAttr), "msg") {
 			appName, appKey = "Telegram", "telegram"
+		} else if len(runningMessengers) == 1 && (meta.HasReplyBox || meta.HasCircleImg) {
+			appKey = runningMessengers[0]
+			appName = prettyAppName(appKey)
 		} else {
-			appName, appKey = "Сообщение", "message"
+			appName, appKey = "Система", "system"
 		}
 	}
 
@@ -555,44 +618,36 @@ func prettyAppName(key string) string {
 	case "mail":
 		return "Почта"
 	default:
-		return "Сообщение"
+		return "Уведомление"
 	}
 }
 
-func isIncomingUserMessage(title, body, ctx string) bool {
+func isIncomingUserMessage(title, body, _ string) bool {
 	lt := strings.ToLower(strings.TrimSpace(title))
 	lb := strings.ToLower(strings.TrimSpace(body))
-	lc := strings.ToLower(ctx)
 
+	if lt == "" && lb == "" {
+		return false
+	}
+	// Block ONLY outgoing echoes and synthetic unread-counter spam placeholders
 	outgoingPrefixes := []string{
-		"вы:", "you:", "me:", "я:", "sent ", "отправлено", "delivered", "доставлено",
-		"uploading", "downloading", "загрузка", "скачивание", "синхронизация", "syncing",
+		"вы:", "you:", "me:", "я:",
 	}
 	for _, p := range outgoingPrefixes {
 		if strings.HasPrefix(lb, p) || strings.HasPrefix(lt, p) {
 			return false
 		}
 	}
-
-	noisePhrases := []string{
-		"непрочит", "unread messages", "new messages", "новое сообщение (",
-		"новые входящие сообщения (+", "нажмите, чтобы открыть",
-		"update available", "доступно обновление", "restarting", "перезапуск",
-		"windows security", "безопасность windows", "windows update", "центр обновления",
-		"onedrive", "defender", "защитник windows", "antimalware",
-		"backup complete", "резервное копирование", "battery saver", "экономия заряда",
-		"usb device", "устройство usb", "display driver", "realtek", "nvidia geforce",
-		"typing...", "печатает...", "recording voice", "записывает голосовое",
-		"connected to", "подключено к", "bluetooth", "microsoft store", "xbox game bar",
-		"screenshot saved", "снимок экрана сохранён", "clipboard", "буфер обмена",
+	spamPlaceholders := []string{
+		"новые входящие сообщения (+",
+		"нажмите, чтобы открыть",
+		"typing...",
+		"печатает...",
 	}
-	for _, n := range noisePhrases {
+	for _, n := range spamPlaceholders {
 		if strings.Contains(lb, n) || strings.Contains(lt, n) {
 			return false
 		}
-	}
-	if strings.Contains(lc, "windows.systemtoast") && !strings.Contains(lc, "telegram") && !strings.Contains(lc, "whatsapp") && !strings.Contains(lc, "discord") {
-		return false
 	}
 	return true
 }

@@ -94,7 +94,7 @@ export const LumaTrashWindow: React.FC<LumaTrashWindowProps> = ({
         onCountChange?.(list.length);
       }
     } catch {
-      setStatusMsg('Нет связи с подсистемой Корзины LumaCore 1.6.1');
+      setStatusMsg('Нет связи с подсистемой Корзины LumaCore 1.5.2');
     } finally {
       setLoading(false);
     }
@@ -102,6 +102,9 @@ export const LumaTrashWindow: React.FC<LumaTrashWindowProps> = ({
 
   useEffect(() => {
     void loadTrash();
+    const onUpdated = () => void loadTrash();
+    window.addEventListener('luma-trash-updated', onUpdated);
+    return () => window.removeEventListener('luma-trash-updated', onUpdated);
   }, [loadTrash]);
 
   const filtered = useMemo(() => {

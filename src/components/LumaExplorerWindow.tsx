@@ -488,7 +488,8 @@ export const LumaExplorerWindow: React.FC<{
       }
     }
     if (deleted > 0) {
-      onPushToast('Проводник', `Удалено объектов: ${deleted}`, 'info');
+      onPushToast('Корзина Luma OS', `Перемещено в Корзину: ${deleted}`, 'info');
+      window.dispatchEvent(new Event('luma-trash-updated'));
       setSelectedPaths([]);
       if (preview && pathsToDelete.includes(preview.entry.path)) setPreview(null);
       fetchDirectory(activeTab.path, false);
@@ -1367,12 +1368,12 @@ export const LumaExplorerWindow: React.FC<{
                   detail: { prompt: `Объясни назначение файла «${ctxMenu.entry.name}» (${ctxMenu.entry.path})` },
                 })
               );
-              onPushToast('Luma AI 4.0', `Файл «${ctxMenu.entry.name}» отправлен в AI 4.0`, 'info');
+              onPushToast('Luma AI 5.0', `Файл «${ctxMenu.entry.name}» отправлен в AI 5.0`, 'info');
               setCtxMenu(null);
             }}
             className="w-full px-2.5 py-1.5 rounded-lg hover:bg-indigo-500/15 text-indigo-300 font-semibold text-left flex items-center gap-2 cursor-pointer"
           >
-            <Sparkles className="w-3.5 h-3.5" /> Объяснить через AI 4.0
+            <Sparkles className="w-3.5 h-3.5" /> Объяснить через AI 5.0
           </button>
           <button
             onClick={() => {

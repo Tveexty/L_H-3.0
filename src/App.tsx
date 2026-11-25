@@ -178,6 +178,17 @@ import {
   WidgetBgMode,
 } from './components/LumaDesktopCanvas';
 import { LumaExplorerWindow } from './components/LumaExplorerWindow';
+import { LumaLensSearchOverlay } from './components/LumaLensSearchOverlay';
+import {
+  DEFAULT_ACCESSIBILITY_CONFIG,
+  DEFAULT_GESTURE_CONFIG,
+  DEFAULT_RMB_MENU_CONFIG,
+  LumaAccessibilityConfig,
+  LumaAccessibilityGesturesPanel,
+  LumaGestureAction,
+  LumaGestureConfig,
+  LumaRmbMenuConfig,
+} from './components/LumaAccessibilityGesturesPanel';
 import { LumaHeliumEasterEggModal } from './components/LumaHeliumEasterEgg';
 import { LumaMouseDpiPanel } from './components/LumaMouseDpiPanel';
 import { LumaPrivateVaultOverlay } from './components/LumaPrivateVaultOverlay';
@@ -631,6 +642,76 @@ export default function App() {
     savedState?.taskbarCollapseSysFolder ?? false
   );
   const [sysFolderOpen, setSysFolderOpen] = useState<boolean>(false);
+  const [showLumaSysFolder, setShowLumaSysFolder] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('luma_show_sys_folder_v1');
+      if (v !== null) return v === 'true';
+    } catch { /* ignore */ }
+    return true;
+  });
+  const [lumaFolderSlot, setLumaFolderSlot] = useState<'far_left' | 'before_apps' | 'after_apps' | 'right'>(() => {
+    try {
+      const v = localStorage.getItem('luma_folder_slot_v1');
+      if (v === 'far_left' || v === 'before_apps' || v === 'after_apps' || v === 'right') return v;
+    } catch { /* ignore */ }
+    return 'far_left';
+  });
+  const [draggingLumaFolder, setDraggingLumaFolder] = useState<boolean>(false);
+  const [showSmartDockShelf, setShowSmartDockShelf] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('luma_show_smart_dock_v1');
+      if (v !== null) return v === 'true';
+    } catch { /* ignore */ }
+    return true;
+  });
+  const [smartDockSide, setSmartDockSide] = useState<'left' | 'right'>(() => {
+    try {
+      const v = localStorage.getItem('luma_smart_dock_side_v1');
+      if (v === 'left' || v === 'right') return v;
+    } catch { /* ignore */ }
+    return 'right';
+  });
+  const [lensSearchOpen, setLensSearchOpen] = useState<boolean>(false);
+  const [gestureConfig, setGestureConfig] = useState<LumaGestureConfig>(() => {
+    try {
+      const raw = localStorage.getItem('luma_gesture_config_v1');
+      if (raw) return { ...DEFAULT_GESTURE_CONFIG, ...JSON.parse(raw) };
+    } catch { /* ignore */ }
+    return DEFAULT_GESTURE_CONFIG;
+  });
+  const [rmbConfig, setRmbConfig] = useState<LumaRmbMenuConfig>(() => {
+    try {
+      const raw = localStorage.getItem('luma_rmb_config_v1');
+      if (raw) return { ...DEFAULT_RMB_MENU_CONFIG, ...JSON.parse(raw) };
+    } catch { /* ignore */ }
+    return DEFAULT_RMB_MENU_CONFIG;
+  });
+  const [accessibilityConfig, setAccessibilityConfig] = useState<LumaAccessibilityConfig>(() => {
+    try {
+      const raw = localStorage.getItem('luma_accessibility_config_v1');
+      if (raw) return { ...DEFAULT_ACCESSIBILITY_CONFIG, ...JSON.parse(raw) };
+    } catch { /* ignore */ }
+    return DEFAULT_ACCESSIBILITY_CONFIG;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('luma_show_sys_folder_v1', String(showLumaSysFolder));
+      localStorage.setItem('luma_folder_slot_v1', lumaFolderSlot);
+      localStorage.setItem('luma_show_smart_dock_v1', String(showSmartDockShelf));
+      localStorage.setItem('luma_smart_dock_side_v1', smartDockSide);
+      localStorage.setItem('luma_gesture_config_v1', JSON.stringify(gestureConfig));
+      localStorage.setItem('luma_rmb_config_v1', JSON.stringify(rmbConfig));
+      localStorage.setItem('luma_accessibility_config_v1', JSON.stringify(accessibilityConfig));
+    } catch { /* ignore */ }
+  }, [showLumaSysFolder, lumaFolderSlot, showSmartDockShelf, smartDockSide, gestureConfig, rmbConfig, accessibilityConfig]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle('luma-high-contrast', accessibilityConfig.highContrast);
+    root.classList.toggle('luma-reduced-motion', accessibilityConfig.reducedMotion);
+    root.classList.toggle('luma-large-focus', accessibilityConfig.largeFocusRing);
+  }, [accessibilityConfig]);
 
   // --- Audio Input/Output Devices, Wireless Peripheral Batteries & World Keyboard Layouts (1.3 Beryllium) ---
   const [audioDevices, setAudioDevices] = useState<AudioDevicesInfo | null>(null);
@@ -1024,10 +1105,10 @@ export default function App() {
     {
       id: 'notif_nitrogen_welcome_160',
       source: 'system',
-      appName: 'Luma OS 1.6.1',
-      sender: 'Luma OS 1.6.1 Nitrogen',
-      title: 'Добро пожаловать в Luma OS 1.6.1 (Nitrogen · N-7)!',
-      body: 'LumaCore 1.5.1 · LumaShield 2.5 (275 правил) · Стиль Luma Nova · Luma AI 4.0 · Gamepad Studio · Очистка хвостов · Luma Peek (Space) · Умный Dock и Стеки.',
+      appName: 'Luma OS 1.6.2',
+      sender: 'Luma OS 1.6.2 Nitrogen',
+      title: 'Добро пожаловать в Luma OS 1.6.2 (Nitrogen · N-7)!',
+      body: 'LumaCore 1.5.2 · LumaShield 2.5 (275 правил) · Стиль Luma Nova · Luma AI 5.0 · Gamepad Studio · Очистка хвостов · Luma Peek (Space) · Умный Dock и Стеки.',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       dateLabel: 'Сегодня',
       timestamp: Date.now(),
@@ -1200,7 +1281,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.6.1 (Nitrogen · N-7) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.6.2 (Nitrogen · N-7) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -1233,7 +1314,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.6.1 (Nitrogen · N-7)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.6.2 (Nitrogen · N-7)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -1248,8 +1329,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 1.5.1',
-      message: 'Инициализация оболочки Luma OS 1.6.1 (Nitrogen · N-7), LumaCore 1.5.1, LumaShield 2.5 и AI 4.0',
+      source: 'LumaCore 1.5.2',
+      message: 'Инициализация оболочки Luma OS 1.6.2 (Nitrogen · N-7), LumaCore 1.5.2, LumaShield 2.5 и AI 5.0',
       level: 'success',
     },
   ]);
@@ -1541,7 +1622,7 @@ export default function App() {
           total_bytes: 23.4 * 1024 * 1024,
           speed_mbps: 14.8,
           target_version: '1.6.1 (Nitrogen · N-7)',
-          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.6.1...',
+          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.6.2...',
         },
       },
       {
@@ -1554,7 +1635,7 @@ export default function App() {
           total_bytes: 23.4 * 1024 * 1024,
           speed_mbps: 24.2,
           target_version: '1.6.1 (Nitrogen · N-7)',
-          message: 'Загрузка образа LumaOS_1.6.1.exe (LumaCore 1.5.1 + LumaShield 2.5)...',
+          message: 'Загрузка образа LumaOS_1.6.2.exe (LumaCore 1.5.2 + LumaShield 2.5)...',
         },
       },
       {
@@ -1595,7 +1676,7 @@ export default function App() {
           speed_mbps: 0,
           target_version: '1.6.1 (Nitrogen · N-7)',
           sha256: 'b5f9e20a7c14d389a6e1f2c904b77d21',
-          message: 'Сборка Luma OS 1.6.1 (Nitrogen · N-7) проверена и готова к мгновенному запуску!',
+          message: 'Сборка Luma OS 1.6.2 (Nitrogen · N-7) проверена и готова к мгновенному запуску!',
         },
       },
     ];
@@ -3100,7 +3181,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Окна ОС', 'Доступно при запуске LumaOS_1.6.1.exe', 'info');
+      pushToast('Окна ОС', 'Доступно при запуске LumaOS_1.6.2.exe', 'info');
     }
   };
 
@@ -3138,7 +3219,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('2 окна рядом', 'Доступно при запуске LumaOS_1.6.1.exe', 'info');
+      pushToast('2 окна рядом', 'Доступно при запуске LumaOS_1.6.2.exe', 'info');
     }
   };
 
@@ -3228,6 +3309,13 @@ export default function App() {
     }
   }, []);
 
+  const dndEnabledNotifRef = useRef(dndEnabled);
+  const isMutedNotifRef = useRef(isMuted);
+  const triggerIslandPulseNotifRef = useRef(triggerIslandPulse);
+  dndEnabledNotifRef.current = dndEnabled;
+  isMutedNotifRef.current = isMuted;
+  triggerIslandPulseNotifRef.current = triggerIslandPulse;
+
   // --- Clean Zero-Spam Messenger Notification Poller (1.5.4: WHO, WHAT & WHEN — No Muted Channel "+4"!) ---
   useEffect(() => {
     let active = true;
@@ -3267,7 +3355,8 @@ export default function App() {
     const pollOsNotifications = async () => {
       try {
         const since = osNotifSinceRef.current;
-        const r = await fetch(`/api/kernel/notifications/os${since > 0 ? `?since=${since}` : ''}`);
+        const querySince = since > 4000 ? since - 4000 : 0;
+        const r = await fetch(`/api/kernel/notifications/os${querySince > 0 ? `?since=${querySince}` : ''}`);
         if (!r.ok || !active) return;
         const d = await r.json();
         const list = Array.isArray(d?.notifications) ? d.notifications : [];
@@ -3277,13 +3366,14 @@ export default function App() {
         }
 
         const fresh: ShadeNotificationItem[] = [];
-        let maxTs = since;
+        let maxCursor = since;
         for (const item of list) {
           const id = String(item.id || '');
           if (!id || seenOsNotifIdsRef.current.has(id)) continue;
           seenOsNotifIdsRef.current.add(id);
           const ts = Number(item.timestamp || 0) || Date.now();
-          if (ts > maxTs) maxTs = ts;
+          const delivered = Number(item.delivered_at || 0) || ts;
+          if (delivered > maxCursor) maxCursor = delivered;
           fresh.push({
             id,
             source: mapAppKeyToSource(item.app_key || item.app || ''),
@@ -3299,7 +3389,7 @@ export default function App() {
             unread: true,
           });
         }
-        if (maxTs > osNotifSinceRef.current) osNotifSinceRef.current = maxTs;
+        if (maxCursor > osNotifSinceRef.current) osNotifSinceRef.current = maxCursor;
 
         const wasBooted = osNotifBootedRef.current;
         osNotifBootedRef.current = true;
@@ -3307,10 +3397,10 @@ export default function App() {
         if (fresh.length > 0 && active) {
           setHubNotifications((prev) => [...fresh, ...prev].slice(0, 120));
           const latest = fresh[0];
-          const isBrandNew = wasBooted || Date.now() - maxTs < 15000;
-          if (!dndEnabled && isBrandNew) {
+          const isBrandNew = wasBooted || Date.now() - maxCursor < 30000;
+          if (!dndEnabledNotifRef.current && isBrandNew) {
             // 1. Elastic rubber-band Dynamic Island alert
-            triggerIslandPulse(
+            triggerIslandPulseNotifRef.current(
               latest.chat && latest.chat !== latest.sender ? `${latest.sender} → ${latest.chat}` : latest.sender,
               latest.body || latest.title || 'Новое сообщение',
               latest.source
@@ -3323,7 +3413,7 @@ export default function App() {
               incomingBannerTimerRef.current = null;
             }, 6500);
             // 3. Soft notification chime
-            if (!isMuted) playIncomingChime();
+            if (!isMutedNotifRef.current) playIncomingChime();
           }
         }
       } catch {
@@ -3334,13 +3424,13 @@ export default function App() {
     void pollOsNotifications();
     const timer = window.setInterval(() => {
       void pollOsNotifications();
-    }, 1000);
+    }, 900);
 
     return () => {
       active = false;
       window.clearInterval(timer);
     };
-  }, [dndEnabled, isMuted, triggerIslandPulse]);
+  }, []);
 
   // --- Custom Widget Pro System Actions Bridge (1.5.2) ---
   useEffect(() => {
@@ -3361,7 +3451,7 @@ export default function App() {
     return () => window.removeEventListener('luma-custom-sys-action', onCustomAction);
   }, []);
 
-  // --- Luma OS 1.6.1 Nitrogen Helpers: Always-on-Top, Admin UAC Elevate, Luma Peek & Win Key Toggle ---
+  // --- Luma OS 1.6.2 Nitrogen Helpers: Always-on-Top, Admin UAC Elevate, Luma Peek & Win Key Toggle ---
   const designStyleRef = useRef<DesignStyle>(designStyle);
   designStyleRef.current = designStyle;
 
@@ -3410,7 +3500,7 @@ export default function App() {
           void pollHostWindows();
         }
       } catch {
-        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.5.1', 'warning');
+        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.5.2', 'warning');
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3479,7 +3569,13 @@ export default function App() {
       if (e.ctrlKey && e.shiftKey && e.code === 'KeyD') {
         e.preventDefault();
         setDevModeEnabled((v) => !v);
+      } else if ((e.ctrlKey && e.shiftKey && e.code === 'KeyL') || (e.altKey && e.shiftKey && e.code === 'KeyS')) {
+        e.preventDefault();
+        setLensSearchOpen(true);
       }
+    };
+    const onOpenLensEvent = () => {
+      setLensSearchOpen(true);
     };
     const onAiAgentActions = (ev: Event) => {
       const list = (ev as CustomEvent<{ type: string; target?: string; value?: unknown; label?: string }[]>).detail;
@@ -3528,8 +3624,14 @@ export default function App() {
             break;
           case 'take_screenshot':
             void fetch('/api/kernel/capture/screenshot', { method: 'POST' })
-              .then(() => pushToast('Luma AI 4.0', 'Снимок экрана сохранён', 'success'))
+              .then(() => pushToast('Luma AI 5.0', 'Снимок экрана сохранён', 'success'))
               .catch(() => {});
+            break;
+          case 'open_lens_search':
+            setLensSearchOpen(true);
+            break;
+          case 'refresh_trash':
+            window.dispatchEvent(new Event('luma-trash-updated'));
             break;
           default:
             break;
@@ -3538,23 +3640,241 @@ export default function App() {
     };
     window.addEventListener('luma-win-start', onWinStart);
     window.addEventListener('luma-ai-ask', onAiAskOpen);
+    window.addEventListener('luma-open-lens', onOpenLensEvent);
     window.addEventListener('luma-ai-agent-actions', onAiAgentActions);
     window.addEventListener('keydown', onGlobalDevShortcut);
     return () => {
       window.removeEventListener('luma-win-start', onWinStart);
       window.removeEventListener('luma-ai-ask', onAiAskOpen);
+      window.removeEventListener('luma-open-lens', onOpenLensEvent);
       window.removeEventListener('luma-ai-agent-actions', onAiAgentActions);
       window.removeEventListener('keydown', onGlobalDevShortcut);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // --- Luma OS 1.6.2 Global Gesture Engine (3/4-Finger Touchpad/Touch + Alt+RMB Mouse Gestures) ---
+  const executeGestureAction = useCallback((action: LumaGestureAction, sourceLabel?: string) => {
+    if (!action || action === 'none') return;
+    switch (action) {
+      case 'screenshot':
+        void fetch('/api/kernel/capture/screenshot', { method: 'POST' })
+          .then((r) => r.json())
+          .then((d) => {
+            const msg = d?.file?.name ? `Скриншот сохранён: ${d.file.name}` : 'Снимок экрана сохранён в LumaCaptures';
+            pushToast(sourceLabel || 'Жест · Скриншот', msg, 'success');
+            triggerIslandPulse('Скриншот', msg, 'info');
+          })
+          .catch(() => {
+            pushToast(sourceLabel || 'Жест · Скриншот', 'Снимок экрана выполнен', 'info');
+          });
+        break;
+      case 'lens_search':
+        setLensSearchOpen(true);
+        break;
+      case 'alt_tab':
+        setMultitaskingOpen((v) => !v);
+        break;
+      case 'show_desktop':
+        setWindows((prev) => {
+          const next = { ...prev };
+          (Object.keys(next) as DexWinId[]).forEach((k) => {
+            if (next[k].open) next[k] = { ...next[k], minimized: true };
+          });
+          return next;
+        });
+        pushToast(sourceLabel || 'Жест', 'Показан рабочий стол', 'info');
+        break;
+      case 'prev_desktop':
+        setActiveDesktop((d) => (d <= 1 ? 4 : d - 1));
+        break;
+      case 'next_desktop':
+        setActiveDesktop((d) => (d >= 4 ? 1 : d + 1));
+        break;
+      case 'control_center':
+        setCarbonHubOpen((v) => !v);
+        break;
+      case 'ai_assistant':
+        openWindow('ai');
+        break;
+      case 'spotlight':
+        setSpotlightOpen(true);
+        break;
+      default:
+        break;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const gestureConfigRef = useRef(gestureConfig);
+  const executeGestureRef = useRef(executeGestureAction);
+  gestureConfigRef.current = gestureConfig;
+  executeGestureRef.current = executeGestureAction;
+
+  useEffect(() => {
+    let touchFingerCount = 0;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchLastX = 0;
+    let touchLastY = 0;
+    let touchStartAt = 0;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (!gestureConfigRef.current.enabled) return;
+      if (e.touches.length >= 3) {
+        touchFingerCount = e.touches.length;
+        let sx = 0;
+        let sy = 0;
+        for (let i = 0; i < e.touches.length; i++) {
+          sx += e.touches[i].clientX;
+          sy += e.touches[i].clientY;
+        }
+        touchStartX = sx / e.touches.length;
+        touchStartY = sy / e.touches.length;
+        touchLastX = touchStartX;
+        touchLastY = touchStartY;
+        touchStartAt = Date.now();
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (touchFingerCount < 3 || e.touches.length < 2) return;
+      let sx = 0;
+      let sy = 0;
+      for (let i = 0; i < e.touches.length; i++) {
+        sx += e.touches[i].clientX;
+        sy += e.touches[i].clientY;
+      }
+      touchLastX = sx / e.touches.length;
+      touchLastY = sy / e.touches.length;
+    };
+
+    const onTouchEnd = () => {
+      if (touchFingerCount < 3) return;
+      const cfg = gestureConfigRef.current;
+      const fingers = touchFingerCount;
+      const dx = touchLastX - touchStartX;
+      const dy = touchLastY - touchStartY;
+      const dt = Date.now() - touchStartAt;
+      touchFingerCount = 0;
+      if (!cfg.enabled) return;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 28 && dt < 360 && fingers === 3) {
+        executeGestureRef.current(cfg.circleOrThreeTap, 'Жест: 3 пальца тап');
+        return;
+      }
+      if (dist < 48) return;
+      if (fingers >= 4 && dy > 55 && Math.abs(dy) > Math.abs(dx)) {
+        executeGestureRef.current(cfg.fourFingersDown, 'Жест: 4 пальца вниз');
+      } else if (Math.abs(dy) >= Math.abs(dx)) {
+        if (dy > 0) executeGestureRef.current(cfg.threeFingersDown, 'Жест: 3 пальца вниз');
+        else executeGestureRef.current(cfg.threeFingersUp, 'Жест: 3 пальца вверх');
+      } else if (dx < 0) {
+        executeGestureRef.current(cfg.threeFingersLeft, 'Жест: 3 пальца влево');
+      } else {
+        executeGestureRef.current(cfg.threeFingersRight, 'Жест: 3 пальца вправо');
+      }
+    };
+
+    // Mouse Gestures for Desktop PCs without touchpads: Hold Alt + Right Mouse Button and swipe or draw a circle!
+    let mouseActive = false;
+    let mousePoints: { x: number; y: number }[] = [];
+    let suppressNextContextMenu = false;
+
+    const onMouseDown = (e: MouseEvent) => {
+      const cfg = gestureConfigRef.current;
+      if (!cfg.enabled || !cfg.mouseGesturesEnabled) return;
+      if (e.button === 2 && e.altKey) {
+        mouseActive = true;
+        mousePoints = [{ x: e.clientX, y: e.clientY }];
+      }
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!mouseActive) return;
+      const last = mousePoints[mousePoints.length - 1];
+      if (!last || Math.hypot(e.clientX - last.x, e.clientY - last.y) >= 8) {
+        mousePoints.push({ x: e.clientX, y: e.clientY });
+      }
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (!mouseActive || e.button !== 2) return;
+      mouseActive = false;
+      const pts = mousePoints;
+      mousePoints = [];
+      const cfg = gestureConfigRef.current;
+      if (!cfg.enabled || pts.length < 3) return;
+      const p0 = pts[0];
+      const pEnd = pts[pts.length - 1];
+      let pathLen = 0;
+      let minX = p0.x, maxX = p0.x, minY = p0.y, maxY = p0.y;
+      for (let i = 1; i < pts.length; i++) {
+        pathLen += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+        if (pts[i].x < minX) minX = pts[i].x;
+        if (pts[i].x > maxX) maxX = pts[i].x;
+        if (pts[i].y < minY) minY = pts[i].y;
+        if (pts[i].y > maxY) maxY = pts[i].y;
+      }
+      const dx = pEnd.x - p0.x;
+      const dy = pEnd.y - p0.y;
+      const directDist = Math.hypot(dx, dy);
+      if (pathLen < 60) return;
+
+      suppressNextContextMenu = true;
+      window.setTimeout(() => {
+        suppressNextContextMenu = false;
+      }, 250);
+
+      // Closed loop / circle gesture -> Luma Обвести для поиска!
+      const boxW = maxX - minX;
+      const boxH = maxY - minY;
+      if (pathLen > 160 && boxW > 45 && boxH > 45 && directDist < pathLen * 0.42) {
+        executeGestureRef.current(cfg.circleOrThreeTap, 'Жест мышью: Круг');
+        return;
+      }
+      if (Math.abs(dy) >= Math.abs(dx)) {
+        if (dy > 0) executeGestureRef.current(cfg.threeFingersDown, 'Жест мышью: Вниз');
+        else executeGestureRef.current(cfg.threeFingersUp, 'Жест мышью: Вверх');
+      } else if (dx < 0) {
+        executeGestureRef.current(cfg.threeFingersLeft, 'Жест мышью: Влево');
+      } else {
+        executeGestureRef.current(cfg.threeFingersRight, 'Жест мышью: Вправо');
+      }
+    };
+
+    const onContextMenuGuard = (e: MouseEvent) => {
+      if (suppressNextContextMenu) {
+        e.preventDefault();
+        e.stopPropagation();
+        suppressNextContextMenu = false;
+      }
+    };
+
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('mousedown', onMouseDown, true);
+    window.addEventListener('mousemove', onMouseMove, true);
+    window.addEventListener('mouseup', onMouseUp, true);
+    window.addEventListener('contextmenu', onContextMenuGuard, true);
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('mousedown', onMouseDown, true);
+      window.removeEventListener('mousemove', onMouseMove, true);
+      window.removeEventListener('mouseup', onMouseUp, true);
+      window.removeEventListener('contextmenu', onContextMenuGuard, true);
+    };
+  }, []);
+
   // --- Native Custom Alt+Tab (True MRU Order + Live Window Previews + Zero Double-Switch) + Win+D Return to Luma OS Home (1.6 Nitrogen) ---
   const altTabEntries: AltTabEntry[] = useMemo(() => {
     const lumaTitles: Partial<Record<DexWinId, string>> = {
       apps: 'Приложения', explorer: 'Проводник', taskmgr: 'Диспетчер задач', terminal: 'Терминал',
-      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.5.1', settings: 'Настройки', plugins: 'Расширения',
-      island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma AI 4.0 Autonomous', utilities: 'Службы ОС',
+      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.5.2', settings: 'Настройки', plugins: 'Расширения',
+      island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma AI 5.0 Nexus', utilities: 'Службы ОС',
       calculator: 'Калькулятор', calendar: 'Календарь', trash: 'Корзина', scenarios: 'Сценарии',
       code_studio: 'Code Studio Pro', cut_studio: 'Cut Studio Pro', office: 'Luma Office Pro',
       gamepad: 'Luma Gamepad Studio', uninstaller: 'Luma Uninstaller',
@@ -4163,7 +4483,7 @@ export default function App() {
         pushToast('Питание', d?.detail || `Выполнено: ${action}`, 'info');
       }
     } catch {
-      pushToast('Питание', 'Доступно при запуске LumaOS_1.6.1.exe', 'info');
+      pushToast('Питание', 'Доступно при запуске LumaOS_1.6.2.exe', 'info');
     }
   };
 
@@ -4196,7 +4516,7 @@ export default function App() {
         pushToast('Режим оболочки Windows', 'Параметры применены к системе', 'success');
       }
     } catch {
-      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.6.1.exe)', 'info');
+      pushToast('Режим оболочки', 'Настройки сохранены (активируются в LumaOS_1.6.2.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -4637,7 +4957,7 @@ export default function App() {
         }
       }
     } catch {
-      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.6.1.exe', 'info');
+      pushToast('Выбор файла', 'Введите путь вручную или используйте LumaOS_1.6.2.exe', 'info');
     }
   };
 
@@ -4988,7 +5308,7 @@ export default function App() {
     ...(enabledFeatures.cutStudio ? [{ id: 'cut_studio' as DexWinId, label: 'Cut Studio', icon: <Film className="w-4 h-4" />, pinned: true }] : []),
     ...(enabledFeatures.scenarios ? [{ id: 'scenarios' as DexWinId, label: 'Сценарии', icon: <Zap className="w-4 h-4" />, pinned: true }] : []),
     ...(enabledFeatures.trash ? [{ id: 'trash' as DexWinId, label: 'Корзина', icon: <Trash2 className="w-4 h-4" />, pinned: true }] : []),
-    ...(enabledFeatures.ai ? [{ id: 'ai' as DexWinId, label: t('ai', 'Luma AI 4.0'), icon: <Sparkles className="w-4 h-4" />, pinned: aiEnabled }] : []),
+    ...(enabledFeatures.ai ? [{ id: 'ai' as DexWinId, label: t('ai', 'Luma AI 5.0'), icon: <Sparkles className="w-4 h-4" />, pinned: aiEnabled }] : []),
     { id: 'gamepad', label: 'Gamepad Studio', icon: <Gamepad2 className="w-4 h-4" />, pinned: true },
     { id: 'uninstaller', label: 'Очистка хвостов', icon: <Trash2 className="w-4 h-4 text-rose-400" />, pinned: true },
     { id: 'calculator', label: t('calculator', 'Калькулятор'), icon: <Calculator className="w-4 h-4" />, pinned: true },
@@ -5191,6 +5511,17 @@ export default function App() {
         pendingCustomWidget={pendingCustomWidget}
         onConsumePendingCustomWidget={() => setPendingCustomWidget(null)}
         onQuickLook={openQuickLook}
+        rmbConfig={rmbConfig}
+        onOpenLensSearch={() => setLensSearchOpen(true)}
+        onTakeScreenshot={() => executeGestureAction('screenshot', 'Снимок экрана')}
+        onCycleShellStyle={() => {
+          const order: DesignStyle[] = ['matrix', 'glass', 'nova'];
+          const next = order[(order.indexOf(designStyle) + 1) % order.length];
+          setDesignStyle(next);
+          if (next === 'nova') setStartMenuOpen(false);
+          else setNovaPanelOpen(false);
+          pushToast('Стиль оболочки', `Выбран стиль: ${next === 'nova' ? 'Luma Nova' : next === 'glass' ? 'Luma Glass' : 'Luma Matrix'}`, 'info');
+        }}
       />
 
       {/* ==================== LAYER 2: DYNAMIC ISLAND 2.0 (REACTIVE ACTIVITY PULSE + 7-BAR HARMONIC SPECTRUM + VINYL) ==================== */}
@@ -6113,12 +6444,12 @@ export default function App() {
                   Диспетчер задач
                 </button>
                 <a
-                  href="/LumaOS_1.6.1.exe"
-                  download="LumaOS_1.6.1.exe"
+                  href="/LumaOS_1.6.2.exe"
+                  download="LumaOS_1.6.2.exe"
                   className="px-3.5 py-1.5 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  LumaOS_1.6.1.exe
+                  LumaOS_1.6.2.exe
                 </a>
               </div>
             </div>
@@ -6132,7 +6463,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 1.5.1`,
+                        sub: `${ramLoad}% занято · LumaCore 1.5.2`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -6159,7 +6490,7 @@ export default function App() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
                       ['Версия ПО', '1.6.1 (Nitrogen · N-7)'],
-                      ['Версия Ядра', 'LumaCore 1.5.1 (1.6.1)'],
+                      ['Версия Ядра', 'LumaCore 1.5.2 (1.6.1)'],
                       ['Безопасность', `LumaShield 2.5 (${kernelDiag?.security_rules ?? 235}+ правил)`],
                       ['Developer SDK', `v3.0 (${kernelDiag?.sdk_themes ?? Object.keys(customThemes).length} тем / ${kernelDiag?.sdk_plugins ?? plugins.length} плаг.)`],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
@@ -6420,7 +6751,7 @@ export default function App() {
           <DexWindow
             id="code_studio"
             title="Luma Code Studio Pro"
-            subtitle="IDE 1.6.1 · Luma AI 4.0 · Live диагностика · Pro Терминал · Автосохранение"
+            subtitle="IDE 1.6.2 · Luma AI 5.0 · Live диагностика · Pro Терминал · Автосохранение"
             icon={<Code2 className="w-4 h-4" />}
             isDark={isDark}
             designStyle={designStyle}
@@ -6585,7 +6916,7 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.6.1 (Nitrogen · N-7 · LumaCore 1.5.1 · LumaShield 2.5)"
+          subtitle="Luma OS 1.6.2 (Nitrogen · N-7 · LumaCore 1.5.2 · LumaShield 2.5)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -6631,16 +6962,16 @@ export default function App() {
               <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-0.5">
                 {(
                   [
-                    ['kernel_ui', t('tabKernelUI', 'Ядро UI · Dev & Admin'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.6 nitrogen разработчик dev hud администратор uac пасхалка kernel'],
+                    ['kernel_ui', t('tabKernelUI', 'Ядро UI · Dev & Admin'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.6.2 nitrogen разработчик dev hud администратор uac пасхалка kernel'],
                     ['mouse_dpi', 'Мышь и DPI', <MousePointer2 className="w-4 h-4 shrink-0" />, 'мышь скорость dpi edpi сенсор курсор чувствительность raw input колесо mouse'],
-                    ['graphics', 'Графика и Экран', <Monitor className="w-4 h-4 shrink-0" />, 'графика gpu цп оптимизация lumacore 1.5 турбо эко адаптация экрана масштаб монитор ноутбук размытие blur тени fps'],
-                    ['security', t('tabSecurity', 'Безопасность 2.5'), <ShieldCheck className="w-4 h-4 shrink-0" />, 'безопасность антивирус lumashield 2.5 235 правил hosts dns сетевой экран tcp аудит автозагрузки задачи guard defender карантин eicar security'],
-                    ['ai_settings', t('tabAI', 'Luma AI 4.0'), <Sparkles className="w-4 h-4 shrink-0" />, 'ии нейросети luma ai 3.8 flashlite проверенные источники википедия объём голос ai'],
+                    ['graphics', 'Графика и Экран', <Monitor className="w-4 h-4 shrink-0" />, 'графика gpu цп оптимизация lumacore 1.5.2 турбо эко адаптация экрана масштаб монитор ноутбук размытие blur тени fps'],
+                    ['security', t('tabSecurity', 'Безопасность 2.5'), <ShieldCheck className="w-4 h-4 shrink-0" />, 'безопасность антивирус lumashield 2.5 275 правил hosts dns сетевой экран tcp аудит автозагрузки задачи guard defender карантин eicar security'],
+                    ['ai_settings', t('tabAI', 'Luma AI 5.0 Nexus'), <Sparkles className="w-4 h-4 shrink-0" />, 'ии нейросети luma ai 5.0 nexus память источники википедия перевод объём голос ai'],
                     ['power_battery', 'Питание и Батарея', <BatteryCharging className="w-4 h-4 shrink-0" />, 'питание батарея экран акб беспроводные 2.4ghz радиоканал мышь клавиатура наушники циклы зарядки энергосбережение яркость сон выключение battery power'],
                     ['language', t('tabLanguage', 'Язык и клавиатура'), <Languages className="w-4 h-4 shrink-0" />, 'язык клавиатура раскладка адаптивная keyboard layout 120 стран мира language english romanian polish turkish arabic korean регион'],
                     ['shell_mode', t('tabShellMode', 'Оболочка Windows'), <Monitor className="w-4 h-4 shrink-0" />, 'оболочка windows полный экран fullscreen автозапуск autostart поверх виндовс скрыть панель задач chrome'],
                     ['appearance', t('tabThemes', 'Темы, Luma Nova и Обои'), <Sliders className="w-4 h-4 shrink-0" />, 'темы обои nitrogen nova matrix glass стиль живые анимации виджеты прозрачность фон акцент шрифт масштаб blur скругление wallpaper theme'],
-                    ['taskbar', t('tabTaskbar', 'Панель задач · Win · Dock'), <LayoutPanelLeft className="w-4 h-4 shrink-0" />, 'панель задач скрыть автоскрытие клавиша win умный dock стеки наведение буфер обмена cpu ram полный экран док порядок приложений taskbar'],
+                    ['taskbar', t('tabTaskbar', 'Панель задач · Папка Luma'), <LayoutPanelLeft className="w-4 h-4 shrink-0" />, 'панель задач папка luma система скрыть добавить перетащить автоскрытие клавиша win умный dock стеки загрузки наведение буфер обмена cpu ram полный экран taskbar'],
                     ['storage', t('tabStorage', 'Виртуальная память и Диски'), <HardDrive className="w-4 h-4 shrink-0" />, 'память виртуальная swapboost 2 4 6 гб pagefile ssd tbw озу ram диски накопители проводник скрытые файлы storage disk files'],
                     ['bluetooth', t('tabBluetooth', 'Bluetooth и 2.4GHz'), <Bluetooth className="w-4 h-4 shrink-0" />, 'bluetooth блютуз беспроводные мышь клавиатура наушники 2.4ghz радиоканал заряд процент адаптер устройства'],
                     ['apps_list', t('apps', 'Приложения и иконки'), <AppWindow className="w-4 h-4 shrink-0" />, 'приложения иконки размер увеличить редактировать программы список удалить свойства apps'],
@@ -6648,10 +6979,10 @@ export default function App() {
                     ['island', t('tabIsland', 'Luma Island'), <Disc3 className="w-4 h-4 shrink-0" />, 'luma island 2.0 динамический остров анимации музыка плееры буфер обмена заметка эквалайзер таймер'],
                     ['clock', t('tabClock', 'Часы'), <Clock className="w-4 h-4 shrink-0" />, 'часы циферблат время секунды дата свечение формат clock'],
                     ['luma', 'Система и Железо', <Activity className="w-4 h-4 shrink-0" />, 'система железо процессор видеокарта vram cpu gpu регион погода музыка'],
-                    ['navigation', 'Навигация', <MousePointerClick className="w-4 h-4 shrink-0" />, 'навигация пкм назад горячие клавиши alt+r поиск ctrl+k alt+w spotlight мультизадачность'],
+                    ['navigation', 'Управление · Спецвозможности', <MousePointerClick className="w-4 h-4 shrink-0" />, 'управление спецвозможности доступность жесты 3 пальца вниз скриншот обвести для поиска lens пкм плагины расширения навигация назад горячие клавиши alt+r'],
                     ['plugins', 'Окна и SDK v3.0', <LayoutGrid className="w-4 h-4 shrink-0" />, 'окна плагины api sdk 3.0 темы колонки сетка расширения разработчик'],
                     ['updater', t('tabUpdater', 'Обновления и Откат'), <Stethoscope className="w-4 h-4 shrink-0" />, 'обновления откат версии анимация cinema rollback downgrade github ota ежедневная проверка патч прогресс бар новая версия'],
-                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.6 nitrogen история изменений changelog exe скачать'],
+                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.6.2 nitrogen история изменений changelog exe скачать'],
                   ] as [SettingsTabId, string, React.ReactNode, string][]
                 )
                   .filter(([, label, , keywords]) => {
@@ -7422,7 +7753,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.6.1.exe).
+                    Экстренное восстановление панели Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также панель автоматически возвращается при любом закрытии LumaOS_1.6.2.exe).
                   </div>
                 </div>
               )}
@@ -7566,18 +7897,39 @@ export default function App() {
                         },
                       },
                       {
+                        label: 'Показывать папку «Luma» на панели задач',
+                        sub: 'Добавляет или убирает папку «Luma» (слева по умолчанию, перетаскивается мышью)',
+                        active: showLumaSysFolder || taskbarCollapseSysFolder,
+                        toggle: () => {
+                          const next = !(showLumaSysFolder || taskbarCollapseSysFolder);
+                          setShowLumaSysFolder(next);
+                          if (!next) {
+                            setTaskbarCollapseSysFolder(false);
+                            setSysFolderOpen(false);
+                          }
+                          pushToast('Папка «Luma»', next ? 'Папка «Luma» добавлена на панель задач' : 'Папка «Luma» убрана с панели задач', 'info');
+                        },
+                      },
+                      {
                         label: 'Сжать системные приложения в папку',
                         sub: 'Объединяет Проводник, ИИ, Терминал, Настройки и др. в 1 папку «Luma Система»',
                         active: taskbarCollapseSysFolder,
                         toggle: () => {
                           setTaskbarCollapseSysFolder((v) => {
                             const next = !v;
+                            if (next) setShowLumaSysFolder(true);
                             setSysFolderOpen(false);
                             pushToast('Панель задач', next ? 'Системные приложения сжаты в папку «Luma Система»' : 'Системные приложения развёрнуты на панели', 'info');
                             triggerIslandPulse('Панель задач', next ? 'Папка «Luma Система» ВКЛ' : 'Развёрнутый вид', 'info');
                             return next;
                           });
                         },
+                      },
+                      {
+                        label: 'Показывать Полку папок и индикатор загрузок',
+                        sub: 'Полка Luma Dock с папками и живым индикатором скачивания на панели',
+                        active: showSmartDockShelf,
+                        toggle: () => setShowSmartDockShelf((v) => !v),
                       },
                       {
                         label: 'Показывать открытые приложения ОС',
@@ -7628,6 +7980,67 @@ export default function App() {
                         <StatusPill active={row.active} />
                       </div>
                     ))}
+                  </div>
+
+                  {/* Luma OS 1.6.2: Position & Mouse-Drag Controls for Папка «Luma» and Полка Dock */}
+                  <div className={`p-4 rounded-xl border space-y-3 ${surfaceCls}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="font-bold flex items-center gap-1.5">
+                          <Folder className="w-4 h-4 text-[var(--luma-accent)]" />
+                          Позиция папки «Luma» и Полки Dock на панели задач
+                        </div>
+                        <div className={`text-[11px] ${mutedCls}`}>
+                          По умолчанию папка «Luma» закреплена левее — вы также можете свободно перетаскивать её мышью вдоль панели задач
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      {(
+                        [
+                          { id: 'far_left' as const, label: '⬅ Крайне слева' },
+                          { id: 'before_apps' as const, label: 'До приложений' },
+                          { id: 'after_apps' as const, label: 'По центру' },
+                          { id: 'right' as const, label: 'Справа ➡' },
+                        ]
+                      ).map((pos) => (
+                        <button
+                          key={pos.id}
+                          type="button"
+                          onClick={() => {
+                            setShowLumaSysFolder(true);
+                            setLumaFolderSlot(pos.id);
+                            pushToast('Папка «Luma»', `Позиция: ${pos.label.replace(/[⬅➡]/g, '').trim()}`, 'info');
+                          }}
+                          className={`px-2.5 py-2 rounded-xl border text-xs font-bold cursor-pointer transition ${
+                            lumaFolderSlot === pos.id
+                              ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                              : btnCls
+                          }`}
+                        >
+                          {pos.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/10">
+                      <span className={`text-[11px] ${mutedCls}`}>Сторона Полки папок и индикатора загрузок:</span>
+                      <div className="flex gap-1.5">
+                        {(['left', 'right'] as const).map((side) => (
+                          <button
+                            key={side}
+                            type="button"
+                            onClick={() => setSmartDockSide(side)}
+                            className={`px-3 py-1 rounded-lg border text-[11px] font-bold cursor-pointer ${
+                              smartDockSide === side
+                                ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                                : btnCls
+                            }`}
+                          >
+                            {side === 'left' ? 'Слева' : 'Справа'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Luma OS 1.5 Carbon: Window Controls Style (Classic vs 3 Colored Dots vs 3-Dot Menu) */}
@@ -8002,14 +8415,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.6.1 (Nitrogen)',
-                        message: 'Система оповещений Luma OS 1.6.1 (Nitrogen) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.6.2 (Nitrogen)',
+                        message: 'Система оповещений Luma OS 1.6.2 (Nitrogen) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.6.1 (Nitrogen)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.6.2 (Nitrogen)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -8021,7 +8434,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.6.1 (Nitrogen · N-7) · LumaCore 1.5.1</div>
+                      <div className="text-sm font-bold">Luma OS 1.6.2 (Nitrogen · N-7) · LumaCore 1.5.2</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -9214,20 +9627,29 @@ export default function App() {
               )}
 
               {settingsTab === 'navigation' && (
-                <div className="space-y-3">
-                  <div
-                    onClick={() => setRightClickBackEnabled((v) => !v)}
-                    className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer ${surfaceCls}`}
-                  >
-                    <div>
-                      <div className="text-sm font-bold">ПКМ «Назад» и горячие клавиши</div>
-                      <div className={`text-xs ${mutedCls}`}>
-                        Быстрый возврат и закрытие панелей. Работают Alt+R (Выполнить / Spotlight, EN и RU), Alt+D (Рабочий стол), F11 (Полный экран) и Escape.
-                      </div>
-                    </div>
-                    <StatusPill active={rightClickBackEnabled} />
-                  </div>
-                </div>
+                <LumaAccessibilityGesturesPanel
+                  isDark={isDark}
+                  btnCls={btnCls}
+                  mutedCls={mutedCls}
+                  gestureConfig={gestureConfig}
+                  onChangeGestureConfig={setGestureConfig}
+                  onTriggerGestureAction={executeGestureAction}
+                  rightClickBack={rightClickBackEnabled}
+                  onChangeRightClickBack={setRightClickBackEnabled}
+                  rmbConfig={rmbConfig}
+                  onChangeRmbConfig={setRmbConfig}
+                  accessibilityConfig={accessibilityConfig}
+                  onChangeAccessibilityConfig={setAccessibilityConfig}
+                  plugins={plugins}
+                  onTogglePlugin={(id) =>
+                    setPlugins((prev) => prev.map((p) => (p.id === id ? { ...p, enabled: !p.enabled } : p)))
+                  }
+                  showPluginsInGrid={showPluginsInGrid}
+                  onChangeShowPluginsInGrid={setShowPluginsInGrid}
+                  gridColumns={(cardColumns === 3 || cardColumns === 5 ? cardColumns : 4) as 3 | 4 | 5}
+                  onChangeGridColumns={(cols) => setCardColumns(cols)}
+                  onOpenPluginsWindow={() => openWindow('plugins')}
+                />
               )}
 
               {settingsTab === 'plugins' && (
@@ -9570,16 +9992,16 @@ export default function App() {
                     <div>
                       <div className="text-base font-extrabold font-mono">LUMA OS 1.6.1 (NITROGEN · N-7)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5.1 · LumaShield 2.5 (275 правил) · Luma AI 4.0 · Стиль Luma Nova · Gamepad Studio · Очистка хвостов · Luma Peek
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5.2 · LumaShield 2.5 (275 правил) · Luma AI 5.0 · Стиль Luma Nova · Gamepad Studio · Очистка хвостов · Luma Peek
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.6.1.exe"
-                      download="LumaOS_1.6.1.exe"
+                      href="/LumaOS_1.6.2.exe"
+                      download="LumaOS_1.6.2.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.6.1.exe
+                      LumaOS_1.6.2.exe
                     </a>
                   </div>
 
@@ -11176,9 +11598,72 @@ export default function App() {
             }`}
           />
 
-          {/* Left: Real Start Menu Button (hidden in Ubuntu style — opened via top-right Ubuntu pill!) + Alt+R + Workspaces */}
+          {/* Left: Draggable Папка «Luma» (far_left default!) + Start Button (hidden in Luma Nova) + Alt+R + Workspaces */}
           {!dualTaskbarMode && (
-            <div className="flex items-center gap-1 shrink-0">
+            <div
+              onDragOver={(e) => {
+                if (draggingLumaFolder) e.preventDefault();
+              }}
+              onDrop={(e) => {
+                if (draggingLumaFolder || e.dataTransfer?.types?.includes('application/x-luma-folder')) {
+                  e.preventDefault();
+                  setLumaFolderSlot('far_left');
+                  setDraggingLumaFolder(false);
+                  pushToast('Папка «Luma»', 'Перемещена крайне влево', 'info');
+                }
+              }}
+              className={`flex items-center gap-1 shrink-0 rounded-xl transition ${
+                draggingLumaFolder ? 'ring-2 ring-sky-400/70 bg-sky-500/10 px-1' : ''
+              }`}
+            >
+              {(showLumaSysFolder || taskbarCollapseSysFolder) && lumaFolderSlot === 'far_left' && (
+                <button
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-luma-folder', '1');
+                    e.dataTransfer.effectAllowed = 'move';
+                    setDraggingLumaFolder(true);
+                  }}
+                  onDragEnd={() => setDraggingLumaFolder(false)}
+                  onClick={() => {
+                    setSysFolderOpen((v) => !v);
+                    setKbdPopoverOpen(false);
+                    setStartMenuOpen(false);
+                    setControlCenterOpen(false);
+                    setTaskListOpen(false);
+                    setTaskbarAppMenuId(null);
+                    setTaskbarHostWinPid(null);
+                  }}
+                  title={`Папка «Luma» (${taskbarApps.length} приложений · открыто: ${openSystemWindowsList.length} · перетащите мышью по панели задач)`}
+                  className={`relative h-8 sm:h-9 px-2.5 ${
+                    isPixel ? 'rounded-full' : 'rounded-xl'
+                  } border flex items-center gap-1.5 text-xs font-semibold transition cursor-grab active:cursor-grabbing shrink-0 ${
+                    draggingLumaFolder ? 'opacity-60 ring-2 ring-[var(--luma-accent)]' : ''
+                  } ${
+                    sysFolderOpen
+                      ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white shadow'
+                      : btnCls
+                  }`}
+                >
+                  <div className="grid grid-cols-2 gap-[2px] shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-[2px] bg-current opacity-95" />
+                    <span className="w-1.5 h-1.5 rounded-[2px] bg-current opacity-65" />
+                    <span className="w-1.5 h-1.5 rounded-[2px] bg-current opacity-65" />
+                    <span className="w-1.5 h-1.5 rounded-[2px] bg-[var(--luma-accent)]" />
+                  </div>
+                  {taskbarShowLabels && <span className="hidden md:inline">Luma</span>}
+                  {openSystemWindowsList.length > 0 && (
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                        sysFolderOpen ? 'bg-white/25 text-white' : 'bg-[var(--luma-accent-soft)] text-[var(--luma-accent)]'
+                      }`}
+                    >
+                      {openSystemWindowsList.length}
+                    </span>
+                  )}
+                </button>
+              )}
+
               {!isNova && (
                 <button
                   onClick={() => {
@@ -11189,7 +11674,7 @@ export default function App() {
                     setTaskbarHostWinPid(null);
                     setTaskbarCtxMenu(null);
                   }}
-                  title={`${t('start', 'Пуск')} (Luma OS 1.6.1 Nitrogen)`}
+                  title={`${t('start', 'Пуск')} (Luma OS 1.6.2 Nitrogen)`}
                   className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
                     startMenuOpen
                       ? 'bg-[var(--luma-accent)] text-white'
@@ -11238,6 +11723,30 @@ export default function App() {
             </div>
           )}
 
+          {/* Optional Left-Aligned Smart Dock Shelf + Live Download Indicator */}
+          {showSmartDockShelf && smartDockSide === 'left' && (
+            <LumaSmartDockStacks
+              kernelBase=""
+              stacks={smartDock.stacks}
+              tasks={smartDock.tasks}
+              isDarkTheme={isDark}
+              align="left"
+              onStacksChanged={(next: DockFolderStackConfig[]) =>
+                setSmartDock((prev) => ({ ...prev, stacks: next }))
+              }
+              onOpenFolderInExplorer={(p) => openExplorerAt(p)}
+              onOpenFile={(p) => {
+                void fetch('/api/kernel/fs', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'open', path: p }),
+                }).catch(() => {});
+              }}
+              onQuickLook={openQuickLook}
+              onNotify={(title, msg) => pushToast(title, msg, 'success')}
+            />
+          )}
+
           {/* Center: Smart-Compressing OS Tabs Strip + Direct Launch Pinned Apps (Handles 100+ open apps cleanly!) */}
           <div className="flex-1 min-w-0 flex items-center gap-1">
             {totalBarTabsCount > 9 && (
@@ -11261,7 +11770,70 @@ export default function App() {
                 taskbarCenterIcons || dualTaskbarMode ? 'justify-center' : ''
               }`}
             >
-              {/* Luma OS 1.6 Smart Dock: Direct 1-Click Pinned Apps Launcher + Live Messenger Badges + Download Progress Bars */}
+              {/* Drag Drop Zone: before_apps */}
+              {draggingLumaFolder && lumaFolderSlot !== 'before_apps' && (
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setLumaFolderSlot('before_apps');
+                    setDraggingLumaFolder(false);
+                    pushToast('Папка «Luma»', 'Перемещена до приложений', 'info');
+                  }}
+                  className="h-8 px-2 rounded-xl border-2 border-dashed border-sky-400 bg-sky-500/15 text-sky-300 text-[10px] font-bold flex items-center shrink-0"
+                >
+                  Сюда (слева)
+                </div>
+              )}
+
+              {/* Папка «Luma» when positioned before pinned apps */}
+              {(showLumaSysFolder || taskbarCollapseSysFolder) && lumaFolderSlot === 'before_apps' && (
+                <button
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-luma-folder', '1');
+                    e.dataTransfer.effectAllowed = 'move';
+                    setDraggingLumaFolder(true);
+                  }}
+                  onDragEnd={() => setDraggingLumaFolder(false)}
+                  onClick={() => {
+                    setSysFolderOpen((v) => !v);
+                    setKbdPopoverOpen(false);
+                    setStartMenuOpen(false);
+                    setControlCenterOpen(false);
+                    setTaskListOpen(false);
+                    setTaskbarAppMenuId(null);
+                    setTaskbarHostWinPid(null);
+                  }}
+                  title={`Папка «Luma» (${taskbarApps.length} приложений · открыто: ${openSystemWindowsList.length} · перетащите мышью)`}
+                  className={`relative h-8 sm:h-9 px-2.5 ${
+                    isPixel ? 'rounded-full' : 'rounded-xl'
+                  } border flex items-center gap-1.5 text-xs font-semibold transition cursor-grab active:cursor-grabbing shrink-0 ${
+                    sysFolderOpen
+                      ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white shadow'
+                      : btnCls
+                  }`}
+                >
+                  <div className="grid grid-cols-2 gap-[2px] shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-[2px] bg-current opacity-95" />
+                    <span className="w-1.5 h-1.5 rounded-[2px] bg-current opacity-65" />
+                    <span className="w-1.5 h-1.5 rounded-[2px] bg-current opacity-65" />
+                    <span className="w-1.5 h-1.5 rounded-[2px] bg-[var(--luma-accent)]" />
+                  </div>
+                  {taskbarShowLabels && <span className="hidden md:inline">Luma</span>}
+                  {openSystemWindowsList.length > 0 && (
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                        sysFolderOpen ? 'bg-white/25 text-white' : 'bg-[var(--luma-accent-soft)] text-[var(--luma-accent)]'
+                      }`}
+                    >
+                      {openSystemWindowsList.length}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {/* Luma OS 1.6.2 Smart Dock: Direct 1-Click Pinned Apps Launcher + Live Messenger Badges + Download Progress Bars */}
               {taskbarDirectLaunch && taskbarDirectAppIds.length > 0 && (
                 <>
                   {taskbarDirectAppIds
@@ -11294,8 +11866,33 @@ export default function App() {
                   <span className={`w-px h-5 mx-0.5 shrink-0 ${isDark ? 'bg-white/15' : 'bg-zinc-900/15'}`} />
                 </>
               )}
-              {taskbarCollapseSysFolder ? (
+
+              {/* Drag Drop Zone: after_apps */}
+              {draggingLumaFolder && lumaFolderSlot !== 'after_apps' && (
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setLumaFolderSlot('after_apps');
+                    setDraggingLumaFolder(false);
+                    pushToast('Папка «Luma»', 'Перемещена в центр панели', 'info');
+                  }}
+                  className="h-8 px-2 rounded-xl border-2 border-dashed border-sky-400 bg-sky-500/15 text-sky-300 text-[10px] font-bold flex items-center shrink-0"
+                >
+                  Сюда (центр)
+                </div>
+              )}
+
+              {/* Папка «Luma» when positioned after pinned apps (center) */}
+              {(showLumaSysFolder || taskbarCollapseSysFolder) && lumaFolderSlot === 'after_apps' && (
                 <button
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-luma-folder', '1');
+                    e.dataTransfer.effectAllowed = 'move';
+                    setDraggingLumaFolder(true);
+                  }}
+                  onDragEnd={() => setDraggingLumaFolder(false)}
                   onClick={() => {
                     setSysFolderOpen((v) => !v);
                     setKbdPopoverOpen(false);
@@ -11305,10 +11902,10 @@ export default function App() {
                     setTaskbarAppMenuId(null);
                     setTaskbarHostWinPid(null);
                   }}
-                  title={`Папка «Luma Система» (${taskbarApps.length} приложений · открыто: ${openSystemWindowsList.length})`}
+                  title={`Папка «Luma» (${taskbarApps.length} приложений · открыто: ${openSystemWindowsList.length} · перетащите мышью)`}
                   className={`relative h-8 sm:h-9 px-2.5 ${
                     isPixel ? 'rounded-full' : 'rounded-xl'
-                  } border flex items-center gap-2 text-xs font-semibold transition cursor-pointer shrink-0 ${
+                  } border flex items-center gap-2 text-xs font-semibold transition cursor-grab active:cursor-grabbing shrink-0 ${
                     sysFolderOpen
                       ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white shadow'
                       : btnCls
@@ -11320,7 +11917,7 @@ export default function App() {
                     <span className="w-1.5 h-1.5 rounded-[2px] bg-current opacity-65" />
                     <span className="w-1.5 h-1.5 rounded-[2px] bg-[var(--luma-accent)]" />
                   </div>
-                  {taskbarShowLabels && <span className="hidden md:inline">Luma Система</span>}
+                  {taskbarShowLabels && <span className="hidden md:inline">Luma</span>}
                   {openSystemWindowsList.length > 0 && (
                     <span
                       className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
@@ -11331,7 +11928,9 @@ export default function App() {
                     </span>
                   )}
                 </button>
-              ) : (
+              )}
+
+              {!taskbarCollapseSysFolder && (
                 visiblePinnedOrOpenWins.map((item) => {
                   const st = windows[item.id];
                   const isFocused = st.open && !st.minimized && st.z === topVisibleZ;
@@ -11543,28 +12142,93 @@ export default function App() {
                   })}
                 </>
               )}
+              {/* Drag Drop Zone: right */}
+              {draggingLumaFolder && lumaFolderSlot !== 'right' && (
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setLumaFolderSlot('right');
+                    setDraggingLumaFolder(false);
+                    pushToast('Папка «Luma»', 'Перемещена вправо', 'info');
+                  }}
+                  className="h-8 px-2 rounded-xl border-2 border-dashed border-sky-400 bg-sky-500/15 text-sky-300 text-[10px] font-bold flex items-center shrink-0"
+                >
+                  Сюда (справа)
+                </div>
+              )}
+
+              {/* Папка «Luma» when dragged to right slot */}
+              {(showLumaSysFolder || taskbarCollapseSysFolder) && lumaFolderSlot === 'right' && (
+                <button
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-luma-folder', '1');
+                    e.dataTransfer.effectAllowed = 'move';
+                    setDraggingLumaFolder(true);
+                  }}
+                  onDragEnd={() => setDraggingLumaFolder(false)}
+                  onClick={() => {
+                    setSysFolderOpen((v) => !v);
+                    setKbdPopoverOpen(false);
+                    setStartMenuOpen(false);
+                    setControlCenterOpen(false);
+                    setTaskListOpen(false);
+                    setTaskbarAppMenuId(null);
+                    setTaskbarHostWinPid(null);
+                  }}
+                  title={`Папка «Luma» (${taskbarApps.length} приложений · открыто: ${openSystemWindowsList.length} · перетащите мышью)`}
+                  className={`relative h-8 sm:h-9 px-2.5 ${
+                    isPixel ? 'rounded-full' : 'rounded-xl'
+                  } border flex items-center gap-1.5 text-xs font-semibold transition cursor-grab active:cursor-grabbing shrink-0 ${
+                    sysFolderOpen
+                      ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white shadow'
+                      : btnCls
+                  }`}
+                >
+                  <div className="grid grid-cols-2 gap-[2px] shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-[2px] bg-current opacity-95" />
+                    <span className="w-1.5 h-1.5 rounded-[2px] bg-current opacity-65" />
+                    <span className="w-1.5 h-1.5 rounded-[2px] bg-current opacity-65" />
+                    <span className="w-1.5 h-1.5 rounded-[2px] bg-[var(--luma-accent)]" />
+                  </div>
+                  {taskbarShowLabels && <span className="hidden md:inline">Luma</span>}
+                  {openSystemWindowsList.length > 0 && (
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                        sysFolderOpen ? 'bg-white/25 text-white' : 'bg-[var(--luma-accent-soft)] text-[var(--luma-accent)]'
+                      }`}
+                    >
+                      {openSystemWindowsList.length}
+                    </span>
+                  )}
+                </button>
+              )}
             </div>
 
-            {/* Item 13: Smart Dock Folder Stacks (Fan/Grid + Luma Peek + Drag-and-Drop) & Live Downloads Pill */}
-            <LumaSmartDockStacks
-              kernelBase=""
-              stacks={smartDock.stacks}
-              tasks={smartDock.tasks}
-              isDarkTheme={isDark}
-              onStacksChanged={(next: DockFolderStackConfig[]) =>
-                setSmartDock((prev) => ({ ...prev, stacks: next }))
-              }
-              onOpenFolderInExplorer={(p) => openExplorerAt(p)}
-              onOpenFile={(p) => {
-                void fetch('/api/kernel/fs', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ action: 'open', path: p }),
-                }).catch(() => {});
-              }}
-              onQuickLook={openQuickLook}
-              onNotify={(title, msg) => pushToast(title, msg, 'success')}
-            />
+            {/* Smart Dock Folder Stacks (Fan/Grid + Luma Peek + Drag-and-Drop) & Visible Live Downloads Indicator */}
+            {showSmartDockShelf && smartDockSide === 'right' && (
+              <LumaSmartDockStacks
+                kernelBase=""
+                stacks={smartDock.stacks}
+                tasks={smartDock.tasks}
+                isDarkTheme={isDark}
+                align="right"
+                onStacksChanged={(next: DockFolderStackConfig[]) =>
+                  setSmartDock((prev) => ({ ...prev, stacks: next }))
+                }
+                onOpenFolderInExplorer={(p) => openExplorerAt(p)}
+                onOpenFile={(p) => {
+                  void fetch('/api/kernel/fs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'open', path: p }),
+                  }).catch(() => {});
+                }}
+                onQuickLook={openQuickLook}
+                onNotify={(title, msg) => pushToast(title, msg, 'success')}
+              />
+            )}
 
             {totalBarTabsCount > 9 && (
               <button
@@ -11881,7 +12545,7 @@ export default function App() {
                   setCarbonHubOpen(false);
                   setNotifShadeOpen(false);
                 }}
-                title="Пуск (Luma OS 1.6.1 Nitrogen)"
+                title="Пуск (Luma OS 1.6.2 Nitrogen)"
                 className={`h-8 px-2.5 rounded-xl flex items-center gap-1.5 text-xs font-bold cursor-pointer transition ${
                   startMenuOpen ? 'bg-[var(--luma-accent)] text-white' : btnCls + ' border'
                 }`}
@@ -12213,7 +12877,7 @@ export default function App() {
         </SmartContextMenu>
       )}
 
-      {/* ==================== COLLAPSED "LUMA СИСТЕМА" TASKBAR FOLDER POPOVER (1.3.1) ==================== */}
+      {/* ==================== MOVABLE "LUMA" TASKBAR FOLDER POPOVER (1.6.2) ==================== */}
       {sysFolderOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
@@ -12222,13 +12886,15 @@ export default function App() {
               ? 'top-1/2 -translate-y-1/2 left-[68px]'
               : taskbarPosition === 'right'
               ? 'top-1/2 -translate-y-1/2 right-[68px]'
-              : taskbarPosition === 'top'
-              ? isPixel
-                ? 'top-16 left-28'
-                : 'top-14 left-28'
-              : isPixel
-              ? 'bottom-16 left-28'
-              : 'bottom-14 left-28'
+              : `${taskbarPosition === 'top' ? (isPixel ? 'top-16' : 'top-14') : isPixel ? 'bottom-16' : 'bottom-14'} ${
+                  lumaFolderSlot === 'far_left'
+                    ? 'left-3'
+                    : lumaFolderSlot === 'before_apps'
+                    ? 'left-28'
+                    : lumaFolderSlot === 'after_apps'
+                    ? 'left-1/2 -translate-x-1/2'
+                    : 'right-28'
+                }`
           }`}
         >
           <div className="flex items-center justify-between gap-2">
@@ -12237,22 +12903,38 @@ export default function App() {
                 <Folder className="w-4 h-4" />
               </div>
               <div>
-                <div className="font-bold">Luma Система</div>
+                <div className="font-bold">Папка Luma</div>
                 <div className={`text-[10px] font-mono ${mutedCls}`}>
                   {taskbarApps.length} приложений · открыто: {openSystemWindowsList.length}
                 </div>
               </div>
             </div>
-            <button
-              onClick={() => {
-                setTaskbarCollapseSysFolder(false);
-                setSysFolderOpen(false);
-              }}
-              title="Развернуть системные иконки обратно на панель задач"
-              className={`px-2 py-1 rounded-lg border text-[10px] font-semibold cursor-pointer ${btnCls}`}
-            >
-              Развернуть
-            </button>
+            <div className="flex items-center gap-1">
+              {taskbarCollapseSysFolder && (
+                <button
+                  onClick={() => {
+                    setTaskbarCollapseSysFolder(false);
+                    setSysFolderOpen(false);
+                  }}
+                  title="Развернуть системные иконки обратно на панель задач"
+                  className={`px-2 py-1 rounded-lg border text-[10px] font-semibold cursor-pointer ${btnCls}`}
+                >
+                  Развернуть
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setShowLumaSysFolder(false);
+                  setTaskbarCollapseSysFolder(false);
+                  setSysFolderOpen(false);
+                  pushToast('Папка «Luma»', 'Скрыта с панели задач (вернуть: Настройки → Панель задач)', 'info');
+                }}
+                title="Убрать папку «Luma» с панели задач"
+                className={`px-2 py-1 rounded-lg border text-[10px] font-semibold cursor-pointer hover:border-rose-400 hover:text-rose-400 ${btnCls}`}
+              >
+                Убрать
+              </button>
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-1.5">
             {taskbarApps.map((item) => {
@@ -12863,7 +13545,7 @@ export default function App() {
           {!startSearch.trim() && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                <span className={mutedCls}>Luma OS 1.6.1 (Nitrogen · N-7)</span>
+                <span className={mutedCls}>Luma OS 1.6.2 (Nitrogen · N-7)</span>
                 <div className="flex items-center gap-1.5">
                   {enabledFeatures.privateVault && (
                     <button
@@ -12981,7 +13663,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.6.1 (Nitrogen)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.6.2 (Nitrogen)'}
                   </div>
                 </div>
               </div>
@@ -13952,7 +14634,7 @@ export default function App() {
               sender: 'Дмитрий',
               chat: 'Личный чат',
               title: 'Дмитрий',
-              body: 'Привет! Погнали тестить Luma OS 1.6.1 Nitrogen — шторка, AI 4.0 и Умный Dock работают мгновенно.',
+              body: 'Привет! Погнали тестить Luma OS 1.6.2 Nitrogen — шторка, AI 5.0 и Умный Dock работают мгновенно.',
             }),
           }).catch(() => {});
         }}
@@ -13977,7 +14659,7 @@ export default function App() {
               setNotifShadeOpen(true);
             }
           }}
-          className={`fixed top-14 right-4 z-[9620] w-[340px] max-w-[calc(100vw-2rem)] rounded-2xl border p-3.5 shadow-[0_24px_64px_rgba(0,0,0,0.55)] backdrop-blur-2xl cursor-pointer transition-all animate-in slide-in-from-right-6 fade-in duration-200 ${
+          className={`fixed top-14 right-4 z-[9950] w-[340px] max-w-[calc(100vw-2rem)] rounded-2xl border p-3.5 shadow-[0_24px_64px_rgba(0,0,0,0.55)] backdrop-blur-2xl cursor-pointer transition-all animate-in slide-in-from-right-6 fade-in duration-200 ${
             isDark
               ? 'bg-[#0d121d]/95 border-white/18 text-white hover:border-[var(--luma-accent)]'
               : 'bg-white/95 border-slate-300 text-slate-900 hover:border-[var(--luma-accent)]'
@@ -14104,7 +14786,7 @@ export default function App() {
         onCancel={cancelAltTab}
       />
 
-      {/* ==================== LUMA OS 1.6.1 (NITROGEN) DEVELOPER MODE LIVE HUD (ITEM 2) ==================== */}
+      {/* ==================== LUMA OS 1.6.2 (NITROGEN) DEVELOPER MODE LIVE HUD ==================== */}
       <LumaDevHudOverlay
         enabled={devModeEnabled}
         isDark={isDark}
@@ -14113,7 +14795,21 @@ export default function App() {
         onPushToast={pushToast}
       />
 
-      {/* ==================== LUMA OS 1.6.1 (NITROGEN) UBUNTU STYLE TOP-RIGHT PILL & COMPACT PANEL (ITEM 3 & 11) ==================== */}
+      {/* ==================== LUMA OS 1.6.2 (NITROGEN) — LUMA ОБВЕСТИ ДЛЯ ПОИСКА (LENS ENGINE) ==================== */}
+      <LumaLensSearchOverlay
+        open={lensSearchOpen}
+        isDark={isDark}
+        onClose={() => setLensSearchOpen(false)}
+        onAskAI={(prompt) => {
+          openWindow('ai');
+          window.setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('luma-ai-ask', { detail: { prompt } }));
+          }, 120);
+        }}
+        onNotify={(title, msg, level) => pushToast(title, msg, level || 'info')}
+      />
+
+      {/* ==================== LUMA OS 1.6.1 (NITROGEN) LUMA NOVA STYLE TOP-RIGHT PILL & COMPACT PANEL (ITEM 3 & 11) ==================== */}
       {isNova && (
         <LumaNovaPanel
           open={novaPanelOpen}
@@ -14307,7 +15003,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.6.1 (Nitrogen · N-7) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
+                  Luma OS 1.6.2 (Nitrogen · N-7) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
                 </div>
               </div>
             </div>

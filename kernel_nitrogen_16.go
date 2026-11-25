@@ -35,7 +35,7 @@ var (
 	devReqSeq       uint64
 	devReqLogMu     sync.Mutex
 	devReqLogs      = make([]DevRequestLog, 0, 48)
-	devActiveRoutes = 92
+	devActiveRoutes = 95
 )
 
 type devStatusWriter struct {
@@ -371,19 +371,40 @@ func parseSteamACFManifests(extraDirs ...string) []DockProgressTask {
 	return tasks
 }
 
-// scanBrowserPartialDownloads detects active browser downloads (.crdownload, .part, .opdownload) in Downloads.
+// scanBrowserPartialDownloads detects active browser, torrent, Telegram, and direct downloads in real time.
 func scanBrowserPartialDownloads(extraDirs ...string) []DockProgressTask {
 	dirs := []string{}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		dirs = append(dirs, filepath.Join(home, "Downloads"))
-	}
-	for _, d := range extraDirs {
-		if d != "" {
-			dirs = append(dirs, d)
+	seenDirs := map[string]bool{}
+	addDir := func(d string) {
+		clean := filepath.Clean(strings.TrimSpace(d))
+		if clean == "" || clean == "." {
+			return
+		}
+		key := strings.ToLower(clean)
+		if seenDirs[key] {
+			return
+		}
+		if st, err := os.Stat(clean); err == nil && st.IsDir() {
+			seenDirs[key] = true
+			dirs = append(dirs, clean)
 		}
 	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		addDir(filepath.Join(home, "Downloads"))
+		addDir(filepath.Join(home, "Downloads", "Telegram Desktop"))
+		addDir(filepath.Join(home, "Desktop"))
+	}
+	if up := strings.TrimSpace(os.Getenv("USERPROFILE")); up != "" {
+		addDir(filepath.Join(up, "Downloads"))
+		addDir(filepath.Join(up, "Downloads", "Telegram Desktop"))
+	}
+	for _, d := range extraDirs {
+		addDir(d)
+	}
+
 	now := time.Now()
-	tasks := make([]DockProgressTask, 0, 4)
+	tasks := make([]DockProgressTask, 0, 6)
+	seenFile := map[string]bool{}
 
 	browserPrevMu.Lock()
 	defer browserPrevMu.Unlock()
@@ -393,48 +414,103 @@ func scanBrowserPartialDownloads(extraDirs ...string) []DockProgressTask {
 		if err != nil {
 			continue
 		}
+		isDesktop := strings.EqualFold(filepath.Base(dir), "desktop")
+		isTelegramDir := strings.Contains(strings.ToLower(dir), "telegram")
 		for _, e := range entries {
-			if e.IsDir() {
+			if e.IsDir() || strings.HasPrefix(e.Name(), ".") || strings.HasPrefix(e.Name(), "~$") {
 				continue
 			}
-			lower := strings.ToLower(e.Name())
-			appKey, appName, ext := "", "", ""
-			switch {
-			case strings.HasSuffix(lower, ".crdownload"):
-				appKey, appName, ext = "chrome", "Chrome / Edge", ".crdownload"
-			case strings.HasSuffix(lower, ".part"):
-				appKey, appName, ext = "firefox", "Firefox", ".part"
-			case strings.HasSuffix(lower, ".opdownload"):
-				appKey, appName, ext = "opera", "Opera", ".opdownload"
-			default:
+			fullPath := filepath.Join(dir, e.Name())
+			lowFull := strings.ToLower(fullPath)
+			if seenFile[lowFull] {
 				continue
 			}
+			seenFile[lowFull] = true
+
 			info, err2 := e.Info()
 			if err2 != nil || info == nil {
 				continue
 			}
-			// Ignore abandoned stale partial files older than 2 hours or empty 0-byte placeholders
-			if now.Sub(info.ModTime()) > 2*time.Hour {
-				continue
+			lower := strings.ToLower(e.Name())
+			appKey, appName, ext, detail := "", "", "", "Загрузка файла"
+			isKnownPartial := false
+
+			switch {
+			case strings.HasSuffix(lower, ".crdownload"):
+				appKey, appName, ext, detail, isKnownPartial = "chrome", "Chrome / Edge", ".crdownload", "Загрузка в браузере", true
+			case strings.HasSuffix(lower, ".part"):
+				appKey, appName, ext, detail, isKnownPartial = "firefox", "Firefox", ".part", "Загрузка в Firefox", true
+			case strings.HasSuffix(lower, ".opdownload"):
+				appKey, appName, ext, detail, isKnownPartial = "opera", "Opera", ".opdownload", "Загрузка в Opera", true
+			case strings.HasSuffix(lower, ".!qb"):
+				appKey, appName, ext, detail, isKnownPartial = "torrent", "qBittorrent", ".!qb", "Торрент-загрузка", true
+			case strings.HasSuffix(lower, ".!ut"):
+				appKey, appName, ext, detail, isKnownPartial = "torrent", "Torrent", ".!ut", "Торрент-загрузка", true
+			case strings.HasSuffix(lower, ".aria2"):
+				appKey, appName, ext, detail, isKnownPartial = "browser", "Загрузчик", ".aria2", "Многопоточная загрузка", true
+			case strings.HasSuffix(lower, ".download"):
+				appKey, appName, ext, detail, isKnownPartial = "browser", "Браузер", ".download", "Загрузка файла", true
+			case strings.HasSuffix(lower, ".td") || strings.HasSuffix(lower, ".tdownload"):
+				appKey, appName, ext, detail, isKnownPartial = "telegram", "Telegram", filepath.Ext(e.Name()), "Загрузка в Telegram", true
 			}
-			fullPath := filepath.Join(dir, e.Name())
+
+			age := now.Sub(info.ModTime())
 			sz := info.Size()
-			if sz == 0 && now.Sub(info.ModTime()) > 10*time.Second {
-				continue
+
+			if isKnownPartial {
+				// Ignore abandoned stale partial files older than 2 hours or empty 0-byte placeholders
+				if age > 2*time.Hour {
+					continue
+				}
+				if sz == 0 && age > 10*time.Second {
+					continue
+				}
+			} else {
+				// Also detect ANY actively growing regular file in Downloads / Telegram Desktop (e.g. direct writes, wget, curl, Telegram, installers)
+				if isDesktop || age > 12*time.Second || sz < 16*1024 {
+					continue
+				}
+				prev, seen := browserPrevBytes[fullPath]
+				if !seen {
+					// Record baseline so on next poll (2s later) we know if it is genuinely growing
+					browserPrevBytes[fullPath] = struct {
+						bytes int64
+						at    time.Time
+						stuck int
+					}{bytes: sz, at: now, stuck: 0}
+					continue
+				}
+				if sz <= prev.bytes {
+					// Not growing anymore — update timestamp and skip
+					browserPrevBytes[fullPath] = struct {
+						bytes int64
+						at    time.Time
+						stuck int
+					}{bytes: sz, at: now, stuck: prev.stuck + 1}
+					continue
+				}
+				appKey = "browser"
+				appName = "Загрузки"
+				detail = "Активное скачивание"
+				if isTelegramDir {
+					appKey = "telegram"
+					appName = "Telegram"
+					detail = "Скачивание из Telegram"
+				}
 			}
+
 			prev, seen := browserPrevBytes[fullPath]
 			speedMBs := 0.0
 			state := "active"
-			detail := "Загрузка в браузере"
 			stuck := 0
 			if seen {
 				dt := now.Sub(prev.at).Seconds()
-				if dt > 0.2 && sz > prev.bytes {
+				if dt > 0.15 && sz > prev.bytes {
 					speedMBs = (float64(sz-prev.bytes) / (1024 * 1024)) / dt
 					stuck = 0
 				} else if sz == prev.bytes {
 					stuck = prev.stuck + 1
-					if stuck >= 5 || now.Sub(info.ModTime()) > 20*time.Second {
+					if stuck >= 5 || age > 20*time.Second {
 						state = "paused"
 						detail = "Пауза / ожидание сети"
 					}
@@ -446,11 +522,14 @@ func scanBrowserPartialDownloads(extraDirs ...string) []DockProgressTask {
 				stuck int
 			}{bytes: sz, at: now, stuck: stuck}
 
-			cleanName := strings.TrimSuffix(e.Name(), ext)
-			if cleanName == "" {
-				cleanName = e.Name()
+			cleanName := e.Name()
+			if ext != "" {
+				cleanName = strings.TrimSuffix(e.Name(), ext)
+				if cleanName == "" {
+					cleanName = e.Name()
+				}
 			}
-			// Since browser partial files don't store final Content-Length on disk, animate indeterminate-smooth %
+			// Since browser/direct partial files don't expose final Content-Length on disk, animate smooth logarithmic %
 			pct := math.Min(96, 12+math.Log10(math.Max(1, float64(sz)/(1024*1024)+1))*38)
 			tasks = append(tasks, DockProgressTask{
 				ID:        "dl_" + lower,
@@ -1098,5 +1177,82 @@ func registerNitrogen16Routes(mux *http.ServeMux, kernel *LumaKernel, notifBridg
 		}
 		UpsertLumaDockTask(task)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "task": task})
+	})
+
+	// Luma OS 1.6.2: Instant Live Screen Capture for Luma Обвести для поиска (Lens) & Gesture Screenshots
+	mux.HandleFunc("/api/kernel/capture/screen-now", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		b64, width, height, err := captureFullScreenPNG()
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":    false,
+				"error": err.Error(),
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":           true,
+			"image_base64": "data:image/png;base64," + b64,
+			"width":        width,
+			"height":       height,
+		})
+	})
+
+	// Luma OS 1.6.2: Luma Обвести для поиска (Lens OCR + Dominant Colors + Translation + Live Web Search)
+	mux.HandleFunc("/api/kernel/lens/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req LumaLensSearchRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		var trashRef *LumaTrashStore
+		if kernel != nil {
+			trashRef = kernel.trash
+		}
+		_ = json.NewEncoder(w).Encode(handleLumaLensSearch(req, kernel, trashRef))
+	})
+
+	// Luma OS 1.6.2: Luma AI 5.0 Nexus Persistent Memory Manager API
+	mux.HandleFunc("/api/kernel/ai/memory", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		switch r.Method {
+		case http.MethodPost:
+			var req struct {
+				Action string `json:"action"` // add | delete | clear
+				ID     string `json:"id"`
+				Key    string `json:"key"`
+				Value  string `json:"value"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			var snap AIMemoryStore
+			switch strings.ToLower(strings.TrimSpace(req.Action)) {
+			case "delete", "remove":
+				snap = DeleteAIMemoryFact(req.ID)
+			case "clear":
+				snap = DeleteAIMemoryFact("all")
+			default:
+				snap = AddAIMemoryFact(req.Key, req.Value)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "memory": snap})
+		case http.MethodDelete:
+			id := strings.TrimSpace(r.URL.Query().Get("id"))
+			if id == "" {
+				id = "all"
+			}
+			snap := DeleteAIMemoryFact(id)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "memory": snap})
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "memory": GetAIMemorySnapshot()})
+		}
 	})
 }

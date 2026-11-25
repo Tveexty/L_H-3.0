@@ -531,6 +531,9 @@ func ListRollbackReleases(repoURL string) []RollbackReleaseEntry {
 	baseRaw := fmt.Sprintf("https://github.com/%s/%s/raw/main", owner, repo)
 
 	curated := []RollbackReleaseEntry{
+		{Version: "1.6.2", Tag: "v1.6.2", Title: "Luma OS 1.6.2 (Nitrogen)", DownloadURL: baseRaw + "/LumaOS_1.6.2.exe", Summary: "Luma AI 5.0 Nexus с долгосрочной памятью и глубоким управлением ПК, Luma Обвести для поиска (OCR + веб-поиск по экрану), Управление жестами и Спецвозможности (Плагины + ПКМ), живой индикатор загрузок на панели, безопасная Корзина для всех удалений, фикс перетаскивания приложений в папки и гибкая Папка «Luma Система» слева"},
+		{Version: "1.6.1", Tag: "v1.6.1", Title: "Luma OS 1.6.1 (Nitrogen)", DownloadURL: baseRaw + "/LumaOS_1.6.1.exe", Summary: "Сверхчистая панель задач с hover-полкой Luma Dock, автономный Luma AI 4.0, главные 2.5D-обои Nitrogen и 100% фирменный нейминг Luma OS (Luma Nova, Luma Peek, Luma SwapBoost, Luma Deep Uninstaller)"},
+		{Version: "1.6", Tag: "v1.6", Title: "Luma OS 1.6 (Nitrogen)", DownloadURL: baseRaw + "/LumaOS_1.6.exe", Summary: "Ядро LumaCore 1.5.0 и LumaShield 2.5 (275+ правил), стиль Luma Nova, Luma SwapBoost (2/4/6 ГБ), Поверх всех окон, Luma Gamepad Studio, Luma Deep Uninstaller, Luma Peek по Space и Умный Dock"},
 		{Version: "1.5.4", Tag: "v1.5.4", Title: "Luma OS 1.5.4 (Carbon)", DownloadURL: baseRaw + "/LumaOS_1.5.4.exe", Summary: "Исправлены вылеты (синглтон-колбэки), новая Шторка уведомлений без спама, умный Alt+Tab с MRU и живыми превью, многошторочный Проводник, 140+ формул Excel, анимации PowerPoint и Battery Care"},
 		{Version: "1.5.3", Tag: "v1.5.3", Title: "Luma OS 1.5.3 (Carbon)", DownloadURL: baseRaw + "/LumaOS_1.5.3.exe", Summary: "Alt+Tab поверх всех окон + Win+D в Luma OS, 4-слойный мост уведомлений, MS Office-стиль Luma Office и настройки сна при бездействии"},
 		{Version: "1.5.2", Tag: "v1.5.2", Title: "Luma OS 1.5.2 (Carbon)", DownloadURL: baseRaw + "/LumaOS_1.5.2.exe", Summary: "Ядро LumaCore 1.4.5, фикс зависаний Записи экрана (нативный AVI-рекордер) и Приватного стола, чистые входящие уведомления Telegram/мессенджеров с аватарами, собственный Luma Alt+Tab (окна Luma + Windows), полный Word/Excel/PowerPoint в Office Studio, CapCut-уровень Cut Studio, Code Studio Pro с диагностикой ошибок и сохранением кода при сворачивании, Luma AI 3.0, 100+ опций в конструкторе виджетов, расширенные Сценарии, объединённый каталог виджетов, безрамочные фото-виджеты и 100% перевод интерфейса"},
@@ -767,8 +770,12 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 		webSearchEnabled = *req.WebSearch
 	}
 	provider := strings.ToLower(strings.TrimSpace(req.Provider))
-	if provider == "" || provider == "luma_local" || provider == "offline" || provider == "local" || provider == "flashlite" || provider == "autonomous" || provider == "luma_40" {
-		return RunLumaAI40Autonomous(req.Messages, req.Mode, req.Verbosity, autonomousMode, webSearchEnabled, kernel)
+	if provider == "" || provider == "luma_local" || provider == "offline" || provider == "local" || provider == "flashlite" || provider == "autonomous" || provider == "luma_40" || provider == "luma_50" || provider == "nexus" {
+		var trashRef *LumaTrashStore
+		if kernel != nil {
+			trashRef = kernel.trash
+		}
+		return RunLumaAI50Nexus(req.Messages, req.Mode, req.Verbosity, autonomousMode, webSearchEnabled, kernel, trashRef)
 	}
 	apiKey := strings.TrimSpace(req.APIKey)
 	model := strings.TrimSpace(req.Model)
@@ -781,11 +788,11 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 	if sysPrompt == "" {
 		switch normalizeLocalAIMode(req.Mode) {
 		case "code":
-			sysPrompt = "Ты — Luma AI 4.0 Autonomous (Code), системный ИИ-программист Luma OS 1.6.1 (Nitrogen). Пиши чистый, современный, готовый к запуску код с пояснениями."
+			sysPrompt = "Ты — Luma AI 5.0 Nexus (Code), системный ИИ-программист Luma OS 1.6.2 (Nitrogen). Пиши чистый, современный, готовый к запуску код с пояснениями."
 		case "language":
-			sysPrompt = "Ты — Luma AI 4.0 Autonomous, умный думающий ИИ-агент Luma OS 1.6.1 (Nitrogen). Отвечай грамотно, информативно, естественно и по сути вопроса."
+			sysPrompt = "Ты — Luma AI 5.0 Nexus, умный думающий ИИ-агент с долгосрочной памятью в Luma OS 1.6.2 (Nitrogen). Отвечай грамотно, информативно, естественно и по сути вопроса."
 		default:
-			sysPrompt = "Ты — автономный ИИ-агент Luma AI 4.0 в Luma OS 1.6.1 (Nitrogen). Думай пошагово, отвечай чётко и помогай пользователю с задачами, ПК, поиском и кодом."
+			sysPrompt = "Ты — автономный ИИ-агент Luma AI 5.0 Nexus в Luma OS 1.6.2 (Nitrogen). Думай пошагово, используй память о пользователе, отвечай чётко и помогай с задачами, ПК, поиском и кодом."
 		}
 	}
 	switch normalizeAIVerbosity(req.Verbosity) {
@@ -796,11 +803,29 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 	default:
 		sysPrompt += "\n\n[Объём ответа: БАЛАНС. Дай сбалансированный, понятный и структурированный ответ с ключевыми фактами и наглядным примером.]"
 	}
+	// Inject Luma AI 5.0 persistent user memory into external providers too
+	mem := GetAIMemorySnapshot()
+	if mem.UserName != "" || mem.UserCity != "" || len(mem.Facts) > 0 {
+		var memParts []string
+		if mem.UserName != "" {
+			memParts = append(memParts, "Имя пользователя="+mem.UserName)
+		}
+		if mem.UserCity != "" {
+			memParts = append(memParts, "Город="+mem.UserCity)
+		}
+		for i, f := range mem.Facts {
+			if i >= 12 {
+				break
+			}
+			memParts = append(memParts, f.Key+": "+f.Value)
+		}
+		sysPrompt += "\n\n[Долгосрочная память Luma AI 5.0 о пользователе: " + strings.Join(memParts, "; ") + "]"
+	}
 	if req.IncludeContext && kernel != nil {
 		snap := kernel.SystemSnapshot()
 		sysPrompt += fmt.Sprintf(
-			"\n\n[Живой контекст ПК LumaCore 1.2: Хост=%s, ОС=%s, Модель=%s, CPU=%d%% (%s), RAM=%.1f/%.1f ГБ (%d%%), Город=%s, Сеть=%.1f/%.1f Мбит/с]",
-			snap.Hostname, snap.OSName, snap.DeviceModel, snap.CPUPercent, snap.CPUModel,
+			"\n\n[Живой контекст ПК LumaCore %s: Хост=%s, ОС=%s, Модель=%s, CPU=%d%% (%s), RAM=%.1f/%.1f ГБ (%d%%), Город=%s, Сеть=%.1f/%.1f Мбит/с]",
+			KernelEngineVersion, snap.Hostname, snap.OSName, snap.DeviceModel, snap.CPUPercent, snap.CPUModel,
 			snap.RAMUsedGB, snap.RAMTotalGB, snap.RAMPercent, snap.Location.City, snap.NetDownMbps, snap.NetUpMbps,
 		)
 	}

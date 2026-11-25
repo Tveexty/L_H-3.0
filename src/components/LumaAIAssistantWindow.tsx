@@ -86,13 +86,13 @@ export interface AIProviderPreset {
 export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
   {
     id: 'luma_local',
-    label: 'Luma AI 4.0 Autonomous (Думает · Действует · Весь интернет)',
-    badge: 'AI 4.0',
-    defaultModel: 'luma-4.0-autonomous',
-    models: ['luma-4.0-autonomous', 'luma-4.0-code', 'luma-4.0-research'],
-    defaultBaseUrl: 'internal://luma-ai-4.0-autonomous',
+    label: 'Luma AI 5.0 Nexus (Память · Система · Весь интернет)',
+    badge: 'AI 5.0',
+    defaultModel: 'luma-5.0-nexus',
+    models: ['luma-5.0-nexus', 'luma-5.0-code', 'luma-5.0-research'],
+    defaultBaseUrl: 'internal://luma-ai-5.0-nexus',
     needsKey: false,
-    hint: 'Автономная думающая нейросеть Luma AI 4.0 в ядре LumaCore 1.5.1: пошаговый ход мыслей (Thinking), самостоятельное выполнение действий в ОС (окна, звук, яркость, файлы, аудит, настройки, таймеры) и поиск информации в реальном времени по ЛЮБЫМ сайтам интернета с чтением страниц и ссылками.',
+    hint: 'Умная автономная нейросеть Luma AI 5.0 Nexus в ядре LumaCore 1.5.2: долгосрочная память о пользователе, глубокая интеграция с системой (диагностика ПК, пинг, буфер обмена, процессы, кэш, Корзина, Luma Обвести для поиска), переводы на 50 языков, математика и живой поиск по всему интернету.',
   },
   {
     id: 'gemini',
@@ -203,7 +203,7 @@ export const DEFAULT_LUMA_AI_CONFIG: LumaAIConfig = {
   models: {},
   baseUrls: {},
   systemPrompt:
-    'Ты — автономная думающая нейросеть Luma AI 4.0 в Luma OS 1.6.1 (Nitrogen · N-7 · LumaCore 1.5.1). Думай пошагово, выполняй действия в ОС и ищи факты в любых источниках интернета.',
+    'Ты — умный автономный ИИ-агент Luma AI 5.0 Nexus с долгосрочной памятью в Luma OS 1.6.2 (Nitrogen · N-7 · LumaCore 1.5.2). Думай пошагово, запоминай контекст, управляй ПК и находи точные ответы в интернете.',
   temperature: 0.7,
   includeSystemContext: true,
 };
@@ -304,7 +304,78 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [showMemory, setShowMemory] = useState(false);
+  const [memoryStore, setMemoryStore] = useState<{
+    user_name?: string;
+    user_city?: string;
+    facts: { id: string; key: string; value: string; created_at: string }[];
+  }>({ facts: [] });
+  const [newFactInput, setNewFactInput] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const loadAIMemory = async () => {
+    try {
+      const r = await fetch('/api/kernel/ai/memory');
+      const d = await r.json();
+      if (d?.ok && d?.memory) {
+        setMemoryStore({
+          user_name: d.memory.user_name || '',
+          user_city: d.memory.user_city || '',
+          facts: Array.isArray(d.memory.facts) ? d.memory.facts : [],
+        });
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    void loadAIMemory();
+  }, []);
+
+  const addAIMemoryFactUI = async () => {
+    const val = newFactInput.trim();
+    if (!val) return;
+    try {
+      const r = await fetch('/api/kernel/ai/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', key: 'note', value: val }),
+      });
+      const d = await r.json();
+      if (d?.ok && d?.memory) {
+        setMemoryStore({
+          user_name: d.memory.user_name || '',
+          user_city: d.memory.user_city || '',
+          facts: Array.isArray(d.memory.facts) ? d.memory.facts : [],
+        });
+        setNewFactInput('');
+        onPushToast('Память Luma AI 5.0', 'Факт сохранён в долгосрочную память', 'success');
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const deleteAIMemoryFactUI = async (id: string) => {
+    try {
+      const r = await fetch('/api/kernel/ai/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: id === 'all' ? 'clear' : 'delete', id }),
+      });
+      const d = await r.json();
+      if (d?.ok && d?.memory) {
+        setMemoryStore({
+          user_name: d.memory.user_name || '',
+          user_city: d.memory.user_city || '',
+          facts: Array.isArray(d.memory.facts) ? d.memory.facts : [],
+        });
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   // Voice Input & Speech Synthesis TTS state
   const [listening, setListening] = useState(false);
@@ -518,7 +589,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
       const data = await r.json();
       const replyText = data?.ok
         ? data.reply
-        : `Ошибка (${preset.label}): ${data?.error || 'Не удалось получить ответ'}.\n\nСовет: используйте встроенную **Luma AI 4.0 Autonomous** (думает, выполняет действия и ищет в любых источниках интернета без API-ключей).`;
+        : `Ошибка (${preset.label}): ${data?.error || 'Не удалось получить ответ'}.\n\nСовет: используйте встроенную **Luma AI 5.0 Nexus** (долгосрочная память, глубокое управление ПК и поиск по всему интернету без API-ключей).`;
       const sourcesList: AISourceLinkItem[] | undefined =
         Array.isArray(data?.sources) && data.sources.length > 0 ? data.sources : undefined;
       const thinkingList: AIThinkingStepItem[] | undefined =
@@ -542,14 +613,15 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
       setThreads((prev) =>
         prev.map((t) => (t.id === activeThread.id ? { ...t, messages: [...t.messages, botMsg] } : t))
       );
+      void loadAIMemory();
       if (data?.ok && autoSpeak) {
         speakText(replyText, botMsg.id);
       }
       if (!data?.ok) {
-        onPushToast('Luma AI 4.0', data?.error || 'Требуется настройка провайдера', 'warning');
+        onPushToast('Luma AI 5.0', data?.error || 'Требуется настройка провайдера', 'warning');
       }
     } catch {
-      onPushToast('Luma AI 4.0', 'Нет ответа от шлюза LumaCore 1.5.1', 'warning');
+      onPushToast('Luma AI 5.0', 'Нет ответа от шлюза LumaCore 1.5.2', 'warning');
     } finally {
       setLoading(false);
     }
@@ -675,7 +747,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
     const isThinkingOpen = Boolean(expandedThinking[msg.id]);
     return (
       <div className="space-y-2 text-xs leading-relaxed break-words">
-        {/* Luma AI 4.0 Collapsible Chain-of-Thought (Ход мыслей) */}
+        {/* Luma AI 5.0 Collapsible Chain-of-Thought (Ход мыслей) */}
         {!isUserBubble && msg.thinkingSteps && msg.thinkingSteps.length > 0 && (
           <div className={`rounded-xl border overflow-hidden ${isDark ? 'bg-indigo-500/[0.07] border-indigo-400/25' : 'bg-indigo-50/80 border-indigo-200'}`}>
             <button
@@ -685,7 +757,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
             >
               <span className="inline-flex items-center gap-1.5 text-indigo-400">
                 <Brain className="w-3.5 h-3.5" />
-                Ход мыслей AI 4.0 · {msg.thinkingSteps.length} шага{msg.elapsedMs ? ` · ${msg.elapsedMs} мс` : ''}
+                Ход мыслей AI 5.0 · {msg.thinkingSteps.length} шага{msg.elapsedMs ? ` · ${msg.elapsedMs} мс` : ''}
               </span>
               <ChevronDown className={`w-3.5 h-3.5 text-indigo-400 transition-transform ${isThinkingOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -706,7 +778,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           </div>
         )}
 
-        {/* Luma AI 4.0 Autonomous Executed OS Actions */}
+        {/* Luma AI 5.0 Nexus Executed OS Actions */}
         {!isUserBubble && msg.actions && msg.actions.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {msg.actions.map((act) => (
@@ -774,7 +846,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           return renderMarkdownSegment(part, idx, isUserBubble);
         })}
 
-        {/* Universal Internet Sources from Luma AI 4.0 */}
+        {/* Universal Internet Sources from Luma AI 5.0 */}
         {!isUserBubble && msg.sources && msg.sources.length > 0 && (
           <div className="pt-2 mt-2 border-t border-white/10 space-y-1.5">
             <div className="text-[10px] font-mono uppercase tracking-wider text-sky-400 font-bold">
@@ -847,7 +919,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           Новый диалог
         </button>
 
-        {/* Quick Luma AI 4.0 Autonomous / Web Search Switches */}
+        {/* Quick Luma AI 5.0 Nexus / Web Search Switches */}
         <div className="grid grid-cols-2 gap-1">
           <button
             type="button"
@@ -877,19 +949,19 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           </button>
         </div>
 
-        {/* Quick 2-Engine Model Switcher (Luma AI 4.0 General vs Code) */}
+        {/* Quick 2-Engine Model Switcher (Luma AI 5.0 Nexus General vs Code) */}
         <div className="grid grid-cols-2 gap-1">
           <button
             onClick={() => {
               onChangeConfig({ ...config, provider: 'luma_local', aiMode: 'language' });
-              onPushToast('Luma AI 4.0', 'Активен универсальный думающий режим', 'success');
+              onPushToast('Luma AI 5.0 Nexus', 'Активен универсальный думающий режим с памятью', 'success');
             }}
             className={`py-1.5 px-2 rounded-xl border text-[10px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
               config.provider === 'luma_local' && activeMode === 'language'
                 ? 'border-indigo-500/60 bg-indigo-500/15 text-indigo-400'
                 : btnCls
             }`}
-            title="Универсальный агент: мышление, поиск по вебу, управление ПК"
+            title="Универсальный агент с долгосрочной памятью: мышление, поиск по вебу, управление ПК"
           >
             <BookOpen className="w-3 h-3 shrink-0" />
             <span>Мыслитель</span>
@@ -897,7 +969,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           <button
             onClick={() => {
               onChangeConfig({ ...config, provider: 'luma_local', aiMode: 'code' });
-              onPushToast('Luma AI 4.0 Code', 'Активен режим программиста (12 языков)', 'success');
+              onPushToast('Luma AI 5.0 Code', 'Активен режим программиста (12 языков)', 'success');
             }}
             className={`py-1.5 px-2 rounded-xl border text-[10px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
               config.provider === 'luma_local' && activeMode === 'code'
@@ -951,9 +1023,10 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
               onClick={() => {
                 setActiveThreadId(t.id);
                 setShowConfig(false);
+                setShowMemory(false);
               }}
               className={`group px-2.5 py-2 rounded-xl border text-xs cursor-pointer flex items-center justify-between gap-1.5 transition ${
-                t.id === activeThread?.id && !showConfig
+                t.id === activeThread?.id && !showConfig && !showMemory
                   ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)] font-semibold'
                   : btnCls
               }`}
@@ -977,7 +1050,10 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
 
         {/* Active Provider Pill */}
         <button
-          onClick={() => setShowConfig((v) => !v)}
+          onClick={() => {
+            setShowConfig((v) => !v);
+            setShowMemory(false);
+          }}
           className={`p-2.5 rounded-xl border text-left space-y-1 cursor-pointer transition ${
             showConfig ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]' : btnCls
           }`}
@@ -989,14 +1065,14 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           <div className="text-[11px] font-mono truncate opacity-80">
             {config.provider === 'luma_local'
               ? activeMode === 'code'
-                ? 'Luma Code 1.2'
+                ? 'Luma AI 5.0 Code'
                 : activeMode === 'language'
-                ? 'Luma Lang 1.2'
-                : 'Luma Hybrid (Auto)'
+                ? 'Luma AI 5.0 Nexus'
+                : 'Luma AI 5.0 Hybrid'
               : currentModel}
           </div>
           <div className={`text-[10px] ${preset.needsKey && !currentKey ? 'text-amber-500' : 'text-emerald-500'}`}>
-            {preset.needsKey ? (currentKey ? 'API-ключ задан' : 'Нужен API-ключ') : 'Без ключа · Готов'}
+            {preset.needsKey ? (currentKey ? 'API-ключ задан' : 'Нужен API-ключ') : 'Память + ОС · Готов'}
           </div>
         </button>
       </aside>
@@ -1035,6 +1111,25 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => {
+                setShowMemory((v) => !v);
+                setShowConfig(false);
+                void loadAIMemory();
+              }}
+              className={`px-2 py-1 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer transition ${
+                showMemory
+                  ? 'border-violet-400 bg-violet-500/20 text-violet-300'
+                  : memoryStore.facts.length > 0
+                  ? 'border-violet-500/40 bg-violet-500/10 text-violet-300'
+                  : btnCls
+              }`}
+              title="Долгосрочная память Luma AI 5.0 Nexus: факты о вас, имя, город и предпочтения"
+            >
+              <Brain className="w-3 h-3" />
+              <span>Память</span>
+              <span className="px-1 rounded bg-white/10 text-[10px] font-mono">{memoryStore.facts.length}</span>
+            </button>
+            <button
+              onClick={() => {
                 if (autoSpeak) window.speechSynthesis?.cancel();
                 setAutoSpeak((v) => !v);
               }}
@@ -1061,7 +1156,10 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
               <span className="hidden sm:inline">ПК</span>
             </button>
             <button
-              onClick={() => setShowConfig((v) => !v)}
+              onClick={() => {
+                setShowConfig((v) => !v);
+                setShowMemory(false);
+              }}
               className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer ${
                 showConfig ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
               }`}
@@ -1080,6 +1178,74 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
             )}
           </div>
         </div>
+
+        {/* Luma AI 5.0 Persistent Memory Manager Drawer */}
+        {showMemory && !showConfig && (
+          <div className={`px-4 py-3 border-b space-y-2.5 ${isDark ? 'border-white/10 bg-violet-950/25' : 'border-slate-200 bg-violet-50/70'}`}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs font-bold flex items-center gap-1.5 text-violet-400">
+                <Brain className="w-4 h-4" />
+                <span>Долгосрочная память Luma AI 5.0 Nexus ({memoryStore.facts.length})</span>
+              </div>
+              {memoryStore.facts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void deleteAIMemoryFactUI('all')}
+                  className="px-2 py-0.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-[10px] font-bold cursor-pointer"
+                >
+                  Очистить всё
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <input
+                value={newFactInput}
+                onChange={(e) => setNewFactInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void addAIMemoryFactUI();
+                }}
+                placeholder="Добавить факт в память (например: Я пишу код на TypeScript и Go)..."
+                className={`flex-1 px-2.5 py-1.5 rounded-xl border text-xs outline-none ${
+                  isDark ? 'bg-black/40 border-white/15' : 'bg-white border-slate-300'
+                }`}
+              />
+              <button
+                type="button"
+                onClick={() => void addAIMemoryFactUI()}
+                className="px-3 py-1.5 rounded-xl bg-violet-500 hover:bg-violet-400 text-white text-xs font-bold cursor-pointer"
+              >
+                Запомнить
+              </button>
+            </div>
+            {memoryStore.facts.length === 0 ? (
+              <div className={`text-[11px] ${mutedCls}`}>
+                Память пока пуста. Напишите в чате «Меня зовут ...», «Я живу в ...» или «Запомни ...» — ИИ сохранит это навсегда.
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                {memoryStore.facts.map((f) => (
+                  <div
+                    key={f.id}
+                    className={`px-2.5 py-1 rounded-xl border text-[11px] flex items-center gap-1.5 ${
+                      isDark ? 'bg-black/35 border-violet-400/25 text-slate-200' : 'bg-white border-violet-200 text-slate-800'
+                    }`}
+                  >
+                    <span className="text-[9px] font-mono uppercase text-violet-400">{f.key}</span>
+                    <span>{f.value}</span>
+                    <button
+                      type="button"
+                      onClick={() => void deleteAIMemoryFactUI(f.id)}
+                      className="text-rose-400 hover:text-rose-300 cursor-pointer ml-0.5"
+                      title="Забыть этот факт"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {showConfig ? (
           <div className="flex-1 overflow-y-auto p-4 space-y-4">

@@ -860,7 +860,7 @@ func splitCompoundClauses(prompt string) []string {
 	norm := repl.Replace(prompt)
 	parts := strings.Split(norm, " | ")
 	// Also split simple "X и Y" when both sides look like imperative commands
-	actionVerbs := []string{"открой", "запусти", "включи", "выключи", "поставь", "установи", "сделай", "создай", "проверь", "найди", "поищи", "покажи", "переключи", "очисти", "узнай", "посчитай", "вычисли", "реши", "сколько", "open", "set", "create", "find", "calc"}
+	actionVerbs := []string{"открой", "запусти", "включи", "выключи", "поставь", "установи", "сделай", "создай", "проверь", "найди", "поищи", "покажи", "переключи", "очисти", "узнай", "посчитай", "вычисли", "реши", "сколько", "тормоз", "лага", "грузит", "пинг", "запомни", "удали", "закрой", "переведи", "обвести", "обведи", "сканир", "open", "set", "create", "find", "calc", "solve"}
 	var result []string
 	for _, pt := range parts {
 		pt = strings.TrimSpace(pt)

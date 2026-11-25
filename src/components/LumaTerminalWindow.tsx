@@ -234,7 +234,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         return;
       }
       setBusy(true);
-      appendToTab(tid, '✦ Luma AI 4.0 Autonomous — думаю, выполняю действия и ищу в интернете…', 'accent');
+      appendToTab(tid, '✦ Luma AI 5.0 Nexus — думаю, выполняю действия и ищу в интернете…', 'accent');
       try {
         const r = await fetch('/api/kernel/ai/chat', {
           method: 'POST',
@@ -245,12 +245,12 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         if (Array.isArray(d.ui_actions) && d.ui_actions.length > 0) {
           window.dispatchEvent(new CustomEvent('luma-ai-agent-actions', { detail: d.ui_actions }));
         }
-        const replyText = String(d.reply || d.error || 'Нет ответа от Luma AI 4.0');
+        const replyText = String(d.reply || d.error || 'Нет ответа от Luma AI 5.0');
         const sources: { title: string; url: string; provider: string }[] = Array.isArray(d.sources) ? d.sources : [];
         const steps: { step: number; title: string; detail: string }[] = Array.isArray(d.thinking_steps) ? d.thinking_steps : [];
         const linesOut: string[] = [];
         if (steps.length > 0) {
-          linesOut.push('── ХОД МЫСЛЕЙ (AI 4.0) ────────────────────────────────');
+          linesOut.push('── ХОД МЫСЛЕЙ (AI 5.0) ────────────────────────────────');
           steps.forEach((st) => linesOut.push(`  [${st.step}] ${st.title}: ${st.detail}`));
           linesOut.push('');
         }
@@ -264,7 +264,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
         }
         appendToTab(tid, linesOut.join('\n'), 'out');
       } catch {
-        appendToTab(tid, 'Не удалось связаться с Luma AI 4.0 (/api/kernel/ai/chat).', 'err');
+        appendToTab(tid, 'Не удалось связаться с Luma AI 5.0 (/api/kernel/ai/chat).', 'err');
       } finally {
         setBusy(false);
       }
@@ -275,8 +275,8 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
       appendToTab(
         tid,
         [
-          'LUMA PRO TERMINAL 1.6.1 NITROGEN — СПРАВОЧНИК КОМАНД (55+):',
-          '  ── АВТОНОМНЫЙ ИИ-АГЕНТ (LUMA AI 4.0 AUTONOMOUS) ─────────────────────',
+          'LUMA PRO TERMINAL 1.6.2 NITROGEN — СПРАВОЧНИК КОМАНД (55+):',
+          '  ── АВТОНОМНЫЙ ИИ-АГЕНТ (LUMA AI 5.0 NEXUS) ─────────────────────',
           '  ai <задача/вопрос>     — думает, выполняет действия в ОС и ищет по всему интернету',
           '  ── СИСТЕМА И ЖЕЛЕЗО ────────────────────────────────────────────────',
           '  neofetch               — паспорт системы, железо и версии ядер',

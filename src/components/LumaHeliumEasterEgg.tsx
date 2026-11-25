@@ -25,7 +25,7 @@ interface HeroCardProps {
 }
 
 /**
- * Flagship sculptural 3D Nitrogen N-7 heptagonal cryo-sapphire monolith hero banner for Luma OS 1.6.1 (Nitrogen · N-7).
+ * Flagship sculptural 3D Nitrogen N-7 heptagonal cryo-sapphire monolith hero banner for Luma OS 1.6.2 (Nitrogen · N-7).
  * Uses outer perspective wrapper, backfaceVisibility: hidden, content-hashed Vite asset,
  * and dual CSS+<img> layers so WebView2 smoothly tilts on hover without ever dropping the image.
  */

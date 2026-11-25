@@ -156,6 +156,7 @@ interface LumaSmartDockStacksProps {
   stacks: DockFolderStackConfig[];
   tasks: DockProgressTask[];
   isDarkTheme: boolean;
+  align?: 'left' | 'right';
   onStacksChanged: (next: DockFolderStackConfig[]) => void;
   onOpenFolderInExplorer: (path: string) => void;
   onOpenFile: (path: string) => void;
@@ -164,13 +165,12 @@ interface LumaSmartDockStacksProps {
 }
 
 /**
- * Luma OS 1.6.1 (Nitrogen) — Ultra-Clean Hover-Reveal Smart Dock Shelf.
- * Keeps the taskbar completely minimalist (one tiny sleek glass handle);
- * on hover (or drag-over), smoothly reveals Folder Stacks (Fan / Grid + Luma Peek Space)
- * and live Downloads & Installs (Steam / Browsers / Luma OS) inside a frosted-glass drawer.
+ * Luma OS 1.6.2 (Nitrogen) — Ultra-Clean Hover-Reveal Smart Dock Shelf + Visible Live Download Pill.
+ * Keeps the taskbar minimalist when idle, immediately shows a glowing download indicator whenever
+ * any file/game/update is downloading, and reveals Folder Stacks + full transfer queue on hover.
  */
 export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
-  kernelBase, stacks, tasks, isDarkTheme, onStacksChanged,
+  kernelBase, stacks, tasks, isDarkTheme, align = 'right', onStacksChanged,
   onOpenFolderInExplorer, onOpenFile, onQuickLook, onNotify,
 }) => {
   const [shelfOpen, setShelfOpen] = useState(false);
@@ -318,8 +318,15 @@ export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
   const handleDropIntoStack = async (e: React.DragEvent, stack: DockFolderStackConfig) => {
     e.preventDefault();
     setDragOverStackId(null);
+    // Ignore internal desktop shortcut/widget drags or icon image URLs
+    if (
+      e.dataTransfer.types.includes('application/x-luma-shortcut') ||
+      e.dataTransfer.types.includes('application/x-luma-widget')
+    ) {
+      return;
+    }
     const raw = e.dataTransfer.getData('application/x-luma-fs') || e.dataTransfer.getData('text/plain');
-    if (!raw) return;
+    if (!raw || raw.startsWith('data:image/') || raw.includes('/api/kernel/app-icon') || raw.startsWith('http://127.0.0.1')) return;
     let srcPath = raw;
     try {
       const parsed = JSON.parse(raw);
@@ -349,6 +356,16 @@ export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
           ? 'bg-violet-400 shadow-[0_0_8px_#a78bfa]'
           : 'bg-sky-400 shadow-[0_0_8px_#38bdf8]'
     : '';
+  const topPct = topTask ? Math.max(4, Math.min(100, Math.round(topTask.percent || 0))) : 0;
+  const topBarColor = topTask
+    ? topTask.state === 'error'
+      ? 'bg-rose-500'
+      : topTask.state === 'paused'
+        ? 'bg-amber-400'
+        : topTask.state === 'extracting'
+          ? 'bg-violet-400'
+          : 'bg-sky-400'
+    : 'bg-sky-400';
 
   return (
     <div
@@ -359,8 +376,53 @@ export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
         e.preventDefault();
         handleMouseEnter();
       }}
-      className="relative flex items-center pl-1.5 border-l border-white/10"
+      className="relative flex items-center gap-1.5 pl-1.5 border-l border-white/10"
     >
+      {/* Live Visible Download Indicator Pill (automatically appears whenever ANY download is active!) */}
+      {topTask && (
+        <button
+          type="button"
+          onClick={() => setShelfOpen((v) => !v)}
+          className={`relative h-8 max-w-[210px] px-2.5 rounded-xl border flex items-center gap-2 overflow-hidden transition-all duration-200 cursor-pointer ${
+            topTask.state === 'error'
+              ? 'bg-rose-500/18 border-rose-400/45 text-rose-200'
+              : topTask.state === 'paused'
+                ? 'bg-amber-500/18 border-amber-400/45 text-amber-100'
+                : topTask.state === 'extracting'
+                  ? 'bg-violet-500/18 border-violet-400/45 text-violet-100'
+                  : isDarkTheme
+                    ? 'bg-sky-500/18 border-sky-400/45 text-sky-100 shadow-lg shadow-sky-500/15'
+                    : 'bg-sky-100 border-sky-400 text-sky-900 shadow-sm'
+          }`}
+          title={`${topTask.app_name}: ${topTask.title} (${topPct}%${topTask.speed_mb_s > 0 ? ` · ${topTask.speed_mb_s.toFixed(1)} МБ/с` : ''})`}
+        >
+          {topTask.state === 'error' ? (
+            <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+          ) : topTask.state === 'paused' ? (
+            <Pause className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          ) : topTask.state === 'extracting' ? (
+            <PackageOpen className="w-3.5 h-3.5 text-violet-400 animate-pulse shrink-0" />
+          ) : (
+            <Download className="w-3.5 h-3.5 text-sky-400 animate-bounce shrink-0" />
+          )}
+          <div className="min-w-0 text-left leading-tight">
+            <div className="text-[10px] font-bold truncate max-w-[115px]">{topTask.title}</div>
+            <div className="text-[9px] font-mono opacity-80 flex items-center gap-1">
+              <span>{topPct}%</span>
+              {topTask.speed_mb_s > 0 && <span>· {topTask.speed_mb_s.toFixed(1)} МБ/с</span>}
+              {activeTasks.length > 1 && <span className="text-sky-300 font-bold">+{activeTasks.length - 1}</span>}
+            </div>
+          </div>
+          {/* Bottom live micro progress bar */}
+          <div className="absolute left-0 right-0 bottom-0 h-[2.5px] bg-black/35">
+            <div
+              className={`h-full transition-all duration-300 ${topBarColor}`}
+              style={{ width: `${topPct}%` }}
+            />
+          </div>
+        </button>
+      )}
+
       {/* Ultra-Clean Minimalist Taskbar Handle (everything hides inside & glides out on hover!) */}
       <button
         type="button"
@@ -387,7 +449,9 @@ export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
 
       {/* Smooth Hover-Reveal Frosted-Glass Shelf Drawer (invisible pb-2 bridge prevents hover gaps!) */}
       <div
-        className={`absolute bottom-8 right-0 pb-2.5 z-[9600] transition-all duration-200 ease-out origin-bottom-right ${
+        className={`absolute bottom-8 ${
+          align === 'left' ? 'left-0 origin-bottom-left' : 'right-0 origin-bottom-right'
+        } pb-2.5 z-[9600] transition-all duration-200 ease-out ${
           shelfOpen
             ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
             : 'opacity-0 translate-y-2 scale-95 pointer-events-none'

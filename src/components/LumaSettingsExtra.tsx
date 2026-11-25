@@ -221,21 +221,21 @@ export const KernelUIPanel: React.FC<{
                 ЯДРО UI · LUMA NITROGEN · N-7
               </div>
               <div className="text-lg font-extrabold tracking-tight truncate">
-                Luma OS 1.6.1 (Nitrogen)
+                Luma OS 1.6.2 (Nitrogen)
               </div>
               <div className={`text-xs font-mono truncate ${mutedCls}`}>
-                LumaCore {liveSystem?.kernel_engine_version || '1.5.1'} · LumaShield 2.5 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
+                LumaCore {liveSystem?.kernel_engine_version || '1.5.2'} · LumaShield 2.5 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
               </div>
             </div>
           </div>
 
           <a
-            href="/LumaOS_1.6.1.exe"
-            download="LumaOS_1.6.1.exe"
+            href="/LumaOS_1.6.2.exe"
+            download="LumaOS_1.6.2.exe"
             className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5 shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
-            LumaOS_1.6.1.exe
+            LumaOS_1.6.2.exe
           </a>
         </div>
 
@@ -289,23 +289,23 @@ export const KernelUIPanel: React.FC<{
           {/* 3. Версия ПО */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия ПО</div>
-            <div className="text-sm font-mono font-bold">1.6.1 (Nitrogen · N-7)</div>
+            <div className="text-sm font-mono font-bold">1.6.2 (Nitrogen · N-7)</div>
           </div>
 
-          {/* 4. Версия Ядра (1.5.0) */}
+          {/* 4. Версия Ядра (1.5.2) */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия Ядра</div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-mono font-bold text-[var(--luma-accent)]">
-                {liveSystem?.kernel_engine_version || '1.5.0'}
+                {liveSystem?.kernel_engine_version || '1.5.2'}
               </span>
-              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore 1.5.1 · Zero-WMI</span>
+              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore 1.5.2 · Zero-WMI</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Developer Mode & Administrator (UAC) Elevation Controls — Luma OS 1.6 Nitrogen */}
+      {/* Developer Mode & Administrator (UAC) Elevation Controls — Luma OS 1.6.2 Nitrogen */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
         <div className={`p-4 rounded-2xl border space-y-2.5 ${surfaceCls}`}>
           <div className="flex items-center justify-between gap-2">
@@ -377,8 +377,8 @@ export const KernelUIPanel: React.FC<{
           ],
           ['Оперативная память', liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ (${liveSystem.ram_percent}%)` : '—'],
           ['Платформа / Архитектура', `${liveSystem?.os_name || 'Luma OS'} · ${liveSystem?.arch || 'amd64'}`],
-          ['Ядро безопасности', 'LumaShield 2.5 · 235+ Rules + Tasks & Stealer Shield'],
-          ['Шина ядра / ИИ', 'LumaCore 1.5.1 · TCP RPC :49215 · Luma AI 4.0 Autonomous'],
+          ['Ядро безопасности', 'LumaShield 2.5 · 275+ Rules + Tasks & Stealer Shield'],
+          ['Шина ядра / ИИ', 'LumaCore 1.5.2 · TCP RPC :49215 · Luma AI 5.0 Nexus'],
         ].map(([k, v]) => (
           <div key={k} className={`p-3.5 rounded-xl border space-y-1 ${surfaceCls}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>{k}</div>

@@ -354,7 +354,7 @@ export const LumaNovaPanel: React.FC<LumaNovaPanelProps> = ({
                   { id: 'explorer', label: 'Файлы' },
                   { id: 'terminal', label: 'Терминал' },
                   { id: 'office', label: 'Office' },
-                  { id: 'ai', label: 'AI 4.0' },
+                  { id: 'ai', label: 'AI 5.0' },
                   { id: 'code_studio', label: 'Code' },
                   { id: 'gamepad', label: 'Геймпад' },
                   { id: 'uninstaller', label: 'Хвосты' },

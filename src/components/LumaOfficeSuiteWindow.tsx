@@ -61,7 +61,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
   const [activeSlideIdx, setActiveSlideIdx] = useState(0);
   const [busy, setBusy] = useState(false);
 
-  // Luma AI 4.0 Autonomous Office Assistant Drawer state
+  // Luma AI 5.0 Nexus Office Assistant Drawer state
   const [aiOpen, setAiOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
@@ -101,7 +101,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
         setAiSources(Array.isArray(d.sources) ? d.sources : []);
       }
     } catch {
-      setAiReply('Не удалось связаться с Luma AI 4.0 Autonomous.');
+      setAiReply('Не удалось связаться с Luma AI 5.0 Nexus.');
     } finally {
       setAiBusy(false);
     }
@@ -112,10 +112,10 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
     if (mode === 'docs') {
       const htmlBlock = `<p>${aiReply.replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br/>')}</p>`;
       setDocHtml((prev) => prev + htmlBlock);
-      onNotify?.('Luma AI 4.0 · Word', 'Ответ вставлен в конец документа', 'ok');
+      onNotify?.('Luma AI 5.0 · Word', 'Ответ вставлен в конец документа', 'ok');
     } else if (mode === 'slides') {
       const nowId = Date.now();
-      const slideTitle = aiPrompt.trim() || `AI 4.0 · ${docTitle}`;
+      const slideTitle = aiPrompt.trim() || `AI 5.0 · ${docTitle}`;
       const newSlide: OfficeSlide = {
         id: `sl_ai_${nowId}`,
         title: slideTitle,
@@ -152,10 +152,10 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
       };
       setSlides((prev) => [...prev, newSlide]);
       setActiveSlideIdx(slides.length);
-      onNotify?.('Luma AI 4.0 · PowerPoint', 'Добавлен новый слайд с тезисами AI 4.0', 'ok');
+      onNotify?.('Luma AI 5.0 · PowerPoint', 'Добавлен новый слайд с тезисами AI 5.0', 'ok');
     } else {
       navigator.clipboard?.writeText(aiReply).catch(() => {});
-      onNotify?.('Luma AI 4.0 · Excel', 'Формулы и рекомендации скопированы в буфер обмена', 'ok');
+      onNotify?.('Luma AI 5.0 · Excel', 'Формулы и рекомендации скопированы в буфер обмена', 'ok');
     }
   };
 
@@ -489,14 +489,14 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
           <button
             type="button"
             onClick={() => setAiOpen((v) => !v)}
-            title="Помощник Luma AI 4.0 Autonomous (тексты, формулы Excel, слайды PowerPoint)"
+            title="Помощник Luma AI 5.0 Nexus (тексты, формулы Excel, слайды PowerPoint)"
             className={`px-2.5 py-1 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition ${
               aiOpen
                 ? 'bg-white text-sky-700 shadow'
                 : 'bg-white/20 hover:bg-white/30 text-white'
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5" /> AI 4.0
+            <Sparkles className="w-3.5 h-3.5" /> AI 5.0
           </button>
 
           <button
@@ -510,7 +510,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
         </div>
       </div>
 
-      {/* Luma AI 4.0 Autonomous Side Assistant Drawer for Word / Excel / PowerPoint */}
+      {/* Luma AI 5.0 Nexus Side Assistant Drawer for Word / Excel / PowerPoint */}
       {aiOpen && (
         <div
           className={`fixed sm:absolute right-3 top-12 bottom-3 w-80 sm:w-96 z-[60] rounded-2xl border shadow-2xl flex flex-col overflow-hidden backdrop-blur-2xl ${
@@ -520,7 +520,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
           <div className="px-3.5 py-2.5 border-b border-black/10 flex items-center justify-between bg-gradient-to-r from-sky-600 to-indigo-600 text-white">
             <div className="flex items-center gap-1.5 text-xs font-black">
               <Sparkles className="w-3.5 h-3.5" />
-              Luma AI 4.0 · {brand.short}
+              Luma AI 5.0 · {brand.short}
             </div>
             <button type="button" onClick={() => setAiOpen(false)} className="p-1 rounded hover:bg-white/15 cursor-pointer">
               <X className="w-3.5 h-3.5" />
@@ -562,7 +562,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
           </div>
           <div className="flex-1 overflow-y-auto p-3 text-xs space-y-2.5">
             {aiBusy ? (
-              <div className="text-sky-500 animate-pulse">Luma AI 4.0 анализирует {brand.short} и проверяет источники…</div>
+              <div className="text-sky-500 animate-pulse">Luma AI 5.0 анализирует {brand.short} и проверяет источники…</div>
             ) : aiReply ? (
               <>
                 <div className="whitespace-pre-wrap leading-relaxed">{aiReply}</div>
@@ -597,7 +597,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
                     type="button"
                     onClick={() => {
                       navigator.clipboard?.writeText(aiReply).catch(() => {});
-                      onNotify?.('Luma AI 4.0', 'Ответ скопирован', 'ok');
+                      onNotify?.('Luma AI 5.0', 'Ответ скопирован', 'ok');
                     }}
                     className={`p-1.5 rounded-lg border cursor-pointer ${officeDark ? 'border-white/15 hover:bg-white/10' : 'border-slate-300 hover:bg-slate-100'}`}
                     title="Копировать ответ"
@@ -608,7 +608,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
               </>
             ) : (
               <div className="opacity-65">
-                Выберите действие выше или введите задачу для <b>{brand.name}</b> — Luma AI 4.0 Autonomous поможет с текстом, формулами или слайдами с проверенными источниками.
+                Выберите действие выше или введите задачу для <b>{brand.name}</b> — Luma AI 5.0 Nexus поможет с текстом, формулами или слайдами с проверенными источниками.
               </div>
             )}
           </div>
@@ -622,7 +622,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
             <input
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
-              placeholder={`Спросить AI 4.0 для ${brand.short}…`}
+              placeholder={`Спросить AI 5.0 для ${brand.short}…`}
               className={`flex-1 px-2.5 py-1.5 rounded-xl border text-xs outline-none ${officeDark ? 'bg-slate-900 border-white/10' : 'bg-slate-50 border-slate-300'}`}
             />
             <button
@@ -824,7 +824,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
 
             {backstageTab === 'info' && (
               <div className="space-y-3 max-w-xl text-xs leading-relaxed">
-                <h2 className="text-xl font-bold">Luma Office Studio 1.6.1 (Nitrogen · AI 4.0)</h2>
+                <h2 className="text-xl font-bold">Luma Office Studio 1.6.2 (Nitrogen · AI 5.0)</h2>
                 <p>Классический понятный интерфейс Microsoft Word, Excel и PowerPoint с группировкой инструментов на ленте Ribbon, строкой быстрого поиска команд и автосохранением.</p>
                 <ul className="list-disc pl-5 space-y-1 opacity-85">
                   <li><strong>Word:</strong> 7 вкладок ленты, сетка таблиц 10×8, Формат по образцу, безопасный поиск/замена по текстовым узлам, кликабельная навигация по заголовкам, уравнения и символы, линейка, проверка типографики, озвучка текста и примечания.</li>

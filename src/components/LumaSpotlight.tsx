@@ -182,13 +182,13 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         }
         setAiResult({
           reply: String(d.reply || ''),
-          model: d.model || 'Luma AI 4.0 Autonomous',
+          model: d.model || 'Luma AI 5.0 Nexus',
           sources: Array.isArray(d.sources) ? d.sources : [],
           actions: Array.isArray(d.actions) ? d.actions : [],
         });
       }
     } catch {
-      setAiResult({ reply: 'Не удалось получить ответ от Luma AI 4.0 Autonomous.', sources: [] });
+      setAiResult({ reply: 'Не удалось получить ответ от Luma AI 5.0 Nexus.', sources: [] });
     } finally {
       setAiLoading(false);
     }
@@ -453,8 +453,8 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'svc_code_studio',
         group: 'Службы и утилиты',
-        title: 'Luma Code Studio (Редактор кода · AI 4.0)',
-        subtitle: 'Файловое дерево ПК, вкладки, подсветка, HTML-превью, AI 4.0 и встроенный терминал',
+        title: 'Luma Code Studio (Редактор кода · AI 5.0)',
+        subtitle: 'Файловое дерево ПК, вкладки, подсветка, HTML-превью, AI 5.0 и встроенный терминал',
         badge: 'IDE',
         keywords: 'код редактор vscode code studio ide программирование js python go html ai',
         icon: <Code2 className="w-4 h-4" />,
@@ -545,10 +545,20 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         run: () => onOpenWindow('office'),
       },
       {
+        id: 'svc_lens',
+        group: 'Службы и утилиты',
+        title: 'Luma Обвести для поиска (Экран · OCR · Перевод · Веб)',
+        subtitle: 'Обведите любую область экрана — мгновенный OCR текста, перевод, цвета и поиск в интернете (Ctrl+Shift+L)',
+        badge: 'LENS',
+        keywords: 'обвести для поиска экран распознать текст ocr перевод lens скрин найти на экране circle search',
+        icon: <Sparkles className="w-4 h-4 text-sky-400" />,
+        run: () => window.dispatchEvent(new Event('luma-open-lens')),
+      },
+      {
         id: 'svc_terminal',
         group: 'Службы и утилиты',
-        title: 'Терминал LumaCore 1.6.1',
-        subtitle: 'Командная строка + 20 новых системных команд (ip, tcp, scan, wireless, hash, matrix)',
+        title: 'Терминал LumaCore 1.5.2',
+        subtitle: 'Командная строка + системные команды и Luma AI 5.0 (ai, ip, tcp, scan, wireless, hash)',
         badge: 'CLI',
         keywords: 'терминал консоль cmd powershell shell terminal',
         icon: <Terminal className="w-4 h-4" />,
@@ -587,17 +597,17 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       {
         id: 'svc_ai',
         group: 'Службы и утилиты',
-        title: 'Luma AI 3.0 (Luma Lang 3.0 + Code 3.0 + Web Overview)',
-        subtitle: 'Офлайн-ИИ с памятью диалога и ревью кода, Gemini, OpenAI, Claude, Ollama',
-        badge: 'AI 2.0',
-        keywords: 'ии нейросеть ai ассистент chatgpt gemini claude код luma ai 2.0',
+        title: 'Luma AI 5.0 Nexus (Память · Система · Весь интернет)',
+        subtitle: 'Умный ИИ с долгосрочной памятью, управлением ПК, переводами, кодом и живым поиском',
+        badge: 'AI 5.0',
+        keywords: 'ии нейросеть ai ассистент chatgpt gemini claude код luma ai 5.0 nexus память',
         icon: <Sparkles className="w-4 h-4" />,
         run: () => onOpenWindow('ai'),
       },
       {
         id: 'svc_kernel',
         group: 'Службы и утилиты',
-        title: 'Монитор ядра LumaCore 1.6.1 & JSON-RPC',
+        title: 'Монитор ядра LumaCore 1.5.2 & JSON-RPC',
         subtitle: 'Внутренний монитор, диагностика GC, JSON-RPC консоль и код ядра',
         keywords: 'ядро kernel rpc ipc монитор диагностика',
         icon: <Code2 className="w-4 h-4" />,
@@ -889,10 +899,10 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
                 onClick={() => void askSpotlightAI38()}
                 disabled={aiLoading}
                 className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-500 hover:brightness-110 text-white text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-60"
-                title="Спросить Luma AI 4.0 Autonomous (думает, действует, ищет по всему интернету)"
+                title="Спросить Luma AI 5.0 Nexus (думает, действует, ищет по всему интернету)"
               >
                 <Sparkles className="w-3 h-3" />
-                {aiLoading ? 'AI…' : 'AI 4.0'}
+                {aiLoading ? 'AI…' : 'AI 5.0'}
               </button>
               <button
                 onClick={() => {
@@ -925,7 +935,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-[11px] font-black text-sky-400">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>{aiResult?.model || 'Luma AI 4.0 Autonomous · Весь интернет и Агент'}</span>
+                <span>{aiResult?.model || 'Luma AI 5.0 Nexus · Весь интернет и Агент'}</span>
               </div>
               <button
                 onClick={() => setAiResult(null)}
@@ -978,7 +988,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
               isDark ? 'border-white/[0.07] bg-white/[0.02] text-zinc-400' : 'border-zinc-900/[0.07] bg-black/[0.02] text-zinc-500'
             }`}
           >
-            <span>Приложения ПК · Настройки · Luma AI 4.0 · Поиск в Интернете</span>
+            <span>Приложения ПК · Настройки · Luma AI 5.0 · Поиск в Интернете</span>
             <span>ESC — закрыть</span>
           </div>
         ) : (

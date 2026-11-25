@@ -358,7 +358,7 @@ export const LumaQuickLookModal: React.FC<LumaQuickLookModalProps> = ({
                   className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 text-white text-[11px] font-bold inline-flex items-center gap-1.5 shadow cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
-                  Объяснить через AI 4.0
+                  Объяснить через AI 5.0
                 </button>
               </>
             )}
@@ -514,7 +514,7 @@ export const LumaQuickLookModal: React.FC<LumaQuickLookModalProps> = ({
         <div className={`px-4 py-1.5 border-t text-[10px] font-mono flex items-center justify-between opacity-65 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
           <span>Space / Esc — закрыть</span>
           <span>← → — соседние файлы ({activeIndex + 1}/{items.length})</span>
-          {data?.kind === 'image' ? <span>Колесо / +/- — зум · R — поворот</span> : <span>Luma Peek 1.6.1</span>}
+          {data?.kind === 'image' ? <span>Колесо / +/- — зум · R — поворот</span> : <span>Luma Peek 1.6.2</span>}
         </div>
       </div>
     </div>

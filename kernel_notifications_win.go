@@ -3,11 +3,14 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -125,16 +128,9 @@ func winReadFileShareSafe(path string, maxBytes int64) ([]byte, int64, string, e
 	}
 	data := buf[:total]
 	hSum := sha256.New()
-	_, _ = fmt.Fprintf(hSum, "%d:", size)
-	if len(data) > 4096 {
-		hSum.Write(data[:4096])
-	} else {
-		hSum.Write(data)
-	}
-	if len(data) > 24576 {
-		hSum.Write(data[len(data)-24576:])
-	}
-	return data, size, hex.EncodeToString(hSum.Sum(nil)[:12]), nil
+	_, _ = fmt.Fprintf(hSum, "%d:%d:%d:", size, fi.LastWriteTime.HighDateTime, fi.LastWriteTime.LowDateTime)
+	hSum.Write(data)
+	return data, size, hex.EncodeToString(hSum.Sum(nil)[:16]), nil
 }
 
 func winProcessBaseName(pid uint32) string {
@@ -403,7 +399,8 @@ var (
 		_, _, _ = notifProcGetRect.Call(hwnd, uintptr(unsafe.Pointer(&r)))
 		w := r.Right - r.Left
 		h := r.Bottom - r.Top
-		if w < 150 || w > 640 || h < 45 || h > 420 {
+		// Support 100%..250% DPI scaling on Windows 10/11
+		if w < 120 || w > 1100 || h < 40 || h > 650 {
 			return 1
 		}
 
@@ -412,9 +409,17 @@ var (
 		lowTitle := strings.ToLower(title)
 		lowCls := strings.ToLower(cls)
 
-		isWinToast := (strings.Contains(exe, "shellexperiencehost") || strings.Contains(exe, "experiencehost")) &&
-			(strings.Contains(lowCls, "corewindow") || strings.Contains(lowTitle, "уведомлен") || strings.Contains(lowTitle, "notification"))
-		isMsgPopup := appKey != "" && (strings.Contains(lowCls, "popup") || strings.Contains(lowCls, "toolsavebits") || h <= 240)
+		isWinToast := (strings.Contains(exe, "shellexperiencehost") ||
+			strings.Contains(exe, "experiencehost") ||
+			strings.Contains(exe, "startmenuexperiencehost") ||
+			(strings.Contains(exe, "explorer.exe") && strings.Contains(lowCls, "corewindow"))) &&
+			(strings.Contains(lowCls, "corewindow") || strings.Contains(lowTitle, "уведомлен") || strings.Contains(lowTitle, "notification") || strings.Contains(lowTitle, "toast"))
+		isMsgPopup := appKey != "" && (strings.Contains(lowCls, "popup") ||
+			strings.Contains(lowCls, "toolsavebits") ||
+			strings.Contains(lowCls, "qt5qwindow") ||
+			strings.Contains(lowCls, "qt6qwindow") ||
+			strings.Contains(lowCls, "chrome_widgetwin") && h <= 280 ||
+			h <= 320)
 
 		if isWinToast || isMsgPopup {
 			notifEnumCands = append(notifEnumCands, notifCandWin{
@@ -431,9 +436,8 @@ var (
 	})
 )
 
-// startWinLiveUIAToastWatcher runs on a dedicated COM MTA thread, inspecting ONLY live Windows Toast Banners
-// (ShellExperienceHost / Windows.UI.Core.CoreWindow) and messenger popups that expose REAL sender + message text!
-// ZERO muted-channel unread counter deltas! ZERO generic "+4" placeholders! ZERO callback leaks!
+// startWinLiveUIAToastWatcher runs on a dedicated COM MTA thread, inspecting live Windows Toast Banners
+// and native messenger popups in real time with zero callback leaks!
 func (b *OSNotificationBridge) startWinLiveUIAToastWatcher() {
 	go func() {
 		defer func() { _ = recover() }()
@@ -454,7 +458,6 @@ func (b *OSNotificationBridge) startWinLiveUIAToastWatcher() {
 		var trueCond uintptr
 		if int32(hr) >= 0 && uia != 0 {
 			defer comRelease(uia)
-			// IUIAutomation::CreateTrueCondition is vtable index 21
 			hr2 := comVtableCall(uia, 21, uintptr(unsafe.Pointer(&trueCond)))
 			if int32(hr2) >= 0 && trueCond != 0 {
 				defer comRelease(trueCond)
@@ -464,12 +467,28 @@ func (b *OSNotificationBridge) startWinLiveUIAToastWatcher() {
 			}
 		}
 
-		ticker := time.NewTicker(450 * time.Millisecond)
+		ticker := time.NewTicker(350 * time.Millisecond)
 		defer ticker.Stop()
 		for range ticker.C {
 			func() {
 				defer func() { _ = recover() }()
 				b.winScanLiveToastBanners(uia, trueCond)
+			}()
+		}
+	}()
+}
+
+// Engine 3: Windows Action Center WinRT UserNotificationListener fallback poller (runs quietly in background).
+func (b *OSNotificationBridge) startWinActionCenterFallbackPoller() {
+	go func() {
+		defer func() { _ = recover() }()
+		time.Sleep(3 * time.Second)
+		ticker := time.NewTicker(4 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			func() {
+				defer func() { _ = recover() }()
+				b.pollWinRTActionCenterOnce()
 			}()
 		}
 	}()
@@ -492,7 +511,7 @@ func (b *OSNotificationBridge) winScanLiveToastBanners(uia, trueCond uintptr) {
 	globalWinNotifState.runningMessengers = running
 	now := time.Now()
 	for k, ts := range globalWinNotifState.seenUIAHashes {
-		if now.Sub(ts) > 5*time.Minute {
+		if now.Sub(ts) > 25*time.Second {
 			delete(globalWinNotifState.seenUIAHashes, k)
 		}
 	}
@@ -504,8 +523,7 @@ func (b *OSNotificationBridge) winScanLiveToastBanners(uia, trueCond uintptr) {
 
 	for _, c := range cands {
 		texts := uiaExtractVisibleTexts(uia, trueCond, c.hwnd)
-		if len(texts) < 2 {
-			// STRICT 1.5.4 RULE: NEVER emit a notification without REAL sender + REAL message text!
+		if len(texts) == 0 {
 			continue
 		}
 
@@ -513,10 +531,9 @@ func (b *OSNotificationBridge) winScanLiveToastBanners(uia, trueCond uintptr) {
 		appKey := c.knownAppKey
 		joined := strings.Join(texts, " ")
 		if appKey == "" {
-			appName, appKey = detectMessengerApp(joined)
+			appName, appKey = detectMessengerApp(joined + " " + c.title)
 		}
 
-		// Parse [AppName?, Sender, MessageBody, ExtraChat?] cleanly
 		idx := 0
 		if len(texts) >= 3 {
 			firstApp, firstKey := detectMessengerApp(texts[0])
@@ -525,24 +542,29 @@ func (b *OSNotificationBridge) winScanLiveToastBanners(uia, trueCond uintptr) {
 				idx = 1
 			}
 		}
-		if idx+1 >= len(texts) {
-			continue
-		}
 		rawTitle := strings.TrimSpace(texts[idx])
-		body := strings.TrimSpace(texts[idx+1])
+		body := ""
 		chat := ""
+		if idx+1 < len(texts) {
+			body = strings.TrimSpace(texts[idx+1])
+		} else {
+			body = rawTitle
+			if appName != "" && appName != "Windows" {
+				rawTitle = appName
+			}
+		}
 		if idx+2 < len(texts) && len(texts[idx+2]) < 64 && !strings.EqualFold(texts[idx+2], rawTitle) {
 			chat = strings.TrimSpace(texts[idx+2])
 		}
 
-		if rawTitle == "" || body == "" {
+		if rawTitle == "" && body == "" {
 			continue
 		}
 		if !isIncomingUserMessage(rawTitle, body, joined) {
 			continue
 		}
-		if appKey == "system" {
-			appName, appKey = "Сообщение", "message"
+		if appKey == "system" && appName == "" {
+			appName = "Система"
 		}
 
 		sender, parsedChat := splitSenderAndChat(rawTitle)
@@ -586,6 +608,120 @@ func (b *OSNotificationBridge) winScanLiveToastBanners(uia, trueCond uintptr) {
 			Time:      now.Format("15:04"),
 			DateLabel: now.Format("02.01.2006"),
 			Timestamp: now.UnixMilli(),
+		})
+	}
+}
+
+func (b *OSNotificationBridge) pollWinRTActionCenterOnce() {
+	psScript := `
+$OutputEncoding = [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  Add-Type -AssemblyName System.Runtime.WindowsRuntime | Out-Null
+  [void][Windows.UI.Notifications.Management.UserNotificationListener, Windows.UI.Notifications, ContentType=WindowsRuntime]
+  [void][Windows.UI.Notifications.NotificationKinds, Windows.UI.Notifications, ContentType=WindowsRuntime]
+  [void][Windows.UI.Notifications.KnownNotificationBindings, Windows.UI.Notifications, ContentType=WindowsRuntime]
+  $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation` + "`1" + `' })[0]
+  function AwaitOp($op, $t) {
+    $m = $asTaskGeneric.MakeGenericMethod($t)
+    $task = $m.Invoke($null, @($op))
+    $task.Wait(2200) | Out-Null
+    return $task.Result
+  }
+  $listener = [Windows.UI.Notifications.Management.UserNotificationListener]::Current
+  $acc = AwaitOp ($listener.RequestAccessAsync()) ([Windows.UI.Notifications.Management.UserNotificationListenerAccessStatus])
+  if ($acc.ToString() -ne 'Allowed') { Write-Output '[]'; exit 0 }
+  $list = AwaitOp ($listener.GetNotificationsAsync([Windows.UI.Notifications.NotificationKinds]::Toast)) ([System.Collections.Generic.IReadOnlyList[Windows.UI.Notifications.UserNotification]])
+  $out = @()
+  foreach ($n in $list) {
+    try {
+      $app = $n.AppInfo.DisplayInfo.DisplayName
+      $binding = $n.Notification.Visual.GetBinding([Windows.UI.Notifications.KnownNotificationBindings]::ToastGeneric)
+      $texts = @()
+      if ($binding) {
+        foreach ($el in $binding.GetTextElements()) {
+          if ($el.Text) { $texts += $el.Text }
+        }
+      }
+      if ($texts.Count -gt 0) {
+        $out += [PSCustomObject]@{
+          id = $n.Id
+          app = $app
+          title = $texts[0]
+          body = if ($texts.Count -gt 1) { ($texts[1..($texts.Count-1)] -join ' · ') } else { $texts[0] }
+          ts = $n.CreationTime.ToUnixTimeMilliseconds()
+        }
+      }
+    } catch {}
+  }
+  if ($out.Count -eq 0) { Write-Output '[]' } else { $out | ConvertTo-Json -Compress }
+} catch { Write-Output '[]' }
+`
+	ctx, cancel := context.WithTimeout(context.Background(), 3500*time.Millisecond)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", psScript)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	out, err := cmd.Output()
+	if err != nil || len(out) < 2 {
+		return
+	}
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" || trimmed == "[]" {
+		return
+	}
+	type winRTNotif struct {
+		ID    int64  `json:"id"`
+		App   string `json:"app"`
+		Title string `json:"title"`
+		Body  string `json:"body"`
+		TS    int64  `json:"ts"`
+	}
+	var list []winRTNotif
+	if strings.HasPrefix(trimmed, "{") {
+		var single winRTNotif
+		if json.Unmarshal([]byte(trimmed), &single) == nil {
+			list = append(list, single)
+		}
+	} else {
+		_ = json.Unmarshal([]byte(trimmed), &list)
+	}
+	for _, n := range list {
+		title := strings.TrimSpace(n.Title)
+		body := strings.TrimSpace(n.Body)
+		if title == "" && body == "" {
+			continue
+		}
+		if !isIncomingUserMessage(title, body, n.App) {
+			continue
+		}
+		appName, appKey := detectMessengerApp(n.App + " " + title + " " + body)
+		if appKey == "system" && strings.TrimSpace(n.App) != "" {
+			appName = strings.TrimSpace(n.App)
+		}
+		sender, chat := splitSenderAndChat(title)
+		ts := n.TS
+		if ts <= 0 {
+			ts = time.Now().UnixMilli()
+		}
+		t := time.UnixMilli(ts)
+		avatar := ""
+		if appKey == "telegram" {
+			avatar = winLatestTelegramAvatar()
+		}
+		b.pushUniqueRealMessage(OSNotificationItem{
+			ID:        fmt.Sprintf("winrt_%d_%d", n.ID, ts),
+			App:       appName,
+			AppKey:    appKey,
+			Sender:    truncateUTF8(sender, 64),
+			Chat:      truncateUTF8(chat, 64),
+			Title:     truncateUTF8(title, 96),
+			Body:      truncateUTF8(body, 320),
+			AvatarURL: avatar,
+			Direction: "incoming",
+			Level:     "info",
+			Source:    "winrt_center",
+			Time:      t.Format("15:04"),
+			DateLabel: t.Format("02.01.2006"),
+			Timestamp: ts,
 		})
 	}
 }

@@ -38,19 +38,14 @@ func winReadFileShareSafe(path string, maxBytes int64) ([]byte, int64, string, e
 		data = data[:n]
 	}
 	h := sha256.New()
-	_, _ = fmt.Fprintf(h, "%d:", size)
-	if len(data) > 4096 {
-		h.Write(data[:4096])
-	} else {
-		h.Write(data)
-	}
-	if len(data) > 24576 {
-		h.Write(data[len(data)-24576:])
-	}
-	return data, size, hex.EncodeToString(h.Sum(nil)[:12]), nil
+	_, _ = fmt.Fprintf(h, "%d:%d:", size, st.ModTime().UnixNano())
+	h.Write(data)
+	return data, size, hex.EncodeToString(h.Sum(nil)[:16]), nil
 }
 
 func (b *OSNotificationBridge) startWinLiveUIAToastWatcher() {}
+
+func (b *OSNotificationBridge) startWinActionCenterFallbackPoller() {}
 
 func winGetRunningMessengers() []string { return nil }
 

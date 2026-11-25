@@ -7,6 +7,7 @@ import {
   BellOff,
   Calculator,
   Calendar,
+  Camera,
   Check,
   CheckSquare,
   Cloud,
@@ -44,6 +45,7 @@ import {
   Power,
   RefreshCw,
   RotateCcw,
+  ScanSearch,
   Search,
   Settings,
   ShieldCheck,
@@ -63,6 +65,7 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
+import type { LumaRmbMenuConfig } from './LumaAccessibilityGesturesPanel';
 import { AppItem, ClockStyleKey, InstalledAppInfo, IslandMediaPlayer, LiveSystemTelemetry, WirelessBatteryInfo } from '../data/launcherData';
 import { DesignStyle, TaskbarPosition } from './DexWindow';
 import { LumaClockRenderer } from './LumaClockRenderer';
@@ -407,6 +410,10 @@ export interface LumaDesktopCanvasProps {
   pendingCustomWidget?: { seq: number; editWidgetId?: string; spec: CustomUserWidgetSpec } | null;
   onConsumePendingCustomWidget?: () => void;
   onQuickLook?: (items: QuickLookCandidate[], index: number) => void;
+  rmbConfig?: LumaRmbMenuConfig;
+  onOpenLensSearch?: () => void;
+  onTakeScreenshot?: () => void;
+  onCycleShellStyle?: () => void;
 }
 
 export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
@@ -481,6 +488,10 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
   pendingCustomWidget = null,
   onConsumePendingCustomWidget,
   onQuickLook,
+  rmbConfig,
+  onOpenLensSearch,
+  onTakeScreenshot,
+  onCycleShellStyle,
 }) => {
   const totalRows = 10;
   const totalCells = gridCols * totalRows;
@@ -1644,11 +1655,14 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
     if (shortcutId === folderId) return;
     const sc = shortcuts.find((s) => s.id === shortcutId);
     if (!sc || sc.kind === 'folder') return;
+    const resolvedAppIcon =
+      sc.iconUrl || (sc.kind === 'app' ? apps.find((a) => a.id === sc.target)?.iconUrl : undefined);
     const entry: FolderEntry = {
       id: `fe_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
       kind: sc.kind,
       label: sc.label,
       icon: sc.icon,
+      iconUrl: resolvedAppIcon,
       target: sc.target,
       content: sc.content,
     };
@@ -1674,6 +1688,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         kind: entry.kind,
         label: entry.label,
         icon: entry.icon,
+        iconUrl: entry.iconUrl,
         target: entry.target,
         content: entry.content,
       },
@@ -4512,13 +4527,23 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                   e.preventDefault();
                   setHoveredCell(null);
                   setExternalFileDrag(false);
-                  if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
-                    handleFilesAdded(e.dataTransfer.files, col, row);
-                    return;
-                  }
+                  const dtShortcutId = e.dataTransfer?.getData('application/x-luma-shortcut');
+                  const dtWidgetId = e.dataTransfer?.getData('application/x-luma-widget');
                   if (draggingId) {
                     moveItemToCell(draggingId.kind, draggingId.id, col, row);
                     setDraggingId(null);
+                    return;
+                  }
+                  if (dtShortcutId) {
+                    moveItemToCell('shortcut', dtShortcutId, col, row);
+                    return;
+                  }
+                  if (dtWidgetId) {
+                    moveItemToCell('widget', dtWidgetId, col, row);
+                    return;
+                  }
+                  if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+                    handleFilesAdded(e.dataTransfer.files, col, row);
                   }
                 }}
                 className={`rounded-lg transition-colors flex items-center justify-center ${
@@ -4572,8 +4597,12 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
             <div
               key={w.id}
               draggable={!isResizing}
-              onDragStart={() => {
-                if (!isResizing) setDraggingId({ kind: 'widget', id: w.id });
+              onDragStart={(e) => {
+                if (!isResizing) {
+                  e.dataTransfer.setData('application/x-luma-widget', w.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                  setDraggingId({ kind: 'widget', id: w.id });
+                }
               }}
               onDragEnd={() => {
                 setDraggingId(null);
@@ -4705,8 +4734,12 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
               <div
                 key={sc.id}
                 draggable={!isResizing}
-                onDragStart={() => {
-                  if (!isResizing) setDraggingId({ kind: 'shortcut', id: sc.id });
+                onDragStart={(e) => {
+                  if (!isResizing) {
+                    e.dataTransfer.setData('application/x-luma-shortcut', sc.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    setDraggingId({ kind: 'shortcut', id: sc.id });
+                  }
                 }}
                 onDragEnd={() => {
                   setDraggingId(null);
@@ -4716,7 +4749,11 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 onDragOver={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if ((draggingId?.kind === 'shortcut' && draggingId.id !== sc.id) || e.dataTransfer?.types?.includes('Files')) {
+                  if (
+                    (draggingId?.kind === 'shortcut' && draggingId.id !== sc.id) ||
+                    e.dataTransfer?.types?.includes('application/x-luma-shortcut') ||
+                    e.dataTransfer?.types?.includes('Files')
+                  ) {
                     setDragOverFolderId(sc.id);
                   }
                 }}
@@ -4729,13 +4766,20 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                   setDragOverFolderId(null);
                   setHoveredCell(null);
                   setExternalFileDrag(false);
-                  if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
-                    handleFilesAdded(e.dataTransfer.files, clampedCol, clampedRow, sc.id);
+                  const dtShortcutId = e.dataTransfer?.getData('application/x-luma-shortcut');
+                  const sourceId =
+                    draggingId?.kind === 'shortcut' ? draggingId.id : dtShortcutId || '';
+                  if (sourceId && sourceId !== sc.id) {
+                    moveShortcutIntoFolder(sourceId, sc.id);
+                    setDraggingId(null);
                     return;
                   }
-                  if (draggingId?.kind === 'shortcut' && draggingId.id !== sc.id) {
-                    moveShortcutIntoFolder(draggingId.id, sc.id);
+                  if (draggingId || e.dataTransfer?.types?.includes('application/x-luma-widget')) {
                     setDraggingId(null);
+                    return;
+                  }
+                  if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+                    handleFilesAdded(e.dataTransfer.files, clampedCol, clampedRow, sc.id);
                   }
                 }}
                 onClick={(e) => {
@@ -4800,7 +4844,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                         <img
                           src={entry.iconUrl}
                           alt=""
-                          className="w-4 h-4 rounded object-contain shrink-0"
+                          draggable={false}
+                          className="w-4 h-4 rounded object-contain shrink-0 pointer-events-none select-none"
                           onError={(e) => {
                             (e.currentTarget as HTMLImageElement).style.display = 'none';
                           }}
@@ -4862,8 +4907,12 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
             <button
               key={sc.id}
               draggable={!isResizing}
-              onDragStart={() => {
-                if (!isResizing) setDraggingId({ kind: 'shortcut', id: sc.id });
+              onDragStart={(e) => {
+                if (!isResizing) {
+                  e.dataTransfer.setData('application/x-luma-shortcut', sc.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                  setDraggingId({ kind: 'shortcut', id: sc.id });
+                }
               }}
               onDragEnd={() => {
                 setDraggingId(null);
@@ -4874,7 +4923,11 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 if (!isFolder) return;
                 e.preventDefault();
                 e.stopPropagation();
-                if ((draggingId?.kind === 'shortcut' && draggingId.id !== sc.id) || e.dataTransfer?.types?.includes('Files')) {
+                if (
+                  (draggingId?.kind === 'shortcut' && draggingId.id !== sc.id) ||
+                  e.dataTransfer?.types?.includes('application/x-luma-shortcut') ||
+                  e.dataTransfer?.types?.includes('Files')
+                ) {
                   setDragOverFolderId(sc.id);
                 }
               }}
@@ -4888,13 +4941,20 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 setDragOverFolderId(null);
                 setHoveredCell(null);
                 setExternalFileDrag(false);
-                if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
-                  handleFilesAdded(e.dataTransfer.files, clampedCol, clampedRow, sc.id);
+                const dtShortcutId = e.dataTransfer?.getData('application/x-luma-shortcut');
+                const sourceId =
+                  draggingId?.kind === 'shortcut' ? draggingId.id : dtShortcutId || '';
+                if (sourceId && sourceId !== sc.id) {
+                  moveShortcutIntoFolder(sourceId, sc.id);
+                  setDraggingId(null);
                   return;
                 }
-                if (draggingId?.kind === 'shortcut' && draggingId.id !== sc.id) {
-                  moveShortcutIntoFolder(draggingId.id, sc.id);
+                if (draggingId || e.dataTransfer?.types?.includes('application/x-luma-widget')) {
                   setDraggingId(null);
+                  return;
+                }
+                if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+                  handleFilesAdded(e.dataTransfer.files, clampedCol, clampedRow, sc.id);
                 }
               }}
               onClick={(e) => {
@@ -4982,7 +5042,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                               <img
                                 src={fe.iconUrl}
                                 alt={fe.label}
-                                className="absolute inset-0 m-auto w-3.5 h-3.5 object-contain rounded-[2px]"
+                                draggable={false}
+                                className="absolute inset-0 m-auto w-3.5 h-3.5 object-contain rounded-[2px] pointer-events-none select-none"
                                 onLoad={(e) => {
                                   const prev = e.currentTarget.previousElementSibling as HTMLElement | null;
                                   if (prev) prev.style.opacity = '0';
@@ -5004,7 +5065,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                         <img
                           src={resolvedIconUrl}
                           alt={sc.label}
-                          className="absolute inset-0 m-auto w-[68%] h-[68%] object-contain rounded"
+                          draggable={false}
+                          className="absolute inset-0 m-auto w-[68%] h-[68%] object-contain rounded pointer-events-none select-none"
                           onLoad={(e) => {
                             const prev = e.currentTarget.previousElementSibling as HTMLElement | null;
                             if (prev) prev.style.opacity = '0';
@@ -5567,18 +5629,83 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
 
           <div className={`my-1 border-t ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`} />
 
-          <button
-            onClick={() => {
-              onOpenSystemWindow('office');
-              setCtxMenu(null);
-            }}
-            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
-              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5 text-sky-400" />
-            <span>Luma Office Studio (Docs / Sheets / Slides)</span>
-          </button>
+          {(rmbConfig?.showLensSearch ?? true) && onOpenLensSearch && (
+            <button
+              onClick={() => {
+                onOpenLensSearch();
+                setCtxMenu(null);
+              }}
+              className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
+                isDark ? 'hover:bg-sky-500/15 text-sky-300' : 'hover:bg-sky-100 text-sky-700'
+              }`}
+            >
+              <span className="flex items-center gap-2.5 font-semibold">
+                <ScanSearch className="w-3.5 h-3.5 text-sky-400" />
+                <span>Luma Обвести для поиска</span>
+              </span>
+              <span className="text-[9px] font-mono opacity-65">Ctrl+⇧+L</span>
+            </button>
+          )}
+
+          {(rmbConfig?.showAiQuick ?? true) && (
+            <button
+              onClick={() => {
+                onOpenSystemWindow('ai');
+                setCtxMenu(null);
+              }}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
+                isDark ? 'hover:bg-indigo-500/15 text-indigo-300' : 'hover:bg-indigo-100 text-indigo-700'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="font-semibold">Спросить Luma AI 5.0 Nexus</span>
+            </button>
+          )}
+
+          {(rmbConfig?.showScreenshot ?? true) && onTakeScreenshot && (
+            <button
+              onClick={() => {
+                onTakeScreenshot();
+                setCtxMenu(null);
+              }}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
+                isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+              }`}
+            >
+              <Camera className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Сделать скриншот экрана</span>
+            </button>
+          )}
+
+          {(rmbConfig?.showOffice ?? true) && (
+            <button
+              onClick={() => {
+                onOpenSystemWindow('office');
+                setCtxMenu(null);
+              }}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
+                isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5 text-sky-400" />
+              <span>Luma Office Studio (Docs / Sheets / Slides)</span>
+            </button>
+          )}
+
+          {(rmbConfig?.showStyleSwitch ?? true) && onCycleShellStyle && (
+            <button
+              onClick={() => {
+                onCycleShellStyle();
+                setCtxMenu(null);
+              }}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
+                isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+              }`}
+            >
+              <LayoutPanelLeft className="w-3.5 h-3.5 text-violet-400" />
+              <span>Сменить стиль оболочки</span>
+            </button>
+          )}
 
           <button
             onClick={() => {
@@ -6228,7 +6355,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                             <img
                               src={entry.iconUrl}
                               alt=""
-                              className="w-5 h-5 rounded object-contain shrink-0"
+                              draggable={false}
+                              className="w-5 h-5 rounded object-contain shrink-0 pointer-events-none select-none"
                               onError={(e) => {
                                 (e.currentTarget as HTMLImageElement).style.display = 'none';
                               }}
