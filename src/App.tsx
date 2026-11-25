@@ -695,24 +695,53 @@ export default function App() {
     } catch { /* ignore */ }
     return true;
   });
+  const [springAnimationsEnabled, setSpringAnimationsEnabled] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('luma_spring_animations_v1');
+      if (v !== null) return v === 'true';
+    } catch { /* ignore */ }
+    return true;
+  });
   const [visualNoiseHidden, setVisualNoiseHidden] = useState<boolean>(false);
   const [mediaVideoPlaying, setMediaVideoPlaying] = useState<boolean>(false);
   const [bouncingDockIds, setBouncingDockIds] = useState<Record<string, boolean>>({});
   const [renderDockTask, setRenderDockTask] = useState<DockProgressTask | null>(null);
   const magneticRafRef = useRef<number | null>(null);
 
-  const triggerDockBounce = useCallback((dockKey: string) => {
-    if (!dockKey) return;
-    setBouncingDockIds((prev) => ({ ...prev, [dockKey]: true }));
-    window.setTimeout(() => {
-      setBouncingDockIds((prev) => {
-        if (!prev[dockKey]) return prev;
-        const next = { ...prev };
-        delete next[dockKey];
-        return next;
+  // Apply system-wide Spring Physics setting to document root so CSS, DexWindow, Menus & Dock react immediately
+  useEffect(() => {
+    document.documentElement.dataset.springPhysics = springAnimationsEnabled ? 'on' : 'off';
+  }, [springAnimationsEnabled]);
+
+  // Clear any lingering inline magnetic transforms immediately when Magnetic Dock is toggled off
+  useEffect(() => {
+    if (!magneticDockEnabled) {
+      if (magneticRafRef.current !== null) {
+        cancelAnimationFrame(magneticRafRef.current);
+        magneticRafRef.current = null;
+      }
+      document.querySelectorAll<HTMLElement>('[data-dock-item="1"]').forEach((el) => {
+        el.style.transform = '';
+        el.style.zIndex = '';
       });
-    }, 680);
-  }, []);
+    }
+  }, [magneticDockEnabled]);
+
+  const triggerDockBounce = useCallback(
+    (dockKey: string) => {
+      if (!dockKey || !springAnimationsEnabled) return;
+      setBouncingDockIds((prev) => ({ ...prev, [dockKey]: true }));
+      window.setTimeout(() => {
+        setBouncingDockIds((prev) => {
+          if (!prev[dockKey]) return prev;
+          const next = { ...prev };
+          delete next[dockKey];
+          return next;
+        });
+      }, 680);
+    },
+    [springAnimationsEnabled]
+  );
 
   // Zero-lag GPU magnetic Dock magnification & cursor attraction (Gaussian spring curve)
   const handleDockMagneticMove = useCallback(
@@ -725,6 +754,8 @@ export default function App() {
         const items = container.querySelectorAll<HTMLElement>('[data-dock-item="1"]');
         const radius = 148;
         items.forEach((el) => {
+          // Do not overwrite transform while elastic launch bounce keyframe is playing
+          if (el.classList.contains('luma-dock-bounce')) return;
           const rect = el.getBoundingClientRect();
           const cx = rect.left + rect.width / 2;
           const dx = clientX - cx;
@@ -733,9 +764,9 @@ export default function App() {
             const norm = absDx / radius;
             const wave = Math.cos((norm * Math.PI) / 2);
             const strength = wave * wave; // smooth bell curve
-            const scale = 1 + 0.24 * strength;
-            const liftY = -5.5 * strength;
-            const pullX = Math.max(-4, Math.min(4, (dx / radius) * 9.5 * strength));
+            const scale = 1 + 0.22 * strength;
+            const liftY = -4.5 * strength;
+            const pullX = Math.max(-3.5, Math.min(3.5, (dx / radius) * 8.5 * strength));
             el.style.transform = `translate3d(${pullX.toFixed(2)}px, ${liftY.toFixed(2)}px, 0) scale(${scale.toFixed(3)})`;
             el.style.zIndex = String(Math.round(10 + strength * 20));
           } else {
@@ -846,11 +877,12 @@ export default function App() {
       localStorage.setItem('luma_smart_dock_side_v1', smartDockSide);
       localStorage.setItem('luma_auto_hide_noise_v1', String(autoHideNoiseEnabled));
       localStorage.setItem('luma_magnetic_dock_v1', String(magneticDockEnabled));
+      localStorage.setItem('luma_spring_animations_v1', String(springAnimationsEnabled));
       localStorage.setItem('luma_gesture_config_v1', JSON.stringify(gestureConfig));
       localStorage.setItem('luma_rmb_config_v1', JSON.stringify(rmbConfig));
       localStorage.setItem('luma_accessibility_config_v1', JSON.stringify(accessibilityConfig));
     } catch { /* ignore */ }
-  }, [showLumaSysFolder, lumaFolderSlot, showSmartDockShelf, smartDockSide, autoHideNoiseEnabled, magneticDockEnabled, gestureConfig, rmbConfig, accessibilityConfig]);
+  }, [showLumaSysFolder, lumaFolderSlot, showSmartDockShelf, smartDockSide, autoHideNoiseEnabled, magneticDockEnabled, springAnimationsEnabled, gestureConfig, rmbConfig, accessibilityConfig]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -1258,8 +1290,8 @@ export default function App() {
       source: 'system',
       appName: 'Luma OS 1.6.2',
       sender: 'Luma OS 1.6.2 Nitrogen',
-      title: 'Добро пожаловать в Luma OS 1.6.4 (Nitrogen · N-7)!',
-      body: 'LumaCore 1.5.4 · LumaShield 2.5 (275 правил) · Стиль Luma Nova · Luma AI 5.0 · Gamepad Studio · Очистка хвостов · Luma Peek (Space) · Умный Dock и Стеки.',
+      title: 'Добро пожаловать в Luma OS 1.6.5 (Nitrogen · N-7)!',
+      body: 'LumaCore 1.5.5 · LumaShield 2.5 (275 правил) · Стиль Luma Nova · Luma AI 5.0 · Gamepad Studio · Очистка хвостов · Luma Peek (Space) · Умный Dock и Стеки.',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       dateLabel: 'Сегодня',
       timestamp: Date.now(),
@@ -1507,7 +1539,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.6.4 (Nitrogen · N-7) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.6.5 (Nitrogen · N-7) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -1540,7 +1572,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.6.4 (Nitrogen · N-7)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.6.5 (Nitrogen · N-7)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -1555,8 +1587,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 1.5.4',
-      message: 'Инициализация оболочки Luma OS 1.6.4 (Nitrogen · N-7), LumaCore 1.5.4, LumaShield 2.5 и AI 5.0',
+      source: 'LumaCore 1.5.5',
+      message: 'Инициализация оболочки Luma OS 1.6.5 (Nitrogen · N-7), LumaCore 1.5.5, LumaShield 2.5 и AI 5.0',
       level: 'success',
     },
   ]);
@@ -1845,11 +1877,11 @@ export default function App() {
           running: true,
           stage: 'connecting',
           percent: 6,
-          downloaded_bytes: 1.2 * 1024 * 1024,
-          total_bytes: 23.4 * 1024 * 1024,
-          speed_mbps: 14.8,
-          target_version: '1.6.1 (Nitrogen · N-7)',
-          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.6.4...',
+          downloaded_bytes: 2.1 * 1024 * 1024,
+          total_bytes: 35.0 * 1024 * 1024,
+          speed_mbps: 16.4,
+          target_version: '1.6.5 (Nitrogen · N-7)',
+          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.6.5...',
         },
       },
       {
@@ -1858,11 +1890,11 @@ export default function App() {
           running: true,
           stage: 'downloading',
           percent: 29,
-          downloaded_bytes: 9.2 * 1024 * 1024,
-          total_bytes: 31.8 * 1024 * 1024,
-          speed_mbps: 26.4,
-          target_version: '1.6.4 (Nitrogen · N-7)',
-          message: 'Загрузка сборки LumaOS_1.6.4.exe (LumaCore 1.5.4 + Win32 HID Жесты + Gemini SSE)...',
+          downloaded_bytes: 10.2 * 1024 * 1024,
+          total_bytes: 35.0 * 1024 * 1024,
+          speed_mbps: 27.6,
+          target_version: '1.6.5 (Nitrogen · N-7)',
+          message: 'Загрузка сборки LumaOS_1.6.5.exe (LumaCore 1.5.5 + HID Жесты + Пружинная физика)...',
         },
       },
       {
@@ -1871,11 +1903,11 @@ export default function App() {
           running: true,
           stage: 'downloading',
           percent: 66,
-          downloaded_bytes: 21.0 * 1024 * 1024,
-          total_bytes: 31.8 * 1024 * 1024,
-          speed_mbps: 34.8,
-          target_version: '1.6.4 (Nitrogen · N-7)',
-          message: 'Потоковая загрузка пружинной физики, магнитного Dock и 20 обоев QHD...',
+          downloaded_bytes: 23.1 * 1024 * 1024,
+          total_bytes: 35.0 * 1024 * 1024,
+          speed_mbps: 36.2,
+          target_version: '1.6.5 (Nitrogen · N-7)',
+          message: 'Потоковая загрузка системы пружинных анимаций, магнитного Dock и 20 обоев QHD...',
         },
       },
       {
@@ -1884,11 +1916,11 @@ export default function App() {
           running: true,
           stage: 'verifying',
           percent: 88,
-          downloaded_bytes: 31.8 * 1024 * 1024,
-          total_bytes: 31.8 * 1024 * 1024,
-          speed_mbps: 18.2,
-          target_version: '1.6.4 (Nitrogen · N-7)',
-          sha256: 'c7e4a91f38b06d24e91a5f802b4c1d7e',
+          downloaded_bytes: 35.0 * 1024 * 1024,
+          total_bytes: 35.0 * 1024 * 1024,
+          speed_mbps: 19.4,
+          target_version: '1.6.5 (Nitrogen · N-7)',
+          sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
           message: 'Криптографическая проверка SHA-256 и подписи PE32+ (LumaShield 2.5)...',
         },
       },
@@ -1898,12 +1930,12 @@ export default function App() {
           running: true,
           stage: 'restarting',
           percent: 100,
-          downloaded_bytes: 31.8 * 1024 * 1024,
-          total_bytes: 31.8 * 1024 * 1024,
+          downloaded_bytes: 35.0 * 1024 * 1024,
+          total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 0,
-          target_version: '1.6.4 (Nitrogen · N-7)',
-          sha256: 'c7e4a91f38b06d24e91a5f802b4c1d7e',
-          message: 'Сборка Luma OS 1.6.4 (Nitrogen · N-7) проверена и готова к мгновенному запуску!',
+          target_version: '1.6.5 (Nitrogen · N-7)',
+          sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
+          message: 'Сборка Luma OS 1.6.5 (Nitrogen · N-7) проверена и готова к мгновенному запуску!',
         },
       },
     ];
@@ -3746,7 +3778,7 @@ export default function App() {
           void pollHostWindows();
         }
       } catch {
-        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.5.4', 'warning');
+        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.5.5', 'warning');
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3961,7 +3993,7 @@ export default function App() {
   executeGestureRef.current = executeGestureAction;
 
   useEffect(() => {
-    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 1.5.4 WM_INPUT + SSE fallback)
+    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 1.5.5 WM_INPUT + SSE fallback)
     let lastNativeFireAt = 0;
     let lastNativeKey = '';
     const dispatchMappedGesture = (gestureName: string, sourceTag: string) => {
@@ -4296,7 +4328,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Luma OS 1.6.4: Auto-Hide Visual Noise (dissolves bars/panels after 2.6s cursor idle in video/fullscreen) ---
+  // --- Luma OS 1.6.5: Auto-Hide Visual Noise (dissolves bars/panels after 2.6s cursor idle in video/fullscreen) ---
   useEffect(() => {
     const anyMenuOpen =
       startMenuOpen ||
@@ -4362,7 +4394,7 @@ export default function App() {
   const altTabEntries: AltTabEntry[] = useMemo(() => {
     const lumaTitles: Partial<Record<DexWinId, string>> = {
       apps: 'Приложения', explorer: 'Проводник', taskmgr: 'Диспетчер задач', terminal: 'Терминал',
-      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.5.4', settings: 'Настройки', plugins: 'Расширения',
+      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.5.5', settings: 'Настройки', plugins: 'Расширения',
       island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma AI 5.0 Nexus', utilities: 'Службы ОС',
       calculator: 'Калькулятор', calendar: 'Календарь', trash: 'Корзина', scenarios: 'Сценарии',
       code_studio: 'Code Studio Pro', cut_studio: 'Cut Studio Pro', office: 'Luma Office Pro',
@@ -5020,7 +5052,7 @@ export default function App() {
         );
       }
     } catch {
-      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.6.4.exe)', 'info');
+      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.6.5.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -5042,7 +5074,7 @@ export default function App() {
     }
   };
 
-  // --- Luma OS 1.6.4: 100% Native Wi-Fi & Bluetooth Connectivity Handlers (ZERO Windows Settings!) ---
+  // --- Luma OS 1.6.5: 100% Native Wi-Fi & Bluetooth Connectivity Handlers (ZERO Windows Settings!) ---
   const fetchWifiStatus = useCallback(async (rescan = false) => {
     setWifiLoading(true);
     try {
@@ -5118,7 +5150,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.4' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.5' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5210,7 +5242,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.4' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.5' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -7165,7 +7197,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 1.5.4`,
+                        sub: `${ramLoad}% занято · LumaCore 1.5.5`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -7191,8 +7223,8 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.6.4 (Nitrogen · N-7)'],
-                      ['Версия Ядра', 'LumaCore 1.5.4 (1.6.4)'],
+                      ['Версия ПО', '1.6.5 (Nitrogen · N-7)'],
+                      ['Версия Ядра', 'LumaCore 1.5.5 (1.6.5)'],
                       ['Безопасность', `LumaShield 2.5 (${kernelDiag?.security_rules ?? 275}+ правил)`],
                       ['Developer SDK', `v3.0 (${kernelDiag?.sdk_themes ?? Object.keys(customThemes).length} тем / ${kernelDiag?.sdk_plugins ?? plugins.length} плаг.)`],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
@@ -7618,7 +7650,7 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.6.4 (Nitrogen · N-7 · LumaCore 1.5.4 · LumaShield 2.5)"
+          subtitle="Luma OS 1.6.5 (Nitrogen · N-7 · LumaCore 1.5.5 · LumaShield 2.5)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -8401,7 +8433,7 @@ export default function App() {
                     </button>
                   </div>
 
-                  {/* Flagship 1.6.4 Master Toggle: Замена горячих клавиш и жестов тачпада Windows */}
+                  {/* Flagship 1.6.5 Master Toggle: Замена горячих клавиш и жестов тачпада Windows */}
                   <div
                     onClick={() =>
                       !shellModeSaving &&
@@ -8422,7 +8454,7 @@ export default function App() {
                           <Keyboard className="w-4 h-4 text-[var(--luma-accent)] shrink-0" />
                           <span>Замена горячих клавиш</span>
                           <span className="px-1.5 py-0.5 rounded-md text-[9px] font-mono bg-[var(--luma-accent)] text-white">
-                            1.6.4
+                            1.6.5
                           </span>
                         </div>
                         <div className={`text-[11px] mt-1 leading-relaxed ${mutedCls}`}>
@@ -8511,7 +8543,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.6.4.exe).
+                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.6.5.exe).
                   </div>
                 </div>
               )}
@@ -8801,20 +8833,47 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Luma OS 1.6.4 Nitrogen: Auto-Hide Visual Noise & Interactive Magnetic Dock */}
+                  {/* Luma OS 1.6.5 Nitrogen: Auto-Hide Visual Noise, Magnetic Dock & System-Wide Spring Animations */}
                   <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
                     <div className="flex items-center justify-between gap-2">
                       <div>
-                        <div className="font-bold flex items-center gap-2">
-                          <span>Авто-скрытие визуального шума и Магнитный Dock</span>
-                          <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 text-[9px] font-mono">1.6.4</span>
+                        <div className="font-bold flex items-center gap-2 flex-wrap">
+                          <span>Авто-скрытие шума, Магнитный Dock и Пружинные анимации</span>
+                          <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 text-[9px] font-mono">1.6.5</span>
                         </div>
                         <div className={`text-[11px] ${mutedCls}`}>
-                          Плавное растворение панелей в полноэкранном режиме / видео и магнитное увеличение иконок Dock с отскоком
+                          Управление пружинной физикой во всей системе (окна, инерция, Dock, меню и панели), авто-скрытием в видео/F11 и магнитным увеличением иконок
                         </div>
                       </div>
+                      <span className="text-[10px] font-mono uppercase text-[var(--luma-accent)] font-bold shrink-0">
+                        {springAnimationsEnabled ? 'Пружины: ВКЛ' : 'Пружины: ВЫКЛ'}
+                      </span>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <label className={`flex items-center justify-between gap-2.5 p-2.5 rounded-xl border cursor-pointer ${
+                        springAnimationsEnabled ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]' : btnCls
+                      }`}>
+                        <div>
+                          <div className="text-xs font-bold">Пружинные анимации во всей системе</div>
+                          <div className={`text-[10px] ${mutedCls}`}>Упругая физика окон, инерция перетаскивания, отскок Dock, меню и Luma Island</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={springAnimationsEnabled}
+                          onChange={(e) => {
+                            const next = e.target.checked;
+                            setSpringAnimationsEnabled(next);
+                            pushToast(
+                              'Пружинные анимации',
+                              next
+                                ? 'Пружинная физика включена во всей системе (окна, меню, Dock и инерция)'
+                                : 'Пружинные анимации отключены — активированы быстрые линейные переходы',
+                              'info'
+                            );
+                          }}
+                          className="accent-[var(--luma-accent)] w-4 h-4 shrink-0"
+                        />
+                      </label>
                       <label className={`flex items-center justify-between gap-2.5 p-2.5 rounded-xl border cursor-pointer ${btnCls}`}>
                         <div>
                           <div className="text-xs font-bold">Авто-скрытие визуального шума</div>
@@ -9214,14 +9273,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.6.4 (Nitrogen)',
-                        message: 'Система оповещений Luma OS 1.6.4 (Nitrogen) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.6.5 (Nitrogen)',
+                        message: 'Система оповещений Luma OS 1.6.5 (Nitrogen) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.6.4 (Nitrogen)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.6.5 (Nitrogen)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -9233,7 +9292,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.6.4 (Nitrogen · N-7) · LumaCore 1.5.4</div>
+                      <div className="text-sm font-bold">Luma OS 1.6.5 (Nitrogen · N-7) · LumaCore 1.5.5</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -10791,14 +10850,14 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.6.4 (NITROGEN · N-7)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.6.5 (NITROGEN · N-7)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5.4 · LumaShield 2.5 (275 правил) · Luma Ai Nitrogen · Touch &amp; Stylus · Стиль Luma Nova · Gamepad Studio · Luma Peek
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5.5 · LumaShield 2.5 (275 правил) · Luma Ai Nitrogen · Touch &amp; Stylus · Стиль Luma Nova · Gamepad Studio · Luma Peek
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.6.4.exe"
-                      download="LumaOS_1.6.4.exe"
+                      href="/LumaOS_1.6.5.exe"
+                      download="LumaOS_1.6.5.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
@@ -12483,7 +12542,7 @@ export default function App() {
                     setTaskbarHostWinPid(null);
                     setTaskbarCtxMenu(null);
                   }}
-                  title={`${t('start', 'Пуск')} · Приложения и Обзор окон (Luma OS 1.6.4 Nitrogen)`}
+                  title={`${t('start', 'Пуск')} · Приложения и Обзор окон (Luma OS 1.6.5 Nitrogen)`}
                   className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
                     startMenuOpen
                       ? 'bg-[var(--luma-accent)] text-white'
@@ -12558,11 +12617,13 @@ export default function App() {
               onMouseMove={handleDockMagneticMove}
               onMouseLeave={handleDockMagneticLeave}
               onWheel={(e) => {
-                if (Math.abs(e.deltaY) > 0) {
+                if (totalBarTabsCount > 9 && Math.abs(e.deltaY) > 0) {
                   e.currentTarget.scrollLeft += e.deltaY;
                 }
               }}
-              className={`flex-1 min-w-0 flex items-center gap-1 overflow-x-auto no-scrollbar py-1 ${
+              className={`flex-1 min-w-0 flex items-center gap-1 ${
+                totalBarTabsCount > 9 ? 'overflow-x-auto no-scrollbar py-1.5' : 'overflow-visible py-1'
+              } ${
                 taskbarCenterIcons || dualTaskbarMode ? 'justify-center' : ''
               }`}
             >
@@ -12630,7 +12691,7 @@ export default function App() {
                 </button>
               )}
 
-              {/* Luma OS 1.6.4 Interactive Magnetic Smart Dock: Direct 1-Click Pinned Apps Launcher + Bounce + Live Badges & Progress Halo */}
+              {/* Luma OS 1.6.5 Interactive Magnetic Smart Dock: Direct 1-Click Pinned Apps Launcher + Bounce + Live Badges & Progress Halo */}
               {taskbarDirectLaunch && taskbarDirectAppIds.length > 0 && (
                 <>
                   {taskbarDirectAppIds
@@ -13349,13 +13410,13 @@ export default function App() {
                   setCarbonHubOpen(false);
                   setNotifShadeOpen(false);
                 }}
-                title="Пуск · Приложения и Обзор окон (Luma OS 1.6.4 Nitrogen)"
+                title="Пуск · Приложения и Обзор окон (Luma OS 1.6.5 Nitrogen)"
                 className={`h-8 px-2.5 rounded-xl flex items-center gap-1.5 text-xs font-bold cursor-pointer transition ${
                   startMenuOpen ? 'bg-[var(--luma-accent)] text-white' : btnCls + ' border'
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-current" />
-                <span>Luma 1.6.4</span>
+                <span>Luma 1.6.5</span>
               </button>
             )}
             <button
@@ -13593,6 +13654,41 @@ export default function App() {
           >
             <Eye className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
             <span>{taskbarAutoHide ? 'Закрепить панель задач' : 'Автоскрытие при простое'}</span>
+          </button>
+          <button
+            onClick={() => {
+              setSpringAnimationsEnabled((v) => {
+                const next = !v;
+                pushToast(
+                  'Пружинные анимации',
+                  next
+                    ? 'Пружинная физика включена во всей системе'
+                    : 'Пружинные анимации отключены — быстрый режим без отскока',
+                  'info'
+                );
+                return next;
+              });
+              setTaskbarCtxMenu(null);
+            }}
+            className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl text-left font-semibold cursor-pointer ${
+              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+            }`}
+          >
+            <span className="flex items-center gap-2.5 min-w-0">
+              <Sparkles className="w-3.5 h-3.5 text-[var(--luma-accent)] shrink-0" />
+              <span className="truncate">Пружинные анимации</span>
+            </span>
+            <span
+              className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold shrink-0 ${
+                springAnimationsEnabled
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : isDark
+                  ? 'bg-white/10 text-zinc-400'
+                  : 'bg-zinc-900/10 text-zinc-600'
+              }`}
+            >
+              {springAnimationsEnabled ? 'ВКЛ' : 'ВЫКЛ'}
+            </span>
           </button>
           <button
             onClick={() => {
@@ -14564,7 +14660,7 @@ export default function App() {
               {!startSearch.trim() && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                    <span className={mutedCls}>Luma OS 1.6.4 (Nitrogen · N-7)</span>
+                    <span className={mutedCls}>Luma OS 1.6.5 (Nitrogen · N-7)</span>
                     <div className="flex items-center gap-1.5">
                       {enabledFeatures.privateVault && (
                         <button
@@ -14577,7 +14673,7 @@ export default function App() {
                           🔒 Приватный стол
                         </button>
                       )}
-                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.5.4</span>
+                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.5.5</span>
                     </div>
                   </div>
                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
@@ -14684,7 +14780,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.6.4 (Nitrogen)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.6.5 (Nitrogen)'}
                   </div>
                 </div>
               </div>
@@ -15962,7 +16058,7 @@ export default function App() {
         onNotify={(title, msg, level) => pushToast(title, msg, level || 'info')}
       />
 
-      {/* ==================== LUMA OS 1.6.4 (NITROGEN) LUMA NOVA STYLE TOP-RIGHT PILL & COMPACT PANEL ==================== */}
+      {/* ==================== LUMA OS 1.6.5 (NITROGEN) LUMA NOVA STYLE TOP-RIGHT PILL & COMPACT PANEL ==================== */}
       {isNova && (
         <div
           className={`transition-opacity duration-300 ${
@@ -16162,7 +16258,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.6.4 (Nitrogen · N-7) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
+                  Luma OS 1.6.5 (Nitrogen · N-7) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
                 </div>
               </div>
             </div>

@@ -881,7 +881,7 @@ export const LumaOfficeSuiteWindow: React.FC<LumaOfficeSuiteWindowProps> = ({
 
             {backstageTab === 'info' && (
               <div className="space-y-3 max-w-xl text-xs leading-relaxed">
-                <h2 className="text-xl font-bold">Luma Office Studio 1.6.4 (Nitrogen · Luma Ai Nitrogen)</h2>
+                <h2 className="text-xl font-bold">Luma Office Studio 1.6.5 (Nitrogen · Luma Ai Nitrogen)</h2>
                 <p>Классический понятный интерфейс Word, Excel и PowerPoint с группировкой инструментов на ленте Ribbon, постраничной вёрсткой A4, потоковым помощником Luma Ai Nitrogen и автосохранением.</p>
                 <ul className="list-disc pl-5 space-y-1 opacity-85">
                   <li><strong>Word:</strong> 7 вкладок ленты, многостраничная вёрстка A4 с разрывами страниц (`Ctrl+Enter`) и навигатором страниц, сетка таблиц 10×8, Формат по образцу, поиск/замена, оглавление, линейка и примечания.</li>

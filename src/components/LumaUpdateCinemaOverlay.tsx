@@ -44,39 +44,39 @@ const STAGES = [
   { id: 'downloading', label: 'Потоковая загрузка EXE', short: 'Загрузка', minPct: 10 },
   { id: 'verifying', label: 'Проверка SHA-256 & PE32+', short: 'Хеш-проверка', minPct: 82 },
   { id: 'migrating', label: 'Сохранение профиля и виджетов', short: 'Профиль', minPct: 91 },
-  { id: 'restarting', label: 'Запуск LumaCore 1.5.4', short: 'Перезапуск', minPct: 96 },
+  { id: 'restarting', label: 'Запуск LumaCore 1.5.5', short: 'Перезапуск', minPct: 96 },
 ];
 
 const WHATS_NEW_HIGHLIGHTS = [
   {
     icon: Hand,
     accent: 'text-sky-300 bg-sky-500/15 border-sky-400/30',
-    title: 'Нативные многопальцевые жесты',
-    desc: 'Прямой драйвер Win32 Precision Touchpad HID + обновлённый мультитач-трекер для свайпов 3 и 4 пальцами.',
+    title: 'Усиленный Win32 HID драйвер жестов',
+    desc: 'Точный разбор IsRange==0, гибридных пакетов Precision Touchpad и мульти-контакта с таймером отрыва.',
   },
   {
     icon: Sparkles,
     accent: 'text-indigo-300 bg-indigo-500/15 border-indigo-400/30',
-    title: 'Обновлённый Google Gemini API',
-    desc: 'Потоковый SSE-вывод и OpenAI-совместимость для gemini-2.5-flash и flash-lite с чистой диагностикой.',
+    title: 'Google Gemini API + Изоляция ключей',
+    desc: 'Потоковый SSE и OpenAI-совместимость для gemini-2.5-flash/flash-lite с полной диагностикой.',
   },
   {
     icon: Magnet,
     accent: 'text-fuchsia-300 bg-fuchsia-500/15 border-fuchsia-400/30',
-    title: 'Магнитный Dock и прогресс рендера',
-    desc: 'Плавное притяжение иконок к курсору, пружинный отскок при запуске и ореол прогресса загрузок/рендера.',
+    title: 'Магнитный Dock без обрезки и прогресс',
+    desc: 'Свободный подъём иконок, пружинный отскок запуска и ореол прогресса загрузок/рендера.',
   },
   {
     icon: Waves,
     accent: 'text-emerald-300 bg-emerald-500/15 border-emerald-400/30',
-    title: 'Пружинная физика и Авто-скрытие шума',
-    desc: 'Инерция перетаскивания окон, упругие меню и автоматическое растворение панелей при просмотре видео.',
+    title: 'Переключатель пружинных анимаций',
+    desc: 'Управляйте пружинной физикой окон, меню и Dock прямо из панели задач или Настроек.',
   },
 ];
 
 export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = React.memo(
   ({ open, progress, previewMode = false, onClose }) => {
-    const [speedSamples, setSpeedSamples] = useState<number[]>([2.4, 4.1, 5.8, 6.2, 7.1, 6.8]);
+    const [speedSamples, setSpeedSamples] = useState<number[]>([]);
     const [highlightIdx, setHighlightIdx] = useState(0);
     const [showLog, setShowLog] = useState(false);
     const [logLines, setLogLines] = useState<{ ts: string; text: string }[]>([]);
@@ -86,10 +86,11 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
     useEffect(() => {
       if (!open) return;
       startTimeRef.current = Date.now();
+      setSpeedSamples([]);
       setLogLines([
         {
           ts: new Date().toLocaleTimeString('ru-RU', { hour12: false }),
-          text: `Инициализация OTA-модуля LumaCore 1.5.4 (Nitrogen · N-7)`,
+          text: `Инициализация OTA-модуля LumaCore 1.5.5 (Nitrogen · N-7)`,
         },
       ]);
       lastLoggedMsgRef.current = '';
@@ -120,7 +121,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
     }, [open, progress]);
 
     const sparklinePath = useMemo(() => {
-      const pts = speedSamples.length >= 2 ? speedSamples : [1, 2];
+      const pts = speedSamples.length >= 2 ? speedSamples : speedSamples.length === 1 ? [speedSamples[0] * 0.6, speedSamples[0]] : [0.5, 0.5];
       const maxV = Math.max(1, ...pts) * 1.15;
       const w = 132;
       const h = 28;
@@ -145,7 +146,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
     const dlBytes = progress.downloaded_bytes || 0;
     const totBytes = progress.total_bytes || 0;
     const dlMb = dlBytes > 0 ? (dlBytes / (1024 * 1024)).toFixed(1) : '0.0';
-    const totMb = totBytes > 0 ? (totBytes / (1024 * 1024)).toFixed(1) : '31.8';
+    const totMb = totBytes > 0 ? (totBytes / (1024 * 1024)).toFixed(1) : '35.0';
     const speedMbps = Number(progress.speed_mbps || 0);
 
     // Dynamic ETA computation
@@ -166,7 +167,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
 
     const activeHighlight = WHATS_NEW_HIGHLIGHTS[highlightIdx];
     const HighlightIcon = activeHighlight.icon;
-    const targetVer = progress.target_version || '1.6.4';
+    const targetVer = progress.target_version || '1.6.5';
 
     return (
       <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 select-none overflow-y-auto bg-[#02050d]/94 backdrop-blur-3xl text-white luma-spring-panel">
@@ -218,7 +219,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
               </span>
               <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/10 text-slate-300">
                 <Cpu className="w-3.5 h-3.5 text-sky-400" />
-                LumaCore 1.5.4
+                LumaCore 1.5.5
               </span>
             </div>
           </div>
@@ -380,7 +381,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
                 </div>
               </div>
 
-              {/* Interactive "What's New in 1.6.4" Feature Showcase Carousel */}
+              {/* Interactive "What's New in 1.6.5" Feature Showcase Carousel */}
               <div className="p-4 rounded-2xl border border-sky-400/20 bg-gradient-to-br from-sky-500/[0.09] via-indigo-500/[0.06] to-transparent">
                 <div className="flex items-center justify-between gap-2 mb-2.5">
                   <div className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-sky-300">
@@ -452,7 +453,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
           <div className="pt-2 border-t border-white/10 flex flex-col gap-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 font-mono">
               <span>
-                Все виджеты, папки, приложения, память ИИ и темы сохраняются автоматически · LumaCore 1.5.4
+                Все виджеты, папки, приложения, память ИИ и темы сохраняются автоматически · LumaCore 1.5.5
               </span>
               <button
                 type="button"

@@ -131,7 +131,7 @@ export const LumaCalendarWindow: React.FC<LumaCalendarWindowProps> = React.memo(
           id: 'ev_welcome_nitrogen',
           date: todayKey,
           time: '10:00',
-          title: 'Luma OS 1.6.4 (Nitrogen · N-7)',
+          title: 'Luma OS 1.6.5 (Nitrogen · N-7)',
           note: 'Luma Ai Nitrogen, Luma Office Studio, LumaShield 2.5 и умный календарь',
           color: '#06b6d4',
           category: 'work',

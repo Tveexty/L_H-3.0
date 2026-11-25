@@ -165,7 +165,7 @@ export const LumaNovaPanel: React.FC<LumaNovaPanelProps> = ({
       {open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`luma-animate-in fixed top-12 right-3 z-[9450] w-[390px] max-w-[95vw] max-h-[84vh] overflow-y-auto rounded-[24px] border p-4 shadow-[0_28px_80px_rgba(0,0,0,0.65)] backdrop-blur-2xl space-y-3.5 select-none ${
+          className={`luma-spring-panel fixed top-12 right-3 z-[9450] w-[390px] max-w-[95vw] max-h-[84vh] overflow-y-auto rounded-[24px] border p-4 shadow-[0_28px_80px_rgba(0,0,0,0.65)] backdrop-blur-2xl space-y-3.5 select-none ${
             isDark
               ? 'bg-[#0a111f]/94 border-white/15 text-white'
               : 'bg-[#f4f7fb]/95 border-slate-300 text-slate-900'

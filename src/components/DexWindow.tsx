@@ -328,7 +328,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
       if (st?.mode === 'drag') {
         if (snapPreviewRef.current) {
           applySnap(snapPreviewRef.current);
-        } else {
+        } else if (document.documentElement.dataset.springPhysics !== 'off') {
           // Spring-physics flick inertia: react organically to drag velocity on release!
           const speed = Math.hypot(st.vx, st.vy);
           const staleMs = performance.now() - st.lastT;
@@ -357,7 +357,18 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
       window.removeEventListener('pointercancel', onUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskbarPosition, taskbarSizePx, minWidth, minHeight]);
+  }, [taskbarPosition, taskbarSizePx, topBarOffsetPx, minWidth, minHeight]);
+
+  // Keep maximized numeric bounds synchronized on viewport resize so maximize/restore spring-interpolates smoothly!
+  const [vpSize, setVpSize] = useState<{ w: number; h: number }>(() => ({
+    w: typeof window !== 'undefined' ? window.innerWidth : 1440,
+    h: typeof window !== 'undefined' ? window.innerHeight : 900,
+  }));
+  useEffect(() => {
+    const onResize = () => setVpSize({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', onResize, { passive: true });
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const startDrag = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
@@ -440,14 +451,16 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
   const { padTop, padBottom, padLeft, padRight } = getInsets();
   const isGlass = designStyle === 'glass';
   const isNova = designStyle === 'nova';
+  const maxW = Math.max(minWidth, vpSize.w - padLeft - padRight);
+  const maxH = Math.max(minHeight, vpSize.h - padTop - padBottom);
 
   const style: React.CSSProperties = maximized
     ? {
         position: 'fixed',
-        top: padTop,
         left: padLeft,
-        right: padRight,
-        bottom: padBottom,
+        top: padTop,
+        width: maxW,
+        height: maxH,
         zIndex,
         borderRadius: isGlass ? '22px' : isNova ? '16px' : 'var(--luma-radius)',
       }

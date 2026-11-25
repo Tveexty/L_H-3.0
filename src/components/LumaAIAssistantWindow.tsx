@@ -205,7 +205,7 @@ export const DEFAULT_LUMA_AI_CONFIG: LumaAIConfig = {
   models: {},
   baseUrls: {},
   systemPrompt:
-    'Ты — Luma Ai Nitrogen, универсальный личный ассистент, программист и помощник в Luma OS 1.6.4 (Nitrogen · N-7). Отвечай чётко, без воды, с Markdown-кодом, используй долговременную память и помогай с системой, Офисом, Календарём и поиском.',
+    'Ты — Luma Ai Nitrogen, универсальный личный ассистент, программист и помощник в Luma OS 1.6.5 (Nitrogen · N-7). Отвечай чётко, без воды, с Markdown-кодом, используй долговременную память и помогай с системой, Офисом, Календарём и поиском.',
   temperature: 0.7,
   includeSystemContext: true,
 };
@@ -594,14 +594,19 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
   };
 
   const syncNitrogenBackendConfig = async () => {
+    const isLocalProv = config.provider === 'luma_local' || config.provider === 'ollama';
+    const cleanMod =
+      config.provider === 'gemini'
+        ? (currentModel || preset.defaultModel).trim().replace(/^(?:models\/)+/i, '')
+        : (currentModel || preset.defaultModel || 'qwen2.5:3b').trim();
     try {
       await fetch('/api/kernel/ai/nitrogen/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          base_url: currentBaseUrl || 'http://127.0.0.1:11434/v1',
-          api_key: currentKey || 'ollama',
-          model_name: currentModel || 'qwen2.5:3b',
+          base_url: currentBaseUrl || preset.defaultBaseUrl || 'http://127.0.0.1:11434/v1',
+          api_key: currentKey || (isLocalProv ? 'ollama' : ''),
+          model_name: cleanMod,
           temperature: config.temperature,
           system_prompt: config.systemPrompt,
         }),
@@ -860,7 +865,7 @@ export const LumaAIAssistantWindow: React.FC<LumaAIAssistantWindowProps> = React
         onPushToast(`${preset.label} · ${resolvedModel}`, errDetail, 'warning');
       }
     } catch {
-      onPushToast('Luma Ai Nitrogen', 'Нет ответа от шлюза LumaCore 1.5.4', 'warning');
+      onPushToast('Luma Ai Nitrogen', 'Нет ответа от шлюза LumaCore 1.5.5', 'warning');
     } finally {
       setLoading(false);
     }

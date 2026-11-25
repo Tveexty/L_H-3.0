@@ -116,19 +116,27 @@ type tpHidpValueCaps struct {
 	DataIndexMax      uint16
 }
 
+type tpContactAxis struct {
+	link uint16
+	xMin int32
+	xRng float64
+	yMin int32
+	yRng float64
+	hasX bool
+	hasY bool
+}
+
 type tpDeviceMeta struct {
 	preparsed     []byte
 	contactLink   uint16
-	xLink         uint16
-	yLink         uint16
-	xRange        float64
-	yRange        float64
+	contacts      []tpContactAxis
 	hasContactCnt bool
 	hasXY         bool
 }
 
 const (
 	tpWmInput             = 0x00FF
+	tpWmTimer             = 0x0113
 	tpRimTypeHid          = 2
 	tpRidInput            = 0x10000003
 	tpRidiPreparsedData   = 0x20000005
@@ -137,11 +145,13 @@ const (
 	tpHidpInput           = 0
 	tpUsagePageDigitizer  = 0x000D
 	tpUsageTouchPad       = 0x0005
+	tpUsageTipSwitch      = 0x0042
 	tpUsageContactCount   = 0x0054
 	tpUsagePageGeneric    = 0x0001
 	tpUsageX              = 0x0030
 	tpUsageY              = 0x0031
 	tpHidpStatusSuccess   = 0x00110000
+	tpIdleFlushTimerID    = 1
 )
 
 var (
@@ -153,6 +163,8 @@ var (
 	tpProcRegisterRawInputDevices   = tpRawUser32DLL.NewProc("RegisterRawInputDevices")
 	tpProcGetRawInputData           = tpRawUser32DLL.NewProc("GetRawInputData")
 	tpProcGetRawInputDeviceInfoW    = tpRawUser32DLL.NewProc("GetRawInputDeviceInfoW")
+	tpProcSetTimer                  = tpRawUser32DLL.NewProc("SetTimer")
+	tpProcKillTimer                 = tpRawUser32DLL.NewProc("KillTimer")
 	tpProcTranslateMessage          = tpRawUser32DLL.NewProc("TranslateMessage")
 	tpProcDispatchMessageW          = tpRawUser32DLL.NewProc("DispatchMessageW")
 	tpKernel32DLL                   = syscall.NewLazyDLL("kernel32.dll")
@@ -161,8 +173,9 @@ var (
 	tpProcHidPGetCaps               = tpHidDLL.NewProc("HidP_GetCaps")
 	tpProcHidPGetValueCaps          = tpHidDLL.NewProc("HidP_GetValueCaps")
 	tpProcHidPGetUsageValue         = tpHidDLL.NewProc("HidP_GetUsageValue")
+	tpProcHidPGetUsages             = tpHidDLL.NewProc("HidP_GetUsages")
 
-	// Permanent single package-level WndProc callback for Precision Touchpad WM_INPUT (ZERO leaks!)
+	// Permanent single package-level WndProc callback for Precision Touchpad WM_INPUT + WM_TIMER (ZERO leaks!)
 	tpRawWndProcCallback = syscall.NewCallback(tpRawInputWndProc)
 
 	tpRawMu           sync.Mutex
@@ -174,7 +187,7 @@ var (
 	tpLastGestureName string
 	tpLastGestureAt   int64
 
-	// Active multi-finger touchpad gesture state machine
+	// Active multi-finger touchpad gesture state machine (handles Parallel & Hybrid PTP reports!)
 	tpTracking      bool
 	tpPeakFingers   int
 	tpStartX        float64
@@ -190,6 +203,14 @@ var (
 	tpNextSub int
 	tpSubs    = map[int]chan NativeTouchpadGestureEvent{}
 )
+
+func tpValueCapMatchesUsage(vc tpHidpValueCaps, usage uint16) bool {
+	if vc.IsRange != 0 {
+		return vc.UsageMin <= usage && usage <= vc.UsageMax
+	}
+	// When IsRange == 0, HIDP_VALUE_CAPS uses NotRange.Usage stored in UsageMin (UsageMax is Reserved1 == 0!)
+	return vc.UsageMin == usage
+}
 
 func subscribeNativeTouchpadGestures() (int, <-chan NativeTouchpadGestureEvent) {
 	tpSubMu.Lock()
@@ -298,33 +319,76 @@ func tpGetOrLoadDeviceMeta(hDevice uintptr) *tpDeviceMeta {
 
 	meta := &tpDeviceMeta{
 		preparsed: buf,
-		xRange:    1000,
-		yRange:    1000,
 	}
+	byLink := map[uint16]*tpContactAxis{}
+	linkOrder := make([]uint16, 0, 5)
+	getAxis := func(link uint16) *tpContactAxis {
+		if ax, ok := byLink[link]; ok {
+			return ax
+		}
+		ax := &tpContactAxis{link: link, xRng: 1000, yRng: 1000}
+		byLink[link] = ax
+		linkOrder = append(linkOrder, link)
+		return ax
+	}
+
 	for i := 0; i < int(numCaps); i++ {
 		vc := vcaps[i]
-		if vc.UsagePage == tpUsagePageDigitizer && vc.UsageMin <= tpUsageContactCount && tpUsageContactCount <= vc.UsageMax {
+		if vc.UsagePage == tpUsagePageDigitizer && tpValueCapMatchesUsage(vc, tpUsageContactCount) {
 			meta.contactLink = vc.LinkCollection
 			meta.hasContactCnt = true
 		}
-		if vc.UsagePage == tpUsagePageGeneric && vc.UsageMin <= tpUsageX && tpUsageX <= vc.UsageMax && !meta.hasXY {
-			meta.xLink = vc.LinkCollection
+		if vc.UsagePage == tpUsagePageGeneric && tpValueCapMatchesUsage(vc, tpUsageX) {
+			ax := getAxis(vc.LinkCollection)
+			ax.xMin = vc.LogicalMin
 			if vc.LogicalMax > vc.LogicalMin {
-				meta.xRange = float64(vc.LogicalMax - vc.LogicalMin)
+				ax.xRng = float64(vc.LogicalMax - vc.LogicalMin)
 			}
+			ax.hasX = true
 		}
-		if vc.UsagePage == tpUsagePageGeneric && vc.UsageMin <= tpUsageY && tpUsageY <= vc.UsageMax && !meta.hasXY {
-			meta.yLink = vc.LinkCollection
+		if vc.UsagePage == tpUsagePageGeneric && tpValueCapMatchesUsage(vc, tpUsageY) {
+			ax := getAxis(vc.LinkCollection)
+			ax.yMin = vc.LogicalMin
 			if vc.LogicalMax > vc.LogicalMin {
-				meta.yRange = float64(vc.LogicalMax - vc.LogicalMin)
+				ax.yRng = float64(vc.LogicalMax - vc.LogicalMin)
 			}
-			if meta.xLink != 0 || meta.yLink != 0 {
-				meta.hasXY = true
-			}
+			ax.hasY = true
+		}
+	}
+	for _, lk := range linkOrder {
+		ax := byLink[lk]
+		if ax.hasX && ax.hasY {
+			meta.contacts = append(meta.contacts, *ax)
+			meta.hasXY = true
 		}
 	}
 	tpDeviceCache[hDevice] = meta
 	return meta
+}
+
+func tpIsTipDown(ppPtr, repPtr, repLen uintptr, link uint16) bool {
+	var usages [8]uint16
+	usageLen := uint32(len(usages))
+	st, _, _ := tpProcHidPGetUsages.Call(
+		tpHidpInput,
+		tpUsagePageDigitizer,
+		uintptr(link),
+		uintptr(unsafe.Pointer(&usages[0])),
+		uintptr(unsafe.Pointer(&usageLen)),
+		ppPtr,
+		repPtr,
+		repLen,
+	)
+	if uint32(st) != tpHidpStatusSuccess {
+		// If device doesn't expose TipSwitch on this link, treat contact as valid
+		return true
+	}
+	for i := uint32(0); i < usageLen && i < uint32(len(usages)); i++ {
+		if usages[i] == tpUsageTipSwitch {
+			return true
+		}
+	}
+	return false
 }
 
 func tpFinalizeTrackedGesture(nowMs int64) {
@@ -349,17 +413,17 @@ func tpFinalizeTrackedGesture(nowMs int64) {
 	vy := dy / dt * 1000.0
 
 	// Normalized touchpad coordinates (0.0 .. 1.0 across touchpad width/height)
-	if dist < 0.045 && dt < 340 && fingers == 3 {
+	if dist < 0.048 && dt < 360 && fingers == 3 {
 		tpCooldownUntil = nowMs + 360
 		emitNativeTouchpadGesture("three_fingers_tap", fingers, vx, vy)
 		return
 	}
-	if dist < 0.095 {
+	if dist < 0.085 {
 		return
 	}
 
 	tpCooldownUntil = nowMs + 380
-	if fingers >= 4 && dy > 0.10 && math.Abs(dy) > math.Abs(dx)*1.15 {
+	if fingers >= 4 && dy > 0.095 && math.Abs(dy) > math.Abs(dx)*1.12 {
 		emitNativeTouchpadGesture("four_fingers_down", fingers, vx, vy)
 		return
 	}
@@ -411,8 +475,8 @@ func tpProcessRawInput(lParam uintptr) {
 	reportStart := hidOffset + int(unsafe.Sizeof(tpRawHid{}))
 	nowMs := time.Now().UnixMilli()
 
-	// If previous gesture stalled for >280ms without lift packet, flush cleanly
-	if tpTracking && nowMs-tpLastFrameMs > 280 {
+	// If previous gesture stalled for >160ms without lift packet, flush cleanly
+	if tpTracking && nowMs-tpLastFrameMs > 160 {
 		tpFinalizeTrackedGesture(tpLastFrameMs)
 	}
 
@@ -434,22 +498,48 @@ func tpProcessRawInput(lParam uintptr) {
 			continue
 		}
 
-		var rawX, rawY uint32
-		stX, _, _ := tpProcHidPGetUsageValue.Call(
-			tpHidpInput, tpUsagePageGeneric, uintptr(meta.xLink), tpUsageX,
-			uintptr(unsafe.Pointer(&rawX)), ppPtr, repPtr, repLen,
-		)
-		stY, _, _ := tpProcHidPGetUsageValue.Call(
-			tpHidpInput, tpUsagePageGeneric, uintptr(meta.yLink), tpUsageY,
-			uintptr(unsafe.Pointer(&rawY)), ppPtr, repPtr, repLen,
-		)
-		if uint32(stX) != tpHidpStatusSuccess || uint32(stY) != tpHidpStatusSuccess {
+		// Average normalized coordinates across all active contacts (TipSwitch == down) in this report!
+		var sumX, sumY float64
+		activeTips := 0
+		for _, ax := range meta.contacts {
+			if !tpIsTipDown(ppPtr, repPtr, repLen, ax.link) {
+				continue
+			}
+			var rawX, rawY uint32
+			stX, _, _ := tpProcHidPGetUsageValue.Call(
+				tpHidpInput, tpUsagePageGeneric, uintptr(ax.link), tpUsageX,
+				uintptr(unsafe.Pointer(&rawX)), ppPtr, repPtr, repLen,
+			)
+			stY, _, _ := tpProcHidPGetUsageValue.Call(
+				tpHidpInput, tpUsagePageGeneric, uintptr(ax.link), tpUsageY,
+				uintptr(unsafe.Pointer(&rawY)), ppPtr, repPtr, repLen,
+			)
+			if uint32(stX) == tpHidpStatusSuccess && uint32(stY) == tpHidpStatusSuccess {
+				sumX += (float64(int32(rawX)) - float64(ax.xMin)) / ax.xRng
+				sumY += (float64(int32(rawY)) - float64(ax.yMin)) / ax.yRng
+				activeTips++
+			}
+		}
+
+		cnt := int(contactCnt)
+
+		// Hybrid-Mode PTP Continuation Packet: ContactCount == 0 while TipSwitch is still down!
+		// NEVER terminate tracking on a continuation packet!
+		if cnt == 0 && activeTips > 0 && tpTracking {
+			tpLastFrameMs = nowMs
 			continue
 		}
 
-		nx := float64(rawX) / meta.xRange
-		ny := float64(rawY) / meta.yRange
-		cnt := int(contactCnt)
+		// All fingers lifted (TipSwitch == 0 across all contacts)
+		if activeTips == 0 {
+			if tpTracking {
+				tpFinalizeTrackedGesture(nowMs)
+			}
+			continue
+		}
+
+		nx := sumX / float64(activeTips)
+		ny := sumY / float64(activeTips)
 
 		if cnt >= 3 {
 			if !tpTracking {
@@ -464,12 +554,13 @@ func tpProcessRawInput(lParam uintptr) {
 				if cnt > tpPeakFingers {
 					tpPeakFingers = cnt
 				}
-				tpLastX = nx
-				tpLastY = ny
+				// Smooth exponential blend avoids single-packet contact-slot swaps
+				tpLastX = tpLastX*0.35 + nx*0.65
+				tpLastY = tpLastY*0.35 + ny*0.65
 			}
 			tpLastFrameMs = nowMs
 		} else if tpTracking {
-			// Fingers lifted below 3 -> evaluate swipe/tap immediately!
+			// Finger count dropped cleanly to 1 or 2 -> evaluate swipe/tap immediately!
 			tpFinalizeTrackedGesture(nowMs)
 		}
 	}
@@ -478,6 +569,15 @@ func tpProcessRawInput(lParam uintptr) {
 func tpRawInputWndProc(hwnd uintptr, msg uint32, wParam uintptr, lParam uintptr) uintptr {
 	if msg == tpWmInput {
 		tpProcessRawInput(lParam)
+		return 0
+	}
+	if msg == tpWmTimer && wParam == tpIdleFlushTimerID {
+		if tpTracking {
+			nowMs := time.Now().UnixMilli()
+			if nowMs-tpLastFrameMs > 125 {
+				tpFinalizeTrackedGesture(tpLastFrameMs)
+			}
+		}
 		return 0
 	}
 	ret, _, _ := tpProcDefWindowProcW.Call(hwnd, uintptr(msg), wParam, lParam)
@@ -497,7 +597,7 @@ func startNativeTouchpadRawInputListener(wv webview2.WebView, _ uintptr, stopCh 
 	tpRawMu.Unlock()
 
 	hInst, _, _ := tpProcGetModuleHandleW.Call(0)
-	clsName, err := syscall.UTF16PtrFromString("LumaTouchpadRawInputSink164")
+	clsName, err := syscall.UTF16PtrFromString("LumaTouchpadRawInputSink165")
 	if err != nil {
 		return
 	}
@@ -524,6 +624,10 @@ func startNativeTouchpadRawInputListener(wv webview2.WebView, _ uintptr, stopCh 
 		return
 	}
 	defer tpProcDestroyWindow.Call(hwndMsg)
+
+	// Periodic 80ms WM_TIMER ensures finger-lift gestures flush immediately even if touchpad omits a 0-contact report
+	_, _, _ = tpProcSetTimer.Call(hwndMsg, tpIdleFlushTimerID, 80, 0)
+	defer tpProcKillTimer.Call(hwndMsg, tpIdleFlushTimerID)
 
 	rid := tpRawInputDevice{
 		UsagePage: tpUsagePageDigitizer,

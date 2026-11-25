@@ -1,28 +1,28 @@
 <div align="center">
 
-<img src="public/luma-nitrogen-hero.jpg" alt="Luma OS 1.6.4 (Nitrogen · N-7 · 2.5D Cryo-Glass QHD)" width="100%" style="border-radius: 18px;" />
+<img src="public/luma-nitrogen-hero.jpg" alt="Luma OS 1.6.5 (Nitrogen · N-7 · 2.5D Cryo-Glass QHD)" width="100%" style="border-radius: 18px;" />
 
 <br />
 
-# Luma OS 1.6.4 — **Nitrogen · N-7**
+# Luma OS 1.6.5 — **Nitrogen · N-7**
 
-**Флагманская настольная операционная среда для Windows 10 / 11 на ядре `LumaCore 1.5.4`, защите `LumaShield 2.5` (275 правил) и модульном ИИ `Luma Ai Nitrogen`: нативный Win32 HID-драйвер многопальцевых жестов тачпада и сенсора, исправленный потоковый клиент Google Gemini API (SSE + OpenAI-compat), авто-скрытие визуального шума в видео/полном экране, интерактивный магнитный Dock с отскоком запуска и ореолом прогресса рендера/загрузок, пружинная физика окон с инерцией и полностью обновлённый информативный экран OTA-обновления**
+**Флагманская настольная операционная среда для Windows 10 / 11 на ядре `LumaCore 1.5.5`, защите `LumaShield 2.5` (275 правил) и модульном ИИ `Luma Ai Nitrogen`: глобальный переключатель «Пружинные анимации во всей системе» в панели задач, доработанный нативный Win32 HID-драйвер Precision Touchpad для всех контроллеров, плавное пружинное разворачивание окон и магнитный Dock без обрезки, строгая изоляция ключей облачных ИИ-провайдеров и ультра-информативный экран OTA-обновления**
 
 <p>
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.4"><img src="https://img.shields.io/badge/Release-v1.6.4%20(Nitrogen%20·%20N--7)-38bdf8?style=for-the-badge" alt="Release v1.6.4" /></a>
-  <img src="https://img.shields.io/badge/Kernel-LumaCore%201.5.4%20(v1.6.4)-10b981?style=for-the-badge" alt="LumaCore 1.5.4" />
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.5"><img src="https://img.shields.io/badge/Release-v1.6.5%20(Nitrogen%20·%20N--7)-38bdf8?style=for-the-badge" alt="Release v1.6.5" /></a>
+  <img src="https://img.shields.io/badge/Kernel-LumaCore%201.5.5%20(v1.6.5)-10b981?style=for-the-badge" alt="LumaCore 1.5.5" />
   <img src="https://img.shields.io/badge/AI-Luma%20Ai%20Nitrogen%20%2B%20Gemini%20SSE-8b5cf6?style=for-the-badge" alt="Luma Ai Nitrogen" />
   <img src="https://img.shields.io/badge/Gestures-Win32%20Precision%20HID-06b6d4?style=for-the-badge" alt="Win32 Precision HID Gestures" />
-  <img src="https://img.shields.io/badge/Physics-Magnetic%20Dock%20%2B%20Spring-ec4899?style=for-the-badge" alt="Magnetic Dock and Spring Physics" />
+  <img src="https://img.shields.io/badge/Physics-Spring%20Toggle%20%2B%20Dock-ec4899?style=for-the-badge" alt="System-Wide Spring Physics" />
   <img src="https://img.shields.io/badge/Security-LumaShield%202.5%20(275%20Rules)-f43f5e?style=for-the-badge" alt="LumaShield 2.5" />
 </p>
 
 <h3>
-  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.4.exe">⬇️ Скачать LumaOS_1.6.4.exe (Portable · 1 файл · 0 зависимостей)</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.5.exe">⬇️ Скачать LumaOS_1.6.5.exe (Portable · 1 файл · 0 зависимостей)</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.4">📦 Релиз v1.6.4</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.5">📦 Релиз v1.6.5</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="PATCH_NOTES_1.6.4.md">📝 Патч-ноут 1.6.4</a>
+  <a href="PATCH_NOTES_1.6.5.md">📝 Патч-ноут 1.6.5</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="luma_ai_nitrogen/README.md">🧠 Модуль Luma Ai Nitrogen</a>
 </h3>
@@ -31,33 +31,32 @@
 
 ---
 
-## Что нового в **Luma OS 1.6.4 (Nitrogen · N-7 · `LumaCore 1.5.4`)**
+## Что нового в **Luma OS 1.6.5 (Nitrogen · N-7 · `LumaCore 1.5.5`)**
 
-| Модуль | Ключевые улучшения обновления 1.6.4 |
+| Модуль | Ключевые улучшения и исправления обновления 1.6.5 |
 | :--- | :--- |
-| **Нативные жесты тачпада и сенсора (`Win32 HID`)** | В ядро `LumaCore 1.5.4` встроен прямой драйвер Win32 Raw Input HID для **Windows Precision Touchpad** (`WM_INPUT` + `hid.dll`, `ContactCount` + `X/Y`) с потоком `/api/kernel/gestures/events`, а фронтенд-трекер переписан на по-пальцевый `Map<id>` (`TouchEvent` + `PointerEvent`) без скачков центроида — 3 пальца вниз/вверх/влево/вправо, 4 пальца вниз и тап 3 пальцами срабатывают мгновенно. |
-| **Исправление Google Gemini API (`SSE + OpenAI-compat`)** | Полностью устранена ошибка `Gemini HTTP 404: .` для `gemini-2.5-flash` и `gemini-2.5-flash-lite`: принудительная очистка префикса `models/`, точный выбор нативного SSE (`.../v1beta/models/{model}:streamGenerateContent?alt=sse&key=...`) или OpenAI-пути (`.../v1beta/openai/chat/completions`), безопасное логирование URL (`key=***`), полное чтение тела non-200 ошибок и динамический заголовок с именем выбранной модели. |
-| **Авто-скрытие визуального шума** | При просмотре видео (`<video>` / `Luma Cut Studio`) или в полноэкранном режиме (`F11`) через 2.6с бездействия курсора верхняя панель, `Dynamic Island`, `Luma Nova` и `Dock` плавно уходят за край экрана и мгновенно возвращаются при движении мыши. |
-| **Интерактивный магнитный `Dock`** | Плавное увеличение, подъём и притяжение иконок к курсору по кривой Гаусса (`GPU rAF`), упругий **отскок при запуске** и живой светящийся **ореол + полоса прогресса** прямо на иконке при скачивании файлов и рендере видео в `Luma Cut Studio`. |
-| **Пружинные анимации и инерция окон** | Окна `DexWindow` реагируют на скорость перетаскивания (плавная инерция и пружинная остановка), а меню Пуск, Центр управления, Панель управления (`Tab`) и всплывающие панели открываются с живой пружинной физикой. |
-| **Новый экран обновления (`Cryo-Glass OTA`)** | Двойной орбитальный реактор, 5-этапный конвейер установки, живой график скорости (`SVG sparkline`), расчёт ETA, статус `SHA-256`, интерактивная карусель «Что нового в 1.6.4» и раскрываемый журнал установки в реальном времени. |
+| **Пружинные анимации во всей системе (Панель задач)** | Добавлен глобальный переключатель **«Пружинные анимации во всей системе»** в *Настройки → Панель задач* и мгновенный тумблер в контекстном меню **ПКМ по самой панели задач** — управляет пружинной физикой во всей ОС (инерция и разворачивание окон `DexWindow`, отскок и притяжение `Dock`, меню Пуск/ПКМ/`Luma Nova`, `Dynamic Island` и панели авто-скрытия). |
+| **Исправление реальных HID-жестов (`Win32 Precision Touchpad`)** | Починено сопоставление дискретных осей `HIDP_VALUE_CAPS` (`IsRange == 0`, где `UsageMax == 0`), добавлен сбор всех контактов с учётом `LogicalMin` и флага `TipSwitch (0x0D/0x42)`, устранено прерывание жеста на гибридных тачпадах ELAN/Synaptics/Intel (`ContactCount == 0` при удержании пальцев) и встроен `WM_TIMER` (`80 мс`) для надёжного завершения жеста. |
+| **Физика окон `DexWindow` и магнитный `Dock` без обрезки** | Разворачивание/восстановление окон переведено на числовые координаты с отслеживанием `resize` (настоящий пружинный переход вместо скачка), добавлена зависимость `topBarOffsetPx` для двойной панели задач, убрана вертикальная обрезка увеличенных иконок, отскока и ореола прогресса в `Dock`, исправлен сброс трансформаций при выключении магнитного режима. |
+| **Изоляция ключей облачных ИИ, `go vet` и `Cryo OTA`** | Устранена утечка сохранённого ключа `"ollama"` в облачные провайдеры (`Gemini`/`OpenAI`/`Groq`/`OpenRouter`) при пустом поле ключа, исправлен баг `fmt.Sprintf` в генераторе слайдов PowerPoint (`go vet ./...` — 0 ошибок), починен сброс графика скорости `SVG sparkline` в экране обновления `Luma Update Cinema`. |
 
 ---
 
 ## Все флагманские возможности ветки **1.6.x (Nitrogen · N-7)**
 
-- **Модульный ИИ `Luma Ai Nitrogen` (`luma_ai_nitrogen/`):** универсальный клиент (Ollama `qwen2.5:3b` / `llama3.2:3b`, Google Gemini, OpenAI, Claude, Groq, OpenRouter), SSE-стриминг, 3-уровневая память (SQLite WAL + RAG), Function Calling, интеграция с Офисом, Календарём и «Обвести для поиска», а также установка/удаление локального ИИ в 1 клик.
+- **Модульный ИИ `Luma Ai Nitrogen` (`luma_ai_nitrogen/`):** универсальный клиент (Ollama `qwen2.5:3b` / `llama3.2:3b`, Google Gemini SSE/OpenAI, OpenAI, Claude, Groq, OpenRouter), SSE-стриминг, 3-уровневая память (SQLite WAL + RAG), Function Calling, интеграция с Офисом, Календарём и «Обвести для поиска», а также установка/удаление локального ИИ в 1 клик.
 - **100% нативные Wi-Fi и Bluetooth (ПКМ + ввод пароля + поиск всех устройств рядом):** управление адаптерами, выбор сетей, ввод пароля Wi-Fi / PIN Bluetooth без открытия Настроек Windows.
 - **Замена горячих клавиш (`Win`, `Alt + Tab`, `Win + D`) и отключение жестов Windows:** единый переключатель в *Настройки → Оболочка Windows* с полным автовосстановлением по `Ctrl + Alt + Shift + W` и при выходе.
+- **Авто-скрытие визуального шума и интерактивный магнитный `Dock`:** растворение панелей при просмотре видео и в `F11`, гауссово притяжение иконок, пружинный отскок и ореол прогресса загрузок/рендера.
 - **Luma Обвести для поиска (`Ctrl + Shift + L`):** захват экрана, свободное обведение лассо мышью/пальцем/стилусом, офлайн-OCR (`RU+EN`), палитра цветов, перевод и потоковый разбор через `Luma Ai Nitrogen`.
 - **Стоп-зарядка батареи ноутбука, Touch & Stylus, постраничный A4 Word, «Обзор окон» в Пуске и реальное `📌 Поверх всех окон` поверх Chrome.**
-- **`Luma SwapBoost` (2 / 4 / 6 ГБ), `Luma Gamepad Studio`, `Luma Deep Uninstaller`, `Luma Peek` (`Space`):** нативные утилиты на ядре `LumaCore 1.5.4` и защите `LumaShield 2.5` (275 правил, 110 API-маршрутов, 0 утечек Win32-колбэков).
+- **`Luma SwapBoost` (2 / 4 / 6 ГБ), `Luma Gamepad Studio`, `Luma Deep Uninstaller`, `Luma Peek` (`Space`):** нативные утилиты на ядре `LumaCore 1.5.5` и защите `LumaShield 2.5` (275 правил, 110 API-маршрутов, 0 утечек Win32-колбэков).
 
 ---
 
 ## Галерея обоев **Nitrogen (QHD 2560×1440)**
 
-> Все 20 обоев встроены в `LumaOS_1.6.4.exe` (включая полную коллекцию предыдущих версий).
+> Все 20 обоев встроены в `LumaOS_1.6.5.exe` (включая полную коллекцию предыдущих версий).
 
 <table>
   <tr>
@@ -98,13 +97,14 @@
 
 ---
 
-## Скачать Luma OS (все 23 сборки сохранены)
+## Скачать Luma OS (все 24 сборки сохранены)
 
 Все исполняемые файлы автономны (**Single-Binary Portable EXE** — встроенный фронтенд + Go-ядро, установка не требуется):
 
 | Версия | Кодовое имя | Ядро / Возможности | Прямая ссылка |
 | :--- | :--- | :--- | :--- |
-| **1.6.4 (Актуальная)** | **Nitrogen · N-7** | `LumaCore 1.5.4` · `Win32 HID Жесты` · `Gemini SSE/OpenAI Fix` · `Авто-скрытие шума` · `Магнитный Dock + Рендер` · `Пружинная физика` · `Новый OTA-экран` | [**LumaOS_1.6.4.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.4.exe) |
+| **1.6.5 (Актуальная)** | **Nitrogen · N-7** | `LumaCore 1.5.5` · `Переключатель пружинных анимаций` · `Фикс Win32 HID Precision Touchpad` · `Изоляция ключей ИИ` · `Пружинный Maximize + Dock без обрезки` · `go vet 0` | [**LumaOS_1.6.5.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.5.exe) |
+| **1.6.4** | Nitrogen · N-7 | `LumaCore 1.5.4` · `Win32 HID Жесты` · `Gemini SSE/OpenAI Fix` · `Авто-скрытие шума` · `Магнитный Dock + Рендер` · `Пружинная физика` · `Новый OTA-экран` | [LumaOS_1.6.4.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.4.exe) |
 | **1.6.3** | Nitrogen · N-7 | `LumaCore 1.5.3` · `Luma Ai Nitrogen (SSE + 3-Tier RAG)` · `Установить/Удалить ИИ` · `Стоп-зарядка АКБ` · `Touch & Stylus` · `Word A4` · `📌 Поверх Chrome` | [LumaOS_1.6.3.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.3.exe) |
 | **1.6.2b** | Nitrogen · N-7 | `LumaCore 1.5.2b` · `Нативные Wi-Fi & Bluetooth (ПКМ + пароль)` · `Замена горячих клавиш + Тачпад` · `0 всплытий Настроек Windows` | [LumaOS_1.6.2b.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.2b.exe) |
 | **1.6.2** | Nitrogen · N-7 | `LumaCore 1.5.2` · `Luma AI 5.0 Nexus` · `Luma Обвести для поиска` · `Жесты & Спецвозможности` · `Live Загрузки` · `Безопасная Корзина` | [LumaOS_1.6.2.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.2.exe) |
@@ -135,7 +135,7 @@
 ```bash
 npm install
 npm run build
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui" -o LumaOS_1.6.4.exe .
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui" -o LumaOS_1.6.5.exe .
 ```
 
 ## Запуск отдельного модуля `Luma Ai Nitrogen` (Python FastAPI + Ollama / Gemini)

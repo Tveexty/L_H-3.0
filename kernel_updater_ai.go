@@ -533,6 +533,7 @@ func ListRollbackReleases(repoURL string) []RollbackReleaseEntry {
 	baseRaw := fmt.Sprintf("https://github.com/%s/%s/raw/main", owner, repo)
 
 	curated := []RollbackReleaseEntry{
+		{Version: "1.6.5", Tag: "v1.6.5", Title: "Luma OS 1.6.5 (Nitrogen)", DownloadURL: baseRaw + "/LumaOS_1.6.5.exe", Summary: "Новая настройка «Пружинные анимации во всей системе» в Настройках панели задач и в ПКМ-меню самой панели задач, критическое исправление Win32 Precision Touchpad HID (IsRange==0, гибридные пакеты ContactCount==0, мульти-контакт и WM_TIMER), фикс обрезки магнитного Dock и ореолов прогресса, фикс инерции и пружинного разворачивания DexWindow, фикс fmt.Sprintf в Luma PowerPoint и изоляция API-ключей облачных моделей"},
 		{Version: "1.6.4", Tag: "v1.6.4", Title: "Luma OS 1.6.4 (Nitrogen)", DownloadURL: baseRaw + "/LumaOS_1.6.4.exe", Summary: "Нативный Win32 HID-движок многопальцевых жестов тачпада и переработанный сенсорный трекер, полное исправление Google Gemini API (стриминг SSE + OpenAI-compat + чистые URL и полные ошибки), авто-скрытие визуального шума при просмотре видео и в полноэкранном режиме, интерактивный магнитный Dock с отскоком запуска и индикатором рендера/загрузки, пружинная физика окон и меню с инерцией и полностью обновлённый информативный экран обновления Luma OS"},
 		{Version: "1.6.3", Tag: "v1.6.3", Title: "Luma OS 1.6.3 (Nitrogen)", DownloadURL: baseRaw + "/LumaOS_1.6.3.exe", Summary: "Модульный Luma Ai Nitrogen (OpenAI/Ollama Qwen 2.5 3B · SSE стриминг · 3-уровневая память SQLite+RAG · Function Calling · Календарь · Office Studio · Luma Обвести для поиска) с опцией Скачать/Удалить ИИ, полное отключение всех жестов тачпада Windows, список всех найденных Wi-Fi и Bluetooth устройств, аппаратная остановка зарядки ноутбука (Режим сбережения), поддержка сенсора и стилуса, многостраничный Word A4, Обзор окон в меню Пуск, реальное закрепление окон поверх Chrome и очищенное меню ПКМ"},
 		{Version: "1.6.2b", Tag: "v1.6.2b", Title: "Luma OS 1.6.2b (Nitrogen)", DownloadURL: baseRaw + "/LumaOS_1.6.2b.exe", Summary: "100% нативные Wi-Fi и Bluetooth с выбором сетей, вводом пароля и списком устройств по ПКМ прямо в Панели управления и Центре управления (без Windows), новая настройка «Замена горячих клавиш» в «Оболочка Windows» (Win → Пуск Luma, Alt+Tab → окно Luma, Win+D → стол Luma, отключение жестов тачпада Windows) и полное устранение самопроизвольного открытия Настроек Windows"},
@@ -1246,7 +1247,7 @@ func HandleAIChatRequest(req AIChatRequest, kernel *LumaKernel) map[string]inter
 	}
 	if provider == "openrouter" {
 		httpReq.Header.Set("HTTP-Referer", "https://github.com/Tveexty/L_H-3.0")
-		httpReq.Header.Set("X-Title", "Luma OS 1.6.4 Nitrogen")
+		httpReq.Header.Set("X-Title", "Luma OS 1.6.5 Nitrogen")
 	}
 
 	resp, err := client.Do(httpReq)

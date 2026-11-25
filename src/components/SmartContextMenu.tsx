@@ -79,7 +79,7 @@ export const SmartContextMenu: React.FC<SmartContextMenuProps> = ({
         maxWidth: `calc(100vw - ${padding * 2}px)`,
         opacity: pos.ready ? 1 : 0,
       }}
-      className={`overflow-y-auto ${className}`}
+      className={`overflow-y-auto luma-spring-menu ${className}`}
     >
       {children}
     </div>

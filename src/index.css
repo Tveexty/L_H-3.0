@@ -1205,3 +1205,46 @@ html:not([data-anim="none"]):not([data-anim="glide"]):not([data-anim="silk"]):no
   animation: lumaShimmerSweep 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
+/* ==================== 1.6.5 SYSTEM-WIDE SPRING ANIMATIONS TOGGLE (data-spring-physics="off") ==================== */
+html[data-spring-physics="off"] {
+  --luma-spring-snappy: cubic-bezier(0.2, 0, 0, 1);
+  --luma-spring-gentle: cubic-bezier(0.2, 0, 0, 1);
+  --luma-spring-dock: cubic-bezier(0.2, 0, 0, 1);
+}
+
+html[data-spring-physics="off"]:not([data-anim="none"]) .luma-animate-in,
+html[data-spring-physics="off"]:not([data-anim="none"]) .luma-spring-panel,
+html[data-spring-physics="off"]:not([data-anim="none"]) .luma-spring-menu,
+html[data-spring-physics="off"]:not([data-anim="none"]) .luma-anim-harmony7 {
+  animation: lumaFadeUp 0.14s ease-out forwards !important;
+}
+
+html[data-spring-physics="off"] .luma-dock-bounce,
+html[data-spring-physics="off"] .luma-island-rubber-expand,
+html[data-spring-physics="off"] .luma-island-rubber-snap {
+  animation: none !important;
+}
+
+html[data-spring-physics="off"] .luma-dock-magnetic-item {
+  transition:
+    transform 130ms ease-out,
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease !important;
+}
+
+html[data-spring-physics="off"] .luma-win-spring-motion {
+  transition:
+    left 140ms ease-out,
+    top 140ms ease-out,
+    width 140ms ease-out,
+    height 140ms ease-out,
+    border-radius 140ms ease-out !important;
+}
+
+html[data-spring-physics="off"] .luma-noise-surface {
+  transition:
+    transform 220ms ease-out,
+    opacity 200ms ease-out,
+    filter 200ms ease-out !important;
+}

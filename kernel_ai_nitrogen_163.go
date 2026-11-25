@@ -1056,10 +1056,15 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 			writeSSEEvent(w, flusher, map[string]interface{}{"type": "done", "model": "disabled", "reply": msg})
 			return
 		}
+		provider := strings.ToLower(strings.TrimSpace(req.Provider))
+		isExplicitCloudProvider := provider == "gemini" || provider == "openai" || provider == "deepseek" || provider == "openrouter" || provider == "groq" || provider == "claude" || provider == "custom"
 		if strings.TrimSpace(req.BaseURL) != "" {
 			cfg.BaseURL = strings.TrimSpace(req.BaseURL)
 		}
-		if strings.TrimSpace(req.APIKey) != "" {
+		if isExplicitCloudProvider {
+			// Never inherit an unrelated saved key (e.g. "ollama") when user explicitly selects a cloud provider with empty key
+			cfg.APIKey = strings.TrimSpace(req.APIKey)
+		} else if strings.TrimSpace(req.APIKey) != "" {
 			cfg.APIKey = strings.TrimSpace(req.APIKey)
 		}
 		reqModel := strings.TrimSpace(req.ModelName)
@@ -1072,7 +1077,6 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 		if req.Temperature > 0 {
 			cfg.Temperature = req.Temperature
 		}
-		provider := strings.ToLower(strings.TrimSpace(req.Provider))
 
 		// Step A: Direct Calendar Tool execution (only for local/nitrogen mode, never hijack explicit cloud API queries unless Calendar context!)
 		if provider == "" || provider == "luma_local" || provider == "ollama" {
@@ -1136,7 +1140,7 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 		if strings.TrimSpace(req.SystemPrompt) != "" {
 			sysCtx.WriteString(strings.TrimSpace(req.SystemPrompt) + "\n")
 		} else {
-			sysCtx.WriteString("Ты — Luma Ai Nitrogen, встроенный универсальный ИИ-ассистент и программист в Luma OS 1.6.4. Отвечай чётко, умно, без воды, с чистым Markdown для кода. Текущее время: " + time.Now().Format("2006-01-02 15:04") + ".\n")
+			sysCtx.WriteString("Ты — Luma Ai Nitrogen, встроенный универсальный ИИ-ассистент и программист в Luma OS 1.6.5. Отвечай чётко, умно, без воды, с чистым Markdown для кода. Текущее время: " + time.Now().Format("2006-01-02 15:04") + ".\n")
 		}
 		if len(memSnap.Facts) > 0 {
 			sysCtx.WriteString("Долговременная память о пользователе:\n")
@@ -1250,7 +1254,7 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 		}
 		writeSSEEvent(w, flusher, map[string]interface{}{
 			"type":           "done",
-			"model":          "Luma Ai Nitrogen (LumaCore 1.5.4)",
+			"model":          "Luma Ai Nitrogen (LumaCore 1.5.5)",
 			"reply":          replyText,
 			"sources":        res["sources"],
 			"thinking_steps": res["thinking_steps"],
@@ -1259,7 +1263,7 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 		})
 	})
 
-	// 6. Native Precision Touchpad Gesture Status & Live SSE Event Stream (Luma OS 1.6.4)
+	// 6. Native Precision Touchpad Gesture Status & Live SSE Event Stream (Luma OS 1.6.5)
 	mux.HandleFunc("/api/kernel/gestures/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(getNativeTouchpadGestureStatus())
@@ -1274,7 +1278,7 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 		subID, ch := subscribeNativeTouchpadGestures()
 		defer unsubscribeNativeTouchpadGestures(subID)
 
-		writeSSEEvent(w, flusher, map[string]interface{}{"type": "connected", "engine": "LumaCore 1.5.4 Touchpad HID"})
+		writeSSEEvent(w, flusher, map[string]interface{}{"type": "connected", "engine": "LumaCore 1.5.5 Touchpad HID"})
 		keepalive := time.NewTicker(25 * time.Second)
 		defer keepalive.Stop()
 
