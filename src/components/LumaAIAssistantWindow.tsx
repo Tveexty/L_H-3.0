@@ -205,7 +205,7 @@ export const DEFAULT_LUMA_AI_CONFIG: LumaAIConfig = {
   models: {},
   baseUrls: {},
   systemPrompt:
-    'Ты — Luma Ai Nitrogen, универсальный личный ассистент, программист и помощник в Luma OS 1.6.6b (Nitrogen · N-7). Отвечай чётко, без воды, с Markdown-кодом, используй долговременную память и помогай с системой, Офисом, Календарём и поиском.',
+    'Ты — Luma Ai Nitrogen, универсальный личный ассистент, программист и помощник в Luma OS 1.6.7 (Nitrogen · N-7). Отвечай чётко, без воды, с Markdown-кодом, используй долговременную память и помогай с системой, Офисом, Календарём и поиском.',
   temperature: 0.7,
   includeSystemContext: true,
 };

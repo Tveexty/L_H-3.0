@@ -207,7 +207,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
     setScanning(false);
     setHardcoreBusy(false);
     setScanLabel('');
-    onPushToast('LumaShield 3.0b', 'Проверка остановлена пользователем', 'info');
+    onPushToast('LumaShield 3.1', 'Проверка остановлена пользователем', 'info');
   };
 
   const fetchHardcore = async () => {
@@ -245,7 +245,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         const d = await r.json();
         if (d?.ok) setHardcore(d);
         onPushToast(
-          'LumaShield 3.0b · Жёсткая защита',
+          'LumaShield 3.1 · Жёсткая защита',
           next.hardcore_mode
             ? 'Активная Anti-RAT, USB и блокировка чужих файлов применена'
             : 'Жёсткий режим временно приостановлен',
@@ -253,7 +253,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         );
       }
     } catch {
-      onPushToast('LumaShield 3.0b', 'Нет связи с ядром LumaCore 1.5.6b', 'warning');
+      onPushToast('LumaShield 3.1', 'Нет связи с ядром LumaCore 1.5.7', 'warning');
     }
   };
 
@@ -275,7 +275,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         if (d?.status) setHardcore(d.status);
         const drvCount = Array.isArray(d?.drives) ? d.drives.length : 0;
         onPushToast(
-          'LumaShield 3.0b · Щит флешек (USB)',
+          'LumaShield 3.1 · Щит флешек (USB)',
           drvCount === 0
             ? 'Съёмные USB-флешки не подключены — авто-мониторинг активен'
             : `Проверено флешек: ${drvCount} · файлов: ${d.scanned || 0} · уничтожено под ноль: ${d.shredded || 0}`,
@@ -284,7 +284,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         await fetchStatus();
       }
     } catch {
-      onPushToast('LumaShield 3.0b', 'Проверка USB остановлена или превысила таймаут', 'warning');
+      onPushToast('LumaShield 3.1', 'Проверка USB остановлена или превысила таймаут', 'warning');
     } finally {
       setHardcoreBusy(false);
     }
@@ -307,14 +307,14 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         const d = await r.json();
         if (d?.status) setHardcore(d.status);
         onPushToast(
-          'LumaShield 3.0b · Охота на RAT / Управление ПК',
+          'LumaShield 3.1 · Охота на RAT / Управление ПК',
           `Проверено: ${d.scanned || 0} · уничтожено под ноль: ${d.shredded || 0} · заблокировано чужих: ${d.blocked || 0} · убито процессов: ${d.killed || 0}`,
           (d.threats || 0) > 0 ? 'warning' : 'success'
         );
         await fetchStatus();
       }
     } catch {
-      onPushToast('LumaShield 3.0b', 'Охота на RAT остановлена или превысила таймаут', 'warning');
+      onPushToast('LumaShield 3.1', 'Охота на RAT остановлена или превысила таймаут', 'warning');
     } finally {
       setHardcoreBusy(false);
     }
@@ -335,14 +335,14 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         const d = await r.json();
         if (d?.status) setHardcore(d.status);
         onPushToast(
-          'LumaShield 3.0b · Уничтожение под ноль',
+          'LumaShield 3.1 · Уничтожение под ноль',
           d?.ok ? `Файл «${t.name}» перезаписан нулями и полностью удалён!` : d?.message || 'Файл защищён',
           d?.ok ? 'success' : 'warning'
         );
         await fetchStatus();
       }
     } catch {
-      onPushToast('LumaShield 3.0b', 'Не удалось выполнить удаление под ноль', 'warning');
+      onPushToast('LumaShield 3.1', 'Не удалось выполнить удаление под ноль', 'warning');
     }
   };
 
@@ -438,30 +438,75 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
   const handleInspectDroppedFile = async (file: File) => {
     setSingleScanning(true);
     try {
-      const b64 = await new Promise<string>((resolve) => {
+      // NEVER load a huge file (e.g. 500MB .exe/.iso) into WebView2 RAM! Slice max 2 MB for instant <30ms analysis.
+      const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
+      const sliced = file.size > MAX_UPLOAD_BYTES ? file.slice(0, MAX_UPLOAD_BYTES) : file;
+      const b64 = await new Promise<string>((resolve, reject) => {
         const r = new FileReader();
         r.onload = () => resolve(String(r.result || ''));
-        r.readAsDataURL(file);
+        r.onerror = () => reject(new Error('Ошибка чтения файла'));
+        r.readAsDataURL(sliced);
       });
-      const res = await fetch('/api/kernel/security/scan-file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_name: file.name, base64_data: b64 }),
-      });
+      const res = await fetchWithTimeout(
+        '/api/kernel/security/scan-file',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_name: file.name, base64_data: b64 }),
+        },
+        15000
+      );
       const data = await res.json();
       if (data?.ok) {
         setSingleFileResult(data);
         await fetchStatus();
         onPushToast(
-          'LumaShield 2.0 · Анализ файла',
+          'LumaShield 3.1 · Анализ файла',
           data.verdict === 'threat'
             ? `УГРОЗА в ${data.name}: ${data.threat?.category || 'Malware'}`
             : `Файл ${data.name} чист (энтропия ${data.entropy})`,
           data.verdict === 'threat' ? 'warning' : 'success'
         );
+      } else {
+        onPushToast('LumaShield 3.1', data?.error || 'Не удалось проанализировать файл', 'warning');
       }
     } catch {
-      onPushToast('LumaShield 2.0', 'Не удалось проанализировать файл', 'warning');
+      onPushToast('LumaShield 3.1', 'Анализ файла отменён или превысил таймаут', 'warning');
+    } finally {
+      setSingleScanning(false);
+    }
+  };
+
+  const inspectFileByPath = async (targetPath: string) => {
+    const clean = targetPath.trim();
+    if (!clean) return;
+    setSingleScanning(true);
+    try {
+      const res = await fetchWithTimeout(
+        '/api/kernel/security/scan-file',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: clean }),
+        },
+        15000
+      );
+      const data = await res.json();
+      if (data?.ok) {
+        setSingleFileResult(data);
+        await fetchStatus();
+        onPushToast(
+          'LumaShield 3.1 · Проверка файла',
+          data.verdict === 'threat'
+            ? `УГРОЗА в ${data.name}: ${data.threat?.category || 'Malware'}`
+            : `Файл ${data.name} безопасен (энтропия ${data.entropy})`,
+          data.verdict === 'threat' ? 'warning' : 'success'
+        );
+      } else {
+        onPushToast('LumaShield 3.1', data?.error || 'Не удалось проверить файл', 'warning');
+      }
+    } catch {
+      onPushToast('LumaShield 3.1', 'Ошибка проверки файла по пути', 'warning');
     } finally {
       setSingleScanning(false);
     }
@@ -514,9 +559,9 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
     setScanning(true);
     setScanLabel(
       mode === 'quick'
-        ? 'Быстрая проверка LumaShield 3.0b (Загрузки, Рабочий стол, Zero-Freeze)...'
+        ? 'Быстрая проверка LumaShield 3.1 (Загрузки, Рабочий стол, Zero-Freeze)...'
         : mode === 'deep'
-        ? 'Глубокое сканирование LumaShield 3.0b (340+ правил, Anti-RAT, Архивы/Макросы, Энтропия)...'
+        ? 'Глубокое сканирование LumaShield 3.1 (340+ правил, Anti-RAT, Архивы/Макросы, Энтропия)...'
         : mode === 'startup'
         ? 'Аудит автозагрузки и скриптов...'
         : mode === 'processes'
@@ -537,12 +582,12 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       const d = await r.json();
       await fetchStatus();
       if (d?.busy) {
-        onPushToast('LumaShield 3.0b', d.message || 'Проверка уже выполняется', 'info');
+        onPushToast('LumaShield 3.1', d.message || 'Проверка уже выполняется', 'info');
       } else {
         const count = d?.threats?.length ?? 0;
         const limitNote = d?.timed_out ? ' · лимит Zero-Freeze' : '';
         onPushToast(
-          'LumaShield 3.0b',
+          'LumaShield 3.1',
           count > 0
             ? `Обнаружено угроз: ${count} (проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс${limitNote})`
             : `Угроз не найдено · Проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс${limitNote}`,
@@ -550,7 +595,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         );
       }
     } catch {
-      onPushToast('LumaShield 3.0b', 'Сканирование остановлено или превысило таймаут', 'warning');
+      onPushToast('LumaShield 3.1', 'Сканирование остановлено или превысило таймаут', 'warning');
     } finally {
       setScanning(false);
       setScanLabel('');
@@ -657,20 +702,45 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
     }
   };
 
+  const pickAndScanFile = async () => {
+    try {
+      const r = await fetchWithTimeout(
+        '/api/kernel/pick-file',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'file' }),
+        },
+        125000
+      );
+      const d = await r.json();
+      if (d?.picked && d?.path) {
+        setCustomPath(d.path);
+        await inspectFileByPath(d.path);
+      }
+    } catch {
+      onPushToast('LumaShield 3.1', 'Выбор файла отменён или превысил таймаут', 'info');
+    }
+  };
+
   const pickAndScanFolder = async () => {
     try {
-      const r = await fetch('/api/kernel/pick-file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'folder' }),
-      });
+      const r = await fetchWithTimeout(
+        '/api/kernel/pick-file',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'folder' }),
+        },
+        95000
+      );
       const d = await r.json();
       if (d?.picked && d?.path) {
         setCustomPath(d.path);
         await runScan('custom', d.path);
       }
     } catch {
-      // ignore
+      onPushToast('LumaShield 3.1', 'Выбор папки отменён или превысил таймаут', 'info');
     }
   };
 
@@ -802,7 +872,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
               <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0" />
               <div className="min-w-0">
                 <div className="font-black flex items-center gap-2 flex-wrap">
-                  <span>LumaShield 3.0b · Жёсткая защита (Anti-RAT · USB · Zero-Freeze)</span>
+                  <span>LumaShield 3.1 · Жёсткая защита (Anti-RAT · USB · Zero-Freeze)</span>
                   <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 text-[9px] font-mono">
                     {hardcore?.rules_count ?? 340}+ ПРАВИЛ
                   </span>
@@ -860,7 +930,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
             {[
               {
                 key: 'hardcore_mode' as const,
-                title: 'Жёсткий режим LumaShield 3.0b',
+                title: 'Жёсткий режим LumaShield 3.1',
                 sub: 'Непрерывный Zero-Freeze щит каждые 20 сек (кэш 0% CPU)',
                 active: hardcore?.config?.hardcore_mode ?? true,
               },
@@ -1107,23 +1177,35 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
               }`}
             >
               <div className="min-w-0">
-                <div className="font-bold text-cyan-400">Мгновенная проверка файла (LumaShield 2.0 Sandbox)</div>
+                <div className="font-bold text-cyan-400">Мгновенная проверка файла (LumaShield 3.1 Zero-Freeze)</div>
                 <div className={`text-[11px] ${mutedCls}`}>
-                  Перетащите сюда подозрительный .exe, .zip, .docx, .docm, .ps1, .bat или .pdf — проверка макросов, энтропии и 175+ сигнатур
+                  Перетащите сюда любой файл (.exe, .zip, .docx, .ps1, .bat, .pdf) или нажмите «Выбрать файл» — проверяет до 4 МБ без зависания даже на огромных файлах
                 </div>
               </div>
-              <label className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/35 text-cyan-300 font-semibold cursor-pointer shrink-0">
-                {singleScanning ? 'Анализ...' : 'Выбрать файл'}
-                <input
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) void handleInspectDroppedFile(f);
-                    e.target.value = '';
-                  }}
-                />
-              </label>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  disabled={singleScanning || scanning}
+                  onClick={() => void pickAndScanFile()}
+                  className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/35 text-cyan-300 font-semibold cursor-pointer disabled:opacity-50"
+                >
+                  {singleScanning ? 'Анализ...' : 'Выбрать файл'}
+                </button>
+                <label
+                  className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold cursor-pointer ${btnCls}`}
+                  title="Загрузить файл напрямую (до 2 МБ)"
+                >
+                  Web
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void handleInspectDroppedFile(f);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
             </div>
 
             {singleFileResult && (
@@ -1154,16 +1236,26 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
               <input
                 value={customPath}
                 onChange={(e) => setCustomPath(e.target.value)}
-                placeholder="Путь к папке или файлу для проверки (например: C:\Users\...\Downloads)"
+                placeholder="Путь к файлу или папке для проверки (например: C:\Users\...\file.exe)"
                 className={`flex-1 min-w-[200px] px-3 py-2 rounded-xl border text-xs font-mono outline-none ${btnCls}`}
               />
               <button
-                disabled={scanning}
+                disabled={scanning || singleScanning}
+                onClick={() => void pickAndScanFile()}
+                className={`px-3 py-2 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}
+                title="Открыть проводник и проверить один конкретный файл без зависания"
+              >
+                <ScanSearch className="w-3.5 h-3.5 text-cyan-400" />
+                Файл
+              </button>
+              <button
+                disabled={scanning || singleScanning}
                 onClick={() => void pickAndScanFolder()}
                 className={`px-3 py-2 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}
+                title="Открыть проводник и проверить выбранную папку"
               >
                 <FolderSearch className="w-3.5 h-3.5" />
-                Обзор
+                Папка
               </button>
               <button
                 disabled={scanning || !customPath.trim()}

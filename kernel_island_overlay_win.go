@@ -52,6 +52,8 @@ var (
 	procIslKeybdEvent           = islUser32DLL.NewProc("keybd_event")
 	procIslSetCapture           = islUser32DLL.NewProc("SetCapture")
 	procIslReleaseCapture       = islUser32DLL.NewProc("ReleaseCapture")
+	procIslLoadCursorW          = islUser32DLL.NewProc("LoadCursorW")
+	procIslSetCursor            = islUser32DLL.NewProc("SetCursor")
 	procIslGetModuleHandleW     = islKernel32.NewProc("GetModuleHandleW")
 
 	procIslCreateCompatibleDC   = islGdi32DLL.NewProc("CreateCompatibleDC")
@@ -95,12 +97,18 @@ const (
 	islDtEndEllipsis    = 0x00008000
 	islDtNoPrefix       = 0x00000800
 	islWmDestroy        = 0x0002
+	islWmSetCursor      = 0x0020
+	islWmMouseActivate  = 0x0021
+	islWmNcHitTest      = 0x0084
 	islWmTimer          = 0x0113
 	islWmMouseMove      = 0x0200
 	islWmLButtonDown    = 0x0201
 	islWmLButtonUp      = 0x0202
 	islWmRButtonUp      = 0x0205
-	islWmMouseActivate  = 0x0021
+	islWmCaptureChanged = 0x0215
+	islHtClient         = 1
+	islIdcArrow         = 32512
+	islIdcHand          = 32649
 	islMaNoActivate     = 3
 	islWmAppSync        = 0x8000 + 42
 	islWmAppStop        = 0x8000 + 43
@@ -198,6 +206,8 @@ var (
 	islFontBold        uintptr
 	islFontMono        uintptr
 	islFontSmall       uintptr
+	islCursorArrow     uintptr
+	islCursorHand      uintptr
 )
 
 func startNativeIslandOverlayEngine() {
@@ -244,16 +254,21 @@ func runNativeIslandOverlayLoop() {
 	defer runtime.UnlockOSThread()
 
 	hInst, _, _ := procIslGetModuleHandleW.Call(0)
-	className, err := syscall.UTF16PtrFromString("LumaOS_DynamicIsland_Overlay_166")
+	className, err := syscall.UTF16PtrFromString("LumaOS_DynamicIsland_Overlay_167")
 	if err != nil {
 		return
 	}
 	winTitle, _ := syscall.UTF16PtrFromString("Luma Dynamic Island")
 
+	// Load standard Win32 cursors so Windows NEVER shows a stuck spinning/busy cursor over Dynamic Island!
+	islCursorArrow, _, _ = procIslLoadCursorW.Call(0, uintptr(islIdcArrow))
+	islCursorHand, _, _ = procIslLoadCursorW.Call(0, uintptr(islIdcHand))
+
 	wc := islWndClassExW{
 		CbSize:        uint32(unsafe.Sizeof(islWndClassExW{})),
 		LpfnWndProc:   islandOverlayWndProcCb,
 		HInstance:     hInst,
+		HCursor:       islCursorArrow,
 		LpszClassName: className,
 	}
 	_, _, _ = procIslRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
@@ -326,9 +341,28 @@ func runNativeIslandOverlayLoop() {
 
 func islandOverlayWndProc(hwnd uintptr, msg uint32, wParam uintptr, lParam uintptr) uintptr {
 	switch msg {
+	case islWmNcHitTest:
+		// Guarantee mouse hover & clicks hit the capsule cleanly over Chrome & all Windows apps
+		if !getIslandOverlayConfigSnapshot().ClickThrough {
+			return islHtClient
+		}
+	case islWmSetCursor:
+		// Always show a crisp Hand/Arrow cursor — fixes stuck spinning loading wheel over Chrome!
+		cur := islCursorHand
+		if islDragging || cur == 0 {
+			cur = islCursorArrow
+		}
+		if cur != 0 {
+			_, _, _ = procIslSetCursor.Call(cur)
+			return 1
+		}
 	case islWmMouseActivate:
 		// NEVER steal keyboard focus from Chrome or any foreground Windows app!
 		return islMaNoActivate
+	case islWmCaptureChanged:
+		islDragging = false
+		islDragMoved = false
+		return 0
 	case islWmTimer:
 		if wParam == islTimerTickID {
 			islLastFrameTick++
@@ -631,9 +665,9 @@ func syncAndRenderIslandOverlay(hwnd uintptr) {
 		_, _, _ = procIslShowWindow.Call(hwnd, islSwShowNA)
 		islActiveVisible.Store(true)
 	}
-	// Reinforce HWND_TOPMOST periodically so Chrome / fullscreen overlays never slip above it
-	if islLastFrameTick%6 == 0 || !islActiveVisible.Load() {
-		_, _, _ = procIslSetWindowPos.Call(hwnd, islHwndTopmost, 0, 0, 0, 0, islSwpNoMove|islSwpNoSize|islSwpNoActivate|islSwpShowWindow)
+	// Reinforce HWND_TOPMOST without SWP_SHOWWINDOW so hover/clicks are never interrupted
+	if islLastFrameTick%10 == 0 && !islDragging {
+		_, _, _ = procIslSetWindowPos.Call(hwnd, islHwndTopmost, 0, 0, 0, 0, islSwpNoMove|islSwpNoSize|islSwpNoActivate)
 	}
 }
 

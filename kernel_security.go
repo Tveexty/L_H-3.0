@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -19,7 +20,7 @@ import (
 	"time"
 )
 
-// LumaShield 3.0b — Next-Gen Zero-Freeze & Zero-Conflict Antivirus Engine for Luma OS 1.6.6b (Nitrogen).
+// LumaShield 3.1 — Next-Gen Zero-Freeze & Zero-Conflict Antivirus Engine for Luma OS 1.6.7 (Nitrogen).
 // Runs cleanly alongside Windows Defender with zero driver conflicts and guaranteed non-blocking UI:
 //   - 340+ heuristic, behavioral & Anti-RAT rules (Telegram/Discord/Browser/Crypto/Cloud/Dev Stealers, Ransomware,
 //     BYOVD Drivers, Keyloggers, Crypto-Clippers, Reverse Shells, LOLBins, AMSI/ETW/UAC Bypass, Rootkits, Office Macros)
@@ -67,7 +68,7 @@ func NewSecurityKernel() *SecurityKernel {
 	}
 	sk.loadQuarantineIndex()
 	sk.loadExclusions()
-	sk.LogAudit("ok", "kernel", "LumaShield 3.0b инициализирован", "340+ эвристических правил, Zero-Freeze движок, PE-маскировка, энтропия Шеннона, Real-Time Guard и совместимость с Windows Defender")
+	sk.LogAudit("ok", "kernel", "LumaShield 3.1 инициализирован", "340+ эвристических правил, Zero-Freeze движок, PE-маскировка, энтропия Шеннона, Real-Time Guard и совместимость с Windows Defender")
 	go sk.realtimeGuardLoop()
 	return sk
 }
@@ -1171,7 +1172,7 @@ func (s *SecurityKernel) RunScan(mode, customPath string, probe *platformProbe) 
 	if len(threats) > 0 {
 		level = "danger"
 	}
-	s.LogAudit(level, "antivirus", "Проверка LumaShield 3.0b завершена", msg)
+	s.LogAudit(level, "antivirus", "Проверка LumaShield 3.1 завершена", msg)
 
 	return map[string]interface{}{
 		"ok":            true,
@@ -1353,7 +1354,7 @@ func (s *SecurityKernel) StatusSnapshot(probe *platformProbe) map[string]interfa
 	return map[string]interface{}{
 		"ok":                     true,
 		"security_core_version":  SecurityCoreVersion,
-		"engine_name":            "LumaShield 3.0b (340+ Rules · Anti-RAT Zero-Shredder · USB Flash Guard · Zero-Freeze Engine)",
+		"engine_name":            "LumaShield 3.1 (340+ Rules · Anti-RAT Zero-Shredder · USB Flash Guard · Zero-Freeze Engine)",
 		"rules_count":            len(scriptHeuristics) + len(suspiciousDoubleExts) + len(ransomwareExts) + 5,
 		"archive_macro_guard":    true,
 		"stealer_shield":         true,
@@ -1432,7 +1433,9 @@ func (s *SecurityKernel) AuditScheduledTasks() []map[string]interface{} {
 
 	if runtime.GOOS == "windows" {
 		ps := `Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskPath -notlike '\Microsoft\*' } | Select-Object -First 40 | ForEach-Object { $act = ($_.Actions | ForEach-Object { "$($_.Execute) $($_.Arguments)".Trim() }) -join '; '; [PSCustomObject]@{ name=$_.TaskName; path=$_.TaskPath; action=$act; state=[string]$_.State } } | ConvertTo-Json -Compress`
-		if out, err := exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps).Output(); err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+		defer cancel()
+		if out, err := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps).Output(); err == nil {
 			raw := strings.TrimSpace(string(out))
 			type row struct {
 				Name   string `json:"name"`
@@ -1455,7 +1458,9 @@ func (s *SecurityKernel) AuditScheduledTasks() []map[string]interface{} {
 		}
 	} else {
 		// Linux/POSIX: inspect user crontab & systemd user units & autostart entries
-		if out, err := exec.Command("crontab", "-l").Output(); err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		defer cancel()
+		if out, err := exec.CommandContext(ctx, "crontab", "-l").Output(); err == nil {
 			for i, ln := range strings.Split(string(out), "\n") {
 				t := strings.TrimSpace(ln)
 				if t == "" || strings.HasPrefix(t, "#") {

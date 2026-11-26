@@ -44,14 +44,14 @@ import (
 //go:embed dist
 var embeddedDist embed.FS
 
-//go:embed luma_kernel_main.go kernel_security.go kernel_updater_ai.go kernel_persistence_battery.go kernel_ai_local.go system_types.go system_windows.go system_unix.go Luma_Core LauncherHab3.0_CSharp src/components/LumaDesktopCanvas.tsx src/components/LumaGrid20x30Window.tsx
+//go:embed luma_kernel_main.go kernel_security.go kernel_updater_ai.go kernel_persistence_battery.go kernel_ai_local.go system_types.go system_windows.go system_unix.go src/components/LumaDesktopCanvas.tsx src/components/LumaGrid20x30Window.tsx
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.6.6b"
+	KernelVersion       = "1.6.7"
 	KernelCodename      = "Nitrogen"
-	KernelEngineVersion = "1.5.6b"
-	SecurityCoreVersion = "3.0b"
+	KernelEngineVersion = "1.5.7"
+	SecurityCoreVersion = "3.1"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
 )
@@ -929,13 +929,18 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": payload.Path})
 	})
 
-	// Native OS File / Folder Picker Dialog (Add real PC files/folders to desktop)
+	// Native OS File / Folder Picker Dialog (Add real PC files/folders to desktop & LumaShield 3.1)
 	mux.HandleFunc("/api/kernel/pick-file", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		var payload struct {
 			Mode string `json:"mode"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&payload)
+		if r.Body != nil {
+			_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&payload)
+		}
+		if payload.Mode == "" {
+			payload.Mode = strings.TrimSpace(r.URL.Query().Get("mode"))
+		}
 		if payload.Mode == "" {
 			payload.Mode = "file"
 		}
@@ -2694,7 +2699,7 @@ func main() {
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
-	// 3. LumaShield 2.0 Single-File Inspector & Unified Audit Report
+	// 3. LumaShield 3.1 Zero-Freeze Single-File Inspector & Unified Audit Report
 	mux.HandleFunc("/api/kernel/security/scan-file", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if r.Method != http.MethodPost {
@@ -2706,19 +2711,47 @@ func main() {
 			Base64Data string `json:"base64_data"`
 			Path       string `json:"path"`
 		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 32*1024*1024)).Decode(&req); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 8*1024*1024)).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
 			return
 		}
 		if strings.TrimSpace(req.Path) != "" {
 			realPath := expandUserPath(req.Path)
-			raw, err := os.ReadFile(realPath)
+			st, err := os.Stat(realPath)
+			if err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Файл не найден: " + err.Error()})
+				return
+			}
+			if st.IsDir() {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Указана папка — используйте «Выбрать папку» или «Сканировать»"})
+				return
+			}
+			f, err := os.Open(realPath)
 			if err != nil {
 				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
 				return
 			}
-			_ = json.NewEncoder(w).Encode(kernel.security.InspectUploadedFile(filepath.Base(realPath), raw))
+			raw, _ := io.ReadAll(io.LimitReader(f, 4*1024*1024))
+			_ = f.Close()
+			res := kernel.security.InspectUploadedFile(filepath.Base(realPath), raw)
+			res["size"] = st.Size()
+			res["path"] = realPath
+			// Also run LumaShield 3.1 Anti-RAT / Remote-Control heuristic check on the exact file
+			if isRC, isForeignSusp, _, rcReason := analyzeRemoteControlThreat(realPath, st, false); (isRC || isForeignSusp) && res["verdict"] != "threat" {
+				res["verdict"] = "threat"
+				res["threat"] = SecurityThreat{
+					ID:         fmt.Sprintf("thr_file_%d", time.Now().UnixNano()),
+					Path:       realPath,
+					Name:       filepath.Base(realPath),
+					Severity:   "high",
+					Category:   "Anti-RAT / RemoteControl",
+					Reason:     rcReason,
+					Size:       st.Size(),
+					DetectedAt: time.Now().Format("15:04:05"),
+				}
+			}
+			_ = json.NewEncoder(w).Encode(res)
 			return
 		}
 		b64 := req.Base64Data
@@ -3129,15 +3162,15 @@ func main() {
 	registerNitrogen16Routes(mux, kernel, osNotifBridge)
 	// Luma OS 1.6.6: Native Win32 Always-On-Top Dynamic Island Overlay (above Chrome & all Windows apps)
 	registerIslandOverlayRoutes(mux)
-	// Luma OS 1.6.6b: LumaShield 3.0b Hardcore Active Defense (Zero-Freeze Engine + Anti-RAT Zero-Shredder + USB Flash Guard)
+	// Luma OS 1.6.7: LumaShield 3.1 Hardcore Active Defense (Zero-Freeze Engine + Anti-RAT Zero-Shredder + USB Flash Guard)
 	registerHardcoreShieldRoutes(mux, kernel.security)
 
-	// Serve standalone executable download for LumaOS_1.6.6b.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.6.7.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.6.6b.exe", "LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.6.7.exe", "LumaOS_1.6.6b.exe", "LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.6b.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.7.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -3145,12 +3178,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.6b.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.7.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.6.7.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.6b.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.6.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.5.exe", serveExe)
@@ -3223,7 +3257,7 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.6.6b (NITROGEN · N-7) — LUMACORE 1.5.6b & LUMASHIELD 3.0b")
+	log.Printf("  LUMA OS 1.6.7 (NITROGEN · FINAL 1.6.x) — LUMACORE 1.5.7 & LUMASHIELD 3.1")
 	log.Printf("  - Zero-Freeze Antivirus Engine, Anti-RAT Zero-Shredder & USB Flash Guard")
 	log.Printf("  - Always-On-Top Dynamic Island, Desktop LMB Multi-Select & 36 UI Languages")
 	log.Printf("  - Desktop Environment:          http://%s/", addr)

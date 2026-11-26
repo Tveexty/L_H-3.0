@@ -1307,7 +1307,7 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
                       style={{ top: `${pageBottomTop}px`, left: `${paddingPx}px`, right: `${paddingPx}px` }}
                       className="pointer-events-none absolute flex items-center justify-between text-[10px] font-mono text-slate-400/90 border-t border-slate-300/60 pt-1 select-none"
                     >
-                      <span>{footerText || 'Luma Word 1.6.6b'}</span>
+                      <span>{footerText || 'Luma Word 1.6.7'}</span>
                       {showPageNum && (
                         <span>
                           Страница {idx + 1} из {pageCount}

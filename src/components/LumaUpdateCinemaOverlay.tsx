@@ -44,7 +44,7 @@ const STAGES = [
   { id: 'downloading', label: 'Потоковая загрузка EXE', short: 'Загрузка', minPct: 10 },
   { id: 'verifying', label: 'Проверка SHA-256 & PE32+', short: 'Хеш-проверка', minPct: 82 },
   { id: 'migrating', label: 'Сохранение профиля и виджетов', short: 'Профиль', minPct: 91 },
-  { id: 'restarting', label: 'Запуск LumaCore 1.5.6b', short: 'Перезапуск', minPct: 96 },
+  { id: 'restarting', label: 'Запуск LumaCore 1.5.7', short: 'Перезапуск', minPct: 96 },
 ];
 
 const WHATS_NEW_HIGHLIGHTS = [
@@ -90,7 +90,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
       setLogLines([
         {
           ts: new Date().toLocaleTimeString('ru-RU', { hour12: false }),
-          text: `Инициализация OTA-модуля LumaCore 1.5.6b (Nitrogen · N-7)`,
+          text: `Инициализация OTA-модуля LumaCore 1.5.7 (Nitrogen · N-7)`,
         },
       ]);
       lastLoggedMsgRef.current = '';
@@ -167,7 +167,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
 
     const activeHighlight = WHATS_NEW_HIGHLIGHTS[highlightIdx];
     const HighlightIcon = activeHighlight.icon;
-    const targetVer = progress.target_version || '1.6.6b';
+    const targetVer = progress.target_version || '1.6.7';
 
     return (
       <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 select-none overflow-y-auto bg-[#02050d]/94 backdrop-blur-3xl text-white luma-spring-panel">
@@ -219,7 +219,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
               </span>
               <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/10 text-slate-300">
                 <Cpu className="w-3.5 h-3.5 text-sky-400" />
-                LumaCore 1.5.6b
+                LumaCore 1.5.7
               </span>
             </div>
           </div>
@@ -381,7 +381,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
                 </div>
               </div>
 
-              {/* Interactive "What's New in 1.6.6b" Feature Showcase Carousel */}
+              {/* Interactive "What's New in 1.6.7" Feature Showcase Carousel */}
               <div className="p-4 rounded-2xl border border-sky-400/20 bg-gradient-to-br from-sky-500/[0.09] via-indigo-500/[0.06] to-transparent">
                 <div className="flex items-center justify-between gap-2 mb-2.5">
                   <div className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-sky-300">
@@ -453,7 +453,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
           <div className="pt-2 border-t border-white/10 flex flex-col gap-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 font-mono">
               <span>
-                Все виджеты, папки, приложения, память ИИ и темы сохраняются автоматически · LumaCore 1.5.6b
+                Все виджеты, папки, приложения, память ИИ и темы сохраняются автоматически · LumaCore 1.5.7
               </span>
               <button
                 type="button"

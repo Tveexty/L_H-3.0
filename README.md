@@ -1,45 +1,49 @@
 <div align="center">
 
-<img src="public/luma-nitrogen-hero.jpg" alt="Luma OS 1.6.6b (Nitrogen · N-7 · 2.5D Cryo-Glass QHD)" width="100%" style="border-radius: 18px;" />
+<img src="public/luma-nitrogen-hero.jpg" alt="Luma OS 1.6.7 (Nitrogen · Final 1.6.x · 2.5D Cryo-Glass QHD)" width="100%" style="border-radius: 18px;" />
 
 <br />
 
-# Luma OS 1.6.6b — **Nitrogen · N-7**
+# Luma OS 1.6.7 — **Nitrogen · Final 1.6.x**
 
-**Флагманская настольная операционная среда для Windows 10 / 11 на ядре `LumaCore 1.5.6b`, антивирусе `LumaShield 3.0b Zero-Freeze` (340+ правил · Anti-RAT уничтожение под ноль · Щит USB-флешек) и модульном ИИ `Luma Ai Nitrogen`: исправлено зависание системы при проверке на вирусы, рамочное выделение ЛКМ на рабочем столе, 36 языков интерфейса и нативный Win32 Always-On-Top Dynamic Island оверлей поверх Chrome и всех окон Windows**
+**Финальная стабильная сборка ветки `1.6.x` для Windows 10 / 11 на ядре `LumaCore 1.5.7`, антивирусе `LumaShield 3.1 Zero-Freeze` (340+ правил · Anti-RAT уничтожение под ноль · Щит USB-флешек) и ИИ `Luma Ai Nitrogen`: починен Dynamic Island поверх Chrome и окон Windows (без «окошка загрузки» вместо курсора), исправлено зависание проводника при проверке отдельного файла, наведён порядок в репозитории (`old protatips`)**
 
 <p>
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.6b"><img src="https://img.shields.io/badge/Release-v1.6.6b%20(Nitrogen%20·%20N--7)-38bdf8?style=for-the-badge" alt="Release v1.6.6b" /></a>
-  <img src="https://img.shields.io/badge/Kernel-LumaCore%201.5.6b%20(v1.6.6b)-10b981?style=for-the-badge" alt="LumaCore 1.5.6b" />
-  <img src="https://img.shields.io/badge/Security-LumaShield%203.0b%20Zero--Freeze%20(340%2B)-f43f5e?style=for-the-badge" alt="LumaShield 3.0b Zero-Freeze" />
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.7"><img src="https://img.shields.io/badge/Release-v1.6.7%20(Final%201.6.x)-38bdf8?style=for-the-badge" alt="Release v1.6.7" /></a>
+  <img src="https://img.shields.io/badge/Kernel-LumaCore%201.5.7%20(v1.6.7)-10b981?style=for-the-badge" alt="LumaCore 1.5.7" />
+  <img src="https://img.shields.io/badge/Security-LumaShield%203.1%20Zero--Freeze%20(340%2B)-f43f5e?style=for-the-badge" alt="LumaShield 3.1 Zero-Freeze" />
   <img src="https://img.shields.io/badge/Island-Always--On--Top%20Win32-ec4899?style=for-the-badge" alt="Always-On-Top Dynamic Island" />
   <img src="https://img.shields.io/badge/Languages-36%20UI%20%2B%20120%2B%20KBD-8b5cf6?style=for-the-badge" alt="36 UI Languages" />
   <img src="https://img.shields.io/badge/Desktop-LMB%20Marquee%20Multi--Select-06b6d4?style=for-the-badge" alt="Desktop Multi-Select" />
 </p>
 
 <h3>
-  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.6b.exe">⬇️ Скачать LumaOS_1.6.6b.exe (Portable · 1 файл · 0 зависимостей)</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.7.exe">⬇️ Скачать LumaOS_1.6.7.exe (Стабильная · Финал 1.6.x · 1 файл)</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.6b">📦 Релиз v1.6.6b</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.7">📦 Релиз v1.6.7</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="PATCH_NOTES_1.6.6b.md">📝 Патч-ноут 1.6.6b</a>
+  <a href="PATCH_NOTES_1.6.7.md">📝 Патч-ноут 1.6.7</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="luma_ai_nitrogen/README.md">🧠 Модуль Luma Ai Nitrogen</a>
 </h3>
 
 </div>
 
+> [!WARNING]
+> **⚠️ Нестабильная работа версий `1.6.4` – `1.6.6b`!**
+> Сборки **`1.6.4`**, **`1.6.5`**, **`1.6.6`** и **`1.6.6b`** работают **нестабильно** (зависание при выборе файла в антивирусе, зависший курсор загрузки на Dynamic Island поверх Chrome/Windows и фризы сканера). Пожалуйста, **не используйте `1.6.4–1.6.6b`** — скачивайте финальную стабильную сборку **[Luma OS 1.6.7](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.7)**!
+
 ---
 
-## Что нового в **Luma OS 1.6.6b (Nitrogen · N-7 · `LumaCore 1.5.6b` · `LumaShield 3.0b Zero-Freeze`)**
+## Что нового в **Luma OS 1.6.7 (Nitrogen · Final 1.6.x · `LumaCore 1.5.7` · `LumaShield 3.1`)**
 
-| Модуль | Ключевые возможности обновления 1.6.6b |
+| Модуль | Ключевые исправления и возможности 1.6.7 |
 | :--- | :--- |
-| **Фикс зависания: `LumaShield 3.0b Zero-Freeze`** | Полностью устранены фризы при проверке системы на вирусы: быстрый `filepath.WalkDir` с жёстким лимитом времени (`8 сек` / `14 сек`), ограничением глубины (`4–5`), пропуском `OneDrive`/облачных папок и симлинков, асинхронным обновлением статуса Defender (`< 5 мс` отклик UI), кэшированием USB-флешек (`0% CPU` в простое, интервал 20 сек) и кнопкой **«Остановить»** с таймаутами `AbortController`. |
-| **Жёсткий антивирус (`Anti-RAT` + `USB Guard`)** | 340+ правил: активный щит контролирует систему, процессы и все подключённые **USB-флешки**. Любой файл, пытающийся управлять ПК (`RAT`, `Reverse Shell`, `Keylogger`, `autorun.inf`, вирусные `.lnk`, двойные расширения), немедленно завершается, перезаписывается нулями (`0x00`) и **удаляется под ноль**. Подозрительные чужие файлы (`Zone.Identifier` / USB) блокируются, ядро Windows и Luma OS защищены белым списком. |
-| **Рамочное выделение ЛКМ на Рабочем столе** | Зажатие ЛКМ по пустому месту стола рисует стеклянную акцентную рамку и выделяет сразу несколько ярлыков, папок и виджетов. Поддерживаются `Ctrl/Shift + клик`, `Ctrl + A`, `Esc`, `Delete`, групповое перетаскивание по сетке, групповой перенос в папку, сбор в новую папку в 1 клик, плавающая панель действий и групповое ПКМ-меню. |
-| **36 языков интерфейса системы (+18 новых)** | В 2 раза расширен список языков ОС: добавлены Беларуская, Oʻzbekcha, Azərbaycanca, ქართული, Հայերեն, Čeština, Slovenčina, Български, Српски, Ελληνικά, Magyar, Svenska, Norsk, Suomi, Tiếng Việt, Bahasa Indonesia, ไทย и עברית — с мгновенным поиском в *Настройки → Язык и регион*, метками `RTL` и расширенным автопереводом. |
-| **Dynamic Island поверх Chrome и всех окон Windows** | В `LumaCore 1.5.6b` встроен настоящий нативный Win32-оверлей (`HWND_TOPMOST + WS_EX_LAYERED + WS_EX_TOOLWINDOW + WS_EX_NOACTIVATE`), прилипающий к выбранной зоне экрана поверх Google Chrome, игр и всех окон Windows без перехвата фокуса, с живым эквалайзером, кликабельными кнопками `⏮ ⏯ ⏭`, часами, CPU/RAM, батареей и прогрессом загрузок. |
+| **Фикс Dynamic Island в Chrome / Windows** | Полностью устранено «окошко загрузки» вместо курсора и неработающие клики: в нативный Win32-оверлей добавлены системные курсоры `IDC_ARROW`/`IDC_HAND`, обработка `WM_SETCURSOR`, `WM_NCHITTEST` (`HTCLIENT`) и `WM_CAPTURECHANGED`, а из периодического таймера убран сбивающий клики флаг `SWP_SHOWWINDOW`. |
+| **Фикс проводника и проверки файла (`LumaShield 3.1`)** | Устранено критическое зависание всей системы при поиске и выборе файла в антивирусе: прямой нативный Win32 `GetOpenFileNameW` (`< 15 мс`, 0% PowerShell), `TopMost` выбор папок с таймаутом 90 сек, отдельные кнопки **«Выбрать файл»** и **«Папка»**, лимит чтения **4 МБ** на диске и **2 МБ** при Drag-and-Drop (исключён краш WebView2/ОЗУ) + Anti-RAT проверка одиночного файла. |
+| **Zero-Freeze сканер и таймауты ядра** | Быстрый `filepath.WalkDir` (`8/14 сек`), пропуск OneDrive/симлинков, кэш USB-флешек (`0% CPU`, 20 сек), асинхронный статус Defender (`< 5 мс`), кнопка **«Остановить»** и таймаут 6 сек в аудите планировщика задач (`AuditScheduledTasks`). |
+| **Рамочное выделение ЛКМ + 36 языков** | Выделение группы элементов ЛКМ на рабочем столе (перетаскивание, сбор в папку, ПКМ, Delete) и 36 языков интерфейса системы с мгновенным поиском и автопереводом. |
+| **Чистый репозиторий (`old protatips/`)** | Все устаревшие прототипы (`launcher_hab2.4`, `LauncherHab3.0_CSharp`, `Luma_Core`, `start_all.bat`, `metadata.json`) перенесены в папку **`old protatips/`**. |
 
 ---
 
