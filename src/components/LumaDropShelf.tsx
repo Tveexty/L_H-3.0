@@ -141,6 +141,16 @@ export const LumaDropShelf: React.FC<LumaDropShelfProps> = ({ isDark, onPushToas
         }
       }
       onPushToast('Полка Luma (Dropzone)', `Добавлено на полку: ${files.length}`, 'success');
+      window.dispatchEvent(
+        new CustomEvent('luma-harmony-transfer', {
+          detail: {
+            direction: 'receive',
+            fileName: files.length === 1 ? files[0].name : `${files.length} файлов`,
+            size: files.reduce((acc, f) => acc + f.size, 0),
+            device: 'Полка Dropzone',
+          },
+        })
+      );
       return;
     }
 
@@ -167,6 +177,11 @@ export const LumaDropShelf: React.FC<LumaDropShelfProps> = ({ isDark, onPushToas
         const isImg = /\.(png|jpg|jpeg|webp|gif)$/i.test(d.name || '');
         await addItem({ kind: isImg ? 'image' : 'file', name: d.name, path: d.path, size: d.size });
         onPushToast('Полка Luma', `Файл «${d.name}» положен на полку`, 'success');
+        window.dispatchEvent(
+          new CustomEvent('luma-harmony-transfer', {
+            detail: { direction: 'receive', fileName: d.name, path: d.path, size: d.size, device: 'Полка Dropzone' },
+          })
+        );
       }
     } catch {
       // ignore
@@ -192,6 +207,16 @@ export const LumaDropShelf: React.FC<LumaDropShelfProps> = ({ isDark, onPushToas
       const d = await r.json();
       if (d?.ok) {
         if (Array.isArray(d.items)) setItems(d.items);
+        window.dispatchEvent(
+          new CustomEvent('luma-harmony-transfer', {
+            detail: {
+              direction: 'send',
+              fileName: `Пачка (${d.transferred || items.length} файлов)`,
+              path: d.target_dir || targetDir,
+              device: move ? 'Перемещено' : 'Скопировано',
+            },
+          })
+        );
         onPushToast(
           'Полка Luma · Забрать пачкой',
           `${move ? 'Перемещено' : 'Скопировано'} объектов: ${d.count} → ${d.target_dir}`,

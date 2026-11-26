@@ -99,6 +99,42 @@ export const LumaOxygenConnectWindow: React.FC<LumaOxygenConnectWindowProps> = (
     }).catch(() => {});
   };
 
+  const sendFileToPhone = async () => {
+    try {
+      const r = await fetch('/api/kernel/pick-file?mode=file');
+      if (!r.ok) return;
+      const d = await r.json();
+      if ((!d?.picked && !d?.ok) || !d?.path) return;
+      const sr = await fetch('/api/kernel/oxygen-connect/send-to-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: d.path }),
+      });
+      if (sr.ok) {
+        const sd = await sr.json();
+        if (sd?.ok && sd?.file) {
+          onPushToast('Oxygen Connect', `Файл «${sd.file.name}» отправлен на телефон!`, 'success');
+          void loadStatus();
+        }
+      }
+    } catch {
+      onPushToast('Oxygen Connect', 'Не удалось отправить файл на телефон', 'warning');
+    }
+  };
+
+  const previewHarmonyWave = (direction: 'receive' | 'send') => {
+    window.dispatchEvent(
+      new CustomEvent('luma-harmony-transfer', {
+        detail: {
+          direction,
+          fileName: direction === 'receive' ? 'IMG_Oxygen_Photo.jpg' : 'Presentation_LumaOS.pdf',
+          size: direction === 'receive' ? 2_450_000 : 1_180_000,
+          device: 'Android',
+        },
+      })
+    );
+  };
+
   const addToShelf = async (file: ReceivedPhoneFile) => {
     await fetch('/api/kernel/shelf', {
       method: 'POST',
@@ -108,6 +144,19 @@ export const LumaOxygenConnectWindow: React.FC<LumaOxygenConnectWindowProps> = (
         item: { kind: file.is_image ? 'image' : 'file', name: file.name, path: file.path, size: file.size },
       }),
     }).catch(() => {});
+    window.dispatchEvent(
+      new CustomEvent('luma-harmony-transfer', {
+        detail: {
+          direction: 'receive',
+          fileName: file.name,
+          path: file.path,
+          size: file.size,
+          isImage: file.is_image,
+          previewUrl: file.preview_url,
+          device: 'Полка Dropzone',
+        },
+      })
+    );
     onPushToast('Oxygen SuperHub', `«${file.name}» добавлен на полку Drag & Drop`, 'success');
   };
 
@@ -115,6 +164,9 @@ export const LumaOxygenConnectWindow: React.FC<LumaOxygenConnectWindowProps> = (
     ? 'bg-white/[0.05] border-white/12 text-white'
     : 'bg-white/85 border-slate-200 text-slate-900';
   const mutedCls = isDark ? 'text-white/60' : 'text-slate-500';
+  const outboxList: ReceivedPhoneFile[] = Array.isArray((status as unknown as { outbox?: ReceivedPhoneFile[] })?.outbox)
+    ? ((status as unknown as { outbox?: ReceivedPhoneFile[] }).outbox || [])
+    : [];
 
   return (
     <div className="h-full overflow-y-auto p-4 sm:p-5 space-y-4">
@@ -123,12 +175,32 @@ export const LumaOxygenConnectWindow: React.FC<LumaOxygenConnectWindowProps> = (
         <div className="flex flex-wrap items-center justify-between gap-4 relative z-10">
           <div className="space-y-1.5 max-w-xl">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/20 border border-cyan-300/40 text-cyan-200 text-[10px] font-mono font-bold uppercase tracking-wider">
-              <Sparkles className="w-3 h-3" /> Luma Oxygen Connect · SuperHub Ecosystem
+              <Sparkles className="w-3 h-3" /> Luma Oxygen Connect 1.7.1 · HarmonyOS Wave &amp; 1-Tap UI
             </div>
-            <h2 className="text-xl font-black tracking-tight">Подключите Android к Luma OS 1.7 (Oxygen)</h2>
+            <h2 className="text-xl font-black tracking-tight">Подключите Android к Luma OS 1.7.1 (Oxygen)</h2>
             <p className={`text-xs ${mutedCls}`}>
-              Точь-в-точь как HarmonyOS SuperDevice: наведите камеру Android на QR-код, чтобы мгновенно кидать фото с камеры на ПК, обмениваться файлами с полкой Dropzone, синхронизировать буфер и управлять ПК с телефона как тачпадом.
+              Максимально простой 1-тап интерфейс на телефоне, ускоренный плавный тачпад, Circle to Search и фирменная полноэкранная волна HarmonyOS при каждом приёме и отправке файлов!
             </p>
+            <div className="flex flex-wrap gap-2 pt-1.5">
+              <button
+                onClick={() => void sendFileToPhone()}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-110 text-white text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/25 transition"
+              >
+                📤 Отправить файл на телефон
+              </button>
+              <button
+                onClick={() => previewHarmonyWave('receive')}
+                className="px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/35 text-emerald-300 text-xs font-bold cursor-pointer transition"
+              >
+                🌊 Волна приёма
+              </button>
+              <button
+                onClick={() => previewHarmonyWave('send')}
+                className="px-3 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/35 text-sky-300 text-xs font-bold cursor-pointer transition"
+              >
+                🌊 Волна отправки
+              </button>
+            </div>
           </div>
 
           {/* SuperDevice Radial Bubble */}
@@ -169,7 +241,7 @@ export const LumaOxygenConnectWindow: React.FC<LumaOxygenConnectWindowProps> = (
               Сканируйте камерой Android
             </div>
             <div className={`text-[11px] ${mutedCls}`}>
-              Откроется приложение <b>Luma Oxygen Connect</b> (можно установить на экран телефона кнопкой «На главный экран» или собрать APK из папки <code>LumaOxygenConnect_Android</code>).
+              Откроется упрощённый 1-тап интерфейс <b>Oxygen Connect</b>: Фото, Файлы, <b>Circle to Search</b>, Буфер и быстрый Тачпад на одном экране без лишних вкладок.
             </div>
             <div className="p-2.5 rounded-xl bg-black/25 border border-white/10 font-mono text-xs space-y-1">
               <div className="flex items-center justify-between gap-2">
@@ -220,7 +292,7 @@ export const LumaOxygenConnectWindow: React.FC<LumaOxygenConnectWindowProps> = (
           {!status?.devices || status.devices.length === 0 ? (
             <div className={`py-8 text-center text-xs space-y-1 ${mutedCls}`}>
               <div>Ожидание подключения Android в вашей Wi-Fi сети...</div>
-              <div className="text-[10px]">Поддерживаются: Камера→ПК, Файлы↔ПК, Буфер, Тачпад, Медиа-пульт</div>
+              <div className="text-[10px]">Камера→ПК · Файлы↔ПК · Circle to Search · Быстрый тачпад</div>
             </div>
           ) : (
             <div className="space-y-2">
@@ -251,6 +323,26 @@ export const LumaOxygenConnectWindow: React.FC<LumaOxygenConnectWindowProps> = (
         </div>
       </div>
 
+      {/* Outgoing PC -> Phone Queue */}
+      {outboxList.length > 0 && (
+        <div className={`p-4 rounded-2xl border space-y-2.5 ${surfaceCls}`}>
+          <div className="text-xs font-extrabold text-sky-400">
+            📤 Отправлено с ПК на телефон ({outboxList.length}) — доступно на смартфоне в 1 тап
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {outboxList.map((f) => (
+              <div key={f.id} className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-400/25 flex items-center justify-between gap-2 text-xs">
+                <div className="min-w-0">
+                  <div className="font-bold truncate">{f.name}</div>
+                  <div className={`text-[10px] font-mono ${mutedCls}`}>{Math.max(1, Math.round(f.size / 1024))} КБ · {f.received_at}</div>
+                </div>
+                <span className="text-[10px] font-mono text-sky-300 shrink-0">На телефоне</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Received Camera Photos & Files Inbox */}
       <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
         <div className="flex items-center justify-between">
@@ -258,12 +350,12 @@ export const LumaOxygenConnectWindow: React.FC<LumaOxygenConnectWindowProps> = (
             <ImageIcon className="w-4 h-4 text-cyan-400" />
             Входящие фото и файлы с Android ({status?.inbox?.length || 0})
           </div>
-          <span className={`text-[10px] ${mutedCls}`}>Автоматически добавляются в Полку Dropzone</span>
+          <span className={`text-[10px] ${mutedCls}`}>Автоматически добавляются в Полку Dropzone + Волна HarmonyOS</span>
         </div>
 
         {!status?.inbox || status.inbox.length === 0 ? (
           <div className={`py-8 text-center text-xs ${mutedCls}`}>
-            Сфотографируйте что-нибудь в приложении Oxygen Connect на телефоне — фото мгновенно появится здесь!
+            Сфотографируйте что-нибудь в Oxygen Connect на телефоне — фото прилетит с волной HarmonyOS по всему экрану!
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

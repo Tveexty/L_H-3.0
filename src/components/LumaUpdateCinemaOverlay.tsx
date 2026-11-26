@@ -44,7 +44,7 @@ const STAGES = [
   { id: 'downloading', label: 'Потоковая загрузка EXE', short: 'Загрузка', minPct: 10 },
   { id: 'verifying', label: 'Проверка SHA-256 & PE32+', short: 'Хеш-проверка', minPct: 82 },
   { id: 'migrating', label: 'Сохранение профиля и виджетов', short: 'Профиль', minPct: 91 },
-  { id: 'restarting', label: 'Запуск LumaCore 1.6.0', short: 'Перезапуск', minPct: 96 },
+  { id: 'restarting', label: 'Запуск LumaCore 1.6.1', short: 'Перезапуск', minPct: 96 },
 ];
 
 const WHATS_NEW_HIGHLIGHTS = [
@@ -90,7 +90,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
       setLogLines([
         {
           ts: new Date().toLocaleTimeString('ru-RU', { hour12: false }),
-          text: `Инициализация OTA-модуля LumaCore 1.6.0 (Oxygen · O-8)`,
+          text: `Инициализация OTA-модуля LumaCore 1.6.1 (Oxygen · O-8)`,
         },
       ]);
       lastLoggedMsgRef.current = '';
@@ -219,7 +219,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
               </span>
               <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/10 text-slate-300">
                 <Cpu className="w-3.5 h-3.5 text-sky-400" />
-                LumaCore 1.6.0
+                LumaCore 1.6.1
               </span>
             </div>
           </div>
@@ -453,7 +453,7 @@ export const LumaUpdateCinemaOverlay: React.FC<LumaUpdateCinemaOverlayProps> = R
           <div className="pt-2 border-t border-white/10 flex flex-col gap-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 font-mono">
               <span>
-                Все виджеты, папки, приложения, память ИИ и темы сохраняются автоматически · LumaCore 1.6.0
+                Все виджеты, папки, приложения, память ИИ и темы сохраняются автоматически · LumaCore 1.6.1
               </span>
               <button
                 type="button"

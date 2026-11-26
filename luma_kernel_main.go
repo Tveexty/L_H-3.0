@@ -48,9 +48,9 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.7"
+	KernelVersion       = "1.7.1"
 	KernelCodename      = "Oxygen"
-	KernelEngineVersion = "1.6.0"
+	KernelEngineVersion = "1.6.1"
 	SecurityCoreVersion = "3.2"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
@@ -3170,17 +3170,18 @@ func main() {
 	registerNitrogen16Routes(mux, kernel, osNotifBridge)
 	// Luma OS 1.6.6: Native Win32 Always-On-Top Dynamic Island Overlay (above Chrome & all Windows apps)
 	registerIslandOverlayRoutes(mux)
-	// Luma OS 1.7 (Oxygen): LumaShield 3.2 Hardcore Active Defense + KWin Window Rules + Drop Shelf + Per-App Audio + Oxygen Connect Android
+	// Luma OS 1.7.1 (Oxygen): LumaShield 3.2 + KWin Window Rules + Drop Shelf + Per-App Audio + Oxygen Connect HarmonyWave + Circle to Search Vision
 	registerHardcoreShieldRoutes(mux, kernel.security)
 	registerOxygen17Routes(mux, kernel, nativeRecorder)
 	registerOxygenConnectRoutes(mux, kernel)
+	registerCircleSearch171Routes(mux, kernel)
 
-	// Serve standalone executable download for LumaOS_1.7.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.7.1.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.7.exe", "LumaOS_1.6.7.exe", "LumaOS_1.6.6b.exe", "LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.7.1.exe", "LumaOS_1.7.exe", "LumaOS_1.6.7.exe", "LumaOS_1.6.6b.exe", "LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.7.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.7.1.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -3188,12 +3189,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.7.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.7.1.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.7.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.7.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.7.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.6b.exe", serveExe)
@@ -3266,8 +3268,8 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.7 (OXYGEN · O-8) — LUMACORE 1.6.0 & LUMASHIELD 3.2")
-	log.Printf("  - KWin Window Rules · Drop Shelf · Smart Clipboard · Per-App Audio")
+	log.Printf("  LUMA OS 1.7.1 (OXYGEN · O-8) — LUMACORE 1.6.1 & LUMASHIELD 3.2")
+	log.Printf("  - HarmonyOS Wave · 1-Tap Oxygen Connect · Circle to Search Vision · KWin Rules")
 	log.Printf("  - Oxygen Connect Android SuperHub: http://%s:%d/", detectLocalLANIP(), OxygenConnectPort)
 	log.Printf("  - Desktop Environment:             http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:      tcp://127.0.0.1:%d", *rpcPort)

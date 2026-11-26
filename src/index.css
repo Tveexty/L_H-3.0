@@ -1248,3 +1248,144 @@ html[data-spring-physics="off"] .luma-noise-surface {
     opacity 200ms ease-out,
     filter 200ms ease-out !important;
 }
+
+/* ==================== LUMA OS 1.7.1 (OXYGEN) — HARMONYOS FULL-SCREEN FILE TRANSFER RIPPLE WAVE ==================== */
+@keyframes lumaHarmonyRipple {
+  0% {
+    transform: translate(-50%, -50%) scale(0.08);
+    opacity: 0.96;
+  }
+  42% {
+    opacity: 0.78;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(10.6);
+    opacity: 0;
+  }
+}
+
+@keyframes lumaHarmonyFlash {
+  0% {
+    opacity: 0;
+  }
+  16% {
+    opacity: 0.65;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes lumaHarmonySpark {
+  0% {
+    transform: rotate(var(--deg)) translateY(0px) scale(0.4);
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(var(--deg)) translateY(-58vmax) scale(1.25);
+    opacity: 0;
+  }
+}
+
+@keyframes lumaHarmonyCard {
+  0% {
+    transform: scale(0.76) translateY(16px);
+    opacity: 0;
+    filter: blur(10px);
+  }
+  14% {
+    transform: scale(1.03) translateY(-2px);
+    opacity: 1;
+    filter: blur(0px);
+  }
+  22% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+  84% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.92) translateY(-10px);
+    opacity: 0;
+  }
+}
+
+.luma-harmony-flash {
+  animation: lumaHarmonyFlash 1.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: opacity;
+}
+
+.luma-harmony-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18vmax;
+  height: 18vmax;
+  border-radius: 9999px;
+  transform: translate(-50%, -50%) scale(0.08);
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: lumaHarmonyRipple 1.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.luma-harmony-ring-1 {
+  border-width: 4px;
+  border-style: solid;
+  backdrop-filter: brightness(1.09) saturate(1.2);
+}
+
+.luma-harmony-ring-2 {
+  border-width: 3px;
+  border-style: solid;
+  animation-delay: 0.16s;
+}
+
+.luma-harmony-ring-3 {
+  border-width: 2px;
+  border-style: solid;
+  animation-delay: 0.34s;
+}
+
+.luma-harmony-ring-rx {
+  border-color: rgba(52, 211, 153, 0.92);
+  box-shadow:
+    0 0 38px rgba(16, 185, 129, 0.78),
+    0 0 92px rgba(6, 182, 212, 0.52),
+    inset 0 0 32px rgba(167, 243, 208, 0.65);
+}
+
+.luma-harmony-ring-tx {
+  border-color: rgba(56, 189, 248, 0.94);
+  box-shadow:
+    0 0 38px rgba(56, 189, 248, 0.8),
+    0 0 92px rgba(129, 140, 248, 0.55),
+    inset 0 0 32px rgba(186, 230, 253, 0.65);
+}
+
+.luma-harmony-spark {
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 6px;
+  height: 18px;
+  border-radius: 9999px;
+  opacity: 0;
+  box-shadow: 0 0 14px currentColor;
+  animation: lumaHarmonySpark 1.35s cubic-bezier(0.16, 1, 0.3, 1) var(--delay, 0ms) forwards;
+}
+
+.luma-harmony-card {
+  animation: lumaHarmonyCard 3.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* KWin Game Mode Compositor Auto-Off helper */
+html.luma-perf-no-blur [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+

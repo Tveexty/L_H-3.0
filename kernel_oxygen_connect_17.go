@@ -44,14 +44,72 @@ type OxygenReceivedFile struct {
 	PreviewURL string `json:"preview_url,omitempty"`
 }
 
+type OxygenTransferEvent struct {
+	ID         string `json:"id"`
+	Direction  string `json:"direction"` // "receive" (phone -> PC) | "send" (PC -> phone)
+	FileName   string `json:"file_name"`
+	Path       string `json:"path,omitempty"`
+	Size       int64  `json:"size"`
+	IsImage    bool   `json:"is_image"`
+	PreviewURL string `json:"preview_url,omitempty"`
+	Device     string `json:"device"`
+	Timestamp  int64  `json:"timestamp"`
+}
+
 var (
-	oxyConnMu      sync.RWMutex
-	oxyConnStarted bool
-	oxyConnPIN     string
-	oxyConnDevices = map[string]OxygenConnectedDevice{}
-	oxyConnInbox   = []OxygenReceivedFile{}
-	oxyConnDir     string
+	oxyConnMu          sync.RWMutex
+	oxyConnStarted     bool
+	oxyConnPIN         string
+	oxyConnDevices     = map[string]OxygenConnectedDevice{}
+	oxyConnInbox       = []OxygenReceivedFile{}
+	oxyConnOutbox      = []OxygenReceivedFile{}
+	oxyConnDir         string
+	oxyConnLastEvent   *OxygenTransferEvent
+	oxyTransferSubMu   sync.Mutex
+	oxyTransferSubs    = map[int]chan OxygenTransferEvent{}
+	oxyTransferSubNext int
 )
+
+func subscribeOxygenTransferEvents() (int, chan OxygenTransferEvent) {
+	oxyTransferSubMu.Lock()
+	defer oxyTransferSubMu.Unlock()
+	oxyTransferSubNext++
+	id := oxyTransferSubNext
+	ch := make(chan OxygenTransferEvent, 16)
+	oxyTransferSubs[id] = ch
+	return id, ch
+}
+
+func unsubscribeOxygenTransferEvents(id int) {
+	oxyTransferSubMu.Lock()
+	if ch, ok := oxyTransferSubs[id]; ok {
+		delete(oxyTransferSubs, id)
+		close(ch)
+	}
+	oxyTransferSubMu.Unlock()
+}
+
+func publishOxygenTransferEvent(ev OxygenTransferEvent) {
+	if ev.ID == "" {
+		ev.ID = fmt.Sprintf("tr_%d", time.Now().UnixNano())
+	}
+	if ev.Timestamp == 0 {
+		ev.Timestamp = time.Now().UnixMilli()
+	}
+	oxyConnMu.Lock()
+	copyEv := ev
+	oxyConnLastEvent = &copyEv
+	oxyConnMu.Unlock()
+
+	oxyTransferSubMu.Lock()
+	for _, ch := range oxyTransferSubs {
+		select {
+		case ch <- ev:
+		default:
+		}
+	}
+	oxyTransferSubMu.Unlock()
+}
 
 func initOxygenConnectState() {
 	oxyConnMu.Lock()
@@ -152,27 +210,31 @@ func getOxygenConnectStatusSnapshot() map[string]interface{} {
 		devs = append(devs, d)
 	}
 	inbox := append([]OxygenReceivedFile(nil), oxyConnInbox...)
+	outbox := append([]OxygenReceivedFile(nil), oxyConnOutbox...)
+	lastEv := oxyConnLastEvent
 	oxyConnMu.RUnlock()
 
 	pairURL := fmt.Sprintf("http://%s:%d/?pin=%s", ip, OxygenConnectPort, pin)
 	return map[string]interface{}{
-		"ok":          true,
-		"running":     true,
-		"lan_ip":      ip,
-		"port":        OxygenConnectPort,
-		"pin":         pin,
-		"pair_url":    pairURL,
-		"inbox_dir":   dir,
-		"devices":     devs,
-		"inbox":       inbox,
-		"device_name": hostDeviceName(),
+		"ok":            true,
+		"running":       true,
+		"lan_ip":        ip,
+		"port":          OxygenConnectPort,
+		"pin":           pin,
+		"pair_url":      pairURL,
+		"inbox_dir":     dir,
+		"devices":       devs,
+		"inbox":         inbox,
+		"outbox":        outbox,
+		"last_transfer": lastEv,
+		"device_name":   hostDeviceName(),
 	}
 }
 
 func hostDeviceName() string {
 	h, err := os.Hostname()
 	if err != nil || h == "" {
-		return "Luma OS 1.7 (Oxygen)"
+		return "Luma OS 1.7.1 (Oxygen)"
 	}
 	return h
 }
@@ -195,6 +257,88 @@ func registerOxygenConnectRoutes(mainMux *http.ServeMux, kernel *LumaKernel) {
 	mainMux.HandleFunc("/api/kernel/oxygen-connect/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(getOxygenConnectStatusSnapshot())
+	})
+
+	// Real-time HarmonyOS Transfer Wave SSE stream for Luma OS Desktop
+	mainMux.HandleFunc("/api/kernel/oxygen-connect/events", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
+		flusher, _ := w.(http.Flusher)
+
+		subID, ch := subscribeOxygenTransferEvents()
+		defer unsubscribeOxygenTransferEvents(subID)
+
+		writeSSEEvent(w, flusher, map[string]interface{}{"type": "connected", "engine": "OxygenConnect 1.7.1 HarmonyWave"})
+		keepalive := time.NewTicker(25 * time.Second)
+		defer keepalive.Stop()
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case ev, ok := <-ch:
+				if !ok {
+					return
+				}
+				writeSSEEvent(w, flusher, map[string]interface{}{"type": "transfer", "event": ev})
+			case <-keepalive.C:
+				_, _ = fmt.Fprintf(w, ": ping\n\n")
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+		}
+	})
+
+	// Send file from PC -> Android phone (triggers HarmonyOS Send Wave on PC & Receive Wave on Android!)
+	mainMux.HandleFunc("/api/kernel/oxygen-connect/send-to-phone", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Path string `json:"path"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 65536)).Decode(&req)
+		p := filepath.Clean(strings.TrimSpace(req.Path))
+		info, err := os.Stat(p)
+		if p == "" || err != nil || info.IsDir() {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Укажите существующий файл на ПК"})
+			return
+		}
+		name := filepath.Base(p)
+		extLow := strings.ToLower(filepath.Ext(name))
+		isImg := extLow == ".jpg" || extLow == ".jpeg" || extLow == ".png" || extLow == ".webp" || extLow == ".gif"
+		rec := OxygenReceivedFile{
+			ID:         fmt.Sprintf("out_%d", time.Now().UnixNano()),
+			Name:       name,
+			Path:       p,
+			Size:       info.Size(),
+			IsImage:    isImg,
+			FromDevice: hostDeviceName(),
+			ReceivedAt: time.Now().Format("15:04:05"),
+		}
+		oxyConnMu.Lock()
+		oxyConnOutbox = append([]OxygenReceivedFile{rec}, oxyConnOutbox...)
+		if len(oxyConnOutbox) > 30 {
+			oxyConnOutbox = oxyConnOutbox[:30]
+		}
+		oxyConnMu.Unlock()
+
+		publishOxygenTransferEvent(OxygenTransferEvent{
+			ID:        rec.ID,
+			Direction: "send",
+			FileName:  rec.Name,
+			Path:      rec.Path,
+			Size:      rec.Size,
+			IsImage:   rec.IsImage,
+			Device:    "Android",
+			Timestamp: time.Now().UnixMilli(),
+		})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "file": rec})
 	})
 
 	mainMux.HandleFunc("/api/kernel/oxygen-connect/regenerate-pin", func(w http.ResponseWriter, r *http.Request) {
@@ -252,6 +396,7 @@ func registerOxygenConnectRoutes(mainMux *http.ServeMux, kernel *LumaKernel) {
 		}
 		touchOxygenDevice(r, "")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
 		_, _ = w.Write([]byte(oxygenConnectMobileHTML))
 	})
 
@@ -265,6 +410,9 @@ func registerOxygenConnectRoutes(mainMux *http.ServeMux, kernel *LumaKernel) {
 		touchOxygenDevice(r, r.URL.Query().Get("device"))
 		hw := kernel.SystemSnapshot()
 		clipStr, _ := kernel.probe.GetClipboard()
+		oxyConnMu.RLock()
+		outbox := append([]OxygenReceivedFile(nil), oxyConnOutbox...)
+		oxyConnMu.RUnlock()
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":         true,
 			"pc_name":    hostDeviceName(),
@@ -275,7 +423,39 @@ func registerOxygenConnectRoutes(mainMux *http.ServeMux, kernel *LumaKernel) {
 			"volume":     50,
 			"media":      hw.Media.Title,
 			"clipboard":  clipStr,
+			"outbox":     outbox,
 		})
+	})
+
+	// Mobile Circle to Search: Live PC Screen Capture & Full Multimodal Vision Endpoint!
+	lanMux.HandleFunc("/api/screen-now", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if !checkOxygenPIN(r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Неверный PIN-код"})
+			return
+		}
+		b64, width, height, err := captureFullScreenPNG()
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":           true,
+			"image_base64": "data:image/png;base64," + b64,
+			"width":        width,
+			"height":       height,
+		})
+	})
+
+	lanMux.HandleFunc("/api/circle-search", func(w http.ResponseWriter, r *http.Request) {
+		if !checkOxygenPIN(r) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Неверный PIN-код"})
+			return
+		}
+		handleCircleSearchHTTP(w, r, kernel)
 	})
 
 	lanMux.HandleFunc("/api/upload", func(w http.ResponseWriter, r *http.Request) {
@@ -359,6 +539,20 @@ func registerOxygenConnectRoutes(mainMux *http.ServeMux, kernel *LumaKernel) {
 				Path: dstPath,
 				Size: n,
 			})
+
+			// Trigger full-screen HarmonyOS Receive Ripple Wave on Luma OS Desktop!
+			publishOxygenTransferEvent(OxygenTransferEvent{
+				ID:         rec.ID,
+				Direction:  "receive",
+				FileName:   rec.Name,
+				Path:       rec.Path,
+				Size:       rec.Size,
+				IsImage:    rec.IsImage,
+				PreviewURL: rec.PreviewURL,
+				Device:     rec.FromDevice,
+				Timestamp:  time.Now().UnixMilli(),
+			})
+
 			saved = append(saved, rec)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "saved": saved, "count": len(saved)})
@@ -379,7 +573,13 @@ func registerOxygenConnectRoutes(mainMux *http.ServeMux, kernel *LumaKernel) {
 			IsDir bool   `json:"is_dir"`
 		}
 		var rows []fileRow
-		if zone == "shelf" {
+		if zone == "outbox" {
+			oxyConnMu.RLock()
+			for _, it := range oxyConnOutbox {
+				rows = append(rows, fileRow{Name: it.Name, Path: it.Path, Size: it.Size})
+			}
+			oxyConnMu.RUnlock()
+		} else if zone == "shelf" {
 			for _, it := range getShelfItemsSnapshot() {
 				if it.Path != "" {
 					rows = append(rows, fileRow{Name: it.Name, Path: it.Path, Size: it.Size})
@@ -425,8 +625,30 @@ func registerOxygenConnectRoutes(mainMux *http.ServeMux, kernel *LumaKernel) {
 		home, _ := os.UserHomeDir()
 		clean := filepath.Clean(p)
 		if home != "" && !strings.HasPrefix(strings.ToLower(clean), strings.ToLower(home)) {
-			http.Error(w, "Доступ разрешён только к папке пользователя", http.StatusForbidden)
-			return
+			// Also allow explicit outbox files selected by user from any drive!
+			allowed := false
+			oxyConnMu.RLock()
+			for _, it := range oxyConnOutbox {
+				if strings.EqualFold(filepath.Clean(it.Path), clean) {
+					allowed = true
+					break
+				}
+			}
+			oxyConnMu.RUnlock()
+			if !allowed {
+				http.Error(w, "Доступ разрешён только к папке пользователя или отправленным файлам", http.StatusForbidden)
+				return
+			}
+		}
+		if info, err := os.Stat(clean); err == nil && !info.IsDir() {
+			publishOxygenTransferEvent(OxygenTransferEvent{
+				Direction: "send",
+				FileName:  filepath.Base(clean),
+				Path:      clean,
+				Size:      info.Size(),
+				Device:    "Android",
+				Timestamp: time.Now().UnixMilli(),
+			})
 		}
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filepath.Base(clean)))
 		http.ServeFile(w, r, clean)
@@ -458,7 +680,7 @@ func registerOxygenConnectRoutes(mainMux *http.ServeMux, kernel *LumaKernel) {
 			return
 		}
 		var req struct {
-			Action string `json:"action"` // move | click | rclick | scroll | type | volume | media_play | media_next | media_prev | lock | launch
+			Action string `json:"action"` // move | click | lclick | rclick | scroll | type | volume | media_play | media_next | media_prev | lock | launch
 			DX     int    `json:"dx"`
 			DY     int    `json:"dy"`
 			Value  int    `json:"value"`
@@ -719,237 +941,591 @@ func encodeQRVersion4L(data []byte) [][]bool {
 	return mat
 }
 
-// Embedded Oxygen Connect Mobile PWA App (HarmonyOS SuperHub style in Oxygen 2.5D Cryo-Glass design!)
+// Embedded Oxygen Connect 1.7.1 Mobile PWA App — Ultra-Simple 1-Tap UI + HarmonyOS Center Ripple Wave + Faster Trackpad + Circle to Search!
 const oxygenConnectMobileHTML = `<!doctype html>
 <html lang="ru">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-<meta name="theme-color" content="#050b18"/>
+<meta name="theme-color" content="#040a16"/>
 <link rel="manifest" href="/manifest.json"/>
-<title>Luma Oxygen Connect</title>
+<title>Oxygen Connect · Luma OS 1.7.1</title>
 <style>
-  :root{--accent:#06b6d4;--accent2:#38bdf8;--bg:#050b18;--card:rgba(15,28,50,.72);--border:rgba(125,211,252,.22)}
+  :root{--accent:#06b6d4;--accent2:#38bdf8;--bg:#040a16;--card:rgba(14,25,46,.78);--border:rgba(125,211,252,.22)}
   *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
-  body{margin:0;min-height:100vh;background:radial-gradient(circle at 20% 0%,#0c2748 0%,#050b18 55%,#02060f 100%);color:#f0f9ff;padding:14px 14px 86px}
-  .card{background:var(--card);border:1px solid var(--border);backdrop-filter:blur(22px);border-radius:22px;padding:15px;margin-bottom:12px;box-shadow:0 16px 40px rgba(0,0,0,.4)}
-  .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
-  .pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:11px;font-weight:700;background:rgba(6,182,212,.18);border:1px solid rgba(56,189,248,.35);color:#7dd3fc}
-  .btn{width:100%;border:0;border-radius:16px;padding:13px 16px;font-weight:800;font-size:14px;color:#fff;background:linear-gradient(135deg,#06b6d4,#2563eb);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 8px 24px rgba(6,182,212,.3)}
-  .btn:active{transform:scale(.97)}
-  .btn2{border:1px solid var(--border);background:rgba(255,255,255,.06);color:#e0f2fe;border-radius:14px;padding:10px 12px;font-weight:700;font-size:12px;cursor:pointer}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
-  .tabs{position:fixed;left:12px;right:12px;bottom:12px;background:rgba(7,15,30,.92);border:1px solid var(--border);backdrop-filter:blur(24px);border-radius:22px;padding:6px;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;z-index:50}
-  .tab{border:0;background:transparent;color:#94a3b8;padding:10px 4px;border-radius:16px;font-size:11px;font-weight:700;cursor:pointer}
-  .tab.active{background:linear-gradient(135deg,rgba(6,182,212,.35),rgba(37,99,235,.35));color:#fff;border:1px solid rgba(56,189,248,.35)}
-  .pad{height:210px;border-radius:20px;background:radial-gradient(circle at 50% 45%,rgba(6,182,212,.14),rgba(2,6,23,.85));border:1px dashed rgba(56,189,248,.4);display:flex;align-items:center;justify-content:center;color:#7dd3fc;font-weight:700;font-size:13px;touch-action:none;user-select:none}
-  input[type=text],input[type=password],textarea{width:100%;background:rgba(2,6,23,.65);border:1px solid var(--border);border-radius:14px;padding:11px 13px;color:#fff;font-size:14px;outline:none}
-  input[type=range]{width:100%;accent-color:#06b6d4}
-  .toast{position:fixed;top:14px;left:14px;right:14px;background:rgba(6,182,212,.95);color:#02101a;font-weight:800;padding:11px 16px;border-radius:16px;text-align:center;font-size:13px;display:none;z-index:99}
-  .hide{display:none}
+  body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% -10%,#0d2b4e 0%,#040a16 60%,#02060e 100%);color:#f0f9ff;padding:12px 12px 24px;overflow-x:hidden}
+  .top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;padding:4px 2px}
+  .brand{display:flex;align-items:center;gap:9px;min-width:0}
+  .dot{width:10px;height:10px;border-radius:999px;background:#34d399;box-shadow:0 0 12px #34d399;flex-shrink:0}
+  .dot.off{background:#f59e0b;box-shadow:0 0 10px #f59e0b}
+  .title{font-size:16px;font-weight:900;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sub{font-size:11px;opacity:.68;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pill{padding:5px 10px;border-radius:999px;font-size:11px;font-weight:800;background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.32);color:#7dd3fc;flex-shrink:0}
+  .card{background:var(--card);border:1px solid var(--border);backdrop-filter:blur(22px);border-radius:22px;padding:12px;margin-bottom:10px;box-shadow:0 14px 36px rgba(0,0,0,.38)}
+  .heroGrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
+  .tile{border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:15px 12px;color:#fff;font-weight:800;font-size:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;cursor:pointer;transition:transform .14s ease,filter .14s ease;box-shadow:0 10px 24px rgba(0,0,0,.28);position:relative;overflow:hidden}
+  .tile:active{transform:scale(.95);filter:brightness(1.12)}
+  .tile .ico{font-size:26px;line-height:1}
+  .tile .hint{font-size:11px;font-weight:600;opacity:.82}
+  .t-photo{background:linear-gradient(135deg,#0891b2,#2563eb)}
+  .t-file{background:linear-gradient(135deg,#0284c7,#4f46e5)}
+  .t-circle{background:linear-gradient(135deg,#7c3aed,#06b6d4)}
+  .t-clip{background:linear-gradient(135deg,#0f766e,#0284c7)}
+  .padWrap{position:relative}
+  .pad{height:220px;border-radius:20px;background:radial-gradient(circle at 50% 45%,rgba(56,189,248,.16),rgba(2,8,20,.88));border:1.5px solid rgba(56,189,248,.34);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#7dd3fc;font-weight:800;font-size:13px;touch-action:none;user-select:none}
+  .padSub{font-size:11px;opacity:.62;font-weight:600}
+  .sensBtn{position:absolute;top:9px;right:9px;z-index:5;border:1px solid rgba(125,211,252,.35);background:rgba(4,12,28,.82);color:#7dd3fc;border-radius:999px;padding:5px 10px;font-size:11px;font-weight:800;cursor:pointer}
+  .row{display:flex;align-items:center;gap:8px}
+  .btn2{flex:1;border:1px solid var(--border);background:rgba(255,255,255,.07);color:#e0f2fe;border-radius:14px;padding:11px 10px;font-weight:800;font-size:13px;cursor:pointer;text-align:center}
+  .btn2:active{transform:scale(.96);background:rgba(56,189,248,.22)}
+  .btnPrimary{border:0;background:linear-gradient(135deg,#06b6d4,#2563eb);color:#fff;border-radius:14px;padding:11px 14px;font-weight:800;font-size:13px;cursor:pointer}
+  .btnPrimary:active{transform:scale(.96)}
+  .volRow{display:flex;align-items:center;gap:8px;margin-top:9px}
+  input[type=range]{flex:1;accent-color:#38bdf8;height:6px}
+  input[type=text],textarea{width:100%;background:rgba(2,6,20,.75);border:1px solid var(--border);border-radius:14px;padding:11px 12px;color:#fff;font-size:14px;outline:none}
+  .hide{display:none!important}
+  .toast{position:fixed;top:12px;left:12px;right:12px;background:rgba(14,165,233,.96);color:#02101a;font-weight:900;padding:11px 14px;border-radius:16px;text-align:center;font-size:13px;display:none;z-index:200;box-shadow:0 12px 30px rgba(6,182,212,.4)}
+  .sheet{position:fixed;inset:0;z-index:140;background:rgba(2,6,18,.82);backdrop-filter:blur(18px);display:flex;align-items:flex-end;justify-content:center;padding:10px}
+  .sheetBox{width:100%;max-width:520px;max-height:86vh;overflow-y:auto;background:#081326;border:1px solid rgba(125,211,252,.28);border-radius:26px;padding:16px;box-shadow:0 -12px 48px rgba(0,0,0,.6)}
+  .incomingRow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:14px;background:rgba(16,185,129,.12);border:1px solid rgba(52,211,153,.35);text-decoration:none;color:#ecfdf5;margin-top:6px;font-size:13px;font-weight:700}
+
+  /* HarmonyOS Full-Screen Center Ripple Wave Animation (Send & Receive!) */
+  #hWave{position:fixed;inset:0;z-index:300;pointer-events:none;display:none;align-items:center;justify-content:center;overflow:hidden}
+  #hWave.show{display:flex}
+  .hw-flash{position:absolute;inset:0;opacity:0;animation:hwFlash 1.5s cubic-bezier(.16,1,.3,1) forwards}
+  .hw-ring{position:absolute;left:50%;top:50%;width:18vmax;height:18vmax;border-radius:50%;transform:translate(-50%,-50%) scale(.15);opacity:0;animation:hwRipple 1.45s cubic-bezier(.16,1,.3,1) forwards}
+  .hw-ring.r2{animation-delay:.16s}
+  .hw-ring.r3{animation-delay:.32s}
+  .hw-pill{position:relative;z-index:5;padding:16px 22px;border-radius:24px;background:rgba(7,18,38,.88);border:1.5px solid rgba(125,211,252,.55);backdrop-filter:blur(26px);text-align:center;box-shadow:0 20px 60px rgba(6,182,212,.45);animation:hwPill 2.1s cubic-bezier(.16,1,.3,1) forwards;max-width:86vw}
+  @keyframes hwRipple{
+    0%{transform:translate(-50%,-50%) scale(.1);opacity:.95;box-shadow:0 0 36px rgba(56,189,248,.9),0 0 80px rgba(129,140,248,.65),inset 0 0 28px rgba(255,255,255,.75)}
+    55%{opacity:.7}
+    100%{transform:translate(-50%,-50%) scale(9.5);opacity:0;box-shadow:0 0 90px rgba(56,189,248,0),inset 0 0 4px rgba(255,255,255,0)}
+  }
+  @keyframes hwFlash{
+    0%{opacity:0}
+    18%{opacity:.45}
+    100%{opacity:0}
+  }
+  @keyframes hwPill{
+    0%{transform:scale(.76);opacity:0}
+    14%{transform:scale(1.03);opacity:1}
+    24%{transform:scale(1);opacity:1}
+    82%{transform:scale(1);opacity:1}
+    100%{transform:scale(.92);opacity:0}
+  }
+
+  /* Full-Screen Circle to Search Modal on Phone */
+  #c2sModal{position:fixed;inset:0;z-index:160;background:#030814;display:flex;flex-direction:column}
+  .c2sHead{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid rgba(125,211,252,.18);background:rgba(7,16,32,.92)}
+  .c2sStage{position:relative;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#020610;touch-action:none}
+  .c2sStage img{max-width:100%;max-height:100%;object-fit:contain;user-select:none;pointer-events:none}
+  .c2sStage canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+  .c2sResult{max-height:46vh;overflow-y:auto;background:rgba(7,16,34,.96);border-top:1.5px solid rgba(56,189,248,.4);padding:14px;border-radius:22px 22px 0 0;font-size:13.5px;line-height:1.5}
+  .c2sResult b{color:#7dd3fc}
+  .c2sResult ul{margin:6px 0;padding-left:18px}
+  .c2sResult li{margin:4px 0}
 </style>
 </head>
 <body>
 <div id="toast" class="toast"></div>
 
-<div class="card">
-  <div class="row">
-    <div>
-      <div style="font-size:18px;font-weight:900;letter-spacing:-.02em">Oxygen Connect · O₂</div>
-      <div id="pcName" style="font-size:12px;opacity:.7;margin-top:2px">Подключение к Luma OS 1.7...</div>
-    </div>
-    <span id="connPill" class="pill">● SuperHub</span>
-  </div>
-  <div id="statsRow" class="grid3" style="margin-top:12px;text-align:center">
-    <div class="btn2">CPU <b id="sCpu">—</b></div>
-    <div class="btn2">RAM <b id="sRam">—</b></div>
-    <div class="btn2">Звук <b id="sVol">—</b></div>
+<!-- HarmonyOS Full-Screen Center Wave Overlay -->
+<div id="hWave">
+  <div id="hwFlash" class="hw-flash"></div>
+  <div id="hwR1" class="hw-ring"></div>
+  <div id="hwR2" class="hw-ring r2"></div>
+  <div id="hwR3" class="hw-ring r3"></div>
+  <div class="hw-pill">
+    <div id="hwIco" style="font-size:28px;margin-bottom:4px">🌊</div>
+    <div id="hwTitle" style="font-size:15px;font-weight:900">Отправлено на ПК</div>
+    <div id="hwSub" style="font-size:12px;opacity:.75;margin-top:2px;word-break:break-word"></div>
   </div>
 </div>
 
+<!-- Compact Header -->
+<div class="top">
+  <div class="brand">
+    <span id="connDot" class="dot off"></span>
+    <div style="min-width:0">
+      <div id="pcName" class="title">Oxygen Connect</div>
+      <div id="pcSub" class="sub">Подключение к Luma OS...</div>
+    </div>
+  </div>
+  <button class="pill" onclick="openPcFilesSheet()">💻 Файлы ПК</button>
+</div>
+
+<!-- Auto-hidden PIN box (only shown if PIN missing or changed) -->
 <div id="pinBox" class="card hide">
-  <div style="font-weight:800;margin-bottom:8px">Введите 6-значный PIN из Luma OS</div>
+  <div style="font-weight:800;font-size:14px;margin-bottom:8px">Введите 6-значный PIN с экрана ПК</div>
   <div class="row">
-    <input id="pinInput" type="text" placeholder="6 цифр"/>
-    <button class="btn" style="width:auto;padding:11px 18px" onclick="savePin()">Войти</button>
+    <input id="pinInput" type="text" inputmode="numeric" placeholder="6 цифр"/>
+    <button class="btnPrimary" onclick="savePin()">Войти</button>
   </div>
 </div>
 
-<div id="tab-drop">
-  <div class="card">
-    <div style="font-weight:800;font-size:15px;margin-bottom:4px">📸 Камера и SuperHub → на ПК</div>
-    <div style="font-size:12px;opacity:.72;margin-bottom:12px">Сделайте фото сейчас или выберите файлы — они мгновенно появятся на полке и в Luma OS</div>
-    <div class="grid2">
-      <label class="btn" style="cursor:pointer">📷 Сделать фото<input type="file" accept="image/*" capture="environment" class="hide" onchange="uploadFiles(this.files)"/></label>
-      <label class="btn" style="background:linear-gradient(135deg,#0ea5e9,#6366f1);cursor:pointer">📁 Кинуть файлы<input type="file" multiple class="hide" onchange="uploadFiles(this.files)"/></label>
-    </div>
-    <div id="uploadStatus" style="font-size:12px;margin-top:10px;color:#7dd3fc"></div>
-  </div>
+<!-- 4 BIG 1-TAP ACTION TILES (ZERO CONFUSION!) -->
+<div class="heroGrid">
+  <label class="tile t-photo">
+    <span class="ico">📸</span>
+    <span>Фото на ПК</span>
+    <span class="hint">Сразу с камеры</span>
+    <input type="file" accept="image/*" capture="environment" class="hide" onchange="uploadFiles(this.files);this.value=''"/>
+  </label>
+  <label class="tile t-file">
+    <span class="ico">📁</span>
+    <span>Файл на ПК</span>
+    <span class="hint">Фото, видео, док</span>
+    <input type="file" multiple class="hide" onchange="uploadFiles(this.files);this.value=''"/>
+  </label>
+  <button class="tile t-circle" onclick="openCircleModal()">
+    <span class="ico">🔍</span>
+    <span>Circle to Search</span>
+    <span class="hint">Обвести пальцем</span>
+  </button>
+  <button class="tile t-clip" onclick="openClipSheet()">
+    <span class="ico">📋</span>
+    <span>Общий буфер</span>
+    <span class="hint">Текст ПК ↔ Тел</span>
+  </button>
+</div>
 
-  <div class="card">
-    <div style="font-weight:800;font-size:15px;margin-bottom:8px">📋 Общий буфер обмена (Телефон ↔ ПК)</div>
-    <textarea id="clipText" rows="3" placeholder="Вставьте текст или ссылку для мгновенной отправки на ПК..."></textarea>
-    <div class="grid2" style="margin-top:8px">
-      <button class="btn2" onclick="sendClip()">⬆ Отправить на ПК</button>
+<!-- Auto-appearing Incoming Files from PC -->
+<div id="outboxCard" class="card hide">
+  <div style="font-size:13px;font-weight:900;color:#6ee7b7">📥 Пришло с компьютера (1 тап — скачать)</div>
+  <div id="outboxList"></div>
+</div>
+
+<!-- DIRECT ON-SCREEN FAST TRACKPAD + SIMPLE CONTROLS -->
+<div class="card">
+  <div class="padWrap">
+    <button id="sensBtn" class="sensBtn" onclick="cycleSens()">⚡ Сенса: 1.4×</button>
+    <div id="trackpad" class="pad">
+      <div>🖱 Мышь ПК</div>
+      <div class="padSub">1 палец — курсор · Тап — ЛКМ · 2 пальца — ПКМ / скролл</div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:9px">
+    <button class="btn2" onclick="ctrl({action:'lclick'})">ЛКМ</button>
+    <button class="btn2" onclick="ctrl({action:'rclick'})">ПКМ</button>
+    <button class="btn2" onclick="openTypeSheet()">⌨️ Текст</button>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <button class="btn2" onclick="ctrl({action:'media_prev'})">⏮</button>
+    <button class="btn2" style="background:rgba(6,182,212,.22);border-color:rgba(56,189,248,.45)" onclick="ctrl({action:'media_play'})">⏯ Пауза</button>
+    <button class="btn2" onclick="ctrl({action:'media_next'})">⏭</button>
+  </div>
+  <div class="volRow">
+    <span style="font-size:14px">🔊</span>
+    <input id="volRange" type="range" min="0" max="100" value="50" onchange="ctrl({action:'volume',value:+this.value})" oninput="document.getElementById('volLbl').textContent=this.value+'%'"/>
+    <b id="volLbl" style="font-size:12px;width:36px;text-align:right">50%</b>
+  </div>
+</div>
+
+<!-- Compact Sheet: Clipboard -->
+<div id="clipSheet" class="sheet hide" onclick="if(event.target===this)this.classList.add('hide')">
+  <div class="sheetBox">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px">
+      <b style="font-size:15px">📋 Общий буфер (Телефон ↔ ПК)</b>
+      <button class="pill" onclick="document.getElementById('clipSheet').classList.add('hide')">Закрыть</button>
+    </div>
+    <textarea id="clipText" rows="4" placeholder="Вставьте текст или ссылку..."></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="btnPrimary" style="flex:1" onclick="sendClip()">⬆ На ПК</button>
       <button class="btn2" onclick="pullClip()">⬇ Взять с ПК</button>
     </div>
   </div>
 </div>
 
-<div id="tab-files" class="hide">
-  <div class="card">
-    <div class="row" style="margin-bottom:10px">
-      <div style="font-weight:800">💻 Файлы на ПК → скачать</div>
-      <button class="btn2" onclick="loadPcFiles(curZone)">↻</button>
+<!-- Compact Sheet: Keyboard Typing -->
+<div id="typeSheet" class="sheet hide" onclick="if(event.target===this)this.classList.add('hide')">
+  <div class="sheetBox">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px">
+      <b style="font-size:15px">⌨️ Набрать текст на ПК</b>
+      <button class="pill" onclick="document.getElementById('typeSheet').classList.add('hide')">Закрыть</button>
     </div>
-    <div class="grid3" style="margin-bottom:10px">
+    <div class="row">
+      <input id="remoteType" type="text" placeholder="Текст сразу вставится в активное окно ПК..."/>
+      <button class="btnPrimary" onclick="sendType()">Ввод</button>
+    </div>
+  </div>
+</div>
+
+<!-- Compact Sheet: PC Files Browser -->
+<div id="filesSheet" class="sheet hide" onclick="if(event.target===this)this.classList.add('hide')">
+  <div class="sheetBox">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px">
+      <b style="font-size:15px">💻 Файлы на ПК → скачать</b>
+      <button class="pill" onclick="document.getElementById('filesSheet').classList.add('hide')">Закрыть</button>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn2" onclick="loadPcFiles('outbox')">Отправлено</button>
       <button class="btn2" onclick="loadPcFiles('shelf')">Полка</button>
       <button class="btn2" onclick="loadPcFiles('desktop')">Стол</button>
       <button class="btn2" onclick="loadPcFiles('downloads')">Загрузки</button>
     </div>
-    <div id="pcFilesList" style="display:flex;flex-direction:column;gap:8px;max-height:360px;overflow:auto"></div>
+    <div id="pcFilesList" style="display:flex;flex-direction:column;gap:7px"></div>
   </div>
 </div>
 
-<div id="tab-remote" class="hide">
-  <div class="card">
-    <div style="font-weight:800;margin-bottom:8px">🖱 Виртуальный тачпад ПК</div>
-    <div id="trackpad" class="pad">Водите пальцем для курсора · Тап = ЛКМ</div>
-    <div class="grid3" style="margin-top:10px">
-      <button class="btn2" onclick="ctrl({action:'lclick'})">ЛКМ</button>
-      <button class="btn2" onclick="ctrl({action:'rclick'})">ПКМ</button>
-      <button class="btn2" onclick="ctrl({action:'scroll',dy:-3})">⬇ Скролл</button>
-    </div>
-  </div>
-  <div class="card">
-    <div style="font-weight:800;margin-bottom:8px">⌨ Набрать текст на ПК</div>
+<!-- Full-Screen Mobile Circle to Search Modal -->
+<div id="c2sModal" class="hide">
+  <div class="c2sHead">
+    <div style="font-weight:900;font-size:14px">🔍 Circle to Search</div>
     <div class="row">
-      <input id="remoteType" type="text" placeholder="Текст сразу вставится на ПК..."/>
-      <button class="btn2" onclick="sendType()">Ввод</button>
+      <label class="pill" style="cursor:pointer">📷 Фото<input type="file" accept="image/*" class="hide" onchange="loadCircleLocalImage(this.files[0]);this.value=''"/></label>
+      <button class="pill" onclick="capturePcForCircle()">🖥 Экран ПК</button>
+      <button class="pill" style="color:#fda4af;border-color:rgba(251,113,133,.4)" onclick="closeCircleModal()">✕</button>
     </div>
   </div>
-</div>
-
-<div id="tab-media" class="hide">
-  <div class="card">
-    <div style="font-weight:800;margin-bottom:10px">🎵 Медиа и громкость ПК</div>
-    <div class="grid3" style="margin-bottom:12px">
-      <button class="btn2" onclick="ctrl({action:'media_prev'})">⏮ Пред.</button>
-      <button class="btn" onclick="ctrl({action:'media_play'})">⏯ Пауза</button>
-      <button class="btn2" onclick="ctrl({action:'media_next'})">⏭ След.</button>
+  <div id="c2sStage" class="c2sStage">
+    <div id="c2sHint" style="text-align:center;padding:24px;max-width:300px">
+      <div style="font-size:38px;margin-bottom:8px">✨</div>
+      <div style="font-weight:900;font-size:16px;margin-bottom:6px">Обведите пальцем любой объект</div>
+      <div style="font-size:12px;opacity:.7;margin-bottom:14px">Выберите фото с телефона или мгновенный снимок экрана ПК, затем обведите нужную область пальцем</div>
+      <div class="row">
+        <label class="btnPrimary" style="flex:1;text-align:center;cursor:pointer">📷 Камера / Фото<input type="file" accept="image/*" class="hide" onchange="loadCircleLocalImage(this.files[0]);this.value=''"/></label>
+        <button class="btn2" onclick="capturePcForCircle()">🖥 Экран ПК</button>
+      </div>
     </div>
-    <div style="font-size:12px;opacity:.75;margin-bottom:6px">Громкость ПК: <b id="volLbl">50%</b></div>
-    <input id="volRange" type="range" min="0" max="100" value="50" onchange="ctrl({action:'volume',value:+this.value})" oninput="document.getElementById('volLbl').textContent=this.value+'%'"/>
+    <img id="c2sImg" class="hide" alt=""/>
+    <canvas id="c2sCanvas" class="hide"></canvas>
   </div>
-  <div class="card">
-    <div style="font-weight:800;margin-bottom:10px">⚡ Быстрые действия</div>
-    <div class="grid2">
-      <button class="btn2" onclick="ctrl({action:'launch',text:'explorer'})">📁 Проводник</button>
-      <button class="btn2" onclick="ctrl({action:'launch',text:'calc'})">🧮 Калькулятор</button>
-      <button class="btn2" onclick="ctrl({action:'launch',text:'cmd'})">💻 Терминал</button>
-      <button class="btn2" style="color:#fda4af" onclick="ctrl({action:'lock'})">🔒 Блок ПК</button>
+  <div id="c2sResult" class="c2sResult hide">
+    <div class="row" style="justify-content:space-between;margin-bottom:6px">
+      <span id="c2sBadge" class="pill">Анализ...</span>
+      <button class="pill" onclick="document.getElementById('c2sResult').classList.add('hide')">Скрыть</button>
     </div>
+    <div id="c2sBody"></div>
   </div>
-</div>
-
-<div class="tabs">
-  <button class="tab active" onclick="openTab('drop',this)">📸 SuperHub</button>
-  <button class="tab" onclick="openTab('files',this)">📁 Файлы ПК</button>
-  <button class="tab" onclick="openTab('remote',this)">🖱 Тачпад</button>
-  <button class="tab" onclick="openTab('media',this)">🎵 Пульт</button>
 </div>
 
 <script>
 const qs = new URLSearchParams(location.search);
 let PIN = qs.get('pin') || localStorage.getItem('oxy_pin') || '';
 if (qs.get('pin')) localStorage.setItem('oxy_pin', PIN);
-let curZone = 'shelf';
+let knownOutboxIds = new Set();
+let outboxBooted = false;
 
-function toast(m){const t=document.getElementById('toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',2200);}
-function savePin(){PIN=document.getElementById('pinInput').value.trim();localStorage.setItem('oxy_pin',PIN);ping();}
-function openTab(id,btn){
-  ['drop','files','remote','media'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('hide',x!==id));
-  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  if(id==='files') loadPcFiles(curZone);
+// Sensitivity presets (faster & smoother by default in 1.7.1!)
+const SENS_LEVELS = [{label:'1.0×',val:2.4},{label:'1.4×',val:3.35},{label:'2.0×',val:4.6}];
+let sensIdx = Number(localStorage.getItem('oxy_sens_idx') || 1);
+if (isNaN(sensIdx) || sensIdx < 0 || sensIdx >= SENS_LEVELS.length) sensIdx = 1;
+function updateSensBtn(){ document.getElementById('sensBtn').textContent = '⚡ Сенса: ' + SENS_LEVELS[sensIdx].label; }
+function cycleSens(){ sensIdx = (sensIdx + 1) % SENS_LEVELS.length; localStorage.setItem('oxy_sens_idx', String(sensIdx)); updateSensBtn(); toast('Скорость курсора: ' + SENS_LEVELS[sensIdx].label); }
+updateSensBtn();
+
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.style.display='block'; clearTimeout(window._tt); window._tt=setTimeout(()=>t.style.display='none',2200); }
+function savePin(){ PIN=document.getElementById('pinInput').value.trim(); localStorage.setItem('oxy_pin',PIN); ping(); }
+
+// HarmonyOS Full-Screen Center Ripple Wave on Phone!
+function triggerHarmonyWave(dir, title, sub){
+  const el = document.getElementById('hWave');
+  const flash = document.getElementById('hwFlash');
+  const r1 = document.getElementById('hwR1'), r2 = document.getElementById('hwR2'), r3 = document.getElementById('hwR3');
+  const isSend = dir === 'send';
+  document.getElementById('hwIco').textContent = isSend ? '📤' : '📥';
+  document.getElementById('hwTitle').textContent = title || (isSend ? 'Отправлено на ПК' : 'Получено с ПК');
+  document.getElementById('hwSub').textContent = sub || '';
+  const borderCol = isSend ? 'rgba(56,189,248,.92)' : 'rgba(52,211,153,.92)';
+  const flashBg = isSend
+    ? 'radial-gradient(circle at 50% 50%, rgba(56,189,248,.48) 0%, rgba(99,102,241,.22) 45%, transparent 75%)'
+    : 'radial-gradient(circle at 50% 50%, rgba(16,185,129,.48) 0%, rgba(6,182,212,.22) 45%, transparent 75%)';
+  flash.style.background = flashBg;
+  [r1,r2,r3].forEach((r,i)=>{
+    r.style.border = (4 - i) + 'px solid ' + borderCol;
+    r.style.animation = 'none'; void r.offsetWidth; r.style.animation = '';
+  });
+  flash.style.animation = 'none'; void flash.offsetWidth; flash.style.animation = '';
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  if (navigator.vibrate) { try { navigator.vibrate([18, 35, 24]); } catch {} }
+  clearTimeout(window._hwt);
+  window._hwt = setTimeout(()=>el.classList.remove('show'), 2200);
 }
+
 async function api(path,opt={}){
   opt.headers = Object.assign({'X-Oxygen-PIN':PIN}, opt.headers||{});
   const r = await fetch(path,opt);
-  if(r.status===401){document.getElementById('pinBox').classList.remove('hide');throw new Error('PIN');}
+  if(r.status===401){ document.getElementById('pinBox').classList.remove('hide'); throw new Error('PIN'); }
   document.getElementById('pinBox').classList.add('hide');
   return r.json();
 }
+
 async function ping(){
   try{
     const d = await api('/api/ping?device=Android');
-    document.getElementById('pcName').textContent = d.pc_name + ' · Luma OS ' + d.os_version;
-    document.getElementById('sCpu').textContent = Math.round(d.cpu||0)+'%';
-    document.getElementById('sRam').textContent = Math.round(d.ram||0)+'%';
-    document.getElementById('sVol').textContent = (d.volume||0)+'%';
-    document.getElementById('volRange').value = d.volume||50;
-    document.getElementById('volLbl').textContent = (d.volume||50)+'%';
-    document.getElementById('connPill').textContent = '● Подключено';
+    document.getElementById('connDot').classList.remove('off');
+    document.getElementById('pcName').textContent = d.pc_name || 'Luma OS';
+    document.getElementById('pcSub').textContent = 'Подключено · CPU ' + Math.round(d.cpu||0) + '% · RAM ' + Math.round(d.ram||0) + '%';
+    if (typeof d.volume === 'number'){
+      document.getElementById('volRange').value = d.volume;
+      document.getElementById('volLbl').textContent = d.volume + '%';
+    }
+    const outbox = Array.isArray(d.outbox) ? d.outbox : [];
+    const boxCard = document.getElementById('outboxCard');
+    const listEl = document.getElementById('outboxList');
+    if (outbox.length > 0){
+      boxCard.classList.remove('hide');
+      listEl.innerHTML = '';
+      for (const f of outbox.slice(0, 4)){
+        if (outboxBooted && !knownOutboxIds.has(f.id)){
+          triggerHarmonyWave('receive', 'Файл с компьютера!', f.name);
+        }
+        knownOutboxIds.add(f.id);
+        const a = document.createElement('a');
+        a.className = 'incomingRow';
+        a.href = '/api/download?pin=' + encodeURIComponent(PIN) + '&path=' + encodeURIComponent(f.path);
+        a.onclick = () => triggerHarmonyWave('receive', 'Скачивание с ПК', f.name);
+        a.innerHTML = '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + f.name + '</span><span style="flex-shrink:0;color:#6ee7b7">⬇ ' + Math.max(1,Math.round((f.size||0)/1024)) + ' КБ</span>';
+        listEl.appendChild(a);
+      }
+    } else {
+      boxCard.classList.add('hide');
+    }
+    outboxBooted = true;
   }catch{
-    document.getElementById('connPill').textContent = '○ Введите PIN';
+    document.getElementById('connDot').classList.add('off');
+    document.getElementById('pcSub').textContent = 'Введите 6-значный PIN с экрана ПК';
   }
 }
+
 async function uploadFiles(files){
-  if(!files||!files.length) return;
+  if(!files || !files.length) return;
   const fd = new FormData();
-  fd.append('device','Android');
-  for(const f of files) fd.append('files',f);
-  document.getElementById('uploadStatus').textContent='Отправка на ПК ('+files.length+')...';
+  fd.append('device', 'Android');
+  for (const f of files) fd.append('files', f);
+  const firstName = files.length === 1 ? files[0].name : (files.length + ' файлов');
+  triggerHarmonyWave('send', 'Отправка на ПК...', firstName);
   try{
-    const d = await api('/api/upload',{method:'POST',body:fd});
-    document.getElementById('uploadStatus').textContent='✓ Отправлено на полку и в Загрузки/OxygenConnect: '+d.count;
-    toast('Отправлено на ПК: '+d.count);
-  }catch{document.getElementById('uploadStatus').textContent='Ошибка отправки';}
+    const d = await api('/api/upload', {method:'POST', body:fd});
+    triggerHarmonyWave('send', 'Доставлено на ПК!', firstName);
+    toast('Отправлено на ПК: ' + (d.count || files.length));
+  }catch{ toast('Ошибка отправки'); }
 }
+
+function openClipSheet(){ document.getElementById('clipSheet').classList.remove('hide'); pullClip(true); }
+function openTypeSheet(){ document.getElementById('typeSheet').classList.remove('hide'); setTimeout(()=>document.getElementById('remoteType').focus(),80); }
+function openPcFilesSheet(){ document.getElementById('filesSheet').classList.remove('hide'); loadPcFiles('outbox'); }
+
 async function sendClip(){
-  const text=document.getElementById('clipText').value;
+  const text = document.getElementById('clipText').value;
   if(!text) return;
-  await api('/api/clipboard',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
-  toast('Скопировано в буфер ПК!');
+  await api('/api/clipboard', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text})});
+  document.getElementById('clipSheet').classList.add('hide');
+  toast('Текст скопирован на ПК!');
 }
-async function pullClip(){
-  const d = await api('/api/clipboard');
-  document.getElementById('clipText').value = d.text || '';
-  if(navigator.clipboard && d.text) navigator.clipboard.writeText(d.text).catch(()=>{});
-  toast('Буфер ПК получен!');
+async function pullClip(silent){
+  try{
+    const d = await api('/api/clipboard');
+    document.getElementById('clipText').value = d.text || '';
+    if(!silent){
+      if(navigator.clipboard && d.text) navigator.clipboard.writeText(d.text).catch(()=>{});
+      toast('Буфер ПК получен!');
+    }
+  }catch{}
 }
 async function loadPcFiles(zone){
-  curZone = zone;
-  const d = await api('/api/pc-files?zone='+encodeURIComponent(zone));
-  const box = document.getElementById('pcFilesList');
-  box.innerHTML='';
-  if(!d.files||!d.files.length){box.innerHTML='<div style="opacity:.6;font-size:12px;text-align:center;padding:18px">Файлов нет</div>';return;}
-  for(const f of d.files){
-    const a=document.createElement('a');
-    a.href='/api/download?pin='+encodeURIComponent(PIN)+'&path='+encodeURIComponent(f.path);
-    a.className='btn2 row';a.style.textDecoration='none';
-    a.innerHTML='<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+f.name+'</span><span style="opacity:.65;flex-shrink:0">'+Math.max(1,Math.round((f.size||0)/1024))+' КБ ⬇</span>';
-    box.appendChild(a);
+  try{
+    const d = await api('/api/pc-files?zone=' + encodeURIComponent(zone));
+    const box = document.getElementById('pcFilesList');
+    box.innerHTML = '';
+    if(!d.files || !d.files.length){ box.innerHTML = '<div style="opacity:.6;font-size:12px;text-align:center;padding:18px">Файлов нет</div>'; return; }
+    for (const f of d.files){
+      const a = document.createElement('a');
+      a.href = '/api/download?pin=' + encodeURIComponent(PIN) + '&path=' + encodeURIComponent(f.path);
+      a.className = 'btn2 row';
+      a.style.textDecoration = 'none';
+      a.style.justifyContent = 'space-between';
+      a.onclick = () => triggerHarmonyWave('receive', 'Приём файла с ПК', f.name);
+      a.innerHTML = '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + f.name + '</span><span style="opacity:.7;flex-shrink:0">' + Math.max(1,Math.round((f.size||0)/1024)) + ' КБ ⬇</span>';
+      box.appendChild(a);
+    }
+  }catch{}
+}
+async function ctrl(body){ try { await api('/api/control', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}); } catch {} }
+async function sendType(){
+  const el = document.getElementById('remoteType');
+  if(!el.value) return;
+  await ctrl({action:'type', text:el.value});
+  el.value = '';
+  document.getElementById('typeSheet').classList.add('hide');
+  toast('Вставлено на ПК');
+}
+
+// FAST, SILKY TRACKPAD WITH POINTER ACCELERATION + 2-FINGER SCROLL & RMB!
+const pad = document.getElementById('trackpad');
+let lx=0, ly=0, moved=false, lastSend=0, accDX=0, accDY=0, maxFingers=0, scrollAcc=0;
+pad.addEventListener('touchstart', e => {
+  maxFingers = Math.max(maxFingers, e.touches.length);
+  const t = e.touches[0];
+  lx = t.clientX; ly = t.clientY;
+  if (e.touches.length === 1) { moved = false; accDX = 0; accDY = 0; scrollAcc = 0; }
+}, {passive:true});
+
+pad.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  const rawX = t.clientX - lx;
+  const rawY = t.clientY - ly;
+  lx = t.clientX; ly = t.clientY;
+
+  if (e.touches.length >= 2){
+    moved = true;
+    scrollAcc += rawY;
+    if (Math.abs(scrollAcc) >= 16){
+      const steps = scrollAcc > 0 ? 2 : -2;
+      scrollAcc = 0;
+      ctrl({action:'scroll', dy:steps});
+    }
+    return;
+  }
+
+  const baseSens = SENS_LEVELS[sensIdx].val;
+  const speed = Math.hypot(rawX, rawY);
+  const accel = 1 + Math.min(1.15, speed * 0.055);
+  accDX += rawX * baseSens * accel;
+  accDY += rawY * baseSens * accel;
+
+  if (Math.abs(accDX) >= 1 || Math.abs(accDY) >= 1){
+    moved = true;
+    const now = Date.now();
+    if (now - lastSend >= 14){
+      lastSend = now;
+      const sendX = Math.round(accDX);
+      const sendY = Math.round(accDY);
+      accDX -= sendX;
+      accDY -= sendY;
+      if (sendX !== 0 || sendY !== 0) ctrl({action:'move', dx:sendX, dy:sendY});
+    }
+  }
+}, {passive:false});
+
+pad.addEventListener('touchend', e => {
+  if (e.touches.length === 0){
+    if (!moved){
+      if (maxFingers >= 2) ctrl({action:'rclick'});
+      else ctrl({action:'lclick'});
+    }
+    maxFingers = 0;
+  }
+});
+
+// ==================== MOBILE CIRCLE TO SEARCH (FINGER LASSO + MULTIMODAL VISION!) ====================
+let c2sPts = [], c2sDrawing = false;
+function openCircleModal(){ document.getElementById('c2sModal').classList.remove('hide'); }
+function closeCircleModal(){ document.getElementById('c2sModal').classList.add('hide'); }
+
+function showCircleImage(dataUrl){
+  const img = document.getElementById('c2sImg');
+  const cvs = document.getElementById('c2sCanvas');
+  document.getElementById('c2sHint').classList.add('hide');
+  img.onload = () => {
+    img.classList.remove('hide');
+    cvs.classList.remove('hide');
+    const rect = cvs.getBoundingClientRect();
+    cvs.width = Math.max(1, Math.round(rect.width));
+    cvs.height = Math.max(1, Math.round(rect.height));
+    cvs.getContext('2d').clearRect(0, 0, cvs.width, cvs.height);
+  };
+  img.src = dataUrl;
+}
+
+function loadCircleLocalImage(file){
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => showCircleImage(reader.result);
+  reader.readAsDataURL(file);
+}
+
+async function capturePcForCircle(){
+  toast('Захват экрана ПК...');
+  try{
+    const d = await api('/api/screen-now');
+    if (d.ok && d.image_base64) showCircleImage(d.image_base64);
+    else toast('Не удалось захватить экран ПК');
+  }catch{ toast('Ошибка захвата экрана'); }
+}
+
+function renderSimpleMarkdown(md){
+  const esc = String(md||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return esc
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/\x60([^\x60]+)\x60/g, '<code style="background:rgba(56,189,248,.16);padding:1px 5px;border-radius:6px;font-size:12px">$1</code>')
+    .replace(/^- (.+)$/gm, '• $1')
+    .replace(/\n/g, '<br/>');
+}
+
+const c2sCanvas = document.getElementById('c2sCanvas');
+function getCanvasXY(e){
+  const r = c2sCanvas.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return { x: t.clientX - r.left, y: t.clientY - r.top };
+}
+function drawCircleStroke(){
+  const ctx = c2sCanvas.getContext('2d');
+  ctx.clearRect(0, 0, c2sCanvas.width, c2sCanvas.height);
+  if (c2sPts.length < 2) return;
+  const g = ctx.createLinearGradient(0, 0, c2sCanvas.width, c2sCanvas.height);
+  g.addColorStop(0, '#38bdf8'); g.addColorStop(.5, '#a855f7'); g.addColorStop(1, '#22d3ee');
+  ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = g; ctx.shadowColor = '#38bdf8'; ctx.shadowBlur = 16;
+  ctx.beginPath();
+  ctx.moveTo(c2sPts[0].x, c2sPts[0].y);
+  for (let i=1; i<c2sPts.length; i++) ctx.lineTo(c2sPts[i].x, c2sPts[i].y);
+  ctx.stroke();
+}
+
+async function runCircleAnalysis(){
+  if (c2sPts.length < 3) return;
+  let minX=1e9, minY=1e9, maxX=-1, maxY=-1;
+  for (const p of c2sPts){ if(p.x<minX)minX=p.x; if(p.y<minY)minY=p.y; if(p.x>maxX)maxX=p.x; if(p.y>maxY)maxY=p.y; }
+  if (maxX - minX < 18 || maxY - minY < 18) return;
+
+  const img = document.getElementById('c2sImg');
+  const ir = img.getBoundingClientRect();
+  const cr = c2sCanvas.getBoundingClientRect();
+  const ox = ir.left - cr.left, oy = ir.top - cr.top;
+  const sx = Math.max(0, (minX - ox) * (img.naturalWidth / ir.width));
+  const sy = Math.max(0, (minY - oy) * (img.naturalHeight / ir.height));
+  const sw = Math.max(16, Math.min(img.naturalWidth - sx, (maxX - minX) * (img.naturalWidth / ir.width)));
+  const sh = Math.max(16, Math.min(img.naturalHeight - sy, (maxY - minY) * (img.naturalHeight / ir.height)));
+
+  const off = document.createElement('canvas');
+  off.width = Math.min(1024, Math.round(sw));
+  off.height = Math.min(1024, Math.round(sh));
+  off.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, off.width, off.height);
+  const cropB64 = off.toDataURL('image/jpeg', 0.86);
+
+  const resBox = document.getElementById('c2sResult');
+  const bodyEl = document.getElementById('c2sBody');
+  const badgeEl = document.getElementById('c2sBadge');
+  resBox.classList.remove('hide');
+  badgeEl.textContent = '✨ Circle to Search...';
+  bodyEl.innerHTML = '<div style="opacity:.7">Анализирую выделенную область...</div>';
+
+  try{
+    const d = await api('/api/circle-search', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({image_base64:cropB64, source_device:'phone', stream:false})
+    });
+    badgeEl.textContent = d.model || 'Circle to Search';
+    bodyEl.innerHTML = renderSimpleMarkdown(d.reply || 'Не удалось распознать фрагмент');
+  }catch{
+    badgeEl.textContent = 'Ошибка';
+    bodyEl.textContent = 'Не удалось связаться с Luma OS Circle to Search.';
   }
 }
-async function ctrl(body){await api('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
-async function sendType(){const el=document.getElementById('remoteType');if(!el.value)return;await ctrl({action:'type',text:el.value});el.value='';toast('Отправлено на ПК');}
 
-// Touchpad gesture handler
-const pad = document.getElementById('trackpad');
-let lx=0,ly=0,moved=false,lastSend=0;
-pad.addEventListener('touchstart',e=>{const t=e.touches[0];lx=t.clientX;ly=t.clientY;moved=false;},{passive:true});
-pad.addEventListener('touchmove',e=>{
-  e.preventDefault();
-  const t=e.touches[0];const dx=Math.round((t.clientX-lx)*2.2);const dy=Math.round((t.clientY-ly)*2.2);
-  lx=t.clientX;ly=t.clientY;
-  if(Math.abs(dx)>1||Math.abs(dy)>1){moved=true;const now=Date.now();if(now-lastSend>22){lastSend=now;ctrl({action:'move',dx,dy});}}
-},{passive:false});
-pad.addEventListener('touchend',()=>{if(!moved)ctrl({action:'lclick'});});
+c2sCanvas.addEventListener('touchstart', e => { e.preventDefault(); c2sDrawing=true; c2sPts=[getCanvasXY(e)]; }, {passive:false});
+c2sCanvas.addEventListener('touchmove', e => { if(!c2sDrawing)return; e.preventDefault(); c2sPts.push(getCanvasXY(e)); drawCircleStroke(); }, {passive:false});
+c2sCanvas.addEventListener('touchend', () => { if(!c2sDrawing)return; c2sDrawing=false; runCircleAnalysis(); });
+c2sCanvas.addEventListener('mousedown', e => { c2sDrawing=true; c2sPts=[getCanvasXY(e)]; });
+c2sCanvas.addEventListener('mousemove', e => { if(!c2sDrawing)return; c2sPts.push(getCanvasXY(e)); drawCircleStroke(); });
+c2sCanvas.addEventListener('mouseup', () => { if(!c2sDrawing)return; c2sDrawing=false; runCircleAnalysis(); });
 
 ping();
-setInterval(ping, 5000);
+setInterval(ping, 3500);
 </script>
 </body>
 </html>`

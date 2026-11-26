@@ -48,6 +48,19 @@ func (d *devStatusWriter) WriteHeader(code int) {
 	d.ResponseWriter.WriteHeader(code)
 }
 
+// Flush forwards http.Flusher so real-time SSE streams (HarmonyOS Transfer Wave,
+// Circle to Search Vision, Luma Ai Nitrogen, Precision Touchpad HID) flush immediately!
+func (d *devStatusWriter) Flush() {
+	if f, ok := d.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap supports http.ResponseController (Go 1.20+) for streaming endpoints.
+func (d *devStatusWriter) Unwrap() http.ResponseWriter {
+	return d.ResponseWriter
+}
+
 func wrapWithDevMetrics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/api/") {

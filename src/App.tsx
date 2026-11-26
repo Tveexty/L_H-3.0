@@ -244,6 +244,7 @@ import { LumaDropShelf } from './components/LumaDropShelf';
 import { LumaSmartClipboardModal } from './components/LumaSmartClipboardModal';
 import { LumaOxygenOSD } from './components/LumaOxygenOSD';
 import { LumaOxygenConnectWindow } from './components/LumaOxygenConnectWindow';
+import { LumaHarmonyTransferWave } from './components/LumaHarmonyTransferWave';
 import { getLangLocale, LUMA_LANGUAGES, LumaLangCode, tr } from './i18n/translations';
 import { useLumaAutoTranslate } from './i18n/LumaAutoTranslator';
 
@@ -1053,7 +1054,7 @@ export default function App() {
   );
   const [liveWallpaper, setLiveWallpaper] = useState<LiveWallpaperId>(savedState?.liveWallpaper || '');
 
-  // --- Luma OS 1.7 Oxygen: Smart Clipboard Modal + KWin Runtime Game/DND Overrides ---
+  // --- Luma OS 1.7.1 Oxygen: Smart Clipboard Modal + KWin Runtime Game/DND Overrides ---
   const [smartClipboardOpen, setSmartClipboardOpen] = useState<boolean>(false);
   const [kwinAutoDnd, setKwinAutoDnd] = useState<boolean>(false);
   const [kwinNoCompositor, setKwinNoCompositor] = useState<boolean>(false);
@@ -1317,10 +1318,10 @@ export default function App() {
     {
       id: 'notif_nitrogen_welcome_160',
       source: 'system',
-      appName: 'Luma OS 1.7',
-      sender: 'Luma OS 1.7 Oxygen',
-      title: 'Добро пожаловать в Luma OS 1.7 (Oxygen · O-8)!',
-      body: 'LumaCore 1.6.0 · LumaShield 3.2 (340+ правил) · Правила окон (KWin) · Полка Dropzone (Ctrl+Alt+S) · Умный буфер (Ctrl+Shift+V) · Per-App Аудио-центр · Капсульные OSD · Oxygen Connect (Android).',
+      appName: 'Luma OS 1.7.1',
+      sender: 'Luma OS 1.7.1 Oxygen',
+      title: 'Добро пожаловать в Luma OS 1.7.1 (Oxygen · O-8)!',
+      body: 'LumaCore 1.6.1 · LumaShield 3.2 (340+ правил) · Волна HarmonyOS при передаче файлов · 1-Тап Oxygen Connect + быстрый тачпад · Полноценный Circle to Search · KWin Правила окон · Полка Dropzone · Умный буфер (OCR).',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       dateLabel: 'Сегодня',
       timestamp: Date.now(),
@@ -1630,7 +1631,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.7 (Oxygen · O-8) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.7.1 (Oxygen · O-8) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -1663,7 +1664,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.7 (Oxygen · O-8)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.7.1 (Oxygen · O-8)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -1678,8 +1679,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 1.6.0',
-      message: 'Инициализация оболочки Luma OS 1.7 (Oxygen · O-8), LumaCore 1.6.0, LumaShield 3.2 Zero-Freeze и AI 5.0',
+      source: 'LumaCore 1.6.1',
+      message: 'Инициализация оболочки Luma OS 1.7.1 (Oxygen · O-8), LumaCore 1.6.1, LumaShield 3.2 Zero-Freeze и AI 5.0',
       level: 'success',
     },
   ]);
@@ -1971,8 +1972,8 @@ export default function App() {
           downloaded_bytes: 2.1 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 16.4,
-          target_version: '1.7 (Oxygen · O-8)',
-          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.6.7...',
+          target_version: '1.7.1 (Oxygen · O-8)',
+          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.7.1...',
         },
       },
       {
@@ -1984,8 +1985,8 @@ export default function App() {
           downloaded_bytes: 10.2 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 27.6,
-          target_version: '1.7 (Oxygen · O-8)',
-          message: 'Загрузка сборки LumaOS_1.7.exe (LumaCore 1.6.0 + HID Жесты + Пружинная физика)...',
+          target_version: '1.7.1 (Oxygen · O-8)',
+          message: 'Загрузка сборки LumaOS_1.7.1.exe (LumaCore 1.6.1 + HID Жесты + Пружинная физика)...',
         },
       },
       {
@@ -1997,8 +1998,8 @@ export default function App() {
           downloaded_bytes: 23.1 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 36.2,
-          target_version: '1.7 (Oxygen · O-8)',
-          message: 'Потоковая загрузка системы пружинных анимаций, магнитного Dock и 20 обоев QHD...',
+          target_version: '1.7.1 (Oxygen · O-8)',
+          message: 'Потоковая загрузка волны HarmonyOS, Circle to Search Vision, 1-Тап Oxygen Connect и 21 обоев QHD...',
         },
       },
       {
@@ -2010,9 +2011,9 @@ export default function App() {
           downloaded_bytes: 35.0 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 19.4,
-          target_version: '1.7 (Oxygen · O-8)',
+          target_version: '1.7.1 (Oxygen · O-8)',
           sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
-          message: 'Криптографическая проверка SHA-256 и подписи PE32+ (LumaShield 2.5)...',
+          message: 'Криптографическая проверка SHA-256 и подписи PE32+ (LumaShield 3.2)...',
         },
       },
       {
@@ -2024,9 +2025,9 @@ export default function App() {
           downloaded_bytes: 35.0 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 0,
-          target_version: '1.7 (Oxygen · O-8)',
+          target_version: '1.7.1 (Oxygen · O-8)',
           sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
-          message: 'Сборка Luma OS 1.7 (Oxygen · O-8) проверена и готова к мгновенному запуску!',
+          message: 'Сборка Luma OS 1.7.1 (Oxygen · O-8) проверена и готова к мгновенному запуску!',
         },
       },
     ];
@@ -3948,7 +3949,7 @@ export default function App() {
           void pollHostWindows();
         }
       } catch {
-        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.6.0', 'warning');
+        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.6.1', 'warning');
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4163,7 +4164,7 @@ export default function App() {
   executeGestureRef.current = executeGestureAction;
 
   useEffect(() => {
-    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 1.6.0 WM_INPUT + SSE fallback)
+    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 1.6.1 WM_INPUT + SSE fallback)
     let lastNativeFireAt = 0;
     let lastNativeKey = '';
     const dispatchMappedGesture = (gestureName: string, sourceTag: string) => {
@@ -4564,7 +4565,7 @@ export default function App() {
   const altTabEntries: AltTabEntry[] = useMemo(() => {
     const lumaTitles: Partial<Record<DexWinId, string>> = {
       apps: 'Приложения', explorer: 'Проводник', taskmgr: 'Диспетчер задач', terminal: 'Терминал',
-      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.6.0', settings: 'Настройки', plugins: 'Расширения',
+      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.6.1', settings: 'Настройки', plugins: 'Расширения',
       island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma Ai Nitrogen', utilities: 'Службы ОС',
       calculator: 'Калькулятор', calendar: 'Календарь', trash: 'Корзина', scenarios: 'Сценарии',
       code_studio: 'Code Studio Pro', cut_studio: 'Cut Studio Pro', office: 'Luma Office Pro',
@@ -4703,7 +4704,7 @@ export default function App() {
         const wid = item.id as DexWinId;
         openWindow(wid);
       } else if (item.pid) {
-        // Luma OS 1.7 Oxygen Permanent Alt+Tab Fix:
+        // Luma OS 1.7.1 Oxygen Permanent Alt+Tab Fix:
         // Single atomic call to /api/kernel/windows/focus synchronously strips HWND_TOPMOST
         // from Luma OS and executes AttachThreadInput + FocusWindowWithHWND(pid, hwnd)!
         void handleFocusHostWindow(item.pid, item.hwnd);
@@ -5233,7 +5234,7 @@ export default function App() {
         );
       }
     } catch {
-      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.7.exe)', 'info');
+      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.7.1.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -5331,7 +5332,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 1.6.0' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.6.1' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5423,7 +5424,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 1.6.0' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.6.1' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -6330,7 +6331,7 @@ export default function App() {
     ? { label: 'Обновление OS', percent: updateProgress.percent }
     : null;
 
-  // Sync Dynamic Island Always-On-Top Native Win32 Overlay configuration to LumaCore 1.6.0
+  // Sync Dynamic Island Always-On-Top Native Win32 Overlay configuration to LumaCore 1.6.1
   useEffect(() => {
     const payload = {
       enabled: dynamicIslandEnabled,
@@ -7572,7 +7573,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 1.6.0`,
+                        sub: `${ramLoad}% занято · LumaCore 1.6.1`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -7598,8 +7599,8 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.7 (Oxygen · O-8)'],
-                      ['Версия Ядра', 'LumaCore 1.6.0 (1.7)'],
+                      ['Версия ПО', '1.7.1 (Oxygen · O-8)'],
+                      ['Версия Ядра', 'LumaCore 1.6.1 (1.7.1)'],
                       ['Безопасность', `LumaShield 3.2 (${kernelDiag?.security_rules ?? 340}+ правил)`],
                       ['Developer SDK', `v3.0 (${kernelDiag?.sdk_themes ?? Object.keys(customThemes).length} тем / ${kernelDiag?.sdk_plugins ?? plugins.length} плаг.)`],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
@@ -8058,7 +8059,7 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.7 (Oxygen · O-8 · LumaCore 1.6.0 · LumaShield 3.2)"
+          subtitle="Luma OS 1.7 (Oxygen · O-8 · LumaCore 1.6.1 · LumaShield 3.2)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -8999,7 +9000,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.7.exe).
+                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.7.1.exe).
                   </div>
                 </div>
               )}
@@ -9289,7 +9290,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Luma OS 1.7 Oxygen: Auto-Hide Visual Noise, Magnetic Dock & System-Wide Spring Animations */}
+                  {/* Luma OS 1.7.1 Oxygen: Auto-Hide Visual Noise, Magnetic Dock & System-Wide Spring Animations */}
                   <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
                     <div className="flex items-center justify-between gap-2">
                       <div>
@@ -9729,14 +9730,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.7 (Oxygen)',
-                        message: 'Система оповещений Luma OS 1.7 (Oxygen) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.7.1 (Oxygen)',
+                        message: 'Система оповещений Luma OS 1.7.1 (Oxygen) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.7 (Oxygen)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.7.1 (Oxygen)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -9748,7 +9749,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.7 (Oxygen · O-8) · LumaCore 1.6.0</div>
+                      <div className="text-sm font-bold">Luma OS 1.7.1 (Oxygen · O-8) · LumaCore 1.6.1</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -9826,7 +9827,7 @@ export default function App() {
                           </span>
                         </div>
                         <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
-                          Нативная капсула LumaCore 1.6.0 остаётся прилипшей к выбранной части экрана поверх Google Chrome, игр, Telegram и всех программ Windows без перехвата фокуса
+                          Нативная капсула LumaCore 1.6.1 остаётся прилипшей к выбранной части экрана поверх Google Chrome, игр, Telegram и всех программ Windows без перехвата фокуса
                         </div>
                       </div>
                       <StatusPill active={islandPinOverAllWindows} />
@@ -11473,18 +11474,18 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.7 (OXYGEN · O-8)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.7.1 (OXYGEN · O-8)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.6.0 · LumaShield 3.2 (340+ правил) · Правила окон (KWin) · Полка Dropzone · Умный буфер (OCR) · Per-App Аудио-центр · Капсульные OSD · Oxygen Connect (Android) · Luma Ai Nitrogen
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.6.1 · LumaShield 3.2 (340+ правил) · Волна HarmonyOS · Полноценный Circle to Search · 1-Тап Oxygen Connect · Правила окон (KWin) · Полка Dropzone · Умный буфер (OCR) · Per-App Аудио-центр · Капсульные OSD · Luma Ai Nitrogen
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.7.exe"
-                      download="LumaOS_1.7.exe"
+                      href="/LumaOS_1.7.1.exe"
+                      download="LumaOS_1.7.1.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.7.exe
+                      LumaOS_1.7.1.exe
                     </a>
                   </div>
 
@@ -13261,7 +13262,7 @@ export default function App() {
                     setTaskbarHostWinPid(null);
                     setTaskbarCtxMenu(null);
                   }}
-                  title={`${t('start', 'Пуск')} · Приложения и Обзор окон (Luma OS 1.7 Oxygen)`}
+                  title={`${t('start', 'Пуск')} · Приложения и Обзор окон (Luma OS 1.7.1 Oxygen)`}
                   className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
                     startMenuOpen
                       ? 'bg-[var(--luma-accent)] text-white'
@@ -14129,13 +14130,13 @@ export default function App() {
                   setCarbonHubOpen(false);
                   setNotifShadeOpen(false);
                 }}
-                title="Пуск · Приложения и Обзор окон (Luma OS 1.7 Oxygen)"
+                title="Пуск · Приложения и Обзор окон (Luma OS 1.7.1 Oxygen)"
                 className={`h-8 px-2.5 rounded-xl flex items-center gap-1.5 text-xs font-bold cursor-pointer transition ${
                   startMenuOpen ? 'bg-[var(--luma-accent)] text-white' : btnCls + ' border'
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-current" />
-                <span>Luma 1.7</span>
+                <span>Luma 1.7.1</span>
               </button>
             )}
             <button
@@ -15379,7 +15380,7 @@ export default function App() {
               {!startSearch.trim() && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                    <span className={mutedCls}>Luma OS 1.7 (Oxygen · O-8)</span>
+                    <span className={mutedCls}>Luma OS 1.7.1 (Oxygen · O-8)</span>
                     <div className="flex items-center gap-1.5">
                       {enabledFeatures.privateVault && (
                         <button
@@ -15392,7 +15393,7 @@ export default function App() {
                           🔒 Приватный стол
                         </button>
                       )}
-                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.6.0</span>
+                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.6.1</span>
                     </div>
                   </div>
                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
@@ -15499,7 +15500,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.7 (Oxygen)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.7.1 (Oxygen)'}
                   </div>
                 </div>
               </div>
@@ -16996,7 +16997,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.7 (Oxygen · O-8) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
+                  Luma OS 1.7.1 (Oxygen · O-8) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
                 </div>
               </div>
             </div>
@@ -17368,7 +17369,10 @@ export default function App() {
         }}
       />
 
-      {/* ==================== OXYGEN 1.7 AWAKENING ANIMATION & PLAYABLE MINI-GAMES (NEW + CLASSIC) ==================== */}
+      {/* ==================== LUMA OS 1.7.1 (OXYGEN): HARMONYOS FULL-SCREEN FILE TRANSFER WAVE ==================== */}
+      <LumaHarmonyTransferWave isDark={isDark} onPushToast={pushToast} />
+
+      {/* ==================== OXYGEN 1.7.1 AWAKENING ANIMATION & PLAYABLE MINI-GAMES (NEW + CLASSIC) ==================== */}
       <LumaHeliumEasterEggModal open={easterEggOpen} onClose={() => setEasterEggOpen(false)} />
 
       {/* ==================== LUMA OS 1.4 BORON CINEMATIC UPDATE OVERLAY (REAL OTA + DEMO PREVIEW) ==================== */}

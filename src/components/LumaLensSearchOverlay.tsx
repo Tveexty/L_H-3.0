@@ -267,20 +267,25 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
     return null;
   };
 
-  const askNitrogenInline = async (queryText: string) => {
-    const q = queryText.trim();
-    if (!q || nitrogenLoading) return;
+  const runCircleSearchStream = async (opts: {
+    imageBase64?: string | null;
+    query?: string;
+    ocrText?: string;
+    saveClip?: boolean;
+  }) => {
     setNitrogenLoading(true);
+    setSearching(true);
     setNitrogenReply('');
     try {
-      const res = await fetch('/api/kernel/ai/nitrogen/stream', {
+      const res = await fetch('/api/kernel/lens/circle-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_id: 'lens_circle_search',
-          message: `Проанализируй и объясни выделенный на экране фрагмент: ${q}`,
-          context_app: 'lens_search',
-          context_content: editableOcr || result?.ocr_text || q,
+          image_base64: opts.imageBase64 || cropDataUrl || '',
+          query: (opts.query || '').trim(),
+          ocr_text: opts.ocrText || '',
+          source_device: 'pc',
+          save_clip: Boolean(opts.saveClip),
           stream: true,
         }),
       });
@@ -289,6 +294,7 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
         const decoder = new TextDecoder();
         let buf = '';
         let acc = '';
+        let metaPayload: LensResultPayload = { ok: true };
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
@@ -299,24 +305,63 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
             if (!line.startsWith('data:')) continue;
             try {
               const ev = JSON.parse(line.slice(5).trim());
-              if (ev.type === 'token' && ev.content) {
-                acc += String(ev.content);
+              if (ev.type === 'meta') {
+                metaPayload = {
+                  ...metaPayload,
+                  ok: true,
+                  ocr_text: ev.ocr_text || '',
+                  dominant_colors: ev.dominant_colors || [],
+                  width: ev.width,
+                  height: ev.height,
+                  saved_path: ev.saved_path,
+                  visual_search_urls: ev.visual_search_urls || [],
+                };
+                setResult(metaPayload);
+                if (ev.ocr_text && !opts.query) setEditableOcr(ev.ocr_text);
+                if (opts.saveClip && ev.saved_path) {
+                  onNotify?.('Circle to Search', `Фрагмент сохранён: ${ev.saved_path}`, 'success');
+                }
+              } else if (ev.type === 'token' && (ev.content || ev.text)) {
+                acc += String(ev.content || ev.text);
                 setNitrogenReply(acc);
-              } else if (ev.type === 'done' && ev.reply && !acc) {
-                acc = String(ev.reply);
-                setNitrogenReply(acc);
+              } else if (ev.type === 'done') {
+                if (ev.reply && !acc) {
+                  acc = String(ev.reply);
+                  setNitrogenReply(acc);
+                }
+                metaPayload = {
+                  ...metaPayload,
+                  ok: true,
+                  ocr_text: ev.ocr_text ?? metaPayload.ocr_text,
+                  dominant_colors: ev.dominant_colors || metaPayload.dominant_colors,
+                  sources: ev.sources || [],
+                  visual_search_urls: ev.visual_search_urls || metaPayload.visual_search_urls,
+                  elapsed_ms: ev.elapsed_ms,
+                };
+                setResult(metaPayload);
               }
             } catch {
               /* ignore */
             }
           }
         }
+      } else {
+        setResult({ ok: false, error: 'Не удалось связаться с модулем Circle to Search (LumaCore 1.6.1)' });
       }
     } catch {
-      setNitrogenReply('Не удалось связаться с Luma Ai Nitrogen.');
+      setNitrogenReply('Не удалось связаться с системным модулем Circle to Search.');
     } finally {
       setNitrogenLoading(false);
+      setSearching(false);
     }
+  };
+
+  const askNitrogenInline = async (queryText: string) => {
+    await runCircleSearchStream({
+      imageBase64: cropDataUrl,
+      query: queryText,
+      ocrText: editableOcr || result?.ocr_text || '',
+    });
   };
 
   const runLensRequest = async (opts: {
@@ -325,31 +370,39 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
     translateTo?: string;
     saveClip?: boolean;
   }) => {
-    setSearching(true);
-    try {
-      const r = await fetch('/api/kernel/lens/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image_base64: opts.imageBase64 || '',
-          query: opts.query || '',
-          translate_to: opts.translateTo || '',
-          save_clip: Boolean(opts.saveClip),
-        }),
-      });
-      const data: LensResultPayload = await r.json();
-      setResult(data);
-      if (data?.ocr_text && !opts.query) {
-        setEditableOcr(data.ocr_text);
+    if (opts.translateTo || opts.saveClip) {
+      setSearching(true);
+      try {
+        const r = await fetch('/api/kernel/lens/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_base64: opts.imageBase64 || '',
+            query: opts.query || '',
+            translate_to: opts.translateTo || '',
+            save_clip: Boolean(opts.saveClip),
+          }),
+        });
+        const data: LensResultPayload = await r.json();
+        setResult((prev) => ({ ...(prev || {}), ...data }));
+        if (data?.ocr_text && !opts.query) {
+          setEditableOcr(data.ocr_text);
+        }
+        if (opts.saveClip && data?.saved_path) {
+          onNotify?.('Circle to Search', `Фрагмент сохранён: ${data.saved_path}`, 'success');
+        }
+      } catch {
+        setResult({ ok: false, error: 'Не удалось связаться с модулем поиска LumaCore 1.6.1' });
+      } finally {
+        setSearching(false);
       }
-      if (opts.saveClip && data?.saved_path) {
-        onNotify?.('Luma Обвести для поиска', `Фрагмент сохранён: ${data.saved_path}`, 'success');
-      }
-    } catch {
-      setResult({ ok: false, error: 'Не удалось связаться с модулем поиска LumaCore 1.6.0' });
-    } finally {
-      setSearching(false);
+      return;
     }
+    await runCircleSearchStream({
+      imageBase64: opts.imageBase64,
+      query: opts.query,
+      ocrText: editableOcr,
+    });
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -414,7 +467,8 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
     setSelection(box);
     const cropped = cropSelectionToBase64(box);
     setCropDataUrl(cropped);
-    void runLensRequest({ imageBase64: cropped, query: customQuery.trim() });
+    // Luma OS 1.7.1: Immediately run full Multimodal Circle to Search analysis on the circled area!
+    void runCircleSearchStream({ imageBase64: cropped, query: customQuery.trim() });
   };
 
   const handleCopyText = (txt: string) => {
@@ -781,15 +835,65 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
                   </button>
                 </div>
 
-                {/* Live Streaming Reply from Luma Ai Nitrogen */}
+                {/* Live Streaming Reply from Circle to Search Visual Engine */}
                 {(nitrogenLoading || nitrogenReply) && (
-                  <div className={`p-3 rounded-xl border space-y-1.5 ${isDark ? 'bg-sky-500/10 border-sky-400/30' : 'bg-sky-50 border-sky-300'}`}>
-                    <div className="text-[10px] font-mono uppercase text-sky-400 font-bold flex items-center gap-1.5">
-                      <Sparkles className="w-3 h-3" />
-                      <span>Luma Ai Nitrogen · Анализ фрагмента</span>
+                  <div className={`p-3.5 rounded-2xl border space-y-2 ${isDark ? 'bg-sky-500/10 border-sky-400/35' : 'bg-sky-50 border-sky-300'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[10px] font-mono uppercase text-sky-400 font-bold flex items-center gap-1.5">
+                        <Sparkles className="w-3 h-3" />
+                        <span>Circle to Search · Визуальный анализ</span>
+                      </div>
+                      {nitrogenReply && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyText(nitrogenReply)}
+                          className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <Copy className="w-2.5 h-2.5" /> Копировать
+                        </button>
+                      )}
                     </div>
-                    <div className="whitespace-pre-wrap leading-relaxed text-xs">
-                      {nitrogenReply || 'Генерирую ответ в реальном времени…'}
+                    <div className="leading-relaxed text-xs space-y-1">
+                      {!nitrogenReply ? (
+                        <span className="opacity-75 animate-pulse">Анализирую выделенную область…</span>
+                      ) : (
+                        nitrogenReply.split('\n').map((line, lineIdx) => {
+                          const trimmed = line.trim();
+                          if (!trimmed) return <div key={lineIdx} className="h-1" />;
+                          const isBullet = trimmed.startsWith('- ') || trimmed.startsWith('• ');
+                          const content = isBullet ? trimmed.slice(2) : trimmed;
+                          const parts = content.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+                          return (
+                            <div key={lineIdx} className={isBullet ? 'flex items-start gap-1.5 pl-1' : ''}>
+                              {isBullet && <span className="text-sky-400 font-bold select-none">•</span>}
+                              <span className="break-words">
+                                {parts.map((part, pIdx) => {
+                                  if (part.startsWith('**') && part.endsWith('**')) {
+                                    return (
+                                      <strong key={pIdx} className={isDark ? 'text-sky-200 font-extrabold' : 'text-slate-900 font-extrabold'}>
+                                        {part.slice(2, -2)}
+                                      </strong>
+                                    );
+                                  }
+                                  if (part.startsWith('`') && part.endsWith('`')) {
+                                    return (
+                                      <code
+                                        key={pIdx}
+                                        className={`px-1 py-0.5 rounded font-mono text-[11px] ${
+                                          isDark ? 'bg-black/40 text-cyan-300' : 'bg-slate-200 text-slate-900'
+                                        }`}
+                                      >
+                                        {part.slice(1, -1)}
+                                      </code>
+                                    );
+                                  }
+                                  return <React.Fragment key={pIdx}>{part}</React.Fragment>;
+                                })}
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   </div>
                 )}
