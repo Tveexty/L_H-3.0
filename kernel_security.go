@@ -1172,7 +1172,7 @@ func (s *SecurityKernel) RunScan(mode, customPath string, probe *platformProbe) 
 	if len(threats) > 0 {
 		level = "danger"
 	}
-	s.LogAudit(level, "antivirus", "Проверка LumaShield 3.1 завершена", msg)
+	s.LogAudit(level, "antivirus", "Проверка LumaShield 3.2 завершена", msg)
 
 	return map[string]interface{}{
 		"ok":            true,
@@ -1354,7 +1354,7 @@ func (s *SecurityKernel) StatusSnapshot(probe *platformProbe) map[string]interfa
 	return map[string]interface{}{
 		"ok":                     true,
 		"security_core_version":  SecurityCoreVersion,
-		"engine_name":            "LumaShield 3.1 (340+ Rules · Anti-RAT Zero-Shredder · USB Flash Guard · Zero-Freeze Engine)",
+		"engine_name":            "LumaShield 3.2 (340+ Rules · Anti-RAT Zero-Shredder · USB Flash Guard · Zero-Freeze Engine)",
 		"rules_count":            len(scriptHeuristics) + len(suspiciousDoubleExts) + len(ransomwareExts) + 5,
 		"archive_macro_guard":    true,
 		"stealer_shield":         true,

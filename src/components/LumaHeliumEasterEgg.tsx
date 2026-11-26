@@ -16,7 +16,8 @@ import {
   Swords,
   Magnet,
 } from 'lucide-react';
-import nitrogenHeroImg from '../assets/luma-nitrogen-hero.jpg';
+import oxygenHeroImg from '../assets/luma-oxygen-hero.jpg';
+import { LumaOxygenPulseGame } from './LumaOxygenPulseGame';
 
 interface HeroCardProps {
   onTriggerEasterEgg: () => void;
@@ -25,14 +26,12 @@ interface HeroCardProps {
 }
 
 /**
- * Flagship sculptural 3D Nitrogen N-7 heptagonal cryo-sapphire monolith hero banner for Luma OS 1.6.2 (Nitrogen · N-7).
- * Uses outer perspective wrapper, backfaceVisibility: hidden, content-hashed Vite asset,
- * and dual CSS+<img> layers so WebView2 smoothly tilts on hover without ever dropping the image.
+ * Flagship sculptural 2.5D Oxygen O-8 luminous cryo-glass hero banner for Luma OS 1.7 (Oxygen · O-8).
  */
 export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
   onTriggerEasterEgg,
-  kernelVersion = '1.5.1',
-  securityVersion = '2.5',
+  kernelVersion = '1.6.0',
+  securityVersion = '3.2',
 }) => {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [tilt, setTilt] = useState({ rx: 0, ry: 0, gx: 50, gy: 38, hovering: false });
@@ -73,7 +72,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
             handleClick();
           }
         }}
-        className="group relative block w-full h-56 sm:h-64 rounded-3xl overflow-hidden border border-sky-300/30 shadow-xl cursor-pointer text-left select-none active:scale-[0.99] focus:outline-none"
+        className="group relative block w-full h-56 sm:h-64 rounded-3xl overflow-hidden border border-cyan-300/35 shadow-xl cursor-pointer text-left select-none active:scale-[0.99] focus:outline-none"
         style={{
           isolation: 'isolate',
           transformStyle: 'flat',
@@ -83,16 +82,16 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
           transition: tilt.hovering
             ? 'transform 0.14s ease-out, box-shadow 0.25s ease'
             : 'transform 0.52s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease',
-          backgroundColor: '#050811',
-          backgroundImage: `url("${nitrogenHeroImg}")`,
+          backgroundColor: '#040a18',
+          backgroundImage: `url("${oxygenHeroImg}")`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
-        title="Нажмите, чтобы запустить игру «Nitrogen Vanguard»!"
+        title="Нажмите, чтобы выбрать мини-игру: новая «Oxygen Pulse 2.5D» или старая классика!"
       >
         <img
-          src={nitrogenHeroImg}
-          alt="Luma OS 1.6 Nitrogen N-7 QHD"
+          src={oxygenHeroImg}
+          alt="Luma OS 1.7 Oxygen O-8 2.5D QHD"
           loading="eager"
           decoding="sync"
           draggable={false}
@@ -110,20 +109,20 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
         <div
           className="pointer-events-none absolute inset-0 transition-opacity duration-200 opacity-65 group-hover:opacity-100"
           style={{
-            background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.22) 0%, rgba(56,189,248,0.24) 28%, rgba(129,140,248,0.14) 48%, transparent 66%)`,
+            background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.22) 0%, rgba(6,182,212,0.26) 28%, rgba(56,189,248,0.14) 48%, transparent 66%)`,
           }}
         />
 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#040710]/28 via-transparent to-[#03050c]/74" />
 
         <div className="relative z-10 flex items-center justify-between px-5 pt-4">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 border border-sky-300/35 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 border border-cyan-300/35 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
             LUMACORE {kernelVersion} · SHIELD {securityVersion}
           </span>
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 border border-cyan-300/35 text-[10px] font-mono text-sky-100 group-hover:bg-white/20 transition">
-            <Sparkles className="w-3 h-3 text-sky-300" />
-            Nitrogen · QHD Studio
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 border border-cyan-300/35 text-[10px] font-mono text-cyan-100 group-hover:bg-white/20 transition">
+            <Sparkles className="w-3 h-3 text-cyan-300" />
+            Oxygen · 2.5D QHD · Игры
           </span>
         </div>
 
@@ -137,25 +136,25 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
           <div
             className="text-5xl sm:text-6xl font-black tracking-tight leading-none select-none transition-transform duration-300 group-hover:scale-105"
             style={{
-              backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #bae6fd 52%, #38bdf8 100%)',
+              backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #a5f3fc 52%, #06b6d4 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
-              filter: 'drop-shadow(0 6px 26px rgba(56, 189, 248, 0.56))',
+              filter: 'drop-shadow(0 6px 26px rgba(6, 182, 212, 0.6))',
             }}
           >
-            1.6
+            1.7
           </div>
           <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">
             LumaOS
           </div>
-          <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-sky-100/95">
-            <span>NITROGEN</span>
+          <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-cyan-100/95">
+            <span>OXYGEN</span>
             <span className="opacity-50">·</span>
-            <span className="text-cyan-200">N-7</span>
+            <span className="text-cyan-200">O-8</span>
           </div>
         </div>
 
-        {ripple && <div className="pointer-events-none absolute inset-0 bg-sky-200/20 animate-ping rounded-3xl" />}
+        {ripple && <div className="pointer-events-none absolute inset-0 bg-cyan-200/20 animate-ping rounded-3xl" />}
       </div>
     </div>
   );
@@ -165,15 +164,16 @@ export const LumaLithiumHeroCard = LumaHeliumHeroCard;
 export const LumaBerylliumHeroCard = LumaHeliumHeroCard;
 export const LumaBoronHeroCard = LumaHeliumHeroCard;
 export const LumaNitrogenHeroCard = LumaHeliumHeroCard;
+export const LumaOxygenHeroCard = LumaHeliumHeroCard;
 
-// ==================== MINI-GAME ENGINE: BERYLLIUM VANGUARD (ROGUELITE ARENA) + LITHIUM ORBIT ====================
+// ==================== MINI-GAME ENGINE: OXYGEN PULSE 2.5D (NEW) + VANGUARD / ORBIT (CLASSIC) ====================
 
 interface EasterEggModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-type GameMode = 'vanguard' | 'orbit';
+type GameMode = 'oxygen' | 'vanguard' | 'orbit';
 
 interface Particle {
   x: number;
@@ -331,7 +331,7 @@ const ORBIT_BEST_KEY = 'luma_lithium_orbit_highscore_v1';
 
 export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, onClose }) => {
   const [phase, setPhase] = useState<'intro' | 'game'>('intro');
-  const [mode, setMode] = useState<GameMode>('vanguard');
+  const [mode, setMode] = useState<GameMode>('oxygen');
   const [introProgress, setIntroProgress] = useState(0);
 
   const [score, setScore] = useState(0);
@@ -1610,14 +1610,14 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         <div
           className="relative flex flex-col items-center justify-center w-full max-w-2xl h-[460px] rounded-3xl overflow-hidden border border-emerald-300/20 bg-[#031216] shadow-2xl"
           style={{
-            backgroundImage: `url("${nitrogenHeroImg}")`,
+            backgroundImage: `url("${oxygenHeroImg}")`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}
         >
           <img
-            src={nitrogenHeroImg}
-            alt="Nitrogen Awakening"
+            src={oxygenHeroImg}
+            alt="Oxygen Awakening"
             loading="eager"
             decoding="sync"
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000"
@@ -1675,19 +1675,34 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
           </button>
         </div>
       ) : (
-        <div className="w-full max-w-[900px] rounded-3xl border border-emerald-400/20 bg-[#041016] text-white shadow-2xl overflow-hidden flex flex-col">
-          {/* Top Arcade HUD + 2-Game Switcher */}
+        <div className="w-full max-w-[900px] rounded-3xl border border-cyan-400/25 bg-[#04101c] text-white shadow-2xl overflow-hidden flex flex-col">
+          {/* Top Arcade HUD + New / Old Game Choice Switcher */}
           <div className="px-4 py-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-2 bg-white/[0.03]">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 via-teal-400 to-amber-300 flex items-center justify-center font-mono font-black text-xs text-slate-950 shadow">
-                {mode === 'vanguard' ? 'Be' : 'Li'}
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 via-sky-400 to-blue-500 flex items-center justify-center font-mono font-black text-xs text-slate-950 shadow">
+                {mode === 'oxygen' ? 'O₂' : mode === 'vanguard' ? 'Be' : 'Li'}
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-extrabold tracking-wide uppercase">
-                    {mode === 'vanguard' ? 'BERYLLIUM VANGUARD · Be-4' : 'LITHIUM ORBIT · Li-3'}
+                    {mode === 'oxygen'
+                      ? 'OXYGEN PULSE 2.5D · O-8'
+                      : mode === 'vanguard'
+                      ? 'BERYLLIUM VANGUARD · СТАРАЯ'
+                      : 'LITHIUM ORBIT · СТАРАЯ'}
                   </span>
                   <div className="inline-flex rounded-lg bg-white/10 p-0.5 text-[10px] font-mono">
+                    <button
+                      onClick={() => {
+                        setMode('oxygen');
+                        modeRef.current = 'oxygen';
+                      }}
+                      className={`px-2.5 py-0.5 rounded-md cursor-pointer transition ${
+                        mode === 'oxygen' ? 'bg-cyan-400 text-slate-950 font-black' : 'text-zinc-300 hover:text-white'
+                      }`}
+                    >
+                      ✨ Новая: Oxygen
+                    </button>
                     <button
                       onClick={() => {
                         setMode('vanguard');
@@ -1698,7 +1713,7 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
                         mode === 'vanguard' ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-zinc-300 hover:text-white'
                       }`}
                     >
-                      Арена 1.3
+                      Старая: Арена
                     </button>
                     <button
                       onClick={() => {
@@ -1707,21 +1722,32 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
                         resetOrbit();
                       }}
                       className={`px-2 py-0.5 rounded-md cursor-pointer transition ${
-                        mode === 'orbit' ? 'bg-cyan-400 text-slate-950 font-bold' : 'text-zinc-300 hover:text-white'
+                        mode === 'orbit' ? 'bg-sky-400 text-slate-950 font-bold' : 'text-zinc-300 hover:text-white'
                       }`}
                     >
-                      Орбита
+                      Старая: Орбита
                     </button>
                   </div>
                 </div>
                 <div className="text-[10px] font-mono text-zinc-400 mt-0.5">
-                  {mode === 'vanguard'
+                  {mode === 'oxygen'
+                    ? 'Новая 60 FPS игра Oxygen · Мышь/WASD + Пробел/Клик (Cryo Pulse) · 0 лагов'
+                    : mode === 'vanguard'
                     ? 'WASD / Мышь — манёвр · Авто-стрельба · Пробел/Клик — Ударный рывок · Собирай кристаллы опыта!'
                     : 'Мышь / WASD — полёт · Клик / Пробел — импульс (28%) · 3 щита'}
                 </div>
               </div>
             </div>
 
+            {mode === 'oxygen' ? (
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/40 text-rose-200 cursor-pointer"
+                title="Закрыть (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            ) : (
             <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">
               <div className="px-2 py-1 rounded-xl bg-white/[0.06] border border-white/10 inline-flex items-center gap-1">
                 {Array.from({ length: maxLives }).map((_, idx) => (
@@ -1792,8 +1818,15 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
                 <X className="w-4 h-4" />
               </button>
             </div>
+            )}
           </div>
 
+          {mode === 'oxygen' ? (
+            <div className="p-4 bg-[#030916]">
+              <LumaOxygenPulseGame />
+            </div>
+          ) : (
+            <>
           {/* XP Progress Bar & Boss HP Bar (Vanguard mode) */}
           {mode === 'vanguard' && (
             <div className="px-4 py-1.5 bg-black/40 border-b border-white/5 flex items-center gap-3">
@@ -1937,6 +1970,8 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
               </div>
             )}
           </div>
+            </>
+          )}
         </div>
       )}
     </div>

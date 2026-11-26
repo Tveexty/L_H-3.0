@@ -221,7 +221,7 @@ func startHardcoreShieldEngine(sk *SecurityKernel) {
 
 	loadHardcoreShieldConfig()
 	if sk != nil {
-		sk.LogAudit("ok", "shield3", "LumaShield 3.1 Hardcore Active Defense запущен", "340+ правил Anti-RAT, Zero-Freeze движок, Щит USB-флешек, Блокировка чужих файлов и Авто-уничтожение под ноль")
+		sk.LogAudit("ok", "shield3", "LumaShield 3.2 Hardcore Active Defense запущен", "340+ правил Anti-RAT, Zero-Freeze движок, Щит USB-флешек, Блокировка чужих файлов и Авто-уничтожение под ноль")
 	}
 
 	go func() {
@@ -506,7 +506,7 @@ func analyzeRemoteControlThreat(path string, info os.FileInfo, isUsb bool) (bool
 
 	// Check EICAR test string
 	if bytes.Contains(sample, []byte(eicarStandardSignature)) {
-		return true, true, 100, "Тестовая вирусная сигнатура EICAR (LumaShield 3.1)"
+		return true, true, 100, "Тестовая вирусная сигнатура EICAR (LumaShield 3.2)"
 	}
 
 	lowerSample := strings.ToLower(string(sample))
@@ -870,7 +870,7 @@ func getHardcoreShieldStatus() HardcoreShieldStatus {
 	exePath, _ := os.Executable()
 	return HardcoreShieldStatus{
 		Ok:                true,
-		Version:           "3.1",
+		Version:           "3.2",
 		RulesCount:        340,
 		Config:            cfg,
 		ShreddedCount:     shredded,
@@ -902,7 +902,7 @@ func registerHardcoreShieldRoutes(mux *http.ServeMux, sk *SecurityKernel) {
 			hcMu.Unlock()
 			saveHardcoreShieldConfig(next)
 			if sk != nil {
-				sk.LogAudit("ok", "shield3", "Настройки LumaShield 3.1 обновлены", fmt.Sprintf("Hardcore=%v · AutoShred=%v · USB=%v · Foreign=%v · ProcKill=%v",
+				sk.LogAudit("ok", "shield3", "Настройки LumaShield 3.2 обновлены", fmt.Sprintf("Hardcore=%v · AutoShred=%v · USB=%v · Foreign=%v · ProcKill=%v",
 					next.HardcoreMode, next.AutoShredRemoteControl, next.UsbFlashGuard, next.BlockForeignFiles, next.KillRemoteControlProcs))
 			}
 		}
@@ -923,7 +923,7 @@ func registerHardcoreShieldRoutes(mux *http.ServeMux, sk *SecurityKernel) {
 			return
 		}
 		if req.Reason == "" {
-			req.Reason = "Ручное уничтожение угрозы под ноль (LumaShield 3.1)"
+			req.Reason = "Ручное уничтожение угрозы под ноль (LumaShield 3.2)"
 		}
 		if req.Source == "" {
 			req.Source = "system"

@@ -1140,7 +1140,7 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 		if strings.TrimSpace(req.SystemPrompt) != "" {
 			sysCtx.WriteString(strings.TrimSpace(req.SystemPrompt) + "\n")
 		} else {
-			sysCtx.WriteString("Ты — Luma Ai Nitrogen, встроенный универсальный ИИ-ассистент и программист в Luma OS 1.6.7. Отвечай чётко, умно, без воды, с чистым Markdown для кода. Текущее время: " + time.Now().Format("2006-01-02 15:04") + ".\n")
+			sysCtx.WriteString("Ты — Luma Ai Nitrogen, встроенный универсальный ИИ-ассистент и программист в Luma OS 1.7 (Oxygen · LumaCore 1.6.0). Отвечай чётко, умно, без воды, с чистым Markdown для кода. Текущее время: " + time.Now().Format("2006-01-02 15:04") + ".\n")
 		}
 		if len(memSnap.Facts) > 0 {
 			sysCtx.WriteString("Долговременная память о пользователе:\n")
@@ -1254,7 +1254,7 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 		}
 		writeSSEEvent(w, flusher, map[string]interface{}{
 			"type":           "done",
-			"model":          "Luma Ai Nitrogen (LumaCore 1.5.7)",
+			"model":          "Luma Ai Nitrogen (LumaCore 1.6.0)",
 			"reply":          replyText,
 			"sources":        res["sources"],
 			"thinking_steps": res["thinking_steps"],
@@ -1278,7 +1278,7 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 		subID, ch := subscribeNativeTouchpadGestures()
 		defer unsubscribeNativeTouchpadGestures(subID)
 
-		writeSSEEvent(w, flusher, map[string]interface{}{"type": "connected", "engine": "LumaCore 1.5.7 Touchpad HID"})
+		writeSSEEvent(w, flusher, map[string]interface{}{"type": "connected", "engine": "LumaCore 1.6.0 Touchpad HID"})
 		keepalive := time.NewTicker(25 * time.Second)
 		defer keepalive.Stop()
 

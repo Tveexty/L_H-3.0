@@ -48,10 +48,10 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.6.7"
-	KernelCodename      = "Nitrogen"
-	KernelEngineVersion = "1.5.7"
-	SecurityCoreVersion = "3.1"
+	KernelVersion       = "1.7"
+	KernelCodename      = "Oxygen"
+	KernelEngineVersion = "1.6.0"
+	SecurityCoreVersion = "3.2"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
 )
@@ -998,17 +998,20 @@ func main() {
 	mux.HandleFunc("/api/kernel/windows/focus", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		var payload struct {
-			PID int `json:"pid"`
+			PID  int    `json:"pid"`
+			HWND uint64 `json:"hwnd"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&payload)
 		releaseAltTabTopmost()
-		recordWindowMRU(payload.PID)
-		err := kernel.probe.FocusWindow(payload.PID)
+		if payload.PID > 0 {
+			recordWindowMRU(payload.PID)
+		}
+		err := kernel.probe.FocusWindowWithHWND(payload.PID, uintptr(payload.HWND))
 		if err != nil {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "pid": payload.PID})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "pid": payload.PID, "hwnd": payload.HWND})
 	})
 
 	// Host Window Snap & Side-by-Side Split Layout API
@@ -2387,24 +2390,29 @@ func main() {
 
 	// ==================== LUMA OS 1.3.1 (BERYLLIUM) LUMACORE 1.4 NATIVE ENDPOINTS ====================
 
-	// Real Native App Icon Extractor (SHGetFileInfoW -> cached 32x32 PNG, ~1ms, 0% WMI!)
+	// Real Native App Icon Extractor (SHGetFileInfoW + ExtractIconExW -> cached PNG, with 100% crisp Oxygen SVG fallback — ZERO broken 404 icons!)
 	mux.HandleFunc("/api/kernel/app-icon", func(w http.ResponseWriter, r *http.Request) {
 		p := strings.TrimSpace(r.URL.Query().Get("path"))
 		if p == "" {
 			p = strings.TrimSpace(r.URL.Query().Get("name"))
 		}
 		if p == "" {
-			http.NotFound(w, r)
+			w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			_, _ = w.Write([]byte(renderFallbackAppIconSVG("Luma")))
 			return
 		}
 		pngBytes, err := kernel.probe.ExtractAppIconPNG(p)
-		if err != nil || len(pngBytes) == 0 {
-			http.NotFound(w, r)
+		if err == nil && len(pngBytes) > 0 {
+			w.Header().Set("Content-Type", "image/png")
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			_, _ = w.Write(pngBytes)
 			return
 		}
-		w.Header().Set("Content-Type", "image/png")
-		w.Header().Set("Cache-Control", "public, max-age=86400")
-		_, _ = w.Write(pngBytes)
+		// Never return 404: render crisp Oxygen 2.5D brand/monogram SVG so EVERY icon always loads cleanly!
+		w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		_, _ = w.Write([]byte(renderFallbackAppIconSVG(p)))
 	})
 
 	// Ultra-Fast Active Keyboard Layout Endpoint (4us pure Win32 GetKeyboardLayout for instant Alt+Shift/Win+Space sync!)
@@ -3162,15 +3170,17 @@ func main() {
 	registerNitrogen16Routes(mux, kernel, osNotifBridge)
 	// Luma OS 1.6.6: Native Win32 Always-On-Top Dynamic Island Overlay (above Chrome & all Windows apps)
 	registerIslandOverlayRoutes(mux)
-	// Luma OS 1.6.7: LumaShield 3.1 Hardcore Active Defense (Zero-Freeze Engine + Anti-RAT Zero-Shredder + USB Flash Guard)
+	// Luma OS 1.7 (Oxygen): LumaShield 3.2 Hardcore Active Defense + KWin Window Rules + Drop Shelf + Per-App Audio + Oxygen Connect Android
 	registerHardcoreShieldRoutes(mux, kernel.security)
+	registerOxygen17Routes(mux, kernel, nativeRecorder)
+	registerOxygenConnectRoutes(mux, kernel)
 
-	// Serve standalone executable download for LumaOS_1.6.7.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.7.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.6.7.exe", "LumaOS_1.6.6b.exe", "LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.7.exe", "LumaOS_1.6.7.exe", "LumaOS_1.6.6b.exe", "LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.7.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.7.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -3178,12 +3188,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.7.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.7.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.7.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.7.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.6b.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.6.exe", serveExe)
@@ -3217,8 +3228,6 @@ func main() {
 
 	// Serve embedded source files for built-in "Ядро Luma" Code Viewer
 	sourceFileServer := http.FileServer(http.FS(embeddedSources))
-	mux.Handle("/LauncherHab3.0_CSharp/", sourceFileServer)
-	mux.Handle("/Luma_Core/", sourceFileServer)
 	mux.Handle("/src/", sourceFileServer)
 	for _, goFile := range []string{
 		"luma_kernel_main.go",
@@ -3257,12 +3266,12 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.6.7 (NITROGEN · FINAL 1.6.x) — LUMACORE 1.5.7 & LUMASHIELD 3.1")
-	log.Printf("  - Zero-Freeze Antivirus Engine, Anti-RAT Zero-Shredder & USB Flash Guard")
-	log.Printf("  - Always-On-Top Dynamic Island, Desktop LMB Multi-Select & 36 UI Languages")
-	log.Printf("  - Desktop Environment:          http://%s/", addr)
-	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)
-	log.Printf("  - Real Telemetry & Security:    http://%s/api/kernel/status", addr)
+	log.Printf("  LUMA OS 1.7 (OXYGEN · O-8) — LUMACORE 1.6.0 & LUMASHIELD 3.2")
+	log.Printf("  - KWin Window Rules · Drop Shelf · Smart Clipboard · Per-App Audio")
+	log.Printf("  - Oxygen Connect Android SuperHub: http://%s:%d/", detectLocalLANIP(), OxygenConnectPort)
+	log.Printf("  - Desktop Environment:             http://%s/", addr)
+	log.Printf("  - Kernel JSON-RPC 2.0 Socket:      tcp://127.0.0.1:%d", *rpcPort)
+	log.Printf("  - Real Telemetry & Security:       http://%s/api/kernel/status", addr)
 	log.Printf("=================================================================")
 
 	defer stopNativeIslandOverlayEngine()

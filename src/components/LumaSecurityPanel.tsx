@@ -582,12 +582,12 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
       const d = await r.json();
       await fetchStatus();
       if (d?.busy) {
-        onPushToast('LumaShield 3.1', d.message || 'Проверка уже выполняется', 'info');
+        onPushToast('LumaShield 3.2', d.message || 'Проверка уже выполняется', 'info');
       } else {
         const count = d?.threats?.length ?? 0;
         const limitNote = d?.timed_out ? ' · лимит Zero-Freeze' : '';
         onPushToast(
-          'LumaShield 3.1',
+          'LumaShield 3.2',
           count > 0
             ? `Обнаружено угроз: ${count} (проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс${limitNote})`
             : `Угроз не найдено · Проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс${limitNote}`,
@@ -595,7 +595,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         );
       }
     } catch {
-      onPushToast('LumaShield 3.1', 'Сканирование остановлено или превысило таймаут', 'warning');
+      onPushToast('LumaShield 3.2', 'Сканирование остановлено или превысило таймаут', 'warning');
     } finally {
       setScanning(false);
       setScanLabel('');
@@ -719,7 +719,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         await inspectFileByPath(d.path);
       }
     } catch {
-      onPushToast('LumaShield 3.1', 'Выбор файла отменён или превысил таймаут', 'info');
+      onPushToast('LumaShield 3.2', 'Выбор файла отменён или превысил таймаут', 'info');
     }
   };
 
@@ -740,7 +740,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         await runScan('custom', d.path);
       }
     } catch {
-      onPushToast('LumaShield 3.1', 'Выбор папки отменён или превысил таймаут', 'info');
+      onPushToast('LumaShield 3.2', 'Выбор папки отменён или превысил таймаут', 'info');
     }
   };
 
@@ -872,7 +872,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
               <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0" />
               <div className="min-w-0">
                 <div className="font-black flex items-center gap-2 flex-wrap">
-                  <span>LumaShield 3.1 · Жёсткая защита (Anti-RAT · USB · Zero-Freeze)</span>
+                  <span>LumaShield 3.2 · Жёсткая защита (Anti-RAT · USB · Zero-Freeze)</span>
                   <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 text-[9px] font-mono">
                     {hardcore?.rules_count ?? 340}+ ПРАВИЛ
                   </span>
@@ -930,7 +930,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
             {[
               {
                 key: 'hardcore_mode' as const,
-                title: 'Жёсткий режим LumaShield 3.1',
+                title: 'Жёсткий режим LumaShield 3.2',
                 sub: 'Непрерывный Zero-Freeze щит каждые 20 сек (кэш 0% CPU)',
                 active: hardcore?.config?.hardcore_mode ?? true,
               },
@@ -1177,7 +1177,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
               }`}
             >
               <div className="min-w-0">
-                <div className="font-bold text-cyan-400">Мгновенная проверка файла (LumaShield 3.1 Zero-Freeze)</div>
+                <div className="font-bold text-cyan-400">Мгновенная проверка файла (LumaShield 3.2 Zero-Freeze)</div>
                 <div className={`text-[11px] ${mutedCls}`}>
                   Перетащите сюда любой файл (.exe, .zip, .docx, .ps1, .bat, .pdf) или нажмите «Выбрать файл» — проверяет до 4 МБ без зависания даже на огромных файлах
                 </div>

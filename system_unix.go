@@ -599,6 +599,10 @@ func (p *platformProbe) FocusWindow(pid int) error {
 	return nil
 }
 
+func (p *platformProbe) FocusWindowWithHWND(pid int, _ uintptr) error {
+	return p.FocusWindow(pid)
+}
+
 func (p *platformProbe) KillProcess(pid int, force bool) error {
 	if pid <= 1 || pid == os.Getpid() {
 		return fmt.Errorf("cannot terminate system or self pid %d", pid)

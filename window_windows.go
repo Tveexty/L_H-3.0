@@ -115,6 +115,9 @@ func loadShellConfig() ShellModeConfig {
 		cfg.TaskbarPosition = "bottom"
 	}
 	cfg.AutostartWithOS = isWindowsAutostartEnabled()
+	if cfg.AutostartWithOS {
+		go syncWindowsAutostartToNewestExe(cfg.StartFullscreen)
+	}
 	nativeWinMu.Lock()
 	activeShellCfg = cfg
 	nativeWinMu.Unlock()
@@ -235,9 +238,104 @@ func isWindowsAutostartEnabled() bool {
 	return err == nil && strings.TrimSpace(out) != ""
 }
 
+// extractLumaExeVersion parses "LumaOS_1.7.exe" -> "1.7" for newest-version autostart comparison.
+func extractLumaExeVersion(pathStr string) string {
+	base := strings.ToLower(filepath.Base(strings.Trim(strings.TrimSpace(pathStr), `"`)))
+	if !strings.HasPrefix(base, "lumaos_") || !strings.HasSuffix(base, ".exe") {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(base, "lumaos_"), ".exe")
+}
+
+// syncWindowsAutostartToNewestExe guarantees Windows reboot ALWAYS starts the NEWEST installed Luma OS version
+// and cleans any stale duplicate LumaOS*.exe Run entries or old Startup folder shortcuts!
+func syncWindowsAutostartToNewestExe(startFullscreen bool) {
+	exe, err := os.Executable()
+	if err != nil || exe == "" {
+		return
+	}
+	// Check if there is an even newer LumaOS_*.exe sitting right next to current executable
+	bestExe := exe
+	bestVer := extractLumaExeVersion(exe)
+	if bestVer == "" {
+		bestVer = KernelVersion
+	}
+	if entries, err := os.ReadDir(filepath.Dir(exe)); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			v := extractLumaExeVersion(e.Name())
+			if v != "" && compareSemver(v, bestVer) > 0 {
+				bestVer = v
+				bestExe = filepath.Join(filepath.Dir(exe), e.Name())
+			}
+		}
+	}
+
+	// Read current HKCU\...\Run\LumaOS entry and only upgrade if missing, pointing to deleted file, or older version!
+	curRaw, _ := runHiddenPowerShell(`(Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'LumaOS' -ErrorAction SilentlyContinue).LumaOS`)
+	curTrim := strings.TrimSpace(curRaw)
+	if curTrim == "" {
+		return
+	}
+	curExePath := curTrim
+	if strings.HasPrefix(curExePath, `"`) {
+		if endQ := strings.Index(curExePath[1:], `"`); endQ > 0 {
+			curExePath = curExePath[1 : 1+endQ]
+		}
+	} else if sp := strings.Index(curExePath, " "); sp > 0 {
+		curExePath = curExePath[:sp]
+	}
+
+	curExists := false
+	if _, stErr := os.Stat(curExePath); stErr == nil {
+		curExists = true
+	}
+	curVer := extractLumaExeVersion(curExePath)
+	needUpgrade := !curExists || curVer == "" || compareSemver(bestVer, curVer) > 0 || !strings.EqualFold(filepath.Clean(curExePath), filepath.Clean(bestExe))
+	if curExists && curVer != "" && compareSemver(curVer, bestVer) > 0 {
+		// Never downgrade autostart if user temporarily launched an older build while a newer one is installed!
+		needUpgrade = false
+	}
+	if !needUpgrade {
+		return
+	}
+
+	val := fmt.Sprintf(`"%s"`, bestExe)
+	if startFullscreen || strings.Contains(strings.ToLower(curTrim), "--fullscreen") {
+		val += " --fullscreen"
+	}
+	escaped := strings.ReplaceAll(val, "'", "''")
+	// Rewrite LumaOS Run key AND clean any stale LumaOS* duplicate keys/Startup shortcuts pointing to old versions
+	script := fmt.Sprintf(`
+$rk = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+New-Item -Path $rk -Force | Out-Null
+$props = (Get-ItemProperty -Path $rk -ErrorAction SilentlyContinue).PSObject.Properties
+foreach ($p in $props) {
+  if ($p.Name -ne 'LumaOS' -and [string]$p.Value -match 'LumaOS_.*\.exe') {
+    Remove-ItemProperty -Path $rk -Name $p.Name -ErrorAction SilentlyContinue
+  }
+}
+Set-ItemProperty -Path $rk -Name 'LumaOS' -Value '%s'
+$st = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup'
+Get-ChildItem -Path $st -Filter 'LumaOS*.lnk' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+`, escaped)
+	_, _ = runHiddenPowerShell(script)
+}
+
 func setWindowsAutostart(enabled bool, startFullscreen bool) error {
 	if !enabled {
-		_, err := runHiddenPowerShell(`Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'LumaOS' -ErrorAction SilentlyContinue`)
+		_, err := runHiddenPowerShell(`
+$rk = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+Remove-ItemProperty -Path $rk -Name 'LumaOS' -ErrorAction SilentlyContinue
+$props = (Get-ItemProperty -Path $rk -ErrorAction SilentlyContinue).PSObject.Properties
+foreach ($p in $props) {
+  if ([string]$p.Value -match 'LumaOS_.*\.exe') {
+    Remove-ItemProperty -Path $rk -Name $p.Name -ErrorAction SilentlyContinue
+  }
+}
+`)
 		return err
 	}
 	exe, err := os.Executable()
@@ -251,6 +349,9 @@ func setWindowsAutostart(enabled bool, startFullscreen bool) error {
 	escaped := strings.ReplaceAll(val, "'", "''")
 	script := fmt.Sprintf(`New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Force | Out-Null; Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'LumaOS' -Value '%s'`, escaped)
 	_, err = runHiddenPowerShell(script)
+	if err == nil {
+		go syncWindowsAutostartToNewestExe(startFullscreen)
+	}
 	return err
 }
 
@@ -422,7 +523,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.6.7 (Nitrogen)",
+			Title:  "Luma OS 1.7 (Oxygen)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,
@@ -668,10 +769,10 @@ func isLumaPinnedWindowTopmost() bool {
 func releaseAltTabTopmost() {
 	kbdHookStateMu.Lock()
 	kbdAltTabActive = false
+	lumaHwnd := kbdHookLumaHwnd
 	kbdHookStateMu.Unlock()
 
 	customAltTabMu.Lock()
-	wasPinned := altTabPinnedTopmost
 	altTabPinnedTopmost = false
 	customAltTabMu.Unlock()
 
@@ -679,16 +780,15 @@ func releaseAltTabTopmost() {
 	wv := nativeWebView
 	keepTop := activeShellCfg.AlwaysOnTop || pinnedLumaWindowTopmost
 	nativeWinMu.Unlock()
-	if wv == nil || keepTop || !wasPinned {
+	if lumaHwnd == 0 && wv != nil {
+		lumaHwnd = uintptr(wv.Window())
+	}
+	if lumaHwnd == 0 || keepTop {
 		return
 	}
-	wv.Dispatch(func() {
-		hwnd := uintptr(wv.Window())
-		if hwnd == 0 {
-			return
-		}
-		_, _, _ = procSetWindowPos.Call(hwnd, hwndNoTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoOwnerZOrder)
-	})
+	// Synchronous Win32 HWND_NOTOPMOST call eliminates race condition where Luma stayed above the Alt+Tab target!
+	const swpNoActivateLocal = 0x0010
+	_, _, _ = procSetWindowPos.Call(lumaHwnd, hwndNoTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivateLocal|swpNoOwnerZOrder)
 }
 
 func bringLumaHomeNow() {

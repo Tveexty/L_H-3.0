@@ -447,12 +447,16 @@ func StartGitHubSelfUpdate(downloadURL, targetVersion string, kernel *LumaKernel
 				Message:         "Переход на новую версию Luma OS " + targetVersion + "...",
 			})
 
-			// Give UI 900ms to render 100% progress bar, then cleanly hand off & relaunch new EXE!
+			// Give UI 900ms to render 100% progress bar, then cleanly hand off, update Autostart Run key & relaunch new EXE!
 			go func() {
 				time.Sleep(900 * time.Millisecond)
 				restoreWindowsShell()
-				// Spawn detached updater handoff: wait 1s for current port release, then start new EXE
-				helper := fmt.Sprintf(`Start-Sleep -Milliseconds 1100; Start-Process -FilePath '%s'`, strings.ReplaceAll(finalPath, "'", "''"))
+				escPath := strings.ReplaceAll(finalPath, "'", "''")
+				// If Windows Autostart is enabled, immediately rewrite HKCU\...\Run\LumaOS to point to the newly installed version!
+				helper := fmt.Sprintf(
+					`$p='%s'; $rk='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'; $cur=(Get-ItemProperty -Path $rk -Name 'LumaOS' -ErrorAction SilentlyContinue).LumaOS; if ($cur) { $arg = if ($cur -like '*--fullscreen*') { ' --fullscreen' } else { '' }; Set-ItemProperty -Path $rk -Name 'LumaOS' -Value ('"' + $p + '"' + $arg) -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 1100; Start-Process -FilePath $p`,
+					escPath,
+				)
 				_ = exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", helper).Start()
 				os.Exit(0)
 			}()
@@ -533,6 +537,7 @@ func ListRollbackReleases(repoURL string) []RollbackReleaseEntry {
 	baseRaw := fmt.Sprintf("https://github.com/%s/%s/raw/main", owner, repo)
 
 	curated := []RollbackReleaseEntry{
+		{Version: "1.7", Tag: "v1.7", Title: "Luma OS 1.7 (Oxygen · O-8)", DownloadURL: baseRaw + "/LumaOS_1.7.exe", Summary: "Флагманское обновление Oxygen (O-8 · LumaCore 1.6.0): 100% загрузка всех иконок (COM STA + ExtractIconExW + SVG-фоллбэк), автообновление автозапуска на самую свежую версию ОС, неломаемый Alt+Tab, менеджер правил окон KWin, полка Drag & Drop (Yoink/Dropzone), умный буфер обмена с категориями/OCR/Ctrl+Shift+V, Per-App Audio Hub, OSD-капсулы нового уровня, обои Oxygen 2.5D, новая мини-игра «Oxygen Pulse 2.5D» на выбор со старой и приложение Oxygen Connect для Android (HarmonyOS SuperHub)"},
 		{Version: "1.6.7", Tag: "v1.6.7", Title: "Luma OS 1.6.7 (Nitrogen · Final 1.6.x)", DownloadURL: baseRaw + "/LumaOS_1.6.7.exe", Summary: "Финальное стабильное обновление ветки 1.6.x: исправлен зависающий курсор загрузки и нерабочие клики на Dynamic Island поверх Chrome и окон Windows (Win32 WM_SETCURSOR + WM_NCHITTEST + IDC_ARROW/IDC_HAND), полностью починен выбор и проверка конкретного файла в антивирусе LumaShield 3.1 (нативный Win32 GetOpenFileNameW + TopMost диалог папок + лимит 2–4 МБ без зависания WebView2/ОЗУ), добавлены таймауты на все системные вызовы и наведён порядок в репозитории (папка old protatips)"},
 		{Version: "1.6.6b", Tag: "v1.6.6b", Title: "Luma OS 1.6.6b (Нестабильная · используйте 1.6.7)", DownloadURL: baseRaw + "/LumaOS_1.6.6b.exe", Summary: "⚠️ Нестабильная версия (1.6.4–1.6.6b) — рекомендуется обновиться до финальной стабильной Luma OS 1.6.7"},
 		{Version: "1.6.6", Tag: "v1.6.6", Title: "Luma OS 1.6.6 (Nitrogen)", DownloadURL: baseRaw + "/LumaOS_1.6.6.exe", Summary: "Рамочное выделение нескольких элементов ЛКМ на рабочем столе (групповое перетаскивание, сбор в папку, ПКМ и Delete), расширение языков интерфейса ОС до 36 языков мира с поиском и автопереводом, а также нативный Win32 Always-On-Top оверлей Dynamic Island поверх Chrome и всех окон Windows с прилипанием к экрану и 15+ новыми настройками капсулы"},

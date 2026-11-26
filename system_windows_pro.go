@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -23,11 +24,15 @@ import (
 
 var (
 	modShell32                       = syscall.NewLazyDLL("shell32.dll")
+	modOle32                         = syscall.NewLazyDLL("ole32.dll")
 	modGdi32                         = syscall.NewLazyDLL("gdi32.dll")
 	modHid                           = syscall.NewLazyDLL("hid.dll")
 	modPdh                           = syscall.NewLazyDLL("pdh.dll")
 	procSHGetFileInfoW               = modShell32.NewProc("SHGetFileInfoW")
+	procExtractIconExW               = modShell32.NewProc("ExtractIconExW")
 	procSHEmptyRecycleBinW           = modShell32.NewProc("SHEmptyRecycleBinW")
+	procCoInitializeEx               = modOle32.NewProc("CoInitializeEx")
+	procCoUninitialize               = modOle32.NewProc("CoUninitialize")
 	procGetIconInfo                  = modUser32.NewProc("GetIconInfo")
 	procDestroyIcon                  = modUser32.NewProc("DestroyIcon")
 	procProGetDC                     = modUser32.NewProc("GetDC")
@@ -506,32 +511,45 @@ func resolveAppIconFilePath(raw string) string {
 	// Normalize bare app aliases / names to real Windows executables
 	lower := strings.ToLower(strings.TrimSuffix(filepath.Base(clean), ".exe"))
 	aliasMap := map[string][]string{
-		"chrome":       {"chrome.exe", `Google\Chrome\Application\chrome.exe`},
-		"google chrome": {"chrome.exe", `Google\Chrome\Application\chrome.exe`},
-		"edge":         {"msedge.exe", `Microsoft\Edge\Application\msedge.exe`},
-		"msedge":       {"msedge.exe", `Microsoft\Edge\Application\msedge.exe`},
-		"firefox":      {"firefox.exe", `Mozilla Firefox\firefox.exe`},
-		"steam":        {"steam.exe", `Steam\steam.exe`},
-		"telegram":     {"Telegram.exe", `Telegram Desktop\Telegram.exe`},
-		"discord":      {"Discord.exe", `Discord\Update.exe`},
-		"vlc":          {"vlc.exe", `VideoLAN\VLC\vlc.exe`},
-		"code":         {"Code.exe", `Programs\Microsoft VS Code\Code.exe`, `Microsoft VS Code\Code.exe`},
-		"vscode":       {"Code.exe", `Programs\Microsoft VS Code\Code.exe`, `Microsoft VS Code\Code.exe`},
-		"spotify":      {"Spotify.exe", `Spotify\Spotify.exe`},
-		"calc":         {"calc.exe"},
-		"калькулятор":  {"calc.exe"},
-		"notepad":      {"notepad.exe"},
-		"блокнот":      {"notepad.exe"},
-		"mspaint":      {"mspaint.exe"},
-		"paint":        {"mspaint.exe"},
-		"explorer":     {"explorer.exe"},
-		"проводник":    {"explorer.exe"},
-		"cmd":          {"cmd.exe"},
-		"powershell":   {"powershell.exe"},
-		"taskmgr":      {"Taskmgr.exe"},
-		"regedit":      {"regedit.exe"},
-		"snippingtool": {"SnippingTool.exe"},
-		"obs":          {"obs64.exe", `obs-studio\bin\64bit\obs64.exe`},
+		"chrome":         {"chrome.exe", `Google\Chrome\Application\chrome.exe`},
+		"google chrome":  {"chrome.exe", `Google\Chrome\Application\chrome.exe`},
+		"edge":           {"msedge.exe", `Microsoft\Edge\Application\msedge.exe`},
+		"msedge":         {"msedge.exe", `Microsoft\Edge\Application\msedge.exe`},
+		"firefox":        {"firefox.exe", `Mozilla Firefox\firefox.exe`},
+		"opera":          {"opera.exe", `Programs\Opera\opera.exe`, `Programs\Opera GX\opera.exe`},
+		"brave":          {"brave.exe", `BraveSoftware\Brave-Browser\Application\brave.exe`},
+		"yandex":         {"browser.exe", `Yandex\YandexBrowser\Application\browser.exe`},
+		"steam":          {"steam.exe", `Steam\steam.exe`},
+		"telegram":       {"Telegram.exe", `Telegram Desktop\Telegram.exe`},
+		"discord":        {"Discord.exe", `Discord\Update.exe`},
+		"vlc":            {"vlc.exe", `VideoLAN\VLC\vlc.exe`},
+		"code":           {"Code.exe", `Programs\Microsoft VS Code\Code.exe`, `Microsoft VS Code\Code.exe`},
+		"vscode":         {"Code.exe", `Programs\Microsoft VS Code\Code.exe`, `Microsoft VS Code\Code.exe`},
+		"spotify":        {"Spotify.exe", `Spotify\Spotify.exe`},
+		"notion":         {"Notion.exe", `Programs\Notion\Notion.exe`},
+		"github":         {"GitHubDesktop.exe", `GitHubDesktop\GitHubDesktop.exe`},
+		"obsidian":       {"Obsidian.exe", `Obsidian\Obsidian.exe`},
+		"winword":        {"WINWORD.EXE", `Microsoft Office\root\Office16\WINWORD.EXE`, `Microsoft Office\Office16\WINWORD.EXE`},
+		"excel":          {"EXCEL.EXE", `Microsoft Office\root\Office16\EXCEL.EXE`, `Microsoft Office\Office16\EXCEL.EXE`},
+		"powerpnt":       {"POWERPNT.EXE", `Microsoft Office\root\Office16\POWERPNT.EXE`, `Microsoft Office\Office16\POWERPNT.EXE`},
+		"calc":           {"calc.exe"},
+		"калькулятор":    {"calc.exe"},
+		"notepad":        {"notepad.exe"},
+		"блокнот":        {"notepad.exe"},
+		"mspaint":        {"mspaint.exe"},
+		"paint":          {"mspaint.exe"},
+		"explorer":       {"explorer.exe"},
+		"проводник":      {"explorer.exe"},
+		"cmd":            {"cmd.exe"},
+		"wt":             {"wt.exe"},
+		"powershell":     {"powershell.exe"},
+		"taskmgr":        {"Taskmgr.exe"},
+		"regedit":        {"regedit.exe"},
+		"snippingtool":   {"SnippingTool.exe"},
+		"obs":            {"obs64.exe", `obs-studio\bin\64bit\obs64.exe`},
+		"qbittorrent":    {"qbittorrent.exe", `qBittorrent\qbittorrent.exe`},
+		"7zfm":           {"7zFM.exe", `7-Zip\7zFM.exe`},
+		"winrar":         {"WinRAR.exe", `WinRAR\WinRAR.exe`},
 	}
 
 	candidates := []string{}
@@ -556,6 +574,13 @@ func resolveAppIconFilePath(raw string) string {
 		os.Getenv("ProgramFiles(x86)"),
 		os.Getenv("LOCALAPPDATA"),
 		os.Getenv("APPDATA"),
+	}
+
+	// Special scan for versioned Discord app-* directory
+	if lower == "discord" {
+		if matches, err := filepath.Glob(filepath.Join(os.Getenv("LOCALAPPDATA"), "Discord", "app-*", "Discord.exe")); err == nil && len(matches) > 0 {
+			return matches[len(matches)-1]
+		}
 	}
 
 	for _, cand := range candidates {
@@ -601,29 +626,68 @@ func (p *platformProbe) ExtractAppIconPNG(execPath string) ([]byte, error) {
 	iconCacheMu.RUnlock()
 
 	clean := resolveAppIconFilePath(rawClean)
+	useFileAttrs := false
 	if clean == "" {
-		return nil, fmt.Errorf("icon file not found for %s", rawClean)
+		// If it's a file extension (e.g. ".pdf", "report.docx"), extract the OS shell association icon via SHGFI_USEFILEATTRIBUTES!
+		if ext := filepath.Ext(rawClean); ext != "" && !strings.EqualFold(ext, ".exe") {
+			clean = rawClean
+			useFileAttrs = true
+		} else {
+			return nil, fmt.Errorf("icon file not found for %s", rawClean)
+		}
 	}
 	pathPtr, err := syscall.UTF16PtrFromString(clean)
 	if err != nil {
 		return nil, err
 	}
 
+	// MSDN requires STA COM initialization on the calling OS thread so SHGetFileInfoW NEVER randomly fails!
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	const coinitApartmentThreaded = 0x2
+	hr, _, _ := procCoInitializeEx.Call(0, coinitApartmentThreaded)
+	if hr == 0 || hr == 1 {
+		defer procCoUninitialize.Call()
+	}
+
+	const (
+		shgfiUseFileAttributes = 0x00000010
+		fileAttributeNormal    = 0x00000080
+	)
+	flags := uintptr(shgfiIcon | shgfiLargeIcon)
+	attrs := uintptr(0)
+	if useFileAttrs {
+		flags |= shgfiUseFileAttributes
+		attrs = fileAttributeNormal
+	}
+
+	var hIcon uintptr
 	var sfi shFileInfoW
 	r, _, _ := procSHGetFileInfoW.Call(
 		uintptr(unsafe.Pointer(pathPtr)),
-		0,
+		attrs,
 		uintptr(unsafe.Pointer(&sfi)),
 		unsafe.Sizeof(sfi),
-		shgfiIcon|shgfiLargeIcon,
+		flags,
 	)
-	if r == 0 || sfi.HIcon == 0 {
-		return nil, fmt.Errorf("SHGetFileInfoW failed")
+	if r != 0 && sfi.HIcon != 0 {
+		hIcon = sfi.HIcon
 	}
-	defer procDestroyIcon.Call(sfi.HIcon)
+	if hIcon == 0 && !useFileAttrs {
+		// Direct ExtractIconExW fallback for executables/DLLs whose shell thumbnail handler skipped SHGetFileInfoW
+		var largeIcon uintptr
+		cnt, _, _ := procExtractIconExW.Call(uintptr(unsafe.Pointer(pathPtr)), 0, uintptr(unsafe.Pointer(&largeIcon)), 0, 1)
+		if cnt > 0 && largeIcon != 0 {
+			hIcon = largeIcon
+		}
+	}
+	if hIcon == 0 {
+		return nil, fmt.Errorf("icon extraction failed for %s", clean)
+	}
+	defer procDestroyIcon.Call(hIcon)
 
 	var ii winIconInfo
-	r2, _, _ := procGetIconInfo.Call(sfi.HIcon, uintptr(unsafe.Pointer(&ii)))
+	r2, _, _ := procGetIconInfo.Call(hIcon, uintptr(unsafe.Pointer(&ii)))
 	if r2 == 0 {
 		return nil, fmt.Errorf("GetIconInfo failed")
 	}

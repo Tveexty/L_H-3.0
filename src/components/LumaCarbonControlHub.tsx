@@ -56,6 +56,7 @@ import {
   LumaWifiPickerPanel,
   WifiStatusSnapshot,
 } from './LumaConnectivityPicker';
+import { LumaPerAppAudioHub, MediaPlayerSessionMini } from './LumaPerAppAudioHub';
 
 export interface CarbonNotificationItem {
   id: string;
@@ -117,7 +118,7 @@ export const ALL_HUB_TILES: { id: ControlHubTileId; label: string; desc: string 
   { id: 'gaming_boost', label: 'Игровой режим', desc: 'Приоритет CPU / RAM' },
   { id: 'mic_mute', label: 'Микрофон', desc: 'Быстрый Mute микрофона' },
   { id: 'office', label: 'Office Studio', desc: 'Docs · Sheets · Slides Pro' },
-  { id: 'security', label: 'LumaShield 2.5', desc: 'Антивирус и аудит (275+ правил)' },
+  { id: 'security', label: 'LumaShield 3.2', desc: 'Антивирус и аудит (340+ правил)' },
   { id: 'screenshot', label: 'Скриншот', desc: 'Компактный JPEG (~120 КБ)' },
   { id: 'recorder', label: 'Запись экрана', desc: 'Zero-Freeze AVI · без зависаний' },
   { id: 'vault', label: 'Конфиденциальность', desc: 'Приватный стол AES-256' },
@@ -227,6 +228,8 @@ interface LumaCarbonControlHubProps {
   activeAudioOutputId?: string;
   activeAudioInputId?: string;
   onSwitchAudioDevice?: (id: string, kind: 'output' | 'input') => void;
+  mediaSessions?: MediaPlayerSessionMini[];
+  onMediaAction?: (action: 'playpause' | 'next' | 'prev', sessionId?: string) => void;
   onPickAccentColor?: (hex: string) => void;
   wirelessDevices: WirelessDeviceItem[];
   onRefreshWireless: () => void;
@@ -298,6 +301,8 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   activeAudioOutputId = '',
   activeAudioInputId = '',
   onSwitchAudioDevice,
+  mediaSessions = [],
+  onMediaAction,
   onPickAccentColor,
   wirelessDevices,
   onRefreshWireless,
@@ -1077,7 +1082,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
           <div className={`px-3.5 py-2.5 border-b flex items-center justify-between gap-2 shrink-0 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]" />
-              <span className="text-xs font-bold tracking-tight truncate">Панель управления 1.6.7</span>
+              <span className="text-xs font-bold tracking-tight truncate">Панель управления 1.7</span>
               <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-md border ${isDark ? 'bg-white/[0.06] border-white/10 text-white/60' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
                 TAB
               </span>
@@ -1111,7 +1116,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             {showFeaturesModal ? (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-cyan-400">Менеджер функций Luma OS 1.6.7</span>
+                  <span className="text-[11px] font-bold text-cyan-400">Менеджер функций Luma OS 1.7</span>
                   <button onClick={() => setShowFeaturesModal(false)} className="text-[10px] px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/15">Назад</button>
                 </div>
                 {SYSTEM_FEATURE_META.map((feat) => {
@@ -1295,6 +1300,54 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* Luma OS 1.7 Oxygen: 1-Click SuperHub Bar (Oxygen Connect Android + Drop Shelf) */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    onClick={() => {
+                      onOpenWindow('oxygen_connect');
+                      onClose();
+                    }}
+                    className={`px-2.5 py-2 rounded-xl border text-left transition cursor-pointer flex items-center justify-between gap-2 ${
+                      isDark
+                        ? 'bg-sky-500/10 border-sky-400/25 hover:bg-sky-500/20 text-sky-200'
+                        : 'bg-sky-50 border-sky-200 hover:bg-sky-100 text-sky-900'
+                    }`}
+                    title="Открыть Oxygen Connect (Android SuperHub · QR-код)"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold truncate">📱 Oxygen Connect</div>
+                      <div className={`text-[9px] truncate ${subText}`}>Android · QR · Камера→ПК</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent('luma-toggle-shelf'));
+                      onClose();
+                    }}
+                    className={`px-2.5 py-2 rounded-xl border text-left transition cursor-pointer flex items-center justify-between gap-2 ${
+                      isDark
+                        ? 'bg-cyan-500/10 border-cyan-400/25 hover:bg-cyan-500/20 text-cyan-200'
+                        : 'bg-cyan-50 border-cyan-200 hover:bg-cyan-100 text-cyan-900'
+                    }`}
+                    title="Открыть полку Drag & Drop (Yoink / Dropzone · Ctrl+Alt+S)"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold truncate">📦 Полка Dropzone</div>
+                      <div className={`text-[9px] truncate ${subText}`}>Пачка файлов · ZIP</div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Luma OS 1.7 Oxygen: Per-App Audio & Media Hub (KDE Plasma / PipeWire style!) */}
+                <LumaPerAppAudioHub
+                  isDark={isDark}
+                  audioOutputs={audioOutputs as any}
+                  activeAudioOutputId={activeAudioOutputId}
+                  onSwitchAudioDevice={onSwitchAudioDevice}
+                  mediaSessions={mediaSessions}
+                  onMediaAction={onMediaAction}
+                />
 
                 {/* Audio Output / Input Switcher inside Hub */}
                 {(audioOutputs.length > 0 || audioInputs.length > 0) && (

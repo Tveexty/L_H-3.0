@@ -1,88 +1,96 @@
 <div align="center">
 
-<img src="public/luma-nitrogen-hero.jpg" alt="Luma OS 1.6.7 (Nitrogen · Final 1.6.x · 2.5D Cryo-Glass QHD)" width="100%" style="border-radius: 18px;" />
+<img src="public/luma-oxygen-hero.jpg" alt="Luma OS 1.7 (Oxygen · O-8 · 2.5D Cryo-Bubbles)" width="100%" style="border-radius: 18px;" />
 
 <br />
 
-# Luma OS 1.6.7 — **Nitrogen · Final 1.6.x**
+# Luma OS 1.7 — **Oxygen · O-8**
 
-**Финальная стабильная сборка ветки `1.6.x` для Windows 10 / 11 на ядре `LumaCore 1.5.7`, антивирусе `LumaShield 3.1 Zero-Freeze` (340+ правил · Anti-RAT уничтожение под ноль · Щит USB-флешек) и ИИ `Luma Ai Nitrogen`: починен Dynamic Island поверх Chrome и окон Windows (без «окошка загрузки» вместо курсора), исправлено зависание проводника при проверке отдельного файла, наведён порядок в репозитории (`old protatips`)**
+**Новое поколение настольной оболочки для Windows 10 / 11 на ядре `LumaCore 1.6.0`, антивирусе `LumaShield 3.2` (340+ правил · Anti-RAT · USB Shield) и ИИ `Luma Ai Nitrogen`: 100% прогрузка всех иконок, умный автозапуск самой новой версии, KWin-правила окон, навсегда починенный `Alt+Tab`, полка Drag & Drop (`Yoink / Dropzone`), Умный буфер обмена с категориями и Auto-OCR, Per-App Аудио-центр в Панели управления, капсульные OSD-индикаторы, 2.5D обои Oxygen, новая 60 FPS мини-игра и Android-компаньон `Oxygen Connect` (SuperHub)**
 
 <p>
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.7"><img src="https://img.shields.io/badge/Release-v1.6.7%20(Final%201.6.x)-38bdf8?style=for-the-badge" alt="Release v1.6.7" /></a>
-  <img src="https://img.shields.io/badge/Kernel-LumaCore%201.5.7%20(v1.6.7)-10b981?style=for-the-badge" alt="LumaCore 1.5.7" />
-  <img src="https://img.shields.io/badge/Security-LumaShield%203.1%20Zero--Freeze%20(340%2B)-f43f5e?style=for-the-badge" alt="LumaShield 3.1 Zero-Freeze" />
-  <img src="https://img.shields.io/badge/Island-Always--On--Top%20Win32-ec4899?style=for-the-badge" alt="Always-On-Top Dynamic Island" />
-  <img src="https://img.shields.io/badge/Languages-36%20UI%20%2B%20120%2B%20KBD-8b5cf6?style=for-the-badge" alt="36 UI Languages" />
-  <img src="https://img.shields.io/badge/Desktop-LMB%20Marquee%20Multi--Select-06b6d4?style=for-the-badge" alt="Desktop Multi-Select" />
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.7"><img src="https://img.shields.io/badge/Release-v1.7%20(Oxygen%20O--8)-38bdf8?style=for-the-badge" alt="Release v1.7" /></a>
+  <img src="https://img.shields.io/badge/Kernel-LumaCore%201.6.0%20(v1.7)-10b981?style=for-the-badge" alt="LumaCore 1.6.0" />
+  <img src="https://img.shields.io/badge/Security-LumaShield%203.2%20(340%2B)-f43f5e?style=for-the-badge" alt="LumaShield 3.2" />
+  <img src="https://img.shields.io/badge/Windows-KWin%20Rules%20%2B%20Alt%2BTab%20Fix-6366f1?style=for-the-badge" alt="KWin Window Rules" />
+  <img src="https://img.shields.io/badge/Android-Oxygen%20Connect%20SuperHub-0ea5e9?style=for-the-badge" alt="Oxygen Connect Android" />
+  <img src="https://img.shields.io/badge/Audio-Per--App%20Mixer%20%2B%20Capsule%20OSD-06b6d4?style=for-the-badge" alt="Per-App Audio & OSD" />
 </p>
 
 <h3>
-  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.7.exe">⬇️ Скачать LumaOS_1.6.7.exe (Стабильная · Финал 1.6.x · 1 файл)</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.exe">⬇️ Скачать LumaOS_1.7.exe (Oxygen · 1 файл)</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.7">📦 Релиз v1.6.7</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.7">📦 Релиз v1.7</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="PATCH_NOTES_1.6.7.md">📝 Патч-ноут 1.6.7</a>
+  <a href="PATCH_NOTES_1.7.md">📝 Патч-ноут 1.7</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="luma_ai_nitrogen/README.md">🧠 Модуль Luma Ai Nitrogen</a>
+  <a href="LumaOxygenConnect_Android/README.md">📱 Oxygen Connect (Android)</a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="luma_ai_nitrogen/README.md">🧠 Luma Ai Nitrogen</a>
 </h3>
 
 </div>
 
 > [!WARNING]
 > **⚠️ Нестабильная работа версий `1.6.4` – `1.6.6b`!**
-> Сборки **`1.6.4`**, **`1.6.5`**, **`1.6.6`** и **`1.6.6b`** работают **нестабильно** (зависание при выборе файла в антивирусе, зависший курсор загрузки на Dynamic Island поверх Chrome/Windows и фризы сканера). Пожалуйста, **не используйте `1.6.4–1.6.6b`** — скачивайте финальную стабильную сборку **[Luma OS 1.6.7](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.7)**!
+> Сборки **`1.6.4`**, **`1.6.5`**, **`1.6.6`** и **`1.6.6b`** работают **нестабильно** — **не используйте их**. Скачивайте актуальную версию **[Luma OS 1.7 (Oxygen)](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.7)** (или финальную стабильную сборку ветки `1.6.x` — [`LumaOS_1.6.7.exe`](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.7)).
 
 ---
 
-## Что нового в **Luma OS 1.6.7 (Nitrogen · Final 1.6.x · `LumaCore 1.5.7` · `LumaShield 3.1`)**
+## Что нового в **Luma OS 1.7 (Oxygen · O-8 · `LumaCore 1.6.0` · `LumaShield 3.2`)**
 
-| Модуль | Ключевые исправления и возможности 1.6.7 |
+| Модуль | Ключевые возможности и исправления 1.7 (Oxygen) |
 | :--- | :--- |
-| **Фикс Dynamic Island в Chrome / Windows** | Полностью устранено «окошко загрузки» вместо курсора и неработающие клики: в нативный Win32-оверлей добавлены системные курсоры `IDC_ARROW`/`IDC_HAND`, обработка `WM_SETCURSOR`, `WM_NCHITTEST` (`HTCLIENT`) и `WM_CAPTURECHANGED`, а из периодического таймера убран сбивающий клики флаг `SWP_SHOWWINDOW`. |
-| **Фикс проводника и проверки файла (`LumaShield 3.1`)** | Устранено критическое зависание всей системы при поиске и выборе файла в антивирусе: прямой нативный Win32 `GetOpenFileNameW` (`< 15 мс`, 0% PowerShell), `TopMost` выбор папок с таймаутом 90 сек, отдельные кнопки **«Выбрать файл»** и **«Папка»**, лимит чтения **4 МБ** на диске и **2 МБ** при Drag-and-Drop (исключён краш WebView2/ОЗУ) + Anti-RAT проверка одиночного файла. |
-| **Zero-Freeze сканер и таймауты ядра** | Быстрый `filepath.WalkDir` (`8/14 сек`), пропуск OneDrive/симлинков, кэш USB-флешек (`0% CPU`, 20 сек), асинхронный статус Defender (`< 5 мс`), кнопка **«Остановить»** и таймаут 6 сек в аудите планировщика задач (`AuditScheduledTasks`). |
-| **Рамочное выделение ЛКМ + 36 языков** | Выделение группы элементов ЛКМ на рабочем столе (перетаскивание, сбор в папку, ПКМ, Delete) и 36 языков интерфейса системы с мгновенным поиском и автопереводом. |
-| **Чистый репозиторий (`old protatips/`)** | Все устаревшие прототипы (`launcher_hab2.4`, `LauncherHab3.0_CSharp`, `Luma_Core`, `start_all.bat`, `metadata.json`) перенесены в папку **`old protatips/`**. |
+| **100% загрузка всех иконок** | В `LumaCore 1.6.0` добавлена STA COM-инициализация (`CoInitializeEx`), резервный `ExtractIconExW`, чтение расширений (`SHGFI_USEFILEATTRIBUTES`), карта программ (Discord, Telegram, VS Code, Steam, Office, браузеры), гарантированный 2.5D SVG-фолбэк (0 ошибок `404`), сброс кэша `?v=17` и автоповтор загрузки. |
+| **Умный автозапуск новой версии** | При запуске и после OTA-обновления ядро сравнивает SemVer сборок `LumaOS_*.exe`, обновляет `HKCU\...\Run\LumaOS` на самую свежую версию и чистит старые дубликаты/ярлыки автозагрузки — после перезагрузки ПК всегда стартует новейшая Luma OS. |
+| **Менеджер правил окон (KWin)** | *Настройки → Правила окон (KWin)*: определение всех мониторов (`EnumDisplayMonitors`), размещение по зонам, «без рамки», «поверх всех окон», прозрачность, авто-DND и отключение композитора для игр + готовые пресеты (Telegram, Калькулятор, Игры). |
+| **Навсегда починенный `Alt+Tab`** | Синхронное снятие `HWND_TOPMOST` внутри `/api/kernel/windows/focus`, Win32 `AllowSetForegroundWindow` + `AttachThreadInput` + `FocusWindowWithHWND` и мгновенный переход с рабочего стола сразу на реальное внешнее окно. |
+| **Полка Drag & Drop (`Ctrl+Alt+S`)** | Аналог Yoink / Dropzone: при перетаскивании файлов, картинок или текста у края экрана выезжает стеклянная полка — накидайте файлы из разных папок, переключитесь в другое окно и заберите всё пачкой (Копировать / Переместить / Упаковать в ZIP). |
+| **Умный буфер обмена (`Ctrl+Shift+V`)** | Аналог Paste / Raycast: категории (Текст, Ссылки, Цвета HEX/RGB со свотчами, Картинки, Файлы, Код, Закреплённые), встроенный **Auto-OCR** для изображений (`WinRT OcrEngine`) и вставка чистого текста (**Plain Text**) по умолчанию. |
+| **Per-App Аудио-центр в Панели** | В духе KDE Plasma / PipeWire прямо в выпадающей Панели управления (`Tab`): громкость и Mute каждого приложения отдельно (`IAudioSessionManager2`), Drag & Drop карточки приложения на нужный аудиовыход, управление плеерами по отдельности и системный Mute микрофона. |
+| **Капсульные OSD-индикаторы** | Полупрозрачные стеклянные капсулы Oxygen / Material You: громкость, яркость, `Caps / Num / Scroll Lock`, заряд Bluetooth, смена трека, статус микрофона `ON / OFF` и живой таймер записи экрана. |
+| **2.5D Обои Oxygen + Новая мини-игра** | Новые реалистичные 2.5D-обои **Oxygen 1.7 (Cryo-Bubbles)** (**21 арт в галерее**) и новая 60 FPS мини-игра без лагов **«Oxygen Pulse · O-8»** с выбором в пасхалке между новой и классическими играми (`Oxygen` \| `Арена` \| `Орбита`). |
+| **`Oxygen Connect` (Android SuperHub)** | Локальный LAN-сервер (`:49218`) + офлайн **QR-код** для мгновенного подключения Android: фото с камеры телефона сразу на ПК и в Полку Dropzone, двусторонний обмен файлами, общий буфер, виртуальный тачпад/клавиатура, медиа-пульт + нативный Kotlin-проект [`LumaOxygenConnect_Android/`](LumaOxygenConnect_Android/). |
 
 ---
 
-## Все флагманские возможности ветки **1.6.x (Nitrogen · N-7)**
+## Все ключевые возможности экосистемы **Luma OS**
 
-- **Переключатель «Пружинные анимации во всей системе»** в *Настройки → Панель задач* и в ПКМ-меню самой панели задач.
-- **Модульный ИИ `Luma Ai Nitrogen` (`luma_ai_nitrogen/`):** универсальный клиент (Ollama `qwen2.5:3b` / `llama3.2:3b`, Google Gemini SSE/OpenAI, OpenAI, Claude, Groq, OpenRouter), SSE-стриминг, 3-уровневая память (SQLite WAL + RAG), Function Calling, интеграция с Офисом, Календарём и «Обвести для поиска», а также установка/удаление локального ИИ в 1 клик.
-- **100% нативные Wi-Fi и Bluetooth (ПКМ + ввод пароля + поиск всех устройств рядом):** управление адаптерами, выбор сетей, ввод пароля Wi-Fi / PIN Bluetooth без открытия Настроек Windows.
-- **Замена горячих клавиш (`Win`, `Alt + Tab`, `Win + D`) и нативные Win32 HID жесты Precision Touchpad:** единый переключатель в *Настройки → Оболочка Windows* с полным автовосстановлением по `Ctrl + Alt + Shift + W` и при выходе.
-- **Авто-скрытие визуального шума и интерактивный магнитный `Dock`:** растворение панелей при просмотре видео и в `F11`, гауссово притяжение иконок, пружинный отскок и ореол прогресса загрузок/рендера.
-- **Luma Обвести для поиска (`Ctrl + Shift + L`):** захват экрана, свободное обведение лассо мышью/пальцем/стилусом, офлайн-OCR (`RU+EN`), палитра цветов, перевод и потоковый разбор через `Luma Ai Nitrogen`.
-- **Стоп-зарядка батареи ноутбука, Touch & Stylus, постраничный A4 Word, «Обзор окон» в Пуске и реальное `📌 Поверх всех окон` поверх Chrome.**
-- **`Luma SwapBoost` (2 / 4 / 6 ГБ), `Luma Gamepad Studio`, `Luma Deep Uninstaller`, `Luma Peek` (`Space`):** нативные утилиты на ядре `LumaCore 1.5.6` и защите `LumaShield 2.5` (275 правил, 113 API-маршрутов, 0 утечек Win32-колбэков).
+- **Модульный ИИ `Luma Ai Nitrogen` (`luma_ai_nitrogen/`):** универсальный клиент (Ollama `qwen2.5:3b` / `llama3.2:3b`, Google Gemini SSE/OpenAI, OpenAI, Claude, Groq, OpenRouter), SSE-стриминг, 3-уровневая память (SQLite WAL + RAG), интеграция с Офисом, Календарём и «Обвести для поиска», установка/удаление локального ИИ в 1 клик.
+- **Антивирус `LumaShield 3.2` (Zero-Freeze · 340+ правил):** Anti-RAT уничтожение под ноль, Щит USB-флешек, блокировка чужих файлов, нативный Win32 выбор файла (`< 15 мс`, лимит 4 МБ без фризов), аудит автозагрузки и планировщика задач.
+- **Нативный `Dynamic Island` поверх Chrome и всех окон Windows, рамочное выделение ЛКМ на рабочем столе и 36 языков интерфейса + 120+ раскладок.**
+- **100% нативные Wi-Fi и Bluetooth (ПКМ + пароль), замена горячих клавиш (`Win`, `Alt+Tab`, `Win+D`), Win32 HID жесты Precision Touchpad, магнитный `Dock`, пружинные анимации, `Luma Office Pro` (Word A4 / 140+ формул Excel / PowerPoint), `Luma SwapBoost`, `Gamepad Studio`, `Deep Uninstaller` и `Luma Peek` (`Space`).**
 
 ---
 
-## Галерея обоев **Nitrogen (QHD 2560×1440)**
+## Галерея обоев **Oxygen 1.7 + Nitrogen (21 встроенный арт)**
 
-> Все 20 обоев встроены в `LumaOS_1.6.6.exe` (включая полную коллекцию предыдущих версий).
+> Все **21** обои встроены прямо в `LumaOS_1.7.exe` (включая полную коллекцию предыдущих версий).
 
 <table>
   <tr>
     <td width="33%" align="center">
+      <img src="public/luma-oxygen-hero.jpg" alt="Oxygen 1.7 2.5D Cryo-Bubbles" width="100%" />
+      <br />
+      <b>Oxygen 1.7 — 2.5D Cryo-Bubbles (Главные)</b>
+    </td>
+    <td width="33%" align="center">
       <img src="public/luma-nitrogen-hero.jpg" alt="Nitrogen 2.5D Cryo-Glass" width="100%" />
       <br />
-      <b>Nitrogen — 2.5D Cryo-Glass (Главные)</b>
+      <b>Nitrogen — 2.5D Cryo-Glass</b>
     </td>
     <td width="33%" align="center">
       <img src="public/luma-nitrogen-monolith.jpg" alt="Nitrogen Monolith" width="100%" />
       <br />
       <b>Nitrogen — N-7 Monolith</b>
     </td>
+  </tr>
+  <tr>
     <td width="33%" align="center">
       <img src="public/luma-nitrogen-aurora.jpg" alt="Nitrogen Aurora" width="100%" />
       <br />
       <b>Nitrogen Aurora</b>
     </td>
-  </tr>
-  <tr>
     <td width="33%" align="center">
       <img src="public/luma-nitrogen-glacier.jpg" alt="Nitrogen Glacier" width="100%" />
       <br />
@@ -93,25 +101,23 @@
       <br />
       <b>Nitrogen Alpine</b>
     </td>
-    <td width="33%" align="center">
-      <img src="public/luma-nitrogen-fjord.jpg" alt="Nitrogen Fjord" width="100%" />
-      <br />
-      <b>Nitrogen Fjord</b>
-    </td>
   </tr>
 </table>
 
 ---
 
-## Скачать Luma OS (все 25 сборок сохранены)
+## Скачать Luma OS (все 28 сборок сохранены)
 
 Все исполняемые файлы автономны (**Single-Binary Portable EXE** — встроенный фронтенд + Go-ядро, установка не требуется):
 
 | Версия | Кодовое имя | Ядро / Возможности | Прямая ссылка |
 | :--- | :--- | :--- | :--- |
-| **1.6.6 (Актуальная)** | **Nitrogen · N-7** | `LumaCore 1.5.6` · `Выделение ЛКМ на рабочем столе` · `36 языков ОС` · `Нативный Dynamic Island поверх Chrome и Windows` · `15+ настроек Острова` | [**LumaOS_1.6.6.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.6.exe) |
-| **1.6.5** | Nitrogen · N-7 | `LumaCore 1.5.5` · `Переключатель пружинных анимаций` · `Фикс Win32 HID Precision Touchpad` · `Изоляция ключей ИИ` · `Пружинный Maximize + Dock без обрезки` · `go vet 0` | [LumaOS_1.6.5.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.5.exe) |
-| **1.6.4** | Nitrogen · N-7 | `LumaCore 1.5.4` · `Win32 HID Жесты` · `Gemini SSE/OpenAI Fix` · `Авто-скрытие шума` · `Магнитный Dock + Рендер` · `Пружинная физика` · `Новый OTA-экран` | [LumaOS_1.6.4.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.4.exe) |
+| **1.7 (Актуальная)** | **Oxygen · O-8** | `LumaCore 1.6.0` · `LumaShield 3.2` · `100% Иконки` · `Умный автозапуск` · `KWin Правила окон` · `Фикс Alt+Tab` · `Полка Dropzone` · `Умный буфер (OCR)` · `Per-App Аудио` · `Капсульные OSD` · `Oxygen Connect (Android)` | [**LumaOS_1.7.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.exe) |
+| **1.6.7 (Финал 1.6.x)** | **Nitrogen · N-7** | `LumaCore 1.5.7` · `LumaShield 3.1` · `Фикс курсора/кликов Dynamic Island` · `Нативный Zero-Freeze выбор файла` · `old protatips/` | [LumaOS_1.6.7.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.7.exe) |
+| ~~1.6.6b~~ *(нестаб.)* | Nitrogen · N-7 | `LumaCore 1.5.6b` · *Нестабильная ветка 1.6.4–1.6.6b (используйте 1.7 / 1.6.7)* | [LumaOS_1.6.6b.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.6b.exe) |
+| ~~1.6.6~~ *(нестаб.)* | Nitrogen · N-7 | `LumaCore 1.5.6` · *Нестабильная ветка 1.6.4–1.6.6b (используйте 1.7 / 1.6.7)* | [LumaOS_1.6.6.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.6.exe) |
+| ~~1.6.5~~ *(нестаб.)* | Nitrogen · N-7 | `LumaCore 1.5.5` · *Нестабильная ветка 1.6.4–1.6.6b (используйте 1.7 / 1.6.7)* | [LumaOS_1.6.5.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.5.exe) |
+| ~~1.6.4~~ *(нестаб.)* | Nitrogen · N-7 | `LumaCore 1.5.4` · *Нестабильная ветка 1.6.4–1.6.6b (используйте 1.7 / 1.6.7)* | [LumaOS_1.6.4.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.4.exe) |
 | **1.6.3** | Nitrogen · N-7 | `LumaCore 1.5.3` · `Luma Ai Nitrogen (SSE + 3-Tier RAG)` · `Установить/Удалить ИИ` · `Стоп-зарядка АКБ` · `Touch & Stylus` · `Word A4` · `📌 Поверх Chrome` | [LumaOS_1.6.3.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.3.exe) |
 | **1.6.2b** | Nitrogen · N-7 | `LumaCore 1.5.2b` · `Нативные Wi-Fi & Bluetooth (ПКМ + пароль)` · `Замена горячих клавиш + Тачпад` · `0 всплытий Настроек Windows` | [LumaOS_1.6.2b.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.2b.exe) |
 | **1.6.2** | Nitrogen · N-7 | `LumaCore 1.5.2` · `Luma AI 5.0 Nexus` · `Luma Обвести для поиска` · `Жесты & Спецвозможности` · `Live Загрузки` · `Безопасная Корзина` | [LumaOS_1.6.2.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.2.exe) |
@@ -142,7 +148,7 @@
 ```bash
 npm install
 npm run build
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui" -o LumaOS_1.6.6.exe .
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui" -o LumaOS_1.7.exe .
 ```
 
 ## Запуск отдельного модуля `Luma Ai Nitrogen` (Python FastAPI + Ollama / Gemini)

@@ -346,7 +346,7 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
         onNotify?.('Luma Обвести для поиска', `Фрагмент сохранён: ${data.saved_path}`, 'success');
       }
     } catch {
-      setResult({ ok: false, error: 'Не удалось связаться с модулем поиска LumaCore 1.5.7' });
+      setResult({ ok: false, error: 'Не удалось связаться с модулем поиска LumaCore 1.6.0' });
     } finally {
       setSearching(false);
     }

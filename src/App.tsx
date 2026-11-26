@@ -89,6 +89,7 @@ import {
   SkipBack,
   SkipForward,
   Sliders,
+  Smartphone,
   Sparkles,
   Square,
   Star,
@@ -238,6 +239,11 @@ import {
   SmartDockStatus,
 } from './components/LumaSmartDock';
 import { SmartContextMenu } from './components/SmartContextMenu';
+import { LumaWindowRulesPanel } from './components/LumaWindowRulesPanel';
+import { LumaDropShelf } from './components/LumaDropShelf';
+import { LumaSmartClipboardModal } from './components/LumaSmartClipboardModal';
+import { LumaOxygenOSD } from './components/LumaOxygenOSD';
+import { LumaOxygenConnectWindow } from './components/LumaOxygenConnectWindow';
 import { getLangLocale, LUMA_LANGUAGES, LumaLangCode, tr } from './i18n/translations';
 import { useLumaAutoTranslate } from './i18n/LumaAutoTranslator';
 
@@ -299,12 +305,14 @@ type DexWinId =
   | 'cut_studio'
   | 'office'
   | 'gamepad'
-  | 'uninstaller';
+  | 'uninstaller'
+  | 'oxygen_connect';
 type AnimationPreset = 'harmony7' | 'standard' | 'spring' | 'glide' | 'silk' | 'elastic' | 'none';
 type TaskbarSizePreset = 'compact' | 'standard' | 'large';
 type FontPreset = 'sans' | 'mono' | 'rounded';
 type SettingsTabId =
   | 'kernel_ui'
+  | 'window_rules'
   | 'mouse_dpi'
   | 'security'
   | 'ai_settings'
@@ -351,6 +359,9 @@ interface ClipboardEntry {
   text: string;
   pinned: boolean;
   time: string;
+  source?: string;
+  imageData?: string;
+  ocrText?: string;
 }
 
 interface KernelEventEntry {
@@ -523,6 +534,7 @@ const INITIAL_WINDOWS: Record<DexWinId, DexWinState> = {
   office: { open: false, minimized: false, z: 20, desktop: 1 },
   gamepad: { open: false, minimized: false, z: 20, desktop: 1 },
   uninstaller: { open: false, minimized: false, z: 20, desktop: 1 },
+  oxygen_connect: { open: false, minimized: false, z: 20, desktop: 1 },
 };
 
 export default function App() {
@@ -1021,13 +1033,30 @@ export default function App() {
   const winDSavedOpenRef = useRef<DexWinId[]>([]);
 
   // --- Extra Wallpaper Engine Customization (Transitions + Live Animated Wallpapers) ---
-  const [wallpaperImageUrl, setWallpaperImageUrl] = useState<string>(savedState?.wallpaperImageUrl ?? '/luma-nitrogen-hero.jpg');
+  const [wallpaperImageUrl, setWallpaperImageUrl] = useState<string>(() => {
+    const savedWp = savedState?.wallpaperImageUrl;
+    if (savedWp === undefined) return '/luma-oxygen-hero.jpg';
+    try {
+      if (!localStorage.getItem('luma_oxygen_17_wp_applied') && savedWp === '/luma-nitrogen-hero.jpg') {
+        localStorage.setItem('luma_oxygen_17_wp_applied', '1');
+        return '/luma-oxygen-hero.jpg';
+      }
+    } catch {
+      // ignore
+    }
+    return savedWp;
+  });
   const [wallpaperBlur, setWallpaperBlur] = useState<number>(savedState?.wallpaperBlur ?? 0);
   const [wallpaperDim, setWallpaperDim] = useState<number>(savedState?.wallpaperDim ?? 24);
   const [wallpaperTransition, setWallpaperTransition] = useState<WallpaperTransitionMode>(
     savedState?.wallpaperTransition || 'iris'
   );
   const [liveWallpaper, setLiveWallpaper] = useState<LiveWallpaperId>(savedState?.liveWallpaper || '');
+
+  // --- Luma OS 1.7 Oxygen: Smart Clipboard Modal + KWin Runtime Game/DND Overrides ---
+  const [smartClipboardOpen, setSmartClipboardOpen] = useState<boolean>(false);
+  const [kwinAutoDnd, setKwinAutoDnd] = useState<boolean>(false);
+  const [kwinNoCompositor, setKwinNoCompositor] = useState<boolean>(false);
 
   // --- Multitasking: Virtual Desktops, Task View Overview & Snap Layouts ---
   const [multitaskingOpen, setMultitaskingOpen] = useState<boolean>(false);
@@ -1288,10 +1317,10 @@ export default function App() {
     {
       id: 'notif_nitrogen_welcome_160',
       source: 'system',
-      appName: 'Luma OS 1.6.2',
-      sender: 'Luma OS 1.6.2 Nitrogen',
-      title: 'Добро пожаловать в Luma OS 1.6.7 (Nitrogen · N-7)!',
-      body: 'LumaCore 1.5.7 · LumaShield 3.1 Zero-Freeze (340+ правил) · Стиль Luma Nova · Luma AI 5.0 · Gamepad Studio · Очистка хвостов · Luma Peek (Space) · Умный Dock и Стеки.',
+      appName: 'Luma OS 1.7',
+      sender: 'Luma OS 1.7 Oxygen',
+      title: 'Добро пожаловать в Luma OS 1.7 (Oxygen · O-8)!',
+      body: 'LumaCore 1.6.0 · LumaShield 3.2 (340+ правил) · Правила окон (KWin) · Полка Dropzone (Ctrl+Alt+S) · Умный буфер (Ctrl+Shift+V) · Per-App Аудио-центр · Капсульные OSD · Oxygen Connect (Android).',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       dateLabel: 'Сегодня',
       timestamp: Date.now(),
@@ -1462,20 +1491,22 @@ export default function App() {
   const [apps, setApps] = useState<AppItem[]>(() => {
     const base: AppItem[] = Array.isArray(savedState?.apps) && savedState.apps.length > 0 ? savedState.apps : INITIAL_APPS;
     const byId = new Map(INITIAL_APPS.map((a) => [a.id, a]));
+    const withCacheBust = (url: string) =>
+      url.startsWith('/api/kernel/app-icon?') && !url.includes('v=17') ? `${url}&v=17` : url;
     const enriched = base.map((a) => {
-      if (a.iconUrl) return a;
+      if (a.iconUrl) return { ...a, iconUrl: withCacheBust(a.iconUrl) };
       const def = byId.get(a.id);
-      if (def?.iconUrl) return { ...a, iconUrl: def.iconUrl };
-      if ((a.type === 'app' || a.type === 'system') && (a.package || a.url)) {
-        const probe = a.url && !a.url.startsWith('http') && !a.url.includes('://') ? a.url : a.package || a.id;
-        return { ...a, iconUrl: `/api/kernel/app-icon?name=${encodeURIComponent(probe)}` };
+      if (def?.iconUrl) return { ...a, iconUrl: withCacheBust(def.iconUrl) };
+      if (a.type === 'app' || a.type === 'system') {
+        const probe = a.url && !a.url.startsWith('http') && !a.url.includes('://') ? a.url : a.package || a.name || a.id;
+        return { ...a, iconUrl: `/api/kernel/app-icon?name=${encodeURIComponent(probe)}&v=17` };
       }
       return a;
     });
     const existingIds = new Set(enriched.map((a) => a.id));
     for (const def of INITIAL_APPS) {
       if (def.type === 'system' && !existingIds.has(def.id)) {
-        enriched.push(def);
+        enriched.push({ ...def, iconUrl: def.iconUrl ? withCacheBust(def.iconUrl) : def.iconUrl });
       }
     }
     return enriched;
@@ -1599,7 +1630,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.6.7 (Nitrogen · N-7) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.7 (Oxygen · O-8) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -1632,7 +1663,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.6.7 (Nitrogen · N-7)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.7 (Oxygen · O-8)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -1647,8 +1678,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 1.5.7',
-      message: 'Инициализация оболочки Luma OS 1.6.7 (Nitrogen · N-7), LumaCore 1.5.7, LumaShield 3.1 Zero-Freeze и AI 5.0',
+      source: 'LumaCore 1.6.0',
+      message: 'Инициализация оболочки Luma OS 1.7 (Oxygen · O-8), LumaCore 1.6.0, LumaShield 3.2 Zero-Freeze и AI 5.0',
       level: 'success',
     },
   ]);
@@ -1940,7 +1971,7 @@ export default function App() {
           downloaded_bytes: 2.1 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 16.4,
-          target_version: '1.6.7 (Nitrogen · N-7)',
+          target_version: '1.7 (Oxygen · O-8)',
           message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.6.7...',
         },
       },
@@ -1953,8 +1984,8 @@ export default function App() {
           downloaded_bytes: 10.2 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 27.6,
-          target_version: '1.6.7 (Nitrogen · N-7)',
-          message: 'Загрузка сборки LumaOS_1.6.7.exe (LumaCore 1.5.7 + HID Жесты + Пружинная физика)...',
+          target_version: '1.7 (Oxygen · O-8)',
+          message: 'Загрузка сборки LumaOS_1.7.exe (LumaCore 1.6.0 + HID Жесты + Пружинная физика)...',
         },
       },
       {
@@ -1966,7 +1997,7 @@ export default function App() {
           downloaded_bytes: 23.1 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 36.2,
-          target_version: '1.6.7 (Nitrogen · N-7)',
+          target_version: '1.7 (Oxygen · O-8)',
           message: 'Потоковая загрузка системы пружинных анимаций, магнитного Dock и 20 обоев QHD...',
         },
       },
@@ -1979,7 +2010,7 @@ export default function App() {
           downloaded_bytes: 35.0 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 19.4,
-          target_version: '1.6.7 (Nitrogen · N-7)',
+          target_version: '1.7 (Oxygen · O-8)',
           sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
           message: 'Криптографическая проверка SHA-256 и подписи PE32+ (LumaShield 2.5)...',
         },
@@ -1993,9 +2024,9 @@ export default function App() {
           downloaded_bytes: 35.0 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 0,
-          target_version: '1.6.7 (Nitrogen · N-7)',
+          target_version: '1.7 (Oxygen · O-8)',
           sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
-          message: 'Сборка Luma OS 1.6.7 (Nitrogen · N-7) проверена и готова к мгновенному запуску!',
+          message: 'Сборка Luma OS 1.7 (Oxygen · O-8) проверена и готова к мгновенному запуску!',
         },
       },
     ];
@@ -2299,6 +2330,38 @@ export default function App() {
     pushClipboardText(text);
     pushToast('Буфер обмена', text.length > 42 ? `${text.slice(0, 42)}…` : text, 'success');
   };
+
+  const pastePlainFromSmartClipboard = async (text: string, simulatePaste = false) => {
+    const clean = text.replace(/\r\n/g, '\n');
+    lastOsClipRef.current = clean;
+    try {
+      await navigator.clipboard.writeText(clean);
+    } catch {
+      // ignore WebView2 permission
+    }
+    try {
+      await fetch('/api/kernel/clipboard/paste-plain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: clean, simulate_paste: simulatePaste }),
+      });
+    } catch {
+      // fallback offline
+    }
+    pushClipboardText(clean);
+    pushToast('Умный буфер (Plain Text)', clean.length > 42 ? `${clean.slice(0, 42)}…` : clean, 'success');
+  };
+
+  useEffect(() => {
+    const onSmartClipKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyV') {
+        e.preventDefault();
+        setSmartClipboardOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onSmartClipKey);
+    return () => window.removeEventListener('keydown', onSmartClipKey);
+  }, []);
 
   const readOsClipboardNow = async (silent = false) => {
     try {
@@ -3490,7 +3553,7 @@ export default function App() {
     }
   }, []);
 
-  const handleFocusHostWindow = async (pid: number) => {
+  const handleFocusHostWindow = async (pid: number, hwnd?: number) => {
     setTaskbarHostWinPid(null);
     setTaskListOpen(false);
     touchWindowMru(`host_${pid}`);
@@ -3498,7 +3561,7 @@ export default function App() {
       await fetch('/api/kernel/windows/focus', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pid }),
+        body: JSON.stringify({ pid, hwnd: hwnd || 0 }),
       });
     } catch {
       // silent window switching — no intrusive toast
@@ -3885,7 +3948,7 @@ export default function App() {
           void pollHostWindows();
         }
       } catch {
-        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.5.7', 'warning');
+        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.6.0', 'warning');
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4100,7 +4163,7 @@ export default function App() {
   executeGestureRef.current = executeGestureAction;
 
   useEffect(() => {
-    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 1.5.7 WM_INPUT + SSE fallback)
+    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 1.6.0 WM_INPUT + SSE fallback)
     let lastNativeFireAt = 0;
     let lastNativeKey = '';
     const dispatchMappedGesture = (gestureName: string, sourceTag: string) => {
@@ -4497,15 +4560,15 @@ export default function App() {
     multitaskingOpen,
   ]);
 
-  // --- Native Custom Alt+Tab (True MRU Order + Live Window Previews + Zero Double-Switch) + Win+D Return to Luma OS Home (1.6 Nitrogen) ---
+  // --- Native Custom Alt+Tab (True MRU Order + Live Window Previews + Permanent Desktop→Window Switch Fix · 1.7 Oxygen) ---
   const altTabEntries: AltTabEntry[] = useMemo(() => {
     const lumaTitles: Partial<Record<DexWinId, string>> = {
       apps: 'Приложения', explorer: 'Проводник', taskmgr: 'Диспетчер задач', terminal: 'Терминал',
-      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.5.7', settings: 'Настройки', plugins: 'Расширения',
-      island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma AI 5.0 Nexus', utilities: 'Службы ОС',
+      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.6.0', settings: 'Настройки', plugins: 'Расширения',
+      island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma Ai Nitrogen', utilities: 'Службы ОС',
       calculator: 'Калькулятор', calendar: 'Календарь', trash: 'Корзина', scenarios: 'Сценарии',
       code_studio: 'Code Studio Pro', cut_studio: 'Cut Studio Pro', office: 'Luma Office Pro',
-      gamepad: 'Luma Gamepad Studio', uninstaller: 'Luma Uninstaller',
+      gamepad: 'Luma Gamepad Studio', uninstaller: 'Luma Uninstaller', oxygen_connect: 'Oxygen Connect (Android)',
     };
     const homeEntry: AltTabEntry & { _mru: number } = {
       key: 'luma_home_desktop',
@@ -4564,6 +4627,8 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [altTabOpen, fetchHostWindowPreviews]);
 
+  const windowsRef = useRef(windows);
+  windowsRef.current = windows;
   const altTabEntriesRef = useRef<AltTabEntry[]>(altTabEntries);
   altTabEntriesRef.current = altTabEntries;
   const altTabIdxRef = useRef<number>(altTabIdx);
@@ -4621,7 +4686,7 @@ export default function App() {
     (item?: AltTabEntry) => {
       const nowMs = Date.now();
       if (nowMs < altTabCommitLockUntilRef.current) return;
-      altTabCommitLockUntilRef.current = nowMs + 260;
+      altTabCommitLockUntilRef.current = nowMs + 220;
       nativeAltTabSessionRef.current = false;
       setAltTabOpen(false);
       setAltTabFromExternal(false);
@@ -4638,14 +4703,10 @@ export default function App() {
         const wid = item.id as DexWinId;
         openWindow(wid);
       } else if (item.pid) {
-        // Release temporary topmost FIRST so Chrome / Telegram / Steam smoothly rises to foreground!
-        const targetPid = item.pid;
-        touchWindowMru(`host_${targetPid}`);
-        void fetch('/api/kernel/alt-tab/release', { method: 'POST' })
-          .catch(() => {})
-          .finally(() => {
-            void handleFocusHostWindow(targetPid);
-          });
+        // Luma OS 1.7 Oxygen Permanent Alt+Tab Fix:
+        // Single atomic call to /api/kernel/windows/focus synchronously strips HWND_TOPMOST
+        // from Luma OS and executes AttachThreadInput + FocusWindowWithHWND(pid, hwnd)!
+        void handleFocusHostWindow(item.pid, item.hwnd);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4661,8 +4722,21 @@ export default function App() {
       if (!altTabOpenRef.current) {
         setAltTabOpen(true);
         setAltTabFromExternal(fromExternal);
-        // Classic MRU Alt+Tab: item #0 is the current most-recent window, so first tap highlights #1 (previous window)!
-        setAltTabIdx(len > 1 ? (reverse ? len - 1 : 1) : 0);
+        const curWins = windowsRef.current;
+        const hasVisibleDexWin = (Object.keys(curWins) as DexWinId[]).some(
+          (id) => curWins[id]?.open && !curWins[id]?.minimized
+        );
+        const onLumaDesktop = !fromExternal && !hasVisibleDexWin;
+        if (onLumaDesktop && len > 1) {
+          // Switching AWAY from Luma Desktop: ALWAYS pick an actual other window, NEVER stay stuck on luma_home_desktop!
+          const targetIdx = reverse
+            ? list.map((e, i) => (e.kind !== 'home' ? i : -1)).filter((i) => i >= 0).pop() ?? 0
+            : list.findIndex((e) => e.kind !== 'home');
+          setAltTabIdx(targetIdx >= 0 ? targetIdx : 0);
+        } else {
+          // Classic MRU Alt+Tab: item #0 is the current most-recent window, so first tap highlights #1 (previous window)!
+          setAltTabIdx(len > 1 ? (reverse ? len - 1 : 1) : 0);
+        }
       } else {
         setAltTabIdx((cur) => (cur + (reverse ? -1 : 1) + len) % len);
       }
@@ -5159,7 +5233,7 @@ export default function App() {
         );
       }
     } catch {
-      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.6.7.exe)', 'info');
+      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.7.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -5257,7 +5331,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.7' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.6.0' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5349,7 +5423,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.7' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.6.0' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -6113,24 +6187,36 @@ export default function App() {
     return <Comp className={className} />;
   };
 
-  // Renders real native Windows app icon PNG overlaid seamlessly on Lucide fallback
+  // Renders real native Windows app icon PNG/SVG overlaid seamlessly on Lucide fallback (with 1.7 Oxygen auto-retry!)
   const renderAppVisual = (app: Pick<AppItem, 'icon' | 'iconUrl' | 'name'>, className = 'w-4 h-4') => {
-    if (!app.iconUrl) return renderAppIcon(app.icon, className);
+    const baseSrc = app.iconUrl
+      ? app.iconUrl.startsWith('/api/kernel/app-icon?') && !app.iconUrl.includes('v=17')
+        ? `${app.iconUrl}&v=17`
+        : app.iconUrl
+      : '';
+    if (!baseSrc) return renderAppIcon(app.icon, className);
     return (
       <span className={`relative inline-flex items-center justify-center shrink-0 ${className}`}>
         <span className="inline-flex items-center justify-center w-full h-full">
           {renderAppIcon(app.icon, 'w-full h-full')}
         </span>
         <img
-          src={app.iconUrl}
+          src={baseSrc}
           alt={app.name}
+          loading="lazy"
           className="absolute inset-0 w-full h-full object-contain rounded-[3px]"
           onLoad={(e) => {
             const prev = e.currentTarget.previousElementSibling as HTMLElement | null;
             if (prev) prev.style.opacity = '0';
           }}
           onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = 'none';
+            const img = e.currentTarget as HTMLImageElement;
+            if (!img.dataset.retried) {
+              img.dataset.retried = '1';
+              img.src = `/api/kernel/app-icon?name=${encodeURIComponent(app.name || 'app')}&v=17r`;
+              return;
+            }
+            img.style.display = 'none';
           }}
         />
       </span>
@@ -6141,13 +6227,14 @@ export default function App() {
   const rawTaskbarApps: { id: DexWinId; label: string; icon: React.ReactNode; pinned: boolean }[] = [
     { id: 'explorer', label: t('explorer', 'Проводник'), icon: <FolderOpen className="w-4 h-4" />, pinned: true },
     { id: 'apps', label: t('apps', 'Приложения'), icon: <AppWindow className="w-4 h-4" />, pinned: true },
+    { id: 'oxygen_connect', label: 'Oxygen Connect', icon: <Smartphone className="w-4 h-4 text-sky-400" />, pinned: true },
     { id: 'office', label: 'Office Studio', icon: <FileText className="w-4 h-4" />, pinned: true },
     ...(enabledFeatures.calendar ? [{ id: 'calendar' as DexWinId, label: 'Календарь', icon: <Calendar className="w-4 h-4" />, pinned: true }] : []),
     ...(enabledFeatures.codeStudio ? [{ id: 'code_studio' as DexWinId, label: 'Code Studio', icon: <Code2 className="w-4 h-4" />, pinned: true }] : []),
     ...(enabledFeatures.cutStudio ? [{ id: 'cut_studio' as DexWinId, label: 'Cut Studio', icon: <Film className="w-4 h-4" />, pinned: true }] : []),
     ...(enabledFeatures.scenarios ? [{ id: 'scenarios' as DexWinId, label: 'Сценарии', icon: <Zap className="w-4 h-4" />, pinned: true }] : []),
     ...(enabledFeatures.trash ? [{ id: 'trash' as DexWinId, label: 'Корзина', icon: <Trash2 className="w-4 h-4" />, pinned: true }] : []),
-    ...(enabledFeatures.ai ? [{ id: 'ai' as DexWinId, label: t('ai', 'Luma AI 5.0'), icon: <Sparkles className="w-4 h-4" />, pinned: aiEnabled }] : []),
+    ...(enabledFeatures.ai ? [{ id: 'ai' as DexWinId, label: t('ai', 'Luma Ai Nitrogen'), icon: <Sparkles className="w-4 h-4" />, pinned: aiEnabled }] : []),
     { id: 'gamepad', label: 'Gamepad Studio', icon: <Gamepad2 className="w-4 h-4" />, pinned: true },
     { id: 'uninstaller', label: 'Очистка хвостов', icon: <Trash2 className="w-4 h-4 text-rose-400" />, pinned: true },
     { id: 'calculator', label: t('calculator', 'Калькулятор'), icon: <Calculator className="w-4 h-4" />, pinned: true },
@@ -6243,7 +6330,7 @@ export default function App() {
     ? { label: 'Обновление OS', percent: updateProgress.percent }
     : null;
 
-  // Sync Dynamic Island Always-On-Top Native Win32 Overlay configuration to LumaCore 1.5.7
+  // Sync Dynamic Island Always-On-Top Native Win32 Overlay configuration to LumaCore 1.6.0
   useEffect(() => {
     const payload = {
       enabled: dynamicIslandEnabled,
@@ -7485,7 +7572,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 1.5.7`,
+                        sub: `${ramLoad}% занято · LumaCore 1.6.0`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -7511,9 +7598,9 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.6.7 (Nitrogen · N-7)'],
-                      ['Версия Ядра', 'LumaCore 1.5.7 (1.6.7)'],
-                      ['Безопасность', `LumaShield 2.5 (${kernelDiag?.security_rules ?? 275}+ правил)`],
+                      ['Версия ПО', '1.7 (Oxygen · O-8)'],
+                      ['Версия Ядра', 'LumaCore 1.6.0 (1.7)'],
+                      ['Безопасность', `LumaShield 3.2 (${kernelDiag?.security_rules ?? 340}+ правил)`],
                       ['Developer SDK', `v3.0 (${kernelDiag?.sdk_themes ?? Object.keys(customThemes).length} тем / ${kernelDiag?.sdk_plugins ?? plugins.length} плаг.)`],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
                       ['LumaGuard', `AES-256 #${cryptoKeyVersion}`],
@@ -7933,12 +8020,45 @@ export default function App() {
         </div>
       )}
 
-      {/* WINDOW 5: SYSTEM SETTINGS (1.6 NITROGEN) */}
+      {/* WINDOW 4D: OXYGEN CONNECT (ANDROID COMPANION SUPERHUB — HARMONYOS DEVICE+ STYLE · 1.7 OXYGEN) */}
+      {windows.oxygen_connect.open && (
+        <div style={{ display: isWinVisible('oxygen_connect') ? 'contents' : 'none' }}>
+          <DexWindow
+            id="oxygen_connect"
+            title="Oxygen Connect · Android SuperHub"
+            subtitle="HarmonyOS Device+ · QR-код · Фото с камеры на ПК · Общий буфер · Тачпад и Медиа-пульт"
+            icon={<Smartphone className="w-4 h-4 text-sky-400" />}
+            isDark={isDark}
+            designStyle={designStyle}
+            windowControlsStyle={windowControlsStyle}
+            taskbarPosition={taskbarPosition}
+            taskbarSizePx={effectiveTaskbarSizePx}
+            topBarOffsetPx={dualTaskbarMode ? 46 : 0}
+            snapCommand={snapCommands.oxygen_connect || null}
+            zIndex={getWinZ('oxygen_connect')}
+            alwaysOnTop={Boolean(windows.oxygen_connect.alwaysOnTop)}
+            onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('oxygen_connect')}
+            initialWidth={1020}
+            initialHeight={680}
+            onFocus={() => focusWindow('oxygen_connect')}
+            onMinimize={() => minimizeWindow('oxygen_connect')}
+            onClose={() => closeWindow('oxygen_connect')}
+          >
+            <LumaOxygenConnectWindow
+              isDark={isDark}
+              onPushToast={pushToast}
+              onCopyToClipboard={(txt) => void copyTextToClipboard(txt)}
+            />
+          </DexWindow>
+        </div>
+      )}
+
+      {/* WINDOW 5: SYSTEM SETTINGS (1.7 OXYGEN) */}
       {isWinVisible('settings') && (
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.6.7 (Nitrogen · N-7 · LumaCore 1.5.7 · LumaShield 2.5)"
+          subtitle="Luma OS 1.7 (Oxygen · O-8 · LumaCore 1.6.0 · LumaShield 3.2)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -7984,15 +8104,16 @@ export default function App() {
               <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-0.5">
                 {(
                   [
-                    ['kernel_ui', t('tabKernelUI', 'Ядро UI · Dev & Admin'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.6.2 nitrogen разработчик dev hud администратор uac пасхалка kernel'],
+                    ['kernel_ui', t('tabKernelUI', 'Ядро UI · Dev & Admin'), <Cpu className="w-4 h-4 shrink-0" />, 'ядро ui имя устройства модель версия по 1.7 oxygen разработчик dev hud администратор uac пасхалка kernel'],
+                    ['window_rules', 'Правила окон (KWin)', <Layers className="w-4 h-4 shrink-0" />, 'правила окон kwin монитор 2-й монитор справа без рамки калькулятор поверх всех окон игра композитор уведомления dnd telegram window rules'],
                     ['mouse_dpi', 'Мышь и DPI', <MousePointer2 className="w-4 h-4 shrink-0" />, 'мышь скорость dpi edpi сенсор курсор чувствительность raw input колесо mouse'],
-                    ['graphics', 'Графика и Экран', <Monitor className="w-4 h-4 shrink-0" />, 'графика gpu цп оптимизация lumacore 1.5.2 турбо эко адаптация экрана масштаб монитор ноутбук размытие blur тени fps'],
-                    ['security', t('tabSecurity', 'Безопасность 2.5'), <ShieldCheck className="w-4 h-4 shrink-0" />, 'безопасность антивирус lumashield 2.5 275 правил hosts dns сетевой экран tcp аудит автозагрузки задачи guard defender карантин eicar security'],
-                    ['ai_settings', t('tabAI', 'Luma AI 5.0 Nexus'), <Sparkles className="w-4 h-4 shrink-0" />, 'ии нейросети luma ai 5.0 nexus память источники википедия перевод объём голос ai'],
+                    ['graphics', 'Графика и Экран', <Monitor className="w-4 h-4 shrink-0" />, 'графика gpu цп оптимизация lumacore 1.6.0 турбо эко адаптация экрана масштаб монитор ноутбук размытие blur тени fps'],
+                    ['security', t('tabSecurity', 'Безопасность 3.2'), <ShieldCheck className="w-4 h-4 shrink-0" />, 'безопасность антивирус lumashield 3.2 340 правил hosts dns сетевой экран tcp аудит автозагрузки задачи guard defender карантин eicar security'],
+                    ['ai_settings', t('tabAI', 'Luma Ai Nitrogen'), <Sparkles className="w-4 h-4 shrink-0" />, 'ии нейросети luma ai nitrogen память источники википедия перевод объём голос gemini openai ai'],
                     ['power_battery', 'Питание и Батарея', <BatteryCharging className="w-4 h-4 shrink-0" />, 'питание батарея экран акб беспроводные 2.4ghz радиоканал мышь клавиатура наушники циклы зарядки энергосбережение яркость сон выключение battery power'],
                     ['language', t('tabLanguage', 'Язык и клавиатура'), <Languages className="w-4 h-4 shrink-0" />, 'язык клавиатура раскладка адаптивная keyboard layout 120 стран мира language english romanian polish turkish arabic korean регион'],
                     ['shell_mode', t('tabShellMode', 'Оболочка Windows'), <Monitor className="w-4 h-4 shrink-0" />, 'оболочка windows полный экран fullscreen автозапуск autostart поверх виндовс скрыть панель задач chrome'],
-                    ['appearance', t('tabThemes', 'Темы, Luma Nova и Обои'), <Sliders className="w-4 h-4 shrink-0" />, 'темы обои nitrogen nova matrix glass стиль живые анимации виджеты прозрачность фон акцент шрифт масштаб blur скругление wallpaper theme'],
+                    ['appearance', t('tabThemes', 'Темы, Luma Nova и Обои'), <Sliders className="w-4 h-4 shrink-0" />, 'темы обои oxygen 1.7 nitrogen nova matrix glass стиль живые анимации виджеты прозрачность фон акцент шрифт масштаб blur скругление wallpaper theme'],
                     ['taskbar', t('tabTaskbar', 'Панель задач · Папка Luma'), <LayoutPanelLeft className="w-4 h-4 shrink-0" />, 'панель задач папка luma система скрыть добавить перетащить автоскрытие клавиша win умный dock стеки загрузки наведение буфер обмена cpu ram полный экран taskbar'],
                     ['storage', t('tabStorage', 'Виртуальная память и Диски'), <HardDrive className="w-4 h-4 shrink-0" />, 'память виртуальная swapboost 2 4 6 гб pagefile ssd tbw озу ram диски накопители проводник скрытые файлы storage disk files'],
                     ['bluetooth', t('tabBluetooth', 'Bluetooth и 2.4GHz'), <Bluetooth className="w-4 h-4 shrink-0" />, 'bluetooth блютуз беспроводные мышь клавиатура наушники 2.4ghz радиоканал заряд процент адаптер устройства'],
@@ -8004,7 +8125,7 @@ export default function App() {
                     ['navigation', 'Управление · Спецвозможности', <MousePointerClick className="w-4 h-4 shrink-0" />, 'управление спецвозможности доступность жесты 3 пальца вниз скриншот обвести для поиска lens пкм плагины расширения навигация назад горячие клавиши alt+r'],
                     ['plugins', 'Окна и SDK v3.0', <LayoutGrid className="w-4 h-4 shrink-0" />, 'окна плагины api sdk 3.0 темы колонки сетка расширения разработчик'],
                     ['updater', t('tabUpdater', 'Обновления и Откат'), <Stethoscope className="w-4 h-4 shrink-0" />, 'обновления откат версии анимация cinema rollback downgrade github ota ежедневная проверка патч прогресс бар новая версия'],
-                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.6.2 nitrogen история изменений changelog exe скачать'],
+                    ['about', t('tabAbout', 'О системе'), <Info className="w-4 h-4 shrink-0" />, 'о системе версия 1.7 oxygen история изменений changelog exe скачать'],
                   ] as [SettingsTabId, string, React.ReactNode, string][]
                 )
                   .filter(([, label, , keywords]) => {
@@ -8046,6 +8167,16 @@ export default function App() {
                   onTriggerEasterEgg={() => setEasterEggOpen(true)}
                   devModeEnabled={devModeEnabled}
                   onToggleDevMode={setDevModeEnabled}
+                  onPushToast={pushToast}
+                />
+              )}
+
+              {settingsTab === 'window_rules' && (
+                <LumaWindowRulesPanel
+                  isDark={isDark}
+                  surfaceCls={surfaceCls}
+                  btnCls={btnCls}
+                  mutedCls={mutedCls}
                   onPushToast={pushToast}
                 />
               )}
@@ -8868,7 +8999,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.6.7.exe).
+                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.7.exe).
                   </div>
                 </div>
               )}
@@ -9158,7 +9289,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Luma OS 1.6.7 Nitrogen: Auto-Hide Visual Noise, Magnetic Dock & System-Wide Spring Animations */}
+                  {/* Luma OS 1.7 Oxygen: Auto-Hide Visual Noise, Magnetic Dock & System-Wide Spring Animations */}
                   <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
                     <div className="flex items-center justify-between gap-2">
                       <div>
@@ -9598,14 +9729,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.6.7 (Nitrogen)',
-                        message: 'Система оповещений Luma OS 1.6.7 (Nitrogen) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.7 (Oxygen)',
+                        message: 'Система оповещений Luma OS 1.7 (Oxygen) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.6.7 (Nitrogen)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.7 (Oxygen)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -9617,7 +9748,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.6.7 (Nitrogen · N-7) · LumaCore 1.5.7</div>
+                      <div className="text-sm font-bold">Luma OS 1.7 (Oxygen · O-8) · LumaCore 1.6.0</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -9695,7 +9826,7 @@ export default function App() {
                           </span>
                         </div>
                         <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
-                          Нативная капсула LumaCore 1.5.7 остаётся прилипшей к выбранной части экрана поверх Google Chrome, игр, Telegram и всех программ Windows без перехвата фокуса
+                          Нативная капсула LumaCore 1.6.0 остаётся прилипшей к выбранной части экрана поверх Google Chrome, игр, Telegram и всех программ Windows без перехвата фокуса
                         </div>
                       </div>
                       <StatusPill active={islandPinOverAllWindows} />
@@ -10184,10 +10315,11 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Complete Additive Wallpaper Gallery (ALL previous artworks 100% preserved + 6 NEW Nitrogen 1.6 QHD Wallpapers!) */}
+                    {/* Complete Additive Wallpaper Gallery (ALL 20 previous artworks 100% preserved + NEW Oxygen 1.7 2.5D Hero Wallpaper = 21 total!) */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                       {[
                         { label: 'Без картинки (Тема)', url: '', preview: '' },
+                        { label: 'Oxygen 1.7 · 2.5D Cryo-Bubbles', url: '/luma-oxygen-hero.jpg', preview: '/luma-oxygen-hero.jpg' },
                         { label: 'Nitrogen 1.6.1 · 2.5D Cryo-Glass', url: '/luma-nitrogen-hero.jpg', preview: '/luma-nitrogen-hero.jpg' },
                         { label: 'Nitrogen 1.6 · N-7 Monolith', url: '/luma-nitrogen-monolith.jpg', preview: '/luma-nitrogen-monolith.jpg' },
                         { label: 'Nitrogen Aurora (Исландия)', url: '/luma-nitrogen-aurora.jpg', preview: '/luma-nitrogen-aurora.jpg' },
@@ -11336,23 +11468,23 @@ export default function App() {
                 </div>
               )}
 
-              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.5.2 CARBON) */}
+              {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.7 OXYGEN) */}
               {settingsTab === 'about' && (
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.6.7 (NITROGEN · N-7)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.7 (OXYGEN · O-8)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5.7 · LumaShield 3.1 Zero-Freeze (340+ правил) · Luma Ai Nitrogen · Touch &amp; Stylus · Стиль Luma Nova · Gamepad Studio · Luma Peek
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.6.0 · LumaShield 3.2 (340+ правил) · Правила окон (KWin) · Полка Dropzone · Умный буфер (OCR) · Per-App Аудио-центр · Капсульные OSD · Oxygen Connect (Android) · Luma Ai Nitrogen
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.6.7.exe"
-                      download="LumaOS_1.6.7.exe"
+                      href="/LumaOS_1.7.exe"
+                      download="LumaOS_1.7.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.6.2.exe
+                      LumaOS_1.7.exe
                     </a>
                   </div>
 
@@ -12899,7 +13031,7 @@ export default function App() {
 
             {taskbarShowClipboardBtn && (
               <button
-                onClick={() => openIslandTab('clipboard')}
+                onClick={() => setSmartClipboardOpen(true)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -12908,10 +13040,10 @@ export default function App() {
                     x: Math.min(e.clientX, window.innerWidth - 225),
                     y: Math.min(e.clientY, window.innerHeight - 135),
                     item: 'clipboard',
-                    label: 'Буфер обмена',
+                    label: 'Умный буфер обмена',
                   });
                 }}
-                title={`Буфер обмена (${clipboardHistory.length}) · ПКМ — меню`}
+                title={`Умный буфер обмена (${clipboardHistory.length}) · Ctrl+Shift+V · ПКМ — меню`}
                 className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center cursor-pointer ${btnCls}`}
               >
                 <Clipboard className="w-3.5 h-3.5" />
@@ -13129,7 +13261,7 @@ export default function App() {
                     setTaskbarHostWinPid(null);
                     setTaskbarCtxMenu(null);
                   }}
-                  title={`${t('start', 'Пуск')} · Приложения и Обзор окон (Luma OS 1.6.7 Nitrogen)`}
+                  title={`${t('start', 'Пуск')} · Приложения и Обзор окон (Luma OS 1.7 Oxygen)`}
                   className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
                     startMenuOpen
                       ? 'bg-[var(--luma-accent)] text-white'
@@ -13812,7 +13944,7 @@ export default function App() {
 
             {taskbarShowClipboardBtn && (
               <button
-                onClick={() => openIslandTab('clipboard')}
+                onClick={() => setSmartClipboardOpen(true)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -13821,10 +13953,10 @@ export default function App() {
                     x: Math.min(e.clientX, window.innerWidth - 225),
                     y: Math.min(e.clientY, window.innerHeight - 135),
                     item: 'clipboard',
-                    label: 'Буфер обмена',
+                    label: 'Умный буфер обмена',
                   });
                 }}
-                title={`Буфер обмена (${clipboardHistory.length}) · ПКМ — меню`}
+                title={`Умный буфер обмена (${clipboardHistory.length}) · Ctrl+Shift+V · ПКМ — меню`}
                 className={`w-8 h-8 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center justify-center cursor-pointer ${btnCls}`}
               >
                 <Clipboard className="w-3.5 h-3.5" />
@@ -13997,13 +14129,13 @@ export default function App() {
                   setCarbonHubOpen(false);
                   setNotifShadeOpen(false);
                 }}
-                title="Пуск · Приложения и Обзор окон (Luma OS 1.6.7 Nitrogen)"
+                title="Пуск · Приложения и Обзор окон (Luma OS 1.7 Oxygen)"
                 className={`h-8 px-2.5 rounded-xl flex items-center gap-1.5 text-xs font-bold cursor-pointer transition ${
                   startMenuOpen ? 'bg-[var(--luma-accent)] text-white' : btnCls + ' border'
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-current" />
-                <span>Luma 1.6.7</span>
+                <span>Luma 1.7</span>
               </button>
             )}
             <button
@@ -15247,7 +15379,7 @@ export default function App() {
               {!startSearch.trim() && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                    <span className={mutedCls}>Luma OS 1.6.7 (Nitrogen · N-7)</span>
+                    <span className={mutedCls}>Luma OS 1.7 (Oxygen · O-8)</span>
                     <div className="flex items-center gap-1.5">
                       {enabledFeatures.privateVault && (
                         <button
@@ -15260,7 +15392,7 @@ export default function App() {
                           🔒 Приватный стол
                         </button>
                       )}
-                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.5.7</span>
+                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.6.0</span>
                     </div>
                   </div>
                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
@@ -15367,7 +15499,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.6.7 (Nitrogen)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.7 (Oxygen)'}
                   </div>
                 </div>
               </div>
@@ -16351,6 +16483,11 @@ export default function App() {
         onToggleMicMute={() => {
           setMicMuted((m) => {
             const next = !m;
+            void fetch('/api/kernel/audio/mic-mute', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ muted: next }),
+            }).catch(() => {});
             triggerIslandPulse(next ? 'Микрофон выключен' : 'Микрофон активен', undefined, 'audio');
             return next;
           });
@@ -16363,6 +16500,20 @@ export default function App() {
           const list = kind === 'output' ? audioDevices?.outputs || [] : audioDevices?.inputs || [];
           const found = list.find((d) => d.id === id);
           if (found) void handleSelectAudioDevice(found);
+        }}
+        mediaSessions={liveMediaSessionsList}
+        onMediaAction={(action, sourceApp) => {
+          const mapped = action === 'playpause' ? 'play_pause' : action;
+          if (sourceApp) {
+            const found = liveMediaSessionsList.find((s) => s.source_app === sourceApp || s.id === sourceApp);
+            void handleControlSpecificPlayer(found?.source_app || sourceApp, mapped, found?.display_name);
+          } else {
+            void fetch('/api/kernel/media', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: mapped }),
+            }).catch(() => {});
+          }
         }}
         onPickAccentColor={(hex) => {
           setCustomAccentOverride(hex);
@@ -16594,7 +16745,7 @@ export default function App() {
         isDark={isDark}
         items={altTabEntries}
         selectedIndex={altTabIdx}
-        wallpaperPreviewUrl={wallpaperImageUrl || '/luma-nitrogen-hero.jpg'}
+        wallpaperPreviewUrl={wallpaperImageUrl || '/luma-oxygen-hero.jpg'}
         fromExternal={altTabFromExternal}
         onSelectIndex={setAltTabIdx}
         onActivate={(item) => activateAltTabEntry(item)}
@@ -16845,7 +16996,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.6.7 (Nitrogen · N-7) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
+                  Luma OS 1.7 (Oxygen · O-8) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
                 </div>
               </div>
             </div>
@@ -17156,7 +17307,68 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== BORON 1.4 AWAKENING ANIMATION & PLAYABLE EASTER-EGG MINI-GAME ==================== */}
+      {/* ==================== LUMA OS 1.7 (OXYGEN): YOINK / DROPZONE DRAG & DROP SHELF ==================== */}
+      <LumaDropShelf
+        isDark={isDark}
+        onPushToast={pushToast}
+        onCopyToClipboard={(txt) => void copyTextToClipboard(txt)}
+      />
+
+      {/* ==================== LUMA OS 1.7 (OXYGEN): SMART CLIPBOARD WITH CATEGORIES, COLOR SWATCHES & AUTO-OCR ==================== */}
+      <LumaSmartClipboardModal
+        open={smartClipboardOpen}
+        isDark={isDark}
+        entries={clipboardHistory}
+        onClose={() => setSmartClipboardOpen(false)}
+        onPastePlain={(txt, simulate) => void pastePlainFromSmartClipboard(txt, Boolean(simulate))}
+        onTogglePin={(id) =>
+          setClipboardHistory((prev) => prev.map((c) => (c.id === id ? { ...c, pinned: !c.pinned } : c)))
+        }
+        onDelete={(id) => setClipboardHistory((prev) => prev.filter((c) => c.id !== id))}
+        onClearUnpinned={() => setClipboardHistory((prev) => prev.filter((c) => c.pinned))}
+        onAddEntry={(entry) => {
+          const tStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+          const next: ClipboardEntry = {
+            id: entry.id || `clip_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+            text: entry.text || '',
+            pinned: Boolean(entry.pinned),
+            time: entry.time || tStr,
+            source: entry.source,
+            imageData: entry.imageData,
+            ocrText: entry.ocrText,
+          };
+          setClipboardHistory((prev) => [next, ...prev.slice(0, 49)]);
+        }}
+        onUpdateOCRText={(id, ocrText) =>
+          setClipboardHistory((prev) => prev.map((c) => (c.id === id ? { ...c, ocrText } : c)))
+        }
+        onPushToast={pushToast}
+      />
+
+      {/* ==================== LUMA OS 1.7 (OXYGEN): NEXT-GEN TRANSLUCENT CAPSULE OSD OVERLAYS ==================== */}
+      <LumaOxygenOSD
+        isDark={isDark}
+        volume={volume}
+        muted={isMuted}
+        brightness={screenBrightness}
+        mediaTitle={selectedOsSession?.title || (liveSystem?.media?.available ? liveSystem.media.title : '')}
+        mediaArtist={selectedOsSession?.artist || (liveSystem?.media?.available ? liveSystem.media.artist : '')}
+        bluetoothBatteryDevices={wirelessBatteries
+          .filter((w) => w.battery_percent > 0)
+          .map((w) => ({ name: w.name, battery: w.battery_percent }))}
+        onWindowRulesRuntime={(dnd, noComp) => {
+          if (dnd !== kwinAutoDnd) {
+            setKwinAutoDnd(dnd);
+            if (dnd) setDndEnabled(true);
+          }
+          if (noComp !== kwinNoCompositor) {
+            setKwinNoCompositor(noComp);
+            document.documentElement.classList.toggle('luma-perf-no-blur', noComp);
+          }
+        }}
+      />
+
+      {/* ==================== OXYGEN 1.7 AWAKENING ANIMATION & PLAYABLE MINI-GAMES (NEW + CLASSIC) ==================== */}
       <LumaHeliumEasterEggModal open={easterEggOpen} onClose={() => setEasterEggOpen(false)} />
 
       {/* ==================== LUMA OS 1.4 BORON CINEMATIC UPDATE OVERLAY (REAL OTA + DEMO PREVIEW) ==================== */}

@@ -5334,18 +5334,24 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 }`}
               >
                 {(() => {
-                  const resolvedIconUrl =
+                  const normalizeIcon = (u?: string) =>
+                    u ? (u.startsWith('/api/kernel/app-icon?') && !u.includes('v=17') ? `${u}&v=17` : u) : undefined;
+                  const rawResolved =
                     sc.iconUrl ||
                     (sc.kind === 'app'
-                      ? apps.find((a) => a.id === sc.target)?.iconUrl
+                      ? apps.find((a) => a.id === sc.target)?.iconUrl ||
+                        `/api/kernel/app-icon?name=${encodeURIComponent(sc.target || sc.label)}&v=17`
                       : sc.kind === 'system'
                       ? ({
-                          explorer: '/api/kernel/app-icon?name=explorer',
-                          taskmgr: '/api/kernel/app-icon?name=taskmgr',
-                          terminal: '/api/kernel/app-icon?name=cmd',
-                          calculator: '/api/kernel/app-icon?name=calc',
+                          explorer: '/api/kernel/app-icon?name=explorer&v=17',
+                          taskmgr: '/api/kernel/app-icon?name=taskmgr&v=17',
+                          terminal: '/api/kernel/app-icon?name=cmd&v=17',
+                          calculator: '/api/kernel/app-icon?name=calc&v=17',
                         } as Record<string, string>)[sc.target]
+                      : sc.kind === 'file' || sc.kind === 'command'
+                      ? `/api/kernel/app-icon?name=${encodeURIComponent(sc.target || sc.label)}&v=17`
                       : undefined);
+                  const resolvedIconUrl = normalizeIcon(rawResolved);
                   const fallbackIcon = renderShortcutIcon(
                     sc.icon,
                     iconSizePx >= 58 ? 'w-6 h-6' : iconSizePx >= 48 ? 'w-5 h-5' : 'w-4 h-4'
@@ -5353,28 +5359,43 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                   if (isFolder && folderEntries.length > 0) {
                     return (
                       <div className="grid grid-cols-2 gap-[2px] p-1.5">
-                        {folderEntries.slice(0, 4).map((fe) => (
-                          <span key={fe.id} className="relative flex items-center justify-center opacity-90">
-                            <span className="flex items-center justify-center">
-                              {renderShortcutIcon(fe.icon, iconSizePx >= 54 ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5')}
+                        {folderEntries.slice(0, 4).map((fe) => {
+                          const feSrc = normalizeIcon(
+                            fe.iconUrl ||
+                              (fe.kind === 'app' || fe.kind === 'file' || fe.kind === 'command'
+                                ? `/api/kernel/app-icon?name=${encodeURIComponent(fe.target || fe.label)}&v=17`
+                                : undefined)
+                          );
+                          return (
+                            <span key={fe.id} className="relative flex items-center justify-center opacity-90">
+                              <span className="flex items-center justify-center">
+                                {renderShortcutIcon(fe.icon, iconSizePx >= 54 ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5')}
+                              </span>
+                              {feSrc && (
+                                <img
+                                  src={feSrc}
+                                  alt={fe.label}
+                                  draggable={false}
+                                  loading="lazy"
+                                  className="absolute inset-0 m-auto w-3.5 h-3.5 object-contain rounded-[2px] pointer-events-none select-none"
+                                  onLoad={(e) => {
+                                    const prev = e.currentTarget.previousElementSibling as HTMLElement | null;
+                                    if (prev) prev.style.opacity = '0';
+                                  }}
+                                  onError={(e) => {
+                                    const img = e.currentTarget as HTMLImageElement;
+                                    if (!img.dataset.retried) {
+                                      img.dataset.retried = '1';
+                                      img.src = `/api/kernel/app-icon?name=${encodeURIComponent(fe.label || 'app')}&v=17r`;
+                                      return;
+                                    }
+                                    img.style.display = 'none';
+                                  }}
+                                />
+                              )}
                             </span>
-                            {fe.iconUrl && (
-                              <img
-                                src={fe.iconUrl}
-                                alt={fe.label}
-                                draggable={false}
-                                className="absolute inset-0 m-auto w-3.5 h-3.5 object-contain rounded-[2px] pointer-events-none select-none"
-                                onLoad={(e) => {
-                                  const prev = e.currentTarget.previousElementSibling as HTMLElement | null;
-                                  if (prev) prev.style.opacity = '0';
-                                }}
-                                onError={(e) => {
-                                  (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                }}
-                              />
-                            )}
-                          </span>
-                        ))}
+                          );
+                        })}
                       </div>
                     );
                   }
@@ -5386,13 +5407,20 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                           src={resolvedIconUrl}
                           alt={sc.label}
                           draggable={false}
+                          loading="lazy"
                           className="absolute inset-0 m-auto w-[68%] h-[68%] object-contain rounded pointer-events-none select-none"
                           onLoad={(e) => {
                             const prev = e.currentTarget.previousElementSibling as HTMLElement | null;
                             if (prev) prev.style.opacity = '0';
                           }}
                           onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).style.display = 'none';
+                            const img = e.currentTarget as HTMLImageElement;
+                            if (!img.dataset.retried) {
+                              img.dataset.retried = '1';
+                              img.src = `/api/kernel/app-icon?name=${encodeURIComponent(sc.label || sc.target || 'app')}&v=17r`;
+                              return;
+                            }
+                            img.style.display = 'none';
                           }}
                         />
                       </span>

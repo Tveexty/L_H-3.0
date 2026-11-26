@@ -1868,21 +1868,86 @@ func (p *platformProbe) ListOpenWindows() []HostWindowItem {
 	return out
 }
 
-// FocusWindow switches to a host OS window instantaneously via pure Win32 SetForegroundWindow (<1ms, ZERO PowerShell!).
+// FocusWindow switches to a host OS window instantaneously via Win32 AttachThreadInput + SetForegroundWindow (<2ms, ZERO PowerShell!).
 func (p *platformProbe) FocusWindow(pid int) error {
-	if pid <= 0 {
-		return fmt.Errorf("invalid pid")
+	return p.FocusWindowWithHWND(pid, 0)
+}
+
+func (p *platformProbe) FocusWindowWithHWND(pid int, targetHwnd uintptr) error {
+	hwnd := targetHwnd
+	if hwnd != 0 {
+		procIsWin := modUser32.NewProc("IsWindow")
+		if ok, _, _ := procIsWin.Call(hwnd); ok == 0 {
+			hwnd = 0
+		}
 	}
-	winMap := enumVisibleWindowsNative()
-	entry, ok := winMap[pid]
-	if !ok || entry.hwnd == 0 {
+	if hwnd == 0 && pid > 0 {
+		winMap := enumVisibleWindowsNative()
+		if entry, ok := winMap[pid]; ok && entry.hwnd != 0 {
+			hwnd = entry.hwnd
+		}
+	}
+	if hwnd == 0 {
 		return fmt.Errorf("window not found for pid %d", pid)
 	}
-	iconic, _, _ := procIsIconic.Call(entry.hwnd)
+
+	// Ensure Luma OS is NEVER stuck topmost above the target window!
+	releaseAltTabTopmost()
+
+	procAllowSetFg := modUser32.NewProc("AllowSetForegroundWindow")
+	procGetFg := modUser32.NewProc("GetForegroundWindow")
+	procGetWinThread := modUser32.NewProc("GetWindowThreadProcessId")
+	procAttachThread := modUser32.NewProc("AttachThreadInput")
+	procBringToTop := modUser32.NewProc("BringWindowToTop")
+	procSetActive := modUser32.NewProc("SetActiveWindow")
+	procShowWin := modUser32.NewProc("ShowWindow")
+	procSetWinPos := modUser32.NewProc("SetWindowPos")
+	procKeybdEvt := modUser32.NewProc("keybd_event")
+
+	const (
+		asfwAny          = ^uintptr(0)
+		swShowNormal     = 5
+		swpNoMoveLocal   = 0x0002
+		swpNoSizeLocal   = 0x0001
+		swpShowWinLocal  = 0x0040
+		hwndTopLocal     = 0
+		vkDummyAltUnlock = 0xE8
+		keyUpFlag        = 0x0002
+	)
+
+	iconic, _, _ := procIsIconic.Call(hwnd)
 	if iconic != 0 {
-		procShowWindowAsync.Call(entry.hwnd, swRestore)
+		_, _, _ = procShowWin.Call(hwnd, swRestore)
+	} else {
+		_, _, _ = procShowWin.Call(hwnd, swShowNormal)
 	}
-	procSetForegroundWindow.Call(entry.hwnd)
+
+	fgHwnd, _, _ := procGetFg.Call()
+	var fgTid, targetTid uintptr
+	if fgHwnd != 0 {
+		fgTid, _, _ = procGetWinThread.Call(fgHwnd, 0)
+	}
+	targetTid, _, _ = procGetWinThread.Call(hwnd, 0)
+
+	attached := false
+	if fgTid != 0 && targetTid != 0 && fgTid != targetTid {
+		if ok, _, _ := procAttachThread.Call(fgTid, targetTid, 1); ok != 0 {
+			attached = true
+		}
+	}
+
+	// Unlock Windows Foreground Lock Timeout & guarantee target rises above Luma Desktop cleanly!
+	_, _, _ = procAllowSetFg.Call(asfwAny)
+	_, _, _ = procKeybdEvt.Call(vkDummyAltUnlock, 0, 0, 0)
+	_, _, _ = procKeybdEvt.Call(vkDummyAltUnlock, 0, keyUpFlag, 0)
+	_, _, _ = procSetWinPos.Call(hwnd, hwndTopLocal, 0, 0, 0, 0, swpNoMoveLocal|swpNoSizeLocal|swpShowWinLocal)
+	_, _, _ = procBringToTop.Call(hwnd)
+	_, _, _ = procSetForegroundWindow.Call(hwnd)
+	_, _, _ = procSetActive.Call(hwnd)
+
+	if attached {
+		_, _, _ = procAttachThread.Call(fgTid, targetTid, 0)
+	}
 	return nil
 }
 
@@ -2097,15 +2162,15 @@ func (p *platformProbe) OpenSystemApplet(applet string) error {
 	}
 	switch strings.ToLower(strings.TrimSpace(applet)) {
 	case "settings":
-		return runCmd("cmd", "/c", "start", "", "ms-settings:")
+		return runCmd("control.exe")
 	case "display":
-		return runCmd("cmd", "/c", "start", "", "ms-settings:display")
+		return runCmd("cmd", "/c", "start", "", "desk.cpl")
 	case "sound":
 		return runCmd("cmd", "/c", "start", "", "mmsys.cpl")
 	case "network":
 		return runCmd("cmd", "/c", "start", "", "ncpa.cpl")
 	case "bluetooth":
-		return runCmd("cmd", "/c", "start", "", "ms-settings:bluetooth")
+		return runCmd("cmd", "/c", "start", "", "bthprops.cpl")
 	case "power":
 		return runCmd("cmd", "/c", "start", "", "powercfg.cpl")
 	case "defender":
