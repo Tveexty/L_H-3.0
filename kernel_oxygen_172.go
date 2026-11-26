@@ -38,16 +38,16 @@ func getEditionNormalized() string {
 
 func getEditionDisplayName() string {
 	if isProEdition() {
-		return "Luma OS 1.7.2 Pro"
+		return "Luma OS " + KernelVersion + " Pro"
 	}
-	return "Luma OS 1.7.2 Base"
+	return "Luma OS " + KernelVersion + " Base"
 }
 
 func getLumaWindowTitle() string {
 	if isProEdition() {
-		return "Luma OS 1.7.2 Pro (Oxygen)"
+		return "Luma OS " + KernelVersion + " Pro (" + KernelCodename + ")"
 	}
-	return "Luma OS 1.7.2 Base (Oxygen)"
+	return "Luma OS " + KernelVersion + " Base (" + KernelCodename + ")"
 }
 
 type EditionSnapshot struct {
@@ -76,8 +76,8 @@ func getEditionSnapshot() EditionSnapshot {
 		IsAdmin:      adm.IsAdmin,
 		FullRights:   pro && adm.IsAdmin,
 		CanElevate:   runtime.GOOS == "windows" && !adm.IsAdmin,
-		BaseExe:      "LumaOS_1.7.2_Base.exe",
-		ProExe:       "LumaOS_1.7.2_Pro.exe",
+		BaseExe:      "LumaOS_" + KernelVersion + "_Base.exe",
+		ProExe:       "LumaOS_" + KernelVersion + "_Pro.exe",
 		Features: map[string]bool{
 			"photo_editor":             true,
 			"photo_editor_pro_export":  pro,

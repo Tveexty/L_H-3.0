@@ -875,11 +875,44 @@ export default function App() {
 
   const [lensSearchOpen, setLensSearchOpen] = useState<boolean>(false);
   const [lensInitialImage, setLensInitialImage] = useState<string | null>(null);
+  const [lensInitialSourceKind, setLensInitialSourceKind] = useState<'screen' | 'photo' | 'phone'>('screen');
   const [lensPreferCached, setLensPreferCached] = useState<boolean>(false);
   const openUnifiedCircleSearch = useCallback((opts?: { imageSrc?: string | null; preCaptured?: boolean }) => {
-    setLensInitialImage(opts?.imageSrc || null);
-    setLensPreferCached(Boolean(opts?.preCaptured));
-    setLensSearchOpen(true);
+    if (opts?.imageSrc) {
+      setLensInitialImage(opts.imageSrc);
+      setLensInitialSourceKind('photo');
+      setLensPreferCached(false);
+      setLensSearchOpen(true);
+      return;
+    }
+    if (opts?.preCaptured) {
+      setLensInitialImage(null);
+      setLensInitialSourceKind('screen');
+      setLensPreferCached(true);
+      setLensSearchOpen(true);
+      return;
+    }
+    // Capture the real live desktop BEFORE mounting the overlay so GDI BitBlt never screenshots a dark overlay!
+    fetch(`/api/kernel/capture/screen-now?t=${Date.now()}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.ok && d?.image_base64) {
+          setLensInitialImage(d.image_base64);
+          setLensInitialSourceKind('screen');
+          setLensPreferCached(false);
+        } else {
+          setLensInitialImage(null);
+          setLensInitialSourceKind('screen');
+          setLensPreferCached(false);
+        }
+        setLensSearchOpen(true);
+      })
+      .catch(() => {
+        setLensInitialImage(null);
+        setLensInitialSourceKind('screen');
+        setLensPreferCached(false);
+        setLensSearchOpen(true);
+      });
   }, []);
   useEffect(() => {
     const onOpenEvent = (e: Event) => {
@@ -1112,6 +1145,45 @@ export default function App() {
     ...DEFAULT_LUMA_AI_CONFIG,
     ...(savedState?.aiConfig || {}),
   }));
+
+  // Luma OS 1.7.2B: Automatically sync AI Vision keys & active provider to Go kernel so BOTH PC and Phone Circle to Search share the exact same AI brain!
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const preset = AI_PROVIDER_PRESETS.find((p) => p.id === aiConfig.provider) || AI_PROVIDER_PRESETS[0];
+      const isLocal = aiConfig.provider === 'luma_local' || aiConfig.provider === 'ollama';
+      const activeKey = (aiConfig.apiKeys?.[aiConfig.provider] || '').trim();
+      const rawModel = (aiConfig.models?.[aiConfig.provider] || preset.defaultModel || 'qwen2.5:3b').trim();
+      const cleanModel = aiConfig.provider === 'gemini' ? rawModel.replace(/^(?:models\/)+/i, '') : rawModel;
+      const activeUrl = (aiConfig.baseUrls?.[aiConfig.provider] || preset.defaultBaseUrl || 'http://127.0.0.1:11434/v1').trim();
+      const providerKeys: Record<string, string> = {};
+      const providerModels: Record<string, string> = {};
+      const providerUrls: Record<string, string> = {};
+      AI_PROVIDER_PRESETS.forEach((p) => {
+        const k = (aiConfig.apiKeys?.[p.id] || '').trim();
+        if (k) providerKeys[p.id] = k;
+        const m = (aiConfig.models?.[p.id] || p.defaultModel || '').trim();
+        if (m) providerModels[p.id] = p.id === 'gemini' ? m.replace(/^(?:models\/)+/i, '') : m;
+        const u = (aiConfig.baseUrls?.[p.id] || p.defaultBaseUrl || '').trim();
+        if (u) providerUrls[p.id] = u;
+      });
+      fetch('/api/kernel/ai/nitrogen/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: aiConfig.provider,
+          base_url: activeUrl,
+          api_key: activeKey || (isLocal ? 'ollama' : ''),
+          model_name: cleanModel,
+          provider_keys: providerKeys,
+          provider_models: providerModels,
+          provider_urls: providerUrls,
+          temperature: aiConfig.temperature,
+          enabled: aiEnabled,
+        }),
+      }).catch(() => {});
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [aiConfig, aiEnabled]);
 
   // --- Lithium 1.2 Easter Egg & Power Confirmation Modal ---
   const [easterEggOpen, setEasterEggOpen] = useState<boolean>(false);
@@ -1359,7 +1431,7 @@ export default function App() {
       source: 'system',
       appName: 'Luma OS 1.7.2',
       sender: 'Luma OS 1.7.2 Oxygen',
-      title: 'Добро пожаловать в Luma OS 1.7.2 (Oxygen · O-8)!',
+      title: 'Добро пожаловать в Luma OS 1.7.2B (Oxygen · O-8)!',
       body: 'LumaCore 1.6.2 · LumaShield 3.2 (340+ правил) · Волна HarmonyOS при передаче файлов · 1-Тап Oxygen Connect + быстрый тачпад · Полноценный Circle to Search · KWin Правила окон · Полка Dropzone · Умный буфер (OCR).',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       dateLabel: 'Сегодня',
@@ -1445,7 +1517,7 @@ export default function App() {
     can_elevate: boolean;
   }>({
     edition: 'pro',
-    edition_label: 'Luma OS 1.7.2 Pro',
+    edition_label: 'Luma OS 1.7.2B Pro',
     is_pro: true,
     is_admin: false,
     full_rights: false,
@@ -1733,7 +1805,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.7.2 (Oxygen · O-8) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.7.2B (Oxygen · O-8) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -1766,7 +1838,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.7.2 (Oxygen · O-8)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.7.2B (Oxygen · O-8)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -1782,7 +1854,7 @@ export default function App() {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
       source: 'LumaCore 1.6.2',
-      message: 'Инициализация оболочки Luma OS 1.7.2 (Oxygen · O-8), LumaCore 1.6.2, LumaShield 3.2 Zero-Freeze и AI 5.0',
+      message: 'Инициализация оболочки Luma OS 1.7.2B (Oxygen · O-8), LumaCore 1.6.2, LumaShield 3.2 Zero-Freeze и AI 5.0',
       level: 'success',
     },
   ]);
@@ -2074,8 +2146,8 @@ export default function App() {
           downloaded_bytes: 2.1 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 16.4,
-          target_version: '1.7.2 (Oxygen · O-8)',
-          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.7.2...',
+          target_version: '1.7.2B (Oxygen · O-8)',
+          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.7.2B...',
         },
       },
       {
@@ -2087,8 +2159,8 @@ export default function App() {
           downloaded_bytes: 10.2 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 27.6,
-          target_version: '1.7.2 (Oxygen · O-8)',
-          message: 'Загрузка сборки LumaOS_1.7.2_Pro.exe (LumaCore 1.6.2 + HID Жесты + Пружинная физика)...',
+          target_version: '1.7.2B (Oxygen · O-8)',
+          message: 'Загрузка сборки LumaOS_1.7.2B_Pro.exe (LumaCore 1.6.2 + HID Жесты + Пружинная физика)...',
         },
       },
       {
@@ -2100,7 +2172,7 @@ export default function App() {
           downloaded_bytes: 23.1 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 36.2,
-          target_version: '1.7.2 (Oxygen · O-8)',
+          target_version: '1.7.2B (Oxygen · O-8)',
           message: 'Потоковая загрузка волны HarmonyOS, Circle to Search Vision, 1-Тап Oxygen Connect и 21 обоев QHD...',
         },
       },
@@ -2113,7 +2185,7 @@ export default function App() {
           downloaded_bytes: 35.0 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 19.4,
-          target_version: '1.7.2 (Oxygen · O-8)',
+          target_version: '1.7.2B (Oxygen · O-8)',
           sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
           message: 'Криптографическая проверка SHA-256 и подписи PE32+ (LumaShield 3.2)...',
         },
@@ -2127,9 +2199,9 @@ export default function App() {
           downloaded_bytes: 35.0 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 0,
-          target_version: '1.7.2 (Oxygen · O-8)',
+          target_version: '1.7.2B (Oxygen · O-8)',
           sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
-          message: 'Сборка Luma OS 1.7.2 (Oxygen · O-8) проверена и готова к мгновенному запуску!',
+          message: 'Сборка Luma OS 1.7.2B (Oxygen · O-8) проверена и готова к мгновенному запуску!',
         },
       },
     ];
@@ -5405,7 +5477,7 @@ export default function App() {
         );
       }
     } catch {
-      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.7.2_Pro.exe)', 'info');
+      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.7.2B_Pro.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -7772,7 +7844,7 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.7.2 (Oxygen · O-8)'],
+                      ['Версия ПО', '1.7.2B (Oxygen · O-8)'],
                       ['Версия Ядра', 'LumaCore 1.6.2 (1.7.1)'],
                       ['Безопасность', `LumaShield 3.2 (${kernelDiag?.security_rules ?? 340}+ правил)`],
                       ['Developer SDK', `v3.0 (${kernelDiag?.sdk_themes ?? Object.keys(customThemes).length} тем / ${kernelDiag?.sdk_plugins ?? plugins.length} плаг.)`],
@@ -8232,7 +8304,7 @@ export default function App() {
         <div style={{ display: isWinVisible('photo_editor') ? 'contents' : 'none' }}>
           <DexWindow
             id="photo_editor"
-            title="Luma Photo Studio 1.7.2"
+            title="Luma Photo Studio 1.7.2B"
             subtitle="Встроенный редактор фото · 12 фильтров · Свет/Цвет · Обрезка · Рисование · До/После · Экспорт"
             icon={<Image className="w-4 h-4 text-sky-400" />}
             isDark={isDark}
@@ -8268,7 +8340,7 @@ export default function App() {
         <div style={{ display: isWinVisible('superdevice') ? 'contents' : 'none' }}>
           <DexWindow
             id="superdevice"
-            title="Суперустройство · Экосистема Luma OS 1.7.2"
+            title="Суперустройство · Экосистема Luma OS 1.7.2B"
             subtitle="HarmonyOS SuperDevice · Перетащите устройство на ПК для объединения в экосистему"
             icon={<Radio className="w-4 h-4 text-blue-400" />}
             isDark={isDark}
@@ -8307,7 +8379,7 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.7.2 (Oxygen · O-8 · LumaCore 1.6.2 · LumaShield 3.2)"
+          subtitle="Luma OS 1.7.2B (Oxygen · O-8 · LumaCore 1.6.2 · LumaShield 3.2)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -9248,7 +9320,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.7.2_Pro.exe).
+                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.7.2B_Pro.exe).
                   </div>
                 </div>
               )}
@@ -10061,14 +10133,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.7.2 (Oxygen)',
-                        message: 'Система оповещений Luma OS 1.7.2 (Oxygen) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.7.2B (Oxygen)',
+                        message: 'Система оповещений Luma OS 1.7.2B (Oxygen) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.7.2 (Oxygen)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.7.2B (Oxygen)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -10080,7 +10152,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.7.2 (Oxygen · O-8) · LumaCore 1.6.2</div>
+                      <div className="text-sm font-bold">Luma OS 1.7.2B (Oxygen · O-8) · LumaCore 1.6.2</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -11823,7 +11895,7 @@ export default function App() {
                           <button
                             onClick={async () => {
                               const r = await fetch('/api/kernel/edition/elevate', { method: 'POST' }).catch(() => null);
-                              if (r?.ok) pushToast('Luma OS 1.7.2 Pro', 'Запрошен перезапуск с полными правами Администратора (UAC)', 'success');
+                              if (r?.ok) pushToast('Luma OS 1.7.2B Pro', 'Запрошен перезапуск с полными правами Администратора (UAC)', 'success');
                             }}
                             className="px-3 py-2 rounded-xl bg-amber-500 text-black text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
                           >
@@ -11831,15 +11903,15 @@ export default function App() {
                           </button>
                         )}
                         <a
-                          href="/LumaOS_1.7.2_Pro.exe"
-                          download="LumaOS_1.7.2_Pro.exe"
+                          href="/LumaOS_1.7.2B_Pro.exe"
+                          download="LumaOS_1.7.2B_Pro.exe"
                           className="px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                         >
                           <Download className="w-3.5 h-3.5" /> Pro EXE
                         </a>
                         <a
-                          href="/LumaOS_1.7.2_Base.exe"
-                          download="LumaOS_1.7.2_Base.exe"
+                          href="/LumaOS_1.7.2B_Base.exe"
+                          download="LumaOS_1.7.2B_Base.exe"
                           className={`px-3 py-2 rounded-xl border text-xs font-mono font-bold inline-flex items-center gap-1.5 ${btnCls}`}
                         >
                           <Download className="w-3.5 h-3.5" /> Base EXE
@@ -11848,7 +11920,7 @@ export default function App() {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-[11px]">
                       <div className={`p-3 rounded-xl border ${!editionInfo.is_pro ? 'border-sky-400/60 bg-sky-500/10' : 'border-white/10 bg-white/[0.03]'}`}>
-                        <div className="font-black text-xs mb-1">Luma OS 1.7.2 Base (Обычная)</div>
+                        <div className="font-black text-xs mb-1">Luma OS 1.7.2B Base (Обычная)</div>
                         <ul className={`space-y-0.5 ${mutedCls}`}>
                           <li>• Стандартные права пользователя (без UAC при старте)</li>
                           <li>• Luma Photo Studio (до 2K), Проводник, HarmonyOS Панель</li>
@@ -11858,7 +11930,7 @@ export default function App() {
                       </div>
                       <div className={`p-3 rounded-xl border ${editionInfo.is_pro ? 'border-blue-400/70 bg-blue-600/15' : 'border-white/10 bg-white/[0.03]'}`}>
                         <div className="font-black text-xs mb-1 flex items-center gap-1.5">
-                          <Crown className="w-3.5 h-3.5 text-amber-300" /> Luma OS 1.7.2 Pro (Полные права + Макс. опции)
+                          <Crown className="w-3.5 h-3.5 text-amber-300" /> Luma OS 1.7.2B Pro (Полные права + Макс. опции)
                         </div>
                         <ul className={`space-y-0.5 ${mutedCls}`}>
                           <li>• Полные права Администратора (UAC управление + системные службы)</li>
@@ -14455,7 +14527,7 @@ export default function App() {
             {/* Quick HarmonyOS SuperDevice Pill on Taskbar */}
             <button
               onClick={() => openWindow('superdevice')}
-              title="Суперустройство (Экосистема Luma OS 1.7.2)"
+              title="Суперустройство (Экосистема Luma OS 1.7.2B)"
               className={`h-8 px-2.5 rounded-full border flex items-center gap-1.5 text-[11px] font-bold cursor-pointer transition ${
                 windows.superdevice.open
                   ? 'bg-[#2563eb] border-blue-400 text-white shadow-md shadow-blue-600/35'
@@ -14571,7 +14643,7 @@ export default function App() {
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-current" />
-                <span>Luma 1.7.2</span>
+                <span>Luma 1.7.2B</span>
               </button>
             )}
             <button
@@ -15815,7 +15887,7 @@ export default function App() {
               {!startSearch.trim() && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                    <span className={mutedCls}>Luma OS 1.7.2 (Oxygen · O-8)</span>
+                    <span className={mutedCls}>Luma OS 1.7.2B (Oxygen · O-8)</span>
                     <div className="flex items-center gap-1.5">
                       {enabledFeatures.privateVault && (
                         <button
@@ -15935,7 +16007,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.7.2 (Oxygen)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.7.2B (Oxygen)'}
                   </div>
                 </div>
               </div>
@@ -17222,12 +17294,36 @@ export default function App() {
         onPushToast={pushToast}
       />
 
-      {/* ==================== LUMA OS 1.6.2 (NITROGEN) — LUMA ОБВЕСТИ ДЛЯ ПОИСКА (LENS ENGINE) ==================== */}
+      {/* ==================== LUMA OS 1.7.2B (OXYGEN) — UNIFIED SYSTEM + PHONE CIRCLE TO SEARCH ==================== */}
       <LumaLensSearchOverlay
         open={lensSearchOpen}
         isDark={isDark}
         initialImageSrc={lensInitialImage}
+        initialSourceKind={lensInitialSourceKind}
         preferCachedScreen={lensPreferCached}
+        aiConfig={(() => {
+          const activeP = AI_PROVIDER_PRESETS.find((p) => p.id === aiConfig.provider) || AI_PROVIDER_PRESETS[0];
+          const providerKeys: Record<string, string> = {};
+          const providerModels: Record<string, string> = {};
+          const providerUrls: Record<string, string> = {};
+          AI_PROVIDER_PRESETS.forEach((p) => {
+            const k = (aiConfig.apiKeys?.[p.id] || '').trim();
+            if (k) providerKeys[p.id] = k;
+            const m = (aiConfig.models?.[p.id] || p.defaultModel || '').trim();
+            if (m) providerModels[p.id] = p.id === 'gemini' ? m.replace(/^(?:models\/)+/i, '') : m;
+            const u = (aiConfig.baseUrls?.[p.id] || p.defaultBaseUrl || '').trim();
+            if (u) providerUrls[p.id] = u;
+          });
+          return {
+            provider: aiConfig.provider,
+            baseUrl: (aiConfig.baseUrls?.[aiConfig.provider] || activeP.defaultBaseUrl || '').trim(),
+            apiKey: (aiConfig.apiKeys?.[aiConfig.provider] || '').trim(),
+            model: (aiConfig.models?.[aiConfig.provider] || activeP.defaultModel || '').trim(),
+            providerKeys,
+            providerModels,
+            providerUrls,
+          };
+        })()}
         onClose={() => {
           setLensSearchOpen(false);
           setLensInitialImage(null);
@@ -17442,7 +17538,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.7.2 (Oxygen · O-8) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
+                  Luma OS 1.7.2B (Oxygen · O-8) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
                 </div>
               </div>
             </div>

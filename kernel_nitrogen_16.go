@@ -1192,7 +1192,7 @@ func registerNitrogen16Routes(mux *http.ServeMux, kernel *LumaKernel, notifBridg
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "task": task})
 	})
 
-	// Luma OS 1.7.2: Instant Live Screen Capture for Unified Circle to Search (supports pre-captured frame over Chrome/Games!)
+	// Luma OS 1.7.2B: Instant Live Screen Capture for Unified Circle to Search (ZERO double data-URI prefix, supports pre-captured frame & JPEG mode!)
 	mux.HandleFunc("/api/kernel/capture/screen-now", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if r.URL.Query().Get("prefer_cached") == "1" {
@@ -1200,14 +1200,26 @@ func registerNitrogen16Routes(mux *http.ServeMux, kernel *LumaKernel, notifBridg
 				_ = json.NewEncoder(w).Encode(map[string]interface{}{
 					"ok":           true,
 					"cached":       true,
-					"image_base64": "data:image/png;base64," + cb64,
+					"image_base64": ensureImageDataURI(cb64, "image/png"),
 					"width":        cw,
 					"height":       ch,
 				})
 				return
 			}
 		}
-		b64, width, height, err := captureFullScreenPNG()
+		var (
+			b64    string
+			width  int
+			height int
+			err    error
+			mime   = "image/png"
+		)
+		if strings.EqualFold(r.URL.Query().Get("format"), "jpeg") {
+			b64, width, height, err = captureFullScreenJPEG(1600, 88)
+			mime = "image/jpeg"
+		} else {
+			b64, width, height, err = captureFullScreenPNG()
+		}
 		if err != nil {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"ok":    false,
@@ -1218,7 +1230,7 @@ func registerNitrogen16Routes(mux *http.ServeMux, kernel *LumaKernel, notifBridg
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":           true,
 			"cached":       false,
-			"image_base64": "data:image/png;base64," + b64,
+			"image_base64": ensureImageDataURI(b64, mime),
 			"width":        width,
 			"height":       height,
 		})

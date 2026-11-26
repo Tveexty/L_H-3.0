@@ -48,7 +48,7 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.7.2"
+	KernelVersion       = "1.7.2B"
 	KernelCodename      = "Oxygen"
 	KernelEngineVersion = "1.6.2"
 	SecurityCoreVersion = "3.2"
@@ -3191,12 +3191,12 @@ func main() {
 	registerCircleSearch171Routes(mux, kernel)
 	registerOxygen172Routes(mux, kernel)
 
-	// Serve standalone executable download for LumaOS_1.7.1.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.7.2B.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.7.2_Pro.exe", "LumaOS_1.7.2.exe", "LumaOS_1.7.2_Base.exe", "LumaOS_1.7.1.exe", "LumaOS_1.7.exe", "LumaOS_1.6.7.exe", "LumaOS_1.6.6b.exe", "LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.7.2B_Pro.exe", "LumaOS_1.7.2B.exe", "LumaOS_1.7.2B_Base.exe", "LumaOS_1.7.2_Pro.exe", "LumaOS_1.7.2.exe", "LumaOS_1.7.2_Base.exe", "LumaOS_1.7.1.exe", "LumaOS_1.7.exe", "LumaOS_1.6.7.exe", "LumaOS_1.6.6b.exe", "LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.7.2_Pro.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.7.2B_Pro.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -3204,7 +3204,7 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.7.2_Pro.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.7.2B_Pro.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
@@ -3221,6 +3221,9 @@ func main() {
 			serveExe(w, r)
 		}
 	}
+	mux.HandleFunc("/LumaOS_1.7.2B_Pro.exe", serveNamedExe("LumaOS_1.7.2B_Pro.exe"))
+	mux.HandleFunc("/LumaOS_1.7.2B_Base.exe", serveNamedExe("LumaOS_1.7.2B_Base.exe"))
+	mux.HandleFunc("/LumaOS_1.7.2B.exe", serveNamedExe("LumaOS_1.7.2B.exe"))
 	mux.HandleFunc("/LumaOS_1.7.2_Pro.exe", serveNamedExe("LumaOS_1.7.2_Pro.exe"))
 	mux.HandleFunc("/LumaOS_1.7.2_Base.exe", serveNamedExe("LumaOS_1.7.2_Base.exe"))
 	mux.HandleFunc("/LumaOS_1.7.2.exe", serveNamedExe("LumaOS_1.7.2.exe"))

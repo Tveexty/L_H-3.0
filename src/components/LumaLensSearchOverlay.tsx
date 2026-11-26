@@ -66,11 +66,23 @@ interface CircleHistoryItem {
   time: string;
 }
 
+interface CircleAiConfigOverride {
+  provider?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  providerKeys?: Record<string, string>;
+  providerModels?: Record<string, string>;
+  providerUrls?: Record<string, string>;
+}
+
 interface LumaLensSearchOverlayProps {
   open: boolean;
   isDark: boolean;
   initialImageSrc?: string | null;
+  initialSourceKind?: 'screen' | 'photo' | 'phone';
   preferCachedScreen?: boolean;
+  aiConfig?: CircleAiConfigOverride;
   onClose: () => void;
   onAskAI?: (prompt: string) => void;
   onNotify?: (title: string, message: string, level?: 'info' | 'success' | 'warning') => void;
@@ -133,22 +145,26 @@ function playCircleChime() {
 }
 
 /**
- * Luma OS 1.7.2 (Oxygen) — Unified System + Phone Circle to Search
- * Same ultra-fluid multimodal experience as Phone Mode, deeply integrated into Luma OS & Windows:
+ * Luma OS 1.7.2B (Oxygen) — Unified System + Phone Circle to Search
+ * Same mobile-grade multimodal brain on BOTH PC and Phone, with ZERO black screen:
  *  - Global Ctrl+Shift+Space captures Chrome/YouTube/Telegram/Games BEFORE bringing Luma OS up
- *  - Sources: Live PC Screen, Local Photo / Ctrl+V Paste, Latest Phone Photo (Oxygen Connect), Photo Studio
- *  - Live token-by-token SSE streaming (no blocking spinner!), Markdown rendering, Synced PC + Phone History!
+ *  - Hides overlay for 2 rAF frames before BitBlt when re-capturing PC screen (zero dark self-capture!)
+ *  - Full multi-provider Vision AI (Gemini + OpenAI + OpenRouter + Groq + Ollama Vision/Text + Built-In)
  */
 export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
   open,
   isDark,
   initialImageSrc = null,
+  initialSourceKind = 'photo',
   preferCachedScreen = false,
+  aiConfig,
   onClose,
   onAskAI,
   onNotify,
 }) => {
   const [capturing, setCapturing] = useState(false);
+  const [hideForCapture, setHideForCapture] = useState(false);
+  const [imgError, setImgError] = useState(false);
   const [screenshotSrc, setScreenshotSrc] = useState<string | null>(null);
   const [sourceKind, setSourceKind] = useState<'screen' | 'photo' | 'phone'>('screen');
   const [drawMode, setDrawMode] = useState<'lasso' | 'box'>('lasso');
@@ -182,24 +198,48 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
     }
   }, []);
 
-  const captureLiveScreen = useCallback((useCached: boolean) => {
+  const captureLiveScreen = useCallback((useCached: boolean, hideOverlayFirst = true) => {
     setCapturing(true);
+    setImgError(false);
     setSourceKind('screen');
     setSelection(null);
     setResult(null);
     setLiveReply('');
     setCropDataUrl(null);
-    fetch(`/api/kernel/capture/screen-now${useCached ? '?prefer_cached=1' : ''}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.ok && data?.image_base64) {
-          setScreenshotSrc(data.image_base64);
-        } else {
+
+    const doFetch = () => {
+      fetch(`/api/kernel/capture/screen-now${useCached ? '?prefer_cached=1' : `?t=${Date.now()}`}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.ok && data?.image_base64) {
+            setScreenshotSrc(data.image_base64);
+            setImgError(false);
+          } else {
+            setScreenshotSrc(null);
+            setImgError(true);
+          }
+        })
+        .catch(() => {
           setScreenshotSrc(null);
-        }
-      })
-      .catch(() => setScreenshotSrc(null))
-      .finally(() => setCapturing(false));
+          setImgError(true);
+        })
+        .finally(() => {
+          setHideForCapture(false);
+          setCapturing(false);
+        });
+    };
+
+    if (!useCached && hideOverlayFirst) {
+      // Unpaint the dark overlay BEFORE GDI BitBlt so BitBlt captures the real desktop/windows instead of a black overlay!
+      setHideForCapture(true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.setTimeout(doFetch, 35);
+        });
+      });
+    } else {
+      doFetch();
+    }
   }, []);
 
   const loadLatestPhonePhoto = async () => {
@@ -214,6 +254,7 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
         return;
       }
       setScreenshotSrc(`/api/kernel/fs/raw-file?path=${encodeURIComponent(latestImg.path)}&t=${Date.now()}`);
+      setImgError(false);
       setSourceKind('phone');
       setSelection(null);
       setResult(null);
@@ -230,6 +271,7 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
     const reader = new FileReader();
     reader.onload = () => {
       setScreenshotSrc(String(reader.result || ''));
+      setImgError(false);
       setSourceKind('photo');
       setSelection(null);
       setResult(null);
@@ -243,6 +285,8 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
   useEffect(() => {
     if (!open) {
       setScreenshotSrc(null);
+      setHideForCapture(false);
+      setImgError(false);
       setPoints([]);
       setSelection(null);
       setCropDataUrl(null);
@@ -258,12 +302,13 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
     void loadHistory();
     if (initialImageSrc) {
       setScreenshotSrc(initialImageSrc);
-      setSourceKind('photo');
+      setImgError(false);
+      setSourceKind(initialSourceKind || 'photo');
       setCapturing(false);
     } else {
-      captureLiveScreen(preferCachedScreen);
+      captureLiveScreen(preferCachedScreen, !preferCachedScreen);
     }
-  }, [open, initialImageSrc, preferCachedScreen, captureLiveScreen, loadHistory]);
+  }, [open, initialImageSrc, initialSourceKind, preferCachedScreen, captureLiveScreen, loadHistory]);
 
   // Listen for live Phone Circle to Search history updates & Ctrl+V paste / Escape
   useEffect(() => {
@@ -373,48 +418,36 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
       }
       ctx.restore();
     }
-  }, [open, points, selection, drawMode, strokeWidth]);
+  }, [open, hideForCapture, points, selection, drawMode, strokeWidth]);
 
-  // Exact aspect-aware crop (works accurately for both full-screen & contain-fitted photos!)
+  // Exact aspect-aware crop (works accurately for both full-screen & contain-fitted photos — ZERO fake blank rectangles!)
   const cropSelectionToBase64 = (box: SelectionBox): string | null => {
     const img = imgRef.current;
     if (img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
       const ir = img.getBoundingClientRect();
-      const sx = Math.max(0, Math.round((box.x - ir.left) * (img.naturalWidth / Math.max(1, ir.width))));
-      const sy = Math.max(0, Math.round((box.y - ir.top) * (img.naturalHeight / Math.max(1, ir.height))));
-      const sw = Math.max(
-        16,
-        Math.min(img.naturalWidth - sx, Math.round(box.w * (img.naturalWidth / Math.max(1, ir.width))))
-      );
-      const sh = Math.max(
-        16,
-        Math.min(img.naturalHeight - sy, Math.round(box.h * (img.naturalHeight / Math.max(1, ir.height))))
-      );
+      const x1 = Math.max(0, Math.min(ir.width, box.x - ir.left));
+      const y1 = Math.max(0, Math.min(ir.height, box.y - ir.top));
+      const x2 = Math.max(0, Math.min(ir.width, box.x + box.w - ir.left));
+      const y2 = Math.max(0, Math.min(ir.height, box.y + box.h - ir.top));
+      const scaleX = img.naturalWidth / Math.max(1, ir.width);
+      const scaleY = img.naturalHeight / Math.max(1, ir.height);
+      const sx = Math.max(0, Math.round(x1 * scaleX));
+      const sy = Math.max(0, Math.round(y1 * scaleY));
+      const sw = Math.max(16, Math.min(img.naturalWidth - sx, Math.round((x2 - x1) * scaleX)));
+      const sh = Math.max(16, Math.min(img.naturalHeight - sy, Math.round((y2 - y1) * scaleY)));
       const off = document.createElement('canvas');
-      off.width = Math.min(1024, sw);
-      off.height = Math.min(1024, sh);
+      off.width = Math.min(1024, Math.max(16, sw));
+      off.height = Math.min(1024, Math.max(16, sh));
       const ctx = off.getContext('2d');
       if (ctx) {
         ctx.drawImage(img, sx, sy, sw, sh, 0, 0, off.width, off.height);
         return off.toDataURL('image/jpeg', 0.88);
       }
     }
-    const off = document.createElement('canvas');
-    off.width = Math.max(64, Math.min(640, Math.round(box.w)));
-    off.height = Math.max(64, Math.min(480, Math.round(box.h)));
-    const ctx = off.getContext('2d');
-    if (ctx) {
-      const g = ctx.createLinearGradient(0, 0, off.width, off.height);
-      g.addColorStop(0, '#0f172a');
-      g.addColorStop(1, '#1e3a5f');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, off.width, off.height);
-      return off.toDataURL('image/jpeg', 0.85);
-    }
     return null;
   };
 
-  // True Live Token-by-Token SSE Streaming (NO blocking spinner hiding output!)
+  // True Live Token-by-Token SSE Streaming (exact same Mobile-grade Vision Brain on PC & Phone!)
   const runCircleSearchStream = async (opts: {
     imageBase64?: string | null;
     query?: string;
@@ -440,6 +473,13 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
           source_device: 'pc',
           save_clip: Boolean(opts.saveClip),
           stream: true,
+          provider: aiConfig?.provider || '',
+          base_url: aiConfig?.baseUrl || '',
+          api_key: aiConfig?.apiKey || '',
+          model_name: aiConfig?.model || '',
+          provider_keys: aiConfig?.providerKeys || undefined,
+          provider_models: aiConfig?.providerModels || undefined,
+          provider_urls: aiConfig?.providerUrls || undefined,
         }),
       });
       if (res.ok && res.body) {
@@ -623,7 +663,7 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
     });
   };
 
-  if (!open) return null;
+  if (!open || hideForCapture) return null;
 
   const panelStyle: React.CSSProperties = (() => {
     if (!selection) {
@@ -655,7 +695,7 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
   return (
     <div
       className="fixed inset-0 z-[9960] select-none overflow-hidden"
-      style={{ animation: 'lumaFadeIn 180ms ease-out' }}
+      style={{ animation: 'lumaFadeIn 140ms ease-out' }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
@@ -672,14 +712,20 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
         }}
       />
 
-      {/* Backdrop Image (Full Screen for PC Screen capture, Centered Fit for Local/Phone Photo!) */}
-      {screenshotSrc ? (
-        <div className="absolute inset-0 bg-[#050912] flex items-center justify-center pointer-events-none">
+      {/* Backdrop Image (Full Screen 1:1 for PC Screen capture — ZERO solid black screen!, Centered Fit for Local/Phone Photo) */}
+      {screenshotSrc && !imgError ? (
+        <div
+          className={`absolute inset-0 flex items-center justify-center pointer-events-none ${
+            sourceKind === 'screen' ? 'bg-transparent' : 'bg-slate-950/75 backdrop-blur-xl'
+          }`}
+        >
           <img
             ref={imgRef}
             src={screenshotSrc}
             alt=""
             draggable={false}
+            onLoad={() => setImgError(false)}
+            onError={() => setImgError(true)}
             className={
               sourceKind === 'screen'
                 ? 'w-full h-full object-fill'
@@ -688,7 +734,20 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
           />
         </div>
       ) : (
-        <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm pointer-events-none" />
+        <div className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px] flex items-center justify-center pointer-events-none">
+          {!capturing && imgError && (
+            <div className="pointer-events-auto px-5 py-3.5 rounded-2xl border border-sky-400/35 bg-[#0d1322]/92 text-white text-xs flex items-center gap-3 shadow-2xl">
+              <span>Не удалось получить кадр экрана</span>
+              <button
+                type="button"
+                onClick={() => captureLiveScreen(false, true)}
+                className="px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 font-bold cursor-pointer"
+              >
+                Повторить захват
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Interactive Glowing Finger / Mouse / Stylus Canvas */}
@@ -724,7 +783,7 @@ export const LumaLensSearchOverlay: React.FC<LumaLensSearchOverlayProps> = ({
         {/* Source Switcher (Exact parity with Phone Mode: PC Screen / Local Photo / Phone Photo!) */}
         <button
           type="button"
-          onClick={() => captureLiveScreen(false)}
+          onClick={() => captureLiveScreen(false, true)}
           className={`px-2.5 py-1 rounded-full text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition ${
             sourceKind === 'screen' ? 'bg-[#2563eb] text-white' : 'bg-white/[0.08] text-slate-200 hover:bg-white/15'
           }`}

@@ -302,13 +302,17 @@ func tryHandleCalendarIntent(userText string) (handled bool, reply string, creat
 // ---- 2. Luma Ai Nitrogen Config & AI Install / Download / Uninstall Manager ----
 
 type NitrogenBrainConfig struct {
-	BaseURL          string  `json:"base_url"`
-	APIKey           string  `json:"api_key"`
-	ModelName        string  `json:"model_name"`
-	PythonServerURL  string  `json:"python_server_url"`
-	Temperature      float64 `json:"temperature"`
-	AutoExtractFacts bool    `json:"auto_extract_facts"`
-	Enabled          bool    `json:"enabled"`
+	Provider         string            `json:"provider,omitempty"`
+	BaseURL          string            `json:"base_url"`
+	APIKey           string            `json:"api_key"`
+	ModelName        string            `json:"model_name"`
+	ProviderKeys     map[string]string `json:"provider_keys,omitempty"`
+	ProviderModels   map[string]string `json:"provider_models,omitempty"`
+	ProviderURLs     map[string]string `json:"provider_urls,omitempty"`
+	PythonServerURL  string            `json:"python_server_url"`
+	Temperature      float64           `json:"temperature"`
+	AutoExtractFacts bool              `json:"auto_extract_facts"`
+	Enabled          bool              `json:"enabled"`
 }
 
 type AIDownloadProgress struct {

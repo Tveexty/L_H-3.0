@@ -427,22 +427,28 @@ func registerOxygenConnectRoutes(mainMux *http.ServeMux, kernel *LumaKernel) {
 		})
 	})
 
-	// Mobile Circle to Search: Live PC Screen Capture & Full Multimodal Vision Endpoint!
+	// Mobile Circle to Search: Live PC Screen Capture (Luma OS 1.7.2B — fast JPEG over Wi-Fi, ZERO double data-URI prefix!)
 	lanMux.HandleFunc("/api/screen-now", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
 		if !checkOxygenPIN(r) {
 			w.WriteHeader(http.StatusUnauthorized)
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Неверный PIN-код"})
 			return
 		}
-		b64, width, height, err := captureFullScreenPNG()
-		if err != nil {
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		dataURI, width, height, err := captureFullScreenJPEG(1440, 86)
+		mime := "image/jpeg"
+		if err != nil || dataURI == "" {
+			dataURI, width, height, err = captureFullScreenPNG()
+			mime = "image/png"
+		}
+		if err != nil || dataURI == "" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Не удалось захватить экран ПК"})
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":           true,
-			"image_base64": "data:image/png;base64," + b64,
+			"image_base64": ensureImageDataURI(dataURI, mime),
 			"width":        width,
 			"height":       height,
 		})
@@ -1410,22 +1416,55 @@ pad.addEventListener('touchend', e => {
   }
 });
 
-// ==================== MOBILE CIRCLE TO SEARCH (FINGER LASSO + MULTIMODAL VISION!) ====================
+// ==================== MOBILE CIRCLE TO SEARCH (FINGER LASSO + LIVE PC SCREEN + MULTIMODAL VISION!) ====================
 let c2sPts = [], c2sDrawing = false;
-function openCircleModal(){ document.getElementById('c2sModal').classList.remove('hide'); }
+function openCircleModal(){
+  document.getElementById('c2sModal').classList.remove('hide');
+  const img = document.getElementById('c2sImg');
+  if (!img.src || img.classList.contains('hide')) {
+    capturePcForCircle();
+  } else {
+    syncCircleCanvasSize();
+  }
+}
 function closeCircleModal(){ document.getElementById('c2sModal').classList.add('hide'); }
+
+function syncCircleCanvasSize(){
+  const cvs = document.getElementById('c2sCanvas');
+  const stage = document.getElementById('c2sStage');
+  if (!cvs || !stage) return;
+  const rect = stage.getBoundingClientRect();
+  if (rect.width > 1 && rect.height > 1) {
+    cvs.width = Math.round(rect.width);
+    cvs.height = Math.round(rect.height);
+  }
+}
+window.addEventListener('resize', syncCircleCanvasSize);
 
 function showCircleImage(dataUrl){
   const img = document.getElementById('c2sImg');
   const cvs = document.getElementById('c2sCanvas');
-  document.getElementById('c2sHint').classList.add('hide');
+  const hint = document.getElementById('c2sHint');
+  if (!dataUrl || typeof dataUrl !== 'string') {
+    hint.classList.remove('hide');
+    toast('Пустое изображение экрана');
+    return;
+  }
   img.onload = () => {
+    hint.classList.add('hide');
     img.classList.remove('hide');
     cvs.classList.remove('hide');
-    const rect = cvs.getBoundingClientRect();
-    cvs.width = Math.max(1, Math.round(rect.width));
-    cvs.height = Math.max(1, Math.round(rect.height));
-    cvs.getContext('2d').clearRect(0, 0, cvs.width, cvs.height);
+    requestAnimationFrame(() => {
+      syncCircleCanvasSize();
+      const ctx = cvs.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, cvs.width, cvs.height);
+    });
+  };
+  img.onerror = () => {
+    img.classList.add('hide');
+    cvs.classList.add('hide');
+    hint.classList.remove('hide');
+    toast('Не удалось отобразить снимок — нажмите «🖥 Экран ПК» ещё раз');
   };
   img.src = dataUrl;
 }
@@ -1438,12 +1477,22 @@ function loadCircleLocalImage(file){
 }
 
 async function capturePcForCircle(){
-  toast('Захват экрана ПК...');
+  const hint = document.getElementById('c2sHint');
+  const img = document.getElementById('c2sImg');
+  toast('📸 Захват экрана ПК...');
   try{
-    const d = await api('/api/screen-now');
-    if (d.ok && d.image_base64) showCircleImage(d.image_base64);
-    else toast('Не удалось захватить экран ПК');
-  }catch{ toast('Ошибка захвата экрана'); }
+    const d = await api('/api/screen-now?t=' + Date.now());
+    if (d.ok && d.image_base64) {
+      showCircleImage(d.image_base64);
+      toast('Экран ПК готов — обведите объект пальцем!');
+    } else {
+      if (img.classList.contains('hide')) hint.classList.remove('hide');
+      toast(d.error || 'Не удалось захватить экран ПК');
+    }
+  }catch{
+    if (img.classList.contains('hide')) hint.classList.remove('hide');
+    toast('Ошибка связи с ПК при захвате экрана');
+  }
 }
 
 function renderSimpleMarkdown(md){
@@ -1487,19 +1536,29 @@ async function runCircleAnalysis(customQ){
     if (maxX - minX < 18 || maxY - minY < 18) return;
 
     const img = document.getElementById('c2sImg');
+    if (!img || !img.complete || img.naturalWidth <= 0 || img.naturalHeight <= 0) {
+      toast('Сначала загрузите экран ПК или фото');
+      return;
+    }
     const ir = img.getBoundingClientRect();
     const cr = c2sCanvas.getBoundingClientRect();
     const ox = ir.left - cr.left, oy = ir.top - cr.top;
-    const sx = Math.max(0, (minX - ox) * (img.naturalWidth / ir.width));
-    const sy = Math.max(0, (minY - oy) * (img.naturalHeight / ir.height));
-    const sw = Math.max(16, Math.min(img.naturalWidth - sx, (maxX - minX) * (img.naturalWidth / ir.width)));
-    const sh = Math.max(16, Math.min(img.naturalHeight - sy, (maxY - minY) * (img.naturalHeight / ir.height)));
+    const x1 = Math.max(0, Math.min(ir.width, minX - ox));
+    const y1 = Math.max(0, Math.min(ir.height, minY - oy));
+    const x2 = Math.max(0, Math.min(ir.width, maxX - ox));
+    const y2 = Math.max(0, Math.min(ir.height, maxY - oy));
+    const scaleX = img.naturalWidth / Math.max(1, ir.width);
+    const scaleY = img.naturalHeight / Math.max(1, ir.height);
+    const sx = Math.max(0, Math.round(x1 * scaleX));
+    const sy = Math.max(0, Math.round(y1 * scaleY));
+    const sw = Math.max(16, Math.min(img.naturalWidth - sx, Math.round((x2 - x1) * scaleX)));
+    const sh = Math.max(16, Math.min(img.naturalHeight - sy, Math.round((y2 - y1) * scaleY)));
 
     const off = document.createElement('canvas');
-    off.width = Math.min(1024, Math.round(sw));
-    off.height = Math.min(1024, Math.round(sh));
+    off.width = Math.min(1024, Math.max(16, sw));
+    off.height = Math.min(1024, Math.max(16, sh));
     off.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, off.width, off.height);
-    cropB64 = off.toDataURL('image/jpeg', 0.86);
+    cropB64 = off.toDataURL('image/jpeg', 0.88);
     c2sLastCrop = cropB64;
   }
 
@@ -1522,10 +1581,11 @@ async function runCircleAnalysis(customQ){
       + '<div class="row" style="margin-top:10px;gap:6px">'
       + '<button class="pill" style="flex:1" onclick="copyC2sReply()">📋 Копировать</button>'
       + '<button class="pill" style="flex:1;border-color:rgba(56,189,248,.5);color:#7dd3fc" onclick="sendC2sToPc()">💻 В буфер ПК</button>'
+      + '<button class="pill" onclick="capturePcForCircle()">🔄 Экран</button>'
       + '</div>'
       + '<div class="row" style="margin-top:8px">'
-      + '<input id="c2sFollow" class="in" style="padding:8px 10px;font-size:12px" placeholder="Уточнить вопрос (перевести, цена, фикс)..."/>'
-      + '<button class="btn2" style="padding:8px 12px;font-size:12px" onclick="askC2sFollow()">→</button>'
+      + '<input id="c2sFollow" type="text" style="padding:8px 10px;font-size:12px" placeholder="Уточнить вопрос (перевести, цена, фикс)..."/>'
+      + '<button class="btn2" style="flex:0 0 auto;padding:8px 14px;font-size:12px" onclick="askC2sFollow()">→</button>'
       + '</div>';
   }catch{
     badgeEl.textContent = 'Ошибка';

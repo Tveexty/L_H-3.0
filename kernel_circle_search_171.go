@@ -53,10 +53,42 @@ type CircleSearchRequest struct {
 	Stream       *bool  `json:"stream"`        // default true (SSE)
 	SaveClip     bool   `json:"save_clip"`
 	// Optional provider override from UI AI config
-	Provider  string `json:"provider"`
-	BaseURL   string `json:"base_url"`
-	APIKey    string `json:"api_key"`
-	ModelName string `json:"model_name"`
+	Provider       string            `json:"provider"`
+	BaseURL        string            `json:"base_url"`
+	APIKey         string            `json:"api_key"`
+	ModelName      string            `json:"model_name"`
+	ProviderKeys   map[string]string `json:"provider_keys,omitempty"`
+	ProviderModels map[string]string `json:"provider_models,omitempty"`
+	ProviderURLs   map[string]string `json:"provider_urls,omitempty"`
+}
+
+// ensureImageDataURI guarantees a clean single data:<mime>;base64,... URI and strips any accidental duplicate prefixes.
+func ensureImageDataURI(raw, defaultMime string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	mime := defaultMime
+	if mime == "" {
+		mime = "image/png"
+	}
+	for strings.HasPrefix(s, "data:") {
+		idx := strings.Index(s, ",")
+		if idx < 0 {
+			break
+		}
+		header := s[5:idx]
+		if semi := strings.Index(header, ";"); semi > 0 {
+			if cand := strings.TrimSpace(header[:semi]); strings.HasPrefix(cand, "image/") {
+				mime = cand
+			}
+		}
+		s = strings.TrimSpace(s[idx+1:])
+	}
+	if s == "" {
+		return ""
+	}
+	return "data:" + mime + ";base64," + s
 }
 
 // Downscale + encode any uploaded/cropped image into compact JPEG (max 1024px) for ultra-fast Vision API upload.
@@ -606,11 +638,228 @@ func buildBuiltInCircleToSearchReply(
 	return "visual", fmt.Sprintf(`**Визуальный фрагмент (%d×%d px)**
 - **Доминирующие цвета:** %s
 - **Вероятные категории объекта:**
-  - **1.** Иллюстрация, иконка, логотип или элемент интерфейса без печатного текста
-  - **2.** Фотография товара, устройства, растения или места (требуется нейросетевой Vision-анализ)
-  - **3.** Графический объект / кадр из видео с низким контрастом текста
-- **Для точного распознавания фото (бренд, модель, растение, место):** подключите бесплатный ключ **Google Gemini (`+"`gemini-2.5-flash`"+`)** в *Luma Ai Nitrogen → Настройки* — модуль Circle to Search сразу начнёт анализировать само изображение напрямую.`,
+  - **1.** Фотография товара, гаджета, одежды, растения или места (для точного названия бренда и модели нужен Vision ИИ)
+  - **2.** Иллюстрация, иконка, логотип или элемент интерфейса без печатного текста
+  - **3.** Кадр из видео / скриншот с мелким или низкоконтрастным текстом
+- **Совет для мгновенного распознавания фото:** укажите ключ **Google Gemini (`+"`gemini-2.5-flash`"+`)**, **OpenAI / OpenRouter** или установите локальную Vision-модель Ollama (`+"`qwen2.5vl` / `llava`"+`) в *Luma Ai Nitrogen → Настройки* — и ПК, и телефон сразу перейдут на прямой нейросетевой Vision-анализ.`,
 		width, height, colorLine), nil
+}
+
+type circleVisionTarget struct {
+	Provider string
+	BaseURL  string
+	APIKey   string
+	Model    string
+	IsGemini bool
+}
+
+func isVisionCapableModelName(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	return strings.Contains(m, "vision") || strings.Contains(m, "vl") ||
+		strings.Contains(m, "llava") || strings.Contains(m, "bakllava") ||
+		strings.Contains(m, "minicpm") || strings.Contains(m, "moondream") ||
+		strings.Contains(m, "gemma3") || strings.Contains(m, "gemini") ||
+		strings.Contains(m, "gpt-4o") || strings.Contains(m, "gpt-4-turbo") ||
+		strings.Contains(m, "gpt-4.1") || strings.Contains(m, "gpt-5") ||
+		strings.Contains(m, "claude-3") || strings.Contains(m, "claude-4") ||
+		strings.Contains(m, "pixtral") || strings.Contains(m, "llama-4")
+}
+
+func defaultVisionModelForProvider(prov, configured string) string {
+	c := strings.TrimSpace(configured)
+	switch strings.ToLower(strings.TrimSpace(prov)) {
+	case "gemini":
+		cm := sanitizeGeminiModelID(c)
+		if cm == "" || !strings.HasPrefix(strings.ToLower(cm), "gemini") {
+			return "gemini-2.5-flash"
+		}
+		return cm
+	case "openai":
+		if isVisionCapableModelName(c) {
+			return c
+		}
+		return "gpt-4o-mini"
+	case "openrouter":
+		if c != "" {
+			return c
+		}
+		return "google/gemini-2.0-flash-exp:free"
+	case "groq":
+		if isVisionCapableModelName(c) {
+			return c
+		}
+		return "meta-llama/llama-4-scout-17b-16e-instruct"
+	default:
+		return c
+	}
+}
+
+func defaultBaseURLForProvider(prov, configured string) string {
+	u := strings.TrimSpace(configured)
+	if u != "" && !strings.Contains(u, "127.0.0.1") && !strings.Contains(u, "localhost") {
+		return u
+	}
+	switch strings.ToLower(strings.TrimSpace(prov)) {
+	case "gemini":
+		return "https://generativelanguage.googleapis.com/v1beta"
+	case "openai":
+		return "https://api.openai.com/v1"
+	case "openrouter":
+		return "https://openrouter.ai/api/v1"
+	case "groq":
+		return "https://api.groq.com/openai/v1"
+	default:
+		return u
+	}
+}
+
+func resolveCircleVisionTargets(req CircleSearchRequest, cfg NitrogenBrainConfig) []circleVisionTarget {
+	var out []circleVisionTarget
+	seen := map[string]bool{}
+	add := func(t circleVisionTarget) {
+		t.APIKey = strings.TrimSpace(t.APIKey)
+		if t.APIKey == "" || strings.EqualFold(t.APIKey, "ollama") {
+			return
+		}
+		// Auto-detect Google Gemini API keys (AIza...) even if user didn't switch baseURL/model!
+		if strings.HasPrefix(t.APIKey, "AIza") {
+			t.Provider = "gemini"
+			t.IsGemini = true
+			if t.BaseURL == "" || strings.Contains(t.BaseURL, "127.0.0.1") || strings.Contains(t.BaseURL, "localhost") {
+				t.BaseURL = "https://generativelanguage.googleapis.com/v1beta"
+			}
+			t.Model = defaultVisionModelForProvider("gemini", t.Model)
+		} else {
+			lowBase := strings.ToLower(t.BaseURL)
+			lowModel := strings.ToLower(t.Model)
+			t.IsGemini = strings.EqualFold(t.Provider, "gemini") ||
+				strings.Contains(lowBase, "generativelanguage.googleapis.com") ||
+				strings.HasPrefix(lowModel, "gemini")
+			if t.IsGemini {
+				t.BaseURL = defaultBaseURLForProvider("gemini", t.BaseURL)
+				t.Model = defaultVisionModelForProvider("gemini", t.Model)
+			} else {
+				t.BaseURL = defaultBaseURLForProvider(t.Provider, t.BaseURL)
+				t.Model = defaultVisionModelForProvider(t.Provider, t.Model)
+			}
+		}
+		if t.BaseURL == "" {
+			return
+		}
+		keySig := t.Provider + "|" + t.BaseURL + "|" + t.APIKey
+		if seen[keySig] {
+			return
+		}
+		seen[keySig] = true
+		out = append(out, t)
+	}
+
+	// 1. Explicit request / active NitrogenBrainConfig
+	activeProv := strings.TrimSpace(req.Provider)
+	if activeProv == "" {
+		activeProv = strings.TrimSpace(cfg.Provider)
+	}
+	activeURL := strings.TrimSpace(req.BaseURL)
+	if activeURL == "" {
+		activeURL = strings.TrimSpace(cfg.BaseURL)
+	}
+	activeKey := strings.TrimSpace(req.APIKey)
+	if activeKey == "" {
+		activeKey = strings.TrimSpace(cfg.APIKey)
+	}
+	activeModel := strings.TrimSpace(req.ModelName)
+	if activeModel == "" {
+		activeModel = strings.TrimSpace(cfg.ModelName)
+	}
+	if activeKey != "" && !strings.EqualFold(activeKey, "ollama") {
+		add(circleVisionTarget{
+			Provider: activeProv,
+			BaseURL:  activeURL,
+			APIKey:   activeKey,
+			Model:    activeModel,
+		})
+	}
+
+	// 2. Any other saved Vision-capable cloud provider key (from request OR persisted brain_config.json!)
+	mergedKeys := map[string]string{}
+	for k, v := range cfg.ProviderKeys {
+		if strings.TrimSpace(v) != "" {
+			mergedKeys[strings.ToLower(k)] = strings.TrimSpace(v)
+		}
+	}
+	for k, v := range req.ProviderKeys {
+		if strings.TrimSpace(v) != "" {
+			mergedKeys[strings.ToLower(k)] = strings.TrimSpace(v)
+		}
+	}
+	mergedModels := map[string]string{}
+	for k, v := range cfg.ProviderModels {
+		if strings.TrimSpace(v) != "" {
+			mergedModels[strings.ToLower(k)] = strings.TrimSpace(v)
+		}
+	}
+	for k, v := range req.ProviderModels {
+		if strings.TrimSpace(v) != "" {
+			mergedModels[strings.ToLower(k)] = strings.TrimSpace(v)
+		}
+	}
+	mergedURLs := map[string]string{}
+	for k, v := range cfg.ProviderURLs {
+		if strings.TrimSpace(v) != "" {
+			mergedURLs[strings.ToLower(k)] = strings.TrimSpace(v)
+		}
+	}
+	for k, v := range req.ProviderURLs {
+		if strings.TrimSpace(v) != "" {
+			mergedURLs[strings.ToLower(k)] = strings.TrimSpace(v)
+		}
+	}
+
+	for _, prov := range []string{"gemini", "openai", "openrouter", "groq", "custom"} {
+		if key := mergedKeys[prov]; key != "" {
+			add(circleVisionTarget{
+				Provider: prov,
+				BaseURL:  mergedURLs[prov],
+				APIKey:   key,
+				Model:    mergedModels[prov],
+			})
+		}
+	}
+	return out
+}
+
+func classifyCircleReplyCategory(reply, ocrText, query string) string {
+	low := strings.ToLower(reply + "\n" + ocrText + "\n" + query)
+	switch {
+	case strings.Contains(low, "шаг 1") || strings.Contains(low, "уравнени") || strings.Contains(low, "математик") || strings.Contains(low, "x ="):
+		return "math"
+	case strings.Contains(low, "причина сбоя") || strings.Contains(low, "исправлени") || reCircleErrorCode.MatchString(low) || strings.Contains(low, "syntaxerror") || strings.Contains(low, "exception"):
+		return "code"
+	case strings.Contains(low, "перевод на русский") || strings.Contains(low, "извлечённый текст") || strings.Contains(low, "термин") || strings.Contains(low, "аббревиатур"):
+		return "text"
+	case strings.Contains(low, "достопримечательн") || strings.Contains(low, "страна:") || strings.Contains(low, "город:"):
+		return "place"
+	case strings.Contains(low, "бренд") || strings.Contains(low, "модель") || strings.Contains(low, "характеристик") || strings.Contains(low, "товар"):
+		return "product"
+	default:
+		return "vision"
+	}
+}
+
+func probeLocalOllamaCircleModels() (visionModel string, textModel string) {
+	_, running, models := probeOllamaStatus()
+	if !running || len(models) == 0 {
+		return "", ""
+	}
+	for _, m := range models {
+		if isVisionCapableModelName(m) && visionModel == "" {
+			visionModel = m
+		}
+		if textModel == "" {
+			textModel = m
+		}
+	}
+	return visionModel, textModel
 }
 
 func handleCircleSearchHTTP(w http.ResponseWriter, r *http.Request, kernel *LumaKernel) {
@@ -672,17 +921,8 @@ func handleCircleSearchHTTP(w http.ResponseWriter, r *http.Request, kernel *Luma
 		{"name": "Яндекс Поиск", "url": "https://yandex.ru/search/?text=" + qEsc},
 	}
 
-	// Resolve active LLM provider config
 	cfg := loadNitrogenBrainConfig()
-	if strings.TrimSpace(req.BaseURL) != "" {
-		cfg.BaseURL = strings.TrimSpace(req.BaseURL)
-	}
-	if strings.TrimSpace(req.APIKey) != "" {
-		cfg.APIKey = strings.TrimSpace(req.APIKey)
-	}
-	if strings.TrimSpace(req.ModelName) != "" {
-		cfg.ModelName = strings.TrimSpace(req.ModelName)
-	}
+	visionTargets := resolveCircleVisionTargets(req, cfg)
 
 	var flusher http.Flusher
 	if wantStream {
@@ -699,13 +939,13 @@ func handleCircleSearchHTTP(w http.ResponseWriter, r *http.Request, kernel *Luma
 			"height":             height,
 			"saved_path":         savedPath,
 			"visual_search_urls": visualURLs,
-			"engine":             "circle_to_search_171",
+			"engine":             "circle_to_search_172b",
 		})
 	} else {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	}
 
-	// Build concise multimodal user prompt
+	// Build concise multimodal user prompt (identical on PC and Phone!)
 	var userPrompt strings.Builder
 	if strings.TrimSpace(req.Query) != "" {
 		userPrompt.WriteString("Уточнение пользователя: " + strings.TrimSpace(req.Query) + "\n")
@@ -713,61 +953,118 @@ func handleCircleSearchHTTP(w http.ResponseWriter, r *http.Request, kernel *Luma
 		userPrompt.WriteString("Проанализируй выделенную пользователем область экрана строго по системным правилам.\n")
 	}
 	if ocrText != "" {
-		userPrompt.WriteString("Предварительно распознанный ОС текст (OCR): " + truncateUTF8(ocrText, 700) + "\n")
+		userPrompt.WriteString("Предварительно распознанный ОС текст (OCR): " + truncateUTF8(ocrText, 800) + "\n")
 	}
-
-	// Try true Multimodal Vision LLM first if API key is configured!
-	hasCloudKey := strings.TrimSpace(cfg.APIKey) != "" && !strings.EqualFold(strings.TrimSpace(cfg.APIKey), "ollama")
-	lowBase := strings.ToLower(cfg.BaseURL)
-	lowModel := strings.ToLower(cfg.ModelName)
-	isGemini := strings.Contains(lowBase, "generativelanguage.googleapis.com") ||
-		strings.HasPrefix(lowModel, "gemini") || strings.EqualFold(req.Provider, "gemini")
 
 	var (
-		reply     string
-		engineTag = "builtin_circle_search"
-		modelTag  = "Luma Circle to Search (Встроенный)"
-		category  = "visual"
-		sources   []AISourceLink
-		visionOK  bool
+		reply         string
+		engineTag     = "builtin_circle_search"
+		modelTag      = "Circle to Search · Встроенный ИИ"
+		category      = "visual"
+		sources       []AISourceLink
+		visionOK      bool
+		lastCloudErr  string
+		sseW          http.ResponseWriter
+		sseF          http.Flusher
 	)
+	if wantStream {
+		sseW, sseF = w, flusher
+	}
 
-	if hasImg && hasCloudKey {
-		var sseW http.ResponseWriter
-		var sseF http.Flusher
-		if wantStream {
-			sseW, sseF = w, flusher
-		}
-		if isGemini {
-			if cfg.BaseURL == "" || strings.Contains(cfg.BaseURL, "11434") {
-				cfg.BaseURL = "https://generativelanguage.googleapis.com/v1beta"
+	// TIER 1: Cloud Multimodal Vision LLM (Gemini with model fallback chain, OpenAI GPT-4o, OpenRouter, Groq Vision)
+	if (hasImg || strings.TrimSpace(req.Query) != "" || ocrText != "") && len(visionTargets) > 0 {
+		for _, tgt := range visionTargets {
+			if tgt.IsGemini {
+				// Build automatic Gemini model fallback chain so deprecated/404 model IDs never break Circle to Search!
+				modelsToTry := []string{sanitizeGeminiModelID(tgt.Model)}
+				for _, fb := range []string{"gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"} {
+					dup := false
+					for _, ex := range modelsToTry {
+						if strings.EqualFold(ex, fb) {
+							dup = true
+							break
+						}
+					}
+					if !dup {
+						modelsToTry = append(modelsToTry, fb)
+					}
+				}
+				for _, gm := range modelsToTry {
+					if gm == "" {
+						continue
+					}
+					rTxt, errMsg, ok := streamGeminiCircleVision(sseW, sseF, tgt.BaseURL, tgt.APIKey, gm, userPrompt.String(), jpegB64)
+					if ok && strings.TrimSpace(rTxt) != "" {
+						reply = rTxt
+						visionOK = true
+						engineTag = "gemini_vision"
+						modelTag = "Circle to Search · " + gm
+						category = classifyCircleReplyCategory(reply, ocrText, req.Query)
+						break
+					}
+					if errMsg != "" {
+						lastCloudErr = errMsg
+						log.Printf("[LumaCore Circle2Search] Gemini (%s) fallback: %s", gm, errMsg)
+						// Stop trying more models on explicit invalid API key (401/403)
+						if strings.Contains(errMsg, "401") || strings.Contains(errMsg, "API_KEY_INVALID") {
+							break
+						}
+					}
+				}
+			} else {
+				rTxt, errMsg, ok := streamOpenAIVisionCircle(sseW, sseF, tgt.BaseURL, tgt.APIKey, tgt.Model, userPrompt.String(), jpegB64)
+				if ok && strings.TrimSpace(rTxt) != "" {
+					reply = rTxt
+					visionOK = true
+					engineTag = "openai_vision"
+					modelTag = "Circle to Search · " + tgt.Model
+					category = classifyCircleReplyCategory(reply, ocrText, req.Query)
+				} else if errMsg != "" {
+					lastCloudErr = errMsg
+					log.Printf("[LumaCore Circle2Search] OpenAI-compat (%s) fallback: %s", tgt.Model, errMsg)
+				}
 			}
-			rTxt, _, ok := streamGeminiCircleVision(sseW, sseF, cfg.BaseURL, cfg.APIKey, cfg.ModelName, userPrompt.String(), jpegB64)
-			if ok && strings.TrimSpace(rTxt) != "" {
-				reply = rTxt
-				visionOK = true
-				engineTag = "gemini_vision"
-				modelTag = "Circle to Search · " + sanitizeGeminiModelID(cfg.ModelName)
-				category = "vision"
-			}
-		} else if strings.TrimSpace(cfg.BaseURL) != "" {
-			rTxt, _, ok := streamOpenAIVisionCircle(sseW, sseF, cfg.BaseURL, cfg.APIKey, cfg.ModelName, userPrompt.String(), jpegB64)
-			if ok && strings.TrimSpace(rTxt) != "" {
-				reply = rTxt
-				visionOK = true
-				engineTag = "openai_vision"
-				modelTag = "Circle to Search · " + cfg.ModelName
-				category = "vision"
+			if visionOK {
+				break
 			}
 		}
 	}
 
+	// TIER 2 & TIER 3: Local Ollama Vision (llava/qwen2.5vl/gemma3) OR Local Ollama Text + OS OCR (qwen2.5:3b)
+	if !visionOK {
+		localVis, localTxt := probeLocalOllamaCircleModels()
+		if hasImg && localVis != "" {
+			rTxt, _, ok := streamOpenAIVisionCircle(sseW, sseF, "http://127.0.0.1:11434/v1", "ollama", localVis, userPrompt.String(), jpegB64)
+			if ok && strings.TrimSpace(rTxt) != "" {
+				reply = rTxt
+				visionOK = true
+				engineTag = "ollama_vision"
+				modelTag = "Circle to Search · Ollama " + localVis
+				category = classifyCircleReplyCategory(reply, ocrText, req.Query)
+			}
+		}
+		if !visionOK && localTxt != "" && (ocrText != "" || strings.TrimSpace(req.Query) != "") {
+			rTxt, _, ok := streamOpenAIVisionCircle(sseW, sseF, "http://127.0.0.1:11434/v1", "ollama", localTxt, userPrompt.String(), "")
+			if ok && strings.TrimSpace(rTxt) != "" {
+				reply = rTxt
+				visionOK = true
+				engineTag = "ollama_text_ocr"
+				modelTag = "Circle to Search · Ollama " + localTxt
+				category = classifyCircleReplyCategory(reply, ocrText, req.Query)
+			}
+		}
+	}
+
+	// TIER 4: Enhanced Built-In Smart Circle to Search Brain (Zero-Key Offline + Live Web + Auto-Translate)
 	if !visionOK {
 		var trashRef *LumaTrashStore
 		if kernel != nil {
 			trashRef = kernel.trash
 		}
 		category, reply, sources = buildBuiltInCircleToSearchReply(ocrText, req.Query, colors, width, height, kernel, trashRef)
+		if lastCloudErr != "" {
+			reply += "\n\n- **Диагностика облачного Vision API:** " + truncateUTF8(lastCloudErr, 220)
+		}
 		if wantStream && flusher != nil {
 			runes := []rune(reply)
 			for i := 0; i < len(runes); i += 10 {
@@ -781,7 +1078,7 @@ func handleCircleSearchHTTP(w http.ResponseWriter, r *http.Request, kernel *Luma
 					"content": chunk,
 					"text":    chunk,
 				})
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(8 * time.Millisecond)
 			}
 		}
 	}
