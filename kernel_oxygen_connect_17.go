@@ -1475,26 +1475,33 @@ function drawCircleStroke(){
   ctx.stroke();
 }
 
-async function runCircleAnalysis(){
-  if (c2sPts.length < 3) return;
-  let minX=1e9, minY=1e9, maxX=-1, maxY=-1;
-  for (const p of c2sPts){ if(p.x<minX)minX=p.x; if(p.y<minY)minY=p.y; if(p.x>maxX)maxX=p.x; if(p.y>maxY)maxY=p.y; }
-  if (maxX - minX < 18 || maxY - minY < 18) return;
+let c2sLastCrop = '';
+let c2sLastReply = '';
 
-  const img = document.getElementById('c2sImg');
-  const ir = img.getBoundingClientRect();
-  const cr = c2sCanvas.getBoundingClientRect();
-  const ox = ir.left - cr.left, oy = ir.top - cr.top;
-  const sx = Math.max(0, (minX - ox) * (img.naturalWidth / ir.width));
-  const sy = Math.max(0, (minY - oy) * (img.naturalHeight / ir.height));
-  const sw = Math.max(16, Math.min(img.naturalWidth - sx, (maxX - minX) * (img.naturalWidth / ir.width)));
-  const sh = Math.max(16, Math.min(img.naturalHeight - sy, (maxY - minY) * (img.naturalHeight / ir.height)));
+async function runCircleAnalysis(customQ){
+  let cropB64 = c2sLastCrop;
+  if (!customQ) {
+    if (c2sPts.length < 3) return;
+    let minX=1e9, minY=1e9, maxX=-1, maxY=-1;
+    for (const p of c2sPts){ if(p.x<minX)minX=p.x; if(p.y<minY)minY=p.y; if(p.x>maxX)maxX=p.x; if(p.y>maxY)maxY=p.y; }
+    if (maxX - minX < 18 || maxY - minY < 18) return;
 
-  const off = document.createElement('canvas');
-  off.width = Math.min(1024, Math.round(sw));
-  off.height = Math.min(1024, Math.round(sh));
-  off.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, off.width, off.height);
-  const cropB64 = off.toDataURL('image/jpeg', 0.86);
+    const img = document.getElementById('c2sImg');
+    const ir = img.getBoundingClientRect();
+    const cr = c2sCanvas.getBoundingClientRect();
+    const ox = ir.left - cr.left, oy = ir.top - cr.top;
+    const sx = Math.max(0, (minX - ox) * (img.naturalWidth / ir.width));
+    const sy = Math.max(0, (minY - oy) * (img.naturalHeight / ir.height));
+    const sw = Math.max(16, Math.min(img.naturalWidth - sx, (maxX - minX) * (img.naturalWidth / ir.width)));
+    const sh = Math.max(16, Math.min(img.naturalHeight - sy, (maxY - minY) * (img.naturalHeight / ir.height)));
+
+    const off = document.createElement('canvas');
+    off.width = Math.min(1024, Math.round(sw));
+    off.height = Math.min(1024, Math.round(sh));
+    off.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, off.width, off.height);
+    cropB64 = off.toDataURL('image/jpeg', 0.86);
+    c2sLastCrop = cropB64;
+  }
 
   const resBox = document.getElementById('c2sResult');
   const bodyEl = document.getElementById('c2sBody');
@@ -1507,14 +1514,41 @@ async function runCircleAnalysis(){
     const d = await api('/api/circle-search', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({image_base64:cropB64, source_device:'phone', stream:false})
+      body:JSON.stringify({image_base64:cropB64, query:(customQ||'').trim(), source_device:'phone', stream:false})
     });
-    badgeEl.textContent = d.model || 'Circle to Search';
-    bodyEl.innerHTML = renderSimpleMarkdown(d.reply || 'Не удалось распознать фрагмент');
+    c2sLastReply = d.reply || '';
+    badgeEl.textContent = (d.model || 'Circle to Search') + (d.elapsed_ms ? ' · ' + d.elapsed_ms + 'мс' : '');
+    bodyEl.innerHTML = renderSimpleMarkdown(d.reply || 'Не удалось распознать фрагмент')
+      + '<div class="row" style="margin-top:10px;gap:6px">'
+      + '<button class="pill" style="flex:1" onclick="copyC2sReply()">📋 Копировать</button>'
+      + '<button class="pill" style="flex:1;border-color:rgba(56,189,248,.5);color:#7dd3fc" onclick="sendC2sToPc()">💻 В буфер ПК</button>'
+      + '</div>'
+      + '<div class="row" style="margin-top:8px">'
+      + '<input id="c2sFollow" class="in" style="padding:8px 10px;font-size:12px" placeholder="Уточнить вопрос (перевести, цена, фикс)..."/>'
+      + '<button class="btn2" style="padding:8px 12px;font-size:12px" onclick="askC2sFollow()">→</button>'
+      + '</div>';
   }catch{
     badgeEl.textContent = 'Ошибка';
     bodyEl.textContent = 'Не удалось связаться с Luma OS Circle to Search.';
   }
+}
+function copyC2sReply(){
+  if (!c2sLastReply) return;
+  if (navigator.clipboard) navigator.clipboard.writeText(c2sLastReply).catch(()=>{});
+  toast('Ответ скопирован!');
+}
+async function sendC2sToPc(){
+  if (!c2sLastReply) return;
+  try {
+    await api('/api/clipboard', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:c2sLastReply})});
+    triggerHarmonyWave('send', 'Ответ Circle to Search на ПК!', c2sLastReply.slice(0, 60));
+    toast('Отправлено в буфер ПК!');
+  } catch { toast('Ошибка отправки'); }
+}
+function askC2sFollow(){
+  const inp = document.getElementById('c2sFollow');
+  if (!inp || !inp.value.trim()) return;
+  runCircleAnalysis(inp.value.trim());
 }
 
 c2sCanvas.addEventListener('touchstart', e => { e.preventDefault(); c2sDrawing=true; c2sPts=[getCanvasXY(e)]; }, {passive:false});

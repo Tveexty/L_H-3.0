@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -788,9 +789,29 @@ func handleCircleSearchHTTP(w http.ResponseWriter, r *http.Request, kernel *Luma
 	if sources == nil {
 		sources = []AISourceLink{}
 	}
+	srcDev := strings.TrimSpace(req.SourceDevice)
+	if srcDev == "" {
+		srcDev = "pc"
+	}
+	histEntry := recordCircleSearchHistory(CircleSearchHistoryEntry{
+		ID:           fmt.Sprintf("cs_%d", time.Now().UnixNano()),
+		SourceDevice: srcDev,
+		Category:     category,
+		Model:        modelTag,
+		Query:        strings.TrimSpace(req.Query),
+		OCRText:      ocrText,
+		Reply:        reply,
+		ThumbB64:     makeCompactCircleThumb(jpegB64),
+		Colors:       colors,
+		Time:         time.Now().Format("15:04:05"),
+		Timestamp:    time.Now().UnixMilli(),
+	})
+
 	payload := map[string]interface{}{
 		"ok":                 true,
 		"type":               "done",
+		"id":                 histEntry.ID,
+		"source_device":      srcDev,
 		"reply":              reply,
 		"category":           category,
 		"engine":             engineTag,
@@ -811,8 +832,118 @@ func handleCircleSearchHTTP(w http.ResponseWriter, r *http.Request, kernel *Luma
 	}
 }
 
+// ==================== UNIFIED PC <-> PHONE CIRCLE TO SEARCH SYNC & PRE-CAPTURE CACHE ====================
+
+type CircleSearchHistoryEntry struct {
+	ID           string   `json:"id"`
+	SourceDevice string   `json:"source_device"` // "pc" | "phone"
+	Category     string   `json:"category"`
+	Model        string   `json:"model"`
+	Query        string   `json:"query"`
+	OCRText      string   `json:"ocr_text"`
+	Reply        string   `json:"reply"`
+	ThumbB64     string   `json:"thumb_b64,omitempty"`
+	Colors       []string `json:"colors,omitempty"`
+	Time         string   `json:"time"`
+	Timestamp    int64    `json:"timestamp"`
+}
+
+var (
+	circlePreCapMu  sync.Mutex
+	circlePreCapB64 string
+	circlePreCapW   int
+	circlePreCapH   int
+	circlePreCapAt  time.Time
+
+	circleHistMu      sync.RWMutex
+	circleHistoryList = make([]CircleSearchHistoryEntry, 0, 16)
+)
+
+// preCaptureScreenForCircleSearch captures the active external Windows screen (Chrome/YouTube/Telegram/Games)
+// BEFORE Luma OS comes to the foreground when triggered via global hotkey Ctrl+Shift+Space!
+func preCaptureScreenForCircleSearch() bool {
+	b64, w, h, err := captureFullScreenPNG()
+	if err != nil || b64 == "" {
+		return false
+	}
+	circlePreCapMu.Lock()
+	circlePreCapB64 = b64
+	circlePreCapW = w
+	circlePreCapH = h
+	circlePreCapAt = time.Now()
+	circlePreCapMu.Unlock()
+	return true
+}
+
+func consumePreCapturedScreen() (string, int, int, bool) {
+	circlePreCapMu.Lock()
+	defer circlePreCapMu.Unlock()
+	if circlePreCapB64 == "" || time.Since(circlePreCapAt) > 8*time.Second {
+		circlePreCapB64 = ""
+		return "", 0, 0, false
+	}
+	b64, w, h := circlePreCapB64, circlePreCapW, circlePreCapH
+	circlePreCapB64 = ""
+	return b64, w, h, true
+}
+
+func makeCompactCircleThumb(jpegB64 string) string {
+	if jpegB64 == "" {
+		return ""
+	}
+	// Keep thumbnail only if reasonable size (< 180KB base64) so history list stays lightning fast
+	if len(jpegB64) > 180*1024 {
+		return ""
+	}
+	if strings.HasPrefix(jpegB64, "data:") {
+		return jpegB64
+	}
+	return "data:image/jpeg;base64," + jpegB64
+}
+
+func recordCircleSearchHistory(entry CircleSearchHistoryEntry) CircleSearchHistoryEntry {
+	circleHistMu.Lock()
+	circleHistoryList = append([]CircleSearchHistoryEntry{entry}, circleHistoryList...)
+	if len(circleHistoryList) > 15 {
+		circleHistoryList = circleHistoryList[:15]
+	}
+	circleHistMu.Unlock()
+
+	// Broadcast to Desktop SSE so Phone Circle to Search results appear in PC Circle to Search history live!
+	publishOxygenTransferEvent(OxygenTransferEvent{
+		ID:        entry.ID,
+		Direction: "circle_" + entry.SourceDevice,
+		FileName:  entry.Model,
+		Device:    entry.SourceDevice,
+		Timestamp: entry.Timestamp,
+	})
+	return entry
+}
+
+func getCircleSearchHistory() []CircleSearchHistoryEntry {
+	circleHistMu.RLock()
+	defer circleHistMu.RUnlock()
+	out := make([]CircleSearchHistoryEntry, len(circleHistoryList))
+	copy(out, circleHistoryList)
+	return out
+}
+
 func registerCircleSearch171Routes(mux *http.ServeMux, kernel *LumaKernel) {
 	mux.HandleFunc("/api/kernel/lens/circle-search", func(w http.ResponseWriter, r *http.Request) {
 		handleCircleSearchHTTP(w, r, kernel)
+	})
+	mux.HandleFunc("/api/kernel/lens/history", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodDelete {
+			circleHistMu.Lock()
+			circleHistoryList = circleHistoryList[:0]
+			circleHistMu.Unlock()
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "history": []CircleSearchHistoryEntry{}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":      true,
+			"history": getCircleSearchHistory(),
+		})
 	})
 }

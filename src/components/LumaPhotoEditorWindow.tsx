@@ -786,6 +786,22 @@ export const LumaPhotoEditorWindow: React.FC<LumaPhotoEditorProps> = ({
                 <SplitSquareHorizontal className="w-3.5 h-3.5" /> До/После
               </button>
               <button
+                onClick={() => {
+                  const dataUrl = exportFinalDataURL();
+                  if (dataUrl) {
+                    window.dispatchEvent(
+                      new CustomEvent('luma-circle-search-open', {
+                        detail: { imageSrc: dataUrl },
+                      })
+                    );
+                  }
+                }}
+                title="Обвести объект на этом фото (Circle to Search)"
+                className="px-2.5 py-1.5 rounded-xl bg-violet-600/25 border border-violet-400/45 text-violet-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer hover:bg-violet-600/35"
+              >
+                <Sparkles className="w-3.5 h-3.5" /> Circle AI
+              </button>
+              <button
                 onClick={() => void copyImageToClipboard()}
                 title="Копировать фото"
                 className={`p-1.5 rounded-xl border cursor-pointer ${cardCls}`}

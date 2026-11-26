@@ -1051,6 +1051,26 @@ func win32KbdLLHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
 				// All other Win combos (Win+L, Win+Shift+S, Win+Space, Win+E, Win+V, Win+Arrows) pass straight to Windows!
 			}
 
+			// --- 1b. Global Circle to Search Hotkey (Ctrl + Shift + Space) — works over Chrome, YouTube, Telegram & Games! ---
+			const hkVkSpace = 0x20
+			if isDown && info.VkCode == hkVkSpace && !kbdAltTabActive && (info.Flags&hkLlkhfAltDown) == 0 {
+				ctrlSt, _, _ := procHookGetAsyncKeyState.Call(hkVkControl)
+				shiftSt, _, _ := procHookGetAsyncKeyState.Call(hkVkShift)
+				if (ctrlSt&0x8000) != 0 && (shiftSt&0x8000) != 0 {
+					go func() {
+						defer func() { _ = recover() }()
+						// Capture real external app screen BEFORE Luma OS comes forward!
+						preCap := preCaptureScreenForCircleSearch()
+						if lumaHwnd != 0 {
+							forceBringLumaToFront(lumaHwnd, false)
+						}
+						js := fmt.Sprintf(`try{window.focus();}catch(e){} window.dispatchEvent(new CustomEvent('luma-circle-search-open',{detail:{preCaptured:%v}}));`, preCap)
+						safeWebViewEval(wv, stopCh, js)
+					}()
+					return 1
+				}
+			}
+
 			// --- 2. Fixed Desktop & External Alt+Tab Switcher (WebView2 Focus + Arrow/Enter/Esc Forwarding + Auto-Recovery Watchdog) ---
 			if isCustomAltTabEnabled() {
 				// Watchdog: if Alt was released externally (e.g. over an elevated window), auto-recover so keyboard is NEVER stuck!

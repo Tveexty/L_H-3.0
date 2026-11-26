@@ -14,6 +14,7 @@ import {
   Play,
   Radio,
   RotateCcw,
+  ScanSearch,
   Settings2,
   Sun,
   Timer,
@@ -25,6 +26,7 @@ import {
 
 export type ModularBlockId =
   | 'superdevice'
+  | 'circle_search'
   | 'weather'
   | 'currency'
   | 'telemetry'
@@ -47,6 +49,7 @@ export interface ModularPanelConfig {
 
 export const ALL_MODULAR_BLOCKS: { id: ModularBlockId; label: string; scrollHint: string }[] = [
   { id: 'superdevice', label: 'Суперустройство', scrollHint: 'Открыть экосистему' },
+  { id: 'circle_search', label: 'Circle to Search', scrollHint: 'Ctrl+Shift+Space · Поиск по экрану' },
   { id: 'weather', label: 'Погода', scrollHint: 'Колесо: вид погоды' },
   { id: 'currency', label: 'Курсы валют', scrollHint: 'Колесо: USD/EUR/CNY/BTC' },
   { id: 'telemetry', label: 'CPU / GPU / RAM', scrollHint: 'Колесо: режим метрик' },
@@ -66,6 +69,7 @@ export const DEFAULT_MODULAR_PANEL_CONFIG: ModularPanelConfig = {
   scrollActions: true,
   order: [
     'superdevice',
+    'circle_search',
     'weather',
     'currency',
     'telemetry',
@@ -119,6 +123,7 @@ interface LumaModularPanelBarProps {
   onVolumeChange: (v: number) => void;
   onToggleMute: () => void;
   onOpenSuperDevice: () => void;
+  onOpenCircleSearch?: () => void;
   onOpenPhotoStudio: () => void;
   onOpenTaskMgr: () => void;
   onOpenEditionSettings: () => void;
@@ -154,6 +159,7 @@ export const LumaModularPanelBar: React.FC<LumaModularPanelBarProps> = ({
   onVolumeChange,
   onToggleMute,
   onOpenSuperDevice,
+  onOpenCircleSearch,
   onOpenPhotoStudio,
   onOpenTaskMgr,
   onOpenEditionSettings,
@@ -304,6 +310,22 @@ export const LumaModularPanelBar: React.FC<LumaModularPanelBarProps> = ({
               <Radio className="w-2.5 h-2.5" />
             </span>
             <span className="font-bold hidden md:inline">Суперустройство</span>
+          </div>
+        );
+
+      case 'circle_search':
+        return (
+          <div
+            key={id}
+            {...commonProps}
+            onClick={() => onOpenCircleSearch?.()}
+            title="Circle to Search (Ctrl+Shift+Space) · Обведите объект, текст, ошибку или фото"
+            className={`${wrapCls} !bg-gradient-to-r !from-sky-500/25 !to-violet-600/25 !border-sky-400/50 text-sky-100`}
+          >
+            <span className="w-4 h-4 rounded-full bg-gradient-to-br from-sky-400 to-violet-600 text-white flex items-center justify-center shadow">
+              <ScanSearch className="w-2.5 h-2.5" />
+            </span>
+            <span className="font-bold hidden lg:inline">Circle</span>
           </div>
         );
 

@@ -1192,9 +1192,21 @@ func registerNitrogen16Routes(mux *http.ServeMux, kernel *LumaKernel, notifBridg
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "task": task})
 	})
 
-	// Luma OS 1.6.2: Instant Live Screen Capture for Luma Обвести для поиска (Lens) & Gesture Screenshots
+	// Luma OS 1.7.2: Instant Live Screen Capture for Unified Circle to Search (supports pre-captured frame over Chrome/Games!)
 	mux.HandleFunc("/api/kernel/capture/screen-now", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.URL.Query().Get("prefer_cached") == "1" {
+			if cb64, cw, ch, ok := consumePreCapturedScreen(); ok {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"ok":           true,
+					"cached":       true,
+					"image_base64": "data:image/png;base64," + cb64,
+					"width":        cw,
+					"height":       ch,
+				})
+				return
+			}
+		}
 		b64, width, height, err := captureFullScreenPNG()
 		if err != nil {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1205,6 +1217,7 @@ func registerNitrogen16Routes(mux *http.ServeMux, kernel *LumaKernel, notifBridg
 		}
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":           true,
+			"cached":       false,
 			"image_base64": "data:image/png;base64," + b64,
 			"width":        width,
 			"height":       height,

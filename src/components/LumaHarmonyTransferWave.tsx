@@ -85,6 +85,10 @@ export const LumaHarmonyTransferWave: React.FC<LumaHarmonyTransferWaveProps> = (
             const msg = JSON.parse(e.data);
             if (msg?.type === 'transfer' && msg?.event) {
               const ev = msg.event;
+              if (typeof ev.direction === 'string' && ev.direction.startsWith('circle_')) {
+                window.dispatchEvent(new CustomEvent('luma-circle-history-updated', { detail: ev }));
+                return;
+              }
               fireWave({
                 id: ev.id,
                 direction: ev.direction === 'send' ? 'send' : 'receive',

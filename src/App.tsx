@@ -85,6 +85,7 @@ import {
   RefreshCw,
   Rocket,
   RotateCcw,
+  ScanSearch,
   Search,
   Settings,
   ShieldCheck,
@@ -873,6 +874,31 @@ export default function App() {
   }, []);
 
   const [lensSearchOpen, setLensSearchOpen] = useState<boolean>(false);
+  const [lensInitialImage, setLensInitialImage] = useState<string | null>(null);
+  const [lensPreferCached, setLensPreferCached] = useState<boolean>(false);
+  const openUnifiedCircleSearch = useCallback((opts?: { imageSrc?: string | null; preCaptured?: boolean }) => {
+    setLensInitialImage(opts?.imageSrc || null);
+    setLensPreferCached(Boolean(opts?.preCaptured));
+    setLensSearchOpen(true);
+  }, []);
+  useEffect(() => {
+    const onOpenEvent = (e: Event) => {
+      const det = (e as CustomEvent<{ imageSrc?: string; preCaptured?: boolean }>).detail;
+      openUnifiedCircleSearch({ imageSrc: det?.imageSrc || null, preCaptured: Boolean(det?.preCaptured) });
+    };
+    const onKeyHot = (e: KeyboardEvent) => {
+      if ((e.ctrlKey && e.shiftKey && e.code === 'Space') || (e.altKey && e.shiftKey && e.code === 'KeyS')) {
+        e.preventDefault();
+        openUnifiedCircleSearch({ preCaptured: false });
+      }
+    };
+    window.addEventListener('luma-circle-search-open', onOpenEvent);
+    window.addEventListener('keydown', onKeyHot);
+    return () => {
+      window.removeEventListener('luma-circle-search-open', onOpenEvent);
+      window.removeEventListener('keydown', onKeyHot);
+    };
+  }, [openUnifiedCircleSearch]);
   const [gestureConfig, setGestureConfig] = useState<LumaGestureConfig>(() => {
     try {
       const raw = localStorage.getItem('luma_gesture_config_v1');
@@ -13639,10 +13665,22 @@ export default function App() {
               <button
                 onClick={() => setSpotlightOpen(true)}
                 title="Выполнить и поиск (Alt+R)"
-                className={`h-8 px-2.5 ${isPixel ? 'rounded-full' : 'rounded-xl'} border flex items-center gap-1.5 text-xs transition cursor-pointer ${btnCls}`}
+                className={`h-8 px-2.5 rounded-full border flex items-center gap-1.5 text-xs transition cursor-pointer ${btnCls}`}
               >
                 <Search className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
                 <span className="hidden sm:inline font-mono text-[11px]">Alt+R</span>
+              </button>
+              <button
+                onClick={() => openUnifiedCircleSearch({ preCaptured: false })}
+                title="Circle to Search (Ctrl+Shift+Space) · Обвести любой объект, текст или фото (ПК + Телефон)"
+                className={`h-8 px-2.5 rounded-full border flex items-center gap-1.5 text-xs font-bold transition cursor-pointer ${
+                  lensSearchOpen
+                    ? 'bg-gradient-to-r from-sky-500 to-violet-600 border-sky-300 text-white shadow-lg shadow-sky-500/35'
+                    : 'bg-gradient-to-r from-sky-500/18 to-violet-500/18 border-sky-400/35 text-sky-200 hover:from-sky-500/30 hover:to-violet-500/30'
+                }`}
+              >
+                <ScanSearch className="w-3.5 h-3.5 text-sky-300" />
+                <span className="hidden lg:inline text-[11px]">Circle</span>
               </button>
             </div>
           )}
@@ -17188,7 +17226,13 @@ export default function App() {
       <LumaLensSearchOverlay
         open={lensSearchOpen}
         isDark={isDark}
-        onClose={() => setLensSearchOpen(false)}
+        initialImageSrc={lensInitialImage}
+        preferCachedScreen={lensPreferCached}
+        onClose={() => {
+          setLensSearchOpen(false);
+          setLensInitialImage(null);
+          setLensPreferCached(false);
+        }}
         onAskAI={(prompt) => {
           openWindow('ai');
           window.setTimeout(() => {
@@ -17814,6 +17858,7 @@ export default function App() {
         }}
         onToggleMute={handleToggleMute}
         onOpenSuperDevice={() => openWindow('superdevice')}
+        onOpenCircleSearch={() => openUnifiedCircleSearch({ preCaptured: false })}
         onOpenPhotoStudio={() => openWindow('photo_editor')}
         onOpenTaskMgr={() => openWindow('taskmgr')}
         onOpenEditionSettings={() => openWindow('settings', 'about')}
