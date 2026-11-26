@@ -573,6 +573,20 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
   });
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [marquee, setMarquee] = useState<{
+    startX: number;
+    startY: number;
+    curX: number;
+    curY: number;
+    active: boolean;
+    additive: boolean;
+    baseIds: string[];
+  } | null>(null);
+  const suppressDesktopClickRef = useRef<boolean>(false);
+  const marqueeRef = useRef(marquee);
+  marqueeRef.current = marquee;
+
   const [hoveredCell, setHoveredCell] = useState<{ col: number; row: number } | null>(null);
   const [draggingId, setDraggingId] = useState<{ kind: 'widget' | 'shortcut'; id: string } | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
@@ -580,6 +594,81 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
 
   // Huawei HarmonyOS Resize & Shape Mode (works for BOTH Widgets AND Folders!)
   const [resizingTarget, setResizingTarget] = useState<{ kind: 'widget' | 'folder'; id: string } | null>(null);
+
+  const isItemSelected = (id: string) => selectedIds.includes(id) || selectedId === id;
+
+  const toggleSelectItem = (id: string) => {
+    setSelectedIds((prev) => {
+      const base = prev.length > 0 ? prev : selectedId ? [selectedId] : [];
+      const exists = base.includes(id);
+      const next = exists ? base.filter((x) => x !== id) : [...base, id];
+      setSelectedId(next.length > 0 ? next[next.length - 1] : null);
+      return next;
+    });
+  };
+
+  const clearDesktopSelection = () => {
+    setSelectedIds([]);
+    setSelectedId(null);
+  };
+
+  // Luma OS 1.6.6: Live LMB Rubber-Band Marquee Multi-Selection on Desktop
+  useEffect(() => {
+    if (!marquee) return;
+    const onMove = (e: MouseEvent) => {
+      const cur = marqueeRef.current;
+      if (!cur) return;
+      const dx = e.clientX - cur.startX;
+      const dy = e.clientY - cur.startY;
+      const nowActive = cur.active || Math.hypot(dx, dy) >= 5;
+      const nextMarquee = { ...cur, curX: e.clientX, curY: e.clientY, active: nowActive };
+      setMarquee(nextMarquee);
+      if (!nowActive || !gridRef.current) return;
+
+      const left = Math.min(nextMarquee.startX, nextMarquee.curX);
+      const right = Math.max(nextMarquee.startX, nextMarquee.curX);
+      const top = Math.min(nextMarquee.startY, nextMarquee.curY);
+      const bottom = Math.max(nextMarquee.startY, nextMarquee.curY);
+
+      const hitIds: string[] = [];
+      const nodes = gridRef.current.querySelectorAll<HTMLElement>('[data-desktop-item-id]');
+      nodes.forEach((el) => {
+        const id = el.dataset.desktopItemId;
+        if (!id) return;
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) return;
+        if (r.left < right && r.right > left && r.top < bottom && r.bottom > top) {
+          hitIds.push(id);
+        }
+      });
+
+      const merged = cur.additive
+        ? Array.from(new Set([...cur.baseIds, ...hitIds]))
+        : hitIds;
+      setSelectedIds(merged);
+      setSelectedId(merged.length > 0 ? merged[merged.length - 1] : null);
+    };
+
+    const onUp = () => {
+      const cur = marqueeRef.current;
+      if (cur?.active) {
+        suppressDesktopClickRef.current = true;
+        window.requestAnimationFrame(() => {
+          window.setTimeout(() => {
+            suppressDesktopClickRef.current = false;
+          }, 40);
+        });
+      }
+      setMarquee(null);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [Boolean(marquee)]);
 
   // Context Menus & Modals
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; col: number; row: number } | null>(null);
@@ -1074,6 +1163,10 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
       setWidgetCtxMenu(null);
     };
     const onKey = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement | null;
+      const tag = tgt?.tagName;
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || Boolean(tgt?.isContentEditable);
+
       if (e.key === 'Escape') {
         setCtxMenu(null);
         setShortcutCtxMenu(null);
@@ -1084,13 +1177,35 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         setOpenNoteItem(null);
         setHoveredCell(null);
         setResizingTarget(null);
+        clearDesktopSelection();
         if (editMode) onSetEditMode(false);
         return;
       }
+
+      if (typing) return;
+
+      // Ctrl+A on desktop selects all desktop shortcuts & widgets
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'a' || e.key === 'A' || e.code === 'KeyA')) {
+        if (!pickerModal && !openFolderId && !openNoteItem && !installedModalOpen && !activeWidgetSettingsId) {
+          const allIds = [...shortcuts.map((s) => s.id), ...widgets.map((w) => w.id)];
+          if (allIds.length > 0) {
+            e.preventDefault();
+            setSelectedIds(allIds);
+            setSelectedId(allIds[allIds.length - 1]);
+            onPushToast('Рабочий стол', `Выбрано элементов: ${allIds.length}`, 'info');
+          }
+        }
+        return;
+      }
+
+      // Delete removes all selected items (when 2+ items selected via marquee/Ctrl-click)
+      if (e.key === 'Delete' && selectedIds.length > 0 && !pickerModal && !openFolderId && !openNoteItem) {
+        e.preventDefault();
+        deleteSelectedItems();
+        return;
+      }
+
       if (e.key === ' ' && !e.ctrlKey && !e.altKey && !e.metaKey && onQuickLook && selectedId) {
-        const tgt = e.target as HTMLElement | null;
-        const tag = tgt?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tgt?.isContentEditable) return;
         const sc = shortcuts.find((s) => s.id === selectedId);
         if (sc && (sc.kind === 'file' || sc.kind === 'disk_folder') && sc.target) {
           e.preventDefault();
@@ -1111,7 +1226,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
       window.removeEventListener('click', close);
       window.removeEventListener('keydown', onKey);
     };
-  }, [editMode, onSetEditMode, onQuickLook, selectedId, shortcuts]);
+  }, [editMode, onSetEditMode, onQuickLook, selectedId, selectedIds, shortcuts, widgets, pickerModal, openFolderId, openNoteItem, installedModalOpen, activeWidgetSettingsId]);
 
   const currentPlayer = islandPlayers[activePlayerIndex] || islandPlayers[0];
   const hasLiveMedia = Boolean(liveSystem?.media?.available && liveSystem.media.title);
@@ -1119,8 +1234,43 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
   const trackArtist = hasLiveMedia ? liveSystem!.media.artist || liveSystem!.media.source_app : currentPlayer.artist;
   const isPlaying = hasLiveMedia ? liveSystem!.media.is_playing : mediaPlaying;
 
-  // Move widget or shortcut
+  // Move single widget/shortcut OR whole multi-selected group preserving relative offsets!
   const moveItemToCell = (kind: 'widget' | 'shortcut', id: string, col: number, row: number) => {
+    if (selectedIds.length > 1 && selectedIds.includes(id)) {
+      const anchorW = kind === 'widget' ? widgets.find((w) => w.id === id) : undefined;
+      const anchorS = kind === 'shortcut' ? shortcuts.find((s) => s.id === id) : undefined;
+      const origCol = anchorW?.col ?? anchorS?.col ?? col;
+      const origRow = anchorW?.row ?? anchorS?.row ?? row;
+      const dCol = col - origCol;
+      const dRow = row - origRow;
+      if (dCol === 0 && dRow === 0) return;
+
+      const selSet = new Set(selectedIds);
+      setWidgets((prev) =>
+        prev.map((w) => {
+          if (!selSet.has(w.id)) return w;
+          return {
+            ...w,
+            col: Math.max(1, Math.min(gridCols - w.w + 1, w.col + dCol)),
+            row: Math.max(1, Math.min(totalRows - w.h + 1, w.row + dRow)),
+          };
+        })
+      );
+      setShortcuts((prev) =>
+        prev.map((s) => {
+          if (!selSet.has(s.id)) return s;
+          const sw = s.w || 1;
+          const sh = s.h || 1;
+          return {
+            ...s,
+            col: Math.max(1, Math.min(gridCols - sw + 1, s.col + dCol)),
+            row: Math.max(1, Math.min(totalRows - sh + 1, s.row + dRow)),
+          };
+        })
+      );
+      return;
+    }
+
     if (kind === 'widget') {
       setWidgets((prev) =>
         prev.map((w) => {
@@ -1144,6 +1294,103 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         })
       );
     }
+  };
+
+  // Luma OS 1.6.6: Multi-Selection Group Actions (Open / Pack into Folder / Move to Folder / Delete)
+  const openSelectedItems = () => {
+    const chosen = shortcuts.filter((s) => selectedIds.includes(s.id));
+    if (chosen.length === 0) return;
+    chosen.slice(0, 8).forEach((sc, idx) => {
+      window.setTimeout(() => {
+        void handleOpenShortcut(sc);
+      }, idx * 90);
+    });
+    if (chosen.length > 8) {
+      onPushToast('Рабочий стол', `Открыто первых 8 из ${chosen.length} выбранных элементов`, 'info');
+    }
+    clearDesktopSelection();
+  };
+
+  const packSelectedIntoNewFolder = () => {
+    const chosen = shortcuts.filter((s) => selectedIds.includes(s.id) && s.kind !== 'folder');
+    if (chosen.length === 0) {
+      onPushToast('Папка', 'Выберите ярлыки или файлы, чтобы собрать их в папку', 'info');
+      return;
+    }
+    const anchor = chosen[0];
+    const entries: FolderEntry[] = chosen.map((sc, idx) => ({
+      id: `fe_grp_${Date.now()}_${idx}_${sc.id}`,
+      kind: sc.kind === 'folder' ? 'app' : sc.kind,
+      label: sc.label,
+      icon: sc.icon,
+      iconUrl: sc.iconUrl,
+      target: sc.target,
+      content: sc.content,
+    }));
+    const removeSet = new Set(chosen.map((c) => c.id));
+    const folderId = `sc_grpfolder_${Date.now()}`;
+    const newFolder: DesktopShortcut = {
+      id: folderId,
+      kind: 'folder',
+      label: `Группа (${chosen.length})`,
+      icon: 'Folder',
+      target: 'folder',
+      folderItems: entries,
+      col: Math.max(1, Math.min(gridCols - 1, anchor.col)),
+      row: Math.max(1, Math.min(totalRows - 1, anchor.row)),
+      w: 2,
+      h: 2,
+      shape: 'squircle',
+    };
+    setShortcuts((prev) => [...prev.filter((s) => !removeSet.has(s.id)), newFolder]);
+    clearDesktopSelection();
+    onPushToast('Папка создана', `Собрано элементов в папку: ${chosen.length}`, 'success');
+  };
+
+  const moveSelectedShortcutsIntoFolder = (primaryShortcutId: string, folderId: string) => {
+    const idsToMove =
+      selectedIds.length > 1 && selectedIds.includes(primaryShortcutId)
+        ? selectedIds.filter((id) => id !== folderId)
+        : [primaryShortcutId];
+    const targets = shortcuts.filter((s) => idsToMove.includes(s.id) && s.kind !== 'folder' && s.id !== folderId);
+    if (targets.length === 0) return;
+    const newEntries: FolderEntry[] = targets.map((sc, idx) => ({
+      id: `fe_mv_${Date.now()}_${idx}_${sc.id}`,
+      kind: sc.kind === 'folder' ? 'app' : sc.kind,
+      label: sc.label,
+      icon: sc.icon,
+      iconUrl: sc.iconUrl,
+      target: sc.target,
+      content: sc.content,
+    }));
+    const removeSet = new Set(targets.map((t) => t.id));
+    setShortcuts((prev) =>
+      prev
+        .filter((s) => !removeSet.has(s.id))
+        .map((s) => {
+          if (s.id !== folderId) return s;
+          const cur = resolveFolderEntries(s, apps);
+          return { ...s, folderItems: [...cur, ...newEntries], appIds: undefined };
+        })
+    );
+    clearDesktopSelection();
+    onPushToast(
+      'Папка рабочего стола',
+      targets.length === 1 ? `«${targets[0].label}» перемещён в папку` : `Перемещено в папку: ${targets.length} эл.`,
+      'success'
+    );
+  };
+
+  const deleteSelectedItems = () => {
+    const selSet = new Set(selectedIds);
+    const scList = shortcuts.filter((s) => selSet.has(s.id));
+    const wList = widgets.filter((w) => selSet.has(w.id));
+    const total = scList.length + wList.length;
+    if (total === 0) return;
+    scList.forEach((sc) => animatedRemoveShortcut(sc.id, sc.label));
+    wList.forEach((w) => animatedRemoveWidget(w.id, w.title));
+    clearDesktopSelection();
+    onPushToast('Рабочий стол', `Удалено выбранных элементов: ${total}`, 'info');
   };
 
   // Update size, shape or variant of any Widget or Folder (Huawei HarmonyOS Engine)
@@ -1882,6 +2129,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
   };
 
   const handleCellClick = (col: number, row: number) => {
+    if (suppressDesktopClickRef.current) return;
     setCtxMenu(null);
     setShortcutCtxMenu(null);
     setWidgetCtxMenu(null);
@@ -1889,7 +2137,11 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
       setResizingTarget(null);
       return;
     }
-    if (!editMode || !selectedId) return;
+    if (!editMode) {
+      if (selectedIds.length > 0 || selectedId) clearDesktopSelection();
+      return;
+    }
+    if (!selectedId) return;
     if (widgets.some((w) => w.id === selectedId)) {
       moveItemToCell('widget', selectedId, col, row);
     } else if (shortcuts.some((s) => s.id === selectedId)) {
@@ -4480,6 +4732,27 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
       <div
         ref={gridRef}
         className="relative z-10 w-full h-full"
+        onMouseDown={(e) => {
+          if (e.button !== 0 || resizingTarget) return;
+          const tgt = e.target as HTMLElement | null;
+          if (!tgt) return;
+          if (tgt.closest('[data-desktop-item-id], button, input, textarea, select, a, [data-no-marquee="true"]')) {
+            return;
+          }
+          setCtxMenu(null);
+          setShortcutCtxMenu(null);
+          setWidgetCtxMenu(null);
+          const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+          setMarquee({
+            startX: e.clientX,
+            startY: e.clientY,
+            curX: e.clientX,
+            curY: e.clientY,
+            active: false,
+            additive,
+            baseIds: additive ? (selectedIds.length > 0 ? selectedIds : selectedId ? [selectedId] : []) : [],
+          });
+        }}
         onMouseLeave={() => setHoveredCell(null)}
         onDragEnter={(e) => {
           if (e.dataTransfer?.types?.includes('Files')) setExternalFileDrag(true);
@@ -4572,7 +4845,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
         {widgets.map((w) => {
           const clampedCol = Math.max(1, Math.min(gridCols - w.w + 1, w.col));
           const clampedRow = Math.max(1, Math.min(totalRows - w.h + 1, w.row));
-          const isSelected = selectedId === w.id;
+          const isSelected = isItemSelected(w.id);
+          const isMultiSelected = selectedIds.includes(w.id);
           const isResizing = resizingTarget?.kind === 'widget' && resizingTarget.id === w.id;
           const shapeCls = getShapeClass(w.shape);
           const isFullBleed = w.widgetType === 'luma_weather_week' || w.widgetType === 'luma_custom_widget';
@@ -4596,6 +4870,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           return (
             <div
               key={w.id}
+              data-desktop-item-id={w.id}
+              data-desktop-item-kind="widget"
               draggable={!isResizing}
               onDragStart={(e) => {
                 if (!isResizing) {
@@ -4613,8 +4889,13 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 setCtxMenu(null);
                 setShortcutCtxMenu(null);
                 setWidgetCtxMenu(null);
+                if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                  toggleSelectItem(w.id);
+                  return;
+                }
                 if (editMode) {
                   setSelectedId(w.id);
+                  setSelectedIds([w.id]);
                   return;
                 }
                 const targetEl = e.target as HTMLElement | null;
@@ -4630,6 +4911,9 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 setCtxMenu(null);
                 setShortcutCtxMenu(null);
                 setSelectedId(w.id);
+                if (!selectedIds.includes(w.id)) {
+                  setSelectedIds([w.id]);
+                }
                 const x = Math.min(e.clientX, window.innerWidth - 235);
                 const y = Math.min(e.clientY, window.innerHeight - 230);
                 setWidgetCtxMenu({ x: Math.max(12, x), y: Math.max(12, y), w });
@@ -4657,11 +4941,16 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
               } ${
                 isResizing
                   ? 'ring-2 ring-[var(--luma-accent)] shadow-[0_0_0_5px_var(--luma-accent-soft)]'
-                  : isSelected && editMode
-                  ? 'ring-2 ring-[var(--luma-accent)]'
+                  : isMultiSelected || (isSelected && editMode)
+                  ? 'ring-2 ring-[var(--luma-accent)] shadow-[0_0_0_4px_var(--luma-accent-soft)]'
                   : ''
               }`}
             >
+              {isMultiSelected && selectedIds.length >= 2 && (
+                <span className="pointer-events-none absolute top-1.5 left-1.5 z-30 w-4 h-4 rounded-full bg-[var(--luma-accent)] text-white text-[10px] font-black flex items-center justify-center shadow-md">
+                  ✓
+                </span>
+              )}
               <div className={`w-full h-full overflow-hidden ${isFullBleed ? '' : shapeCls}`}>{renderWidgetBody(w)}</div>
 
               {!editMode && !isResizing && (
@@ -4718,7 +5007,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           const sh = sc.kind === 'folder' ? Math.max(1, sc.h || 1) : 1;
           const clampedCol = Math.max(1, Math.min(gridCols - sw + 1, sc.col));
           const clampedRow = Math.max(1, Math.min(totalRows - sh + 1, sc.row));
-          const isSelected = selectedId === sc.id;
+          const isSelected = isItemSelected(sc.id);
+          const isMultiSelected = selectedIds.includes(sc.id);
           const isResizing = resizingTarget?.kind === 'folder' && resizingTarget.id === sc.id;
           const isFolder = sc.kind === 'folder';
           const isBigFolder = isFolder && (sw >= 2 || sh >= 2);
@@ -4733,6 +5023,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
             return (
               <div
                 key={sc.id}
+                data-desktop-item-id={sc.id}
+                data-desktop-item-kind="shortcut"
                 draggable={!isResizing}
                 onDragStart={(e) => {
                   if (!isResizing) {
@@ -4770,7 +5062,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                   const sourceId =
                     draggingId?.kind === 'shortcut' ? draggingId.id : dtShortcutId || '';
                   if (sourceId && sourceId !== sc.id) {
-                    moveShortcutIntoFolder(sourceId, sc.id);
+                    moveSelectedShortcutsIntoFolder(sourceId, sc.id);
                     setDraggingId(null);
                     return;
                   }
@@ -4787,8 +5079,13 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                   setCtxMenu(null);
                   setShortcutCtxMenu(null);
                   setWidgetCtxMenu(null);
+                  if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                    toggleSelectItem(sc.id);
+                    return;
+                  }
                   if (editMode) {
                     setSelectedId(sc.id);
+                    setSelectedIds([sc.id]);
                     return;
                   }
                   setOpenFolderId(sc.id);
@@ -4799,6 +5096,9 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                   setCtxMenu(null);
                   setWidgetCtxMenu(null);
                   setSelectedId(sc.id);
+                  if (!selectedIds.includes(sc.id)) {
+                    setSelectedIds([sc.id]);
+                  }
                   const x = Math.min(e.clientX, window.innerWidth - 235);
                   const y = Math.min(e.clientY, window.innerHeight - 250);
                   setShortcutCtxMenu({ x: Math.max(12, x), y: Math.max(12, y), sc });
@@ -4813,11 +5113,16 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 } ${
                   isDropTarget || isResizing
                     ? 'ring-2 ring-[var(--luma-accent)] shadow-[0_0_0_5px_var(--luma-accent-soft)]'
-                    : isSelected && editMode
-                    ? 'ring-2 ring-[var(--luma-accent)]'
+                    : isMultiSelected || (isSelected && editMode)
+                    ? 'ring-2 ring-[var(--luma-accent)] shadow-[0_0_0_4px_var(--luma-accent-soft)]'
                     : ''
                 }`}
               >
+                {isMultiSelected && selectedIds.length >= 2 && (
+                  <span className="pointer-events-none absolute -top-1.5 -left-1.5 z-30 w-4 h-4 rounded-full bg-[var(--luma-accent)] text-white text-[10px] font-black flex items-center justify-center shadow-md">
+                    ✓
+                  </span>
+                )}
                 <div className="flex items-center justify-between gap-1 px-0.5 shrink-0">
                   <span className="text-[11px] font-bold truncate flex items-center gap-1">
                     <Folder className="w-3 h-3 text-[var(--luma-accent)] shrink-0" />
@@ -4906,6 +5211,8 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           return (
             <button
               key={sc.id}
+              data-desktop-item-id={sc.id}
+              data-desktop-item-kind="shortcut"
               draggable={!isResizing}
               onDragStart={(e) => {
                 if (!isResizing) {
@@ -4945,7 +5252,7 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 const sourceId =
                   draggingId?.kind === 'shortcut' ? draggingId.id : dtShortcutId || '';
                 if (sourceId && sourceId !== sc.id) {
-                  moveShortcutIntoFolder(sourceId, sc.id);
+                  moveSelectedShortcutsIntoFolder(sourceId, sc.id);
                   setDraggingId(null);
                   return;
                 }
@@ -4962,8 +5269,13 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 setCtxMenu(null);
                 setShortcutCtxMenu(null);
                 setWidgetCtxMenu(null);
+                if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                  toggleSelectItem(sc.id);
+                  return;
+                }
                 if (editMode) {
                   setSelectedId(sc.id);
+                  setSelectedIds([sc.id]);
                   return;
                 }
                 handleOpenShortcut(sc);
@@ -4974,6 +5286,9 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
                 setCtxMenu(null);
                 setWidgetCtxMenu(null);
                 setSelectedId(sc.id);
+                if (!selectedIds.includes(sc.id)) {
+                  setSelectedIds([sc.id]);
+                }
                 const x = Math.min(e.clientX, window.innerWidth - 235);
                 const y = Math.min(e.clientY, window.innerHeight - 250);
                 setShortcutCtxMenu({ x: Math.max(12, x), y: Math.max(12, y), sc });
@@ -4997,11 +5312,16 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
               } ${
                 isDropTarget || isResizing
                   ? 'ring-2 ring-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
-                  : isSelected && editMode
+                  : isMultiSelected || (isSelected && editMode)
                   ? 'ring-2 ring-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
                   : ''
               }`}
             >
+              {isMultiSelected && selectedIds.length >= 2 && (
+                <span className="pointer-events-none absolute top-0.5 left-0.5 z-30 w-4 h-4 rounded-full bg-[var(--luma-accent)] text-white text-[9px] font-black flex items-center justify-center shadow-md">
+                  ✓
+                </span>
+              )}
               <div
                 style={{
                   width: `${Math.max(34, Math.min(72, iconSizePx))}px`,
@@ -5168,7 +5488,102 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
             <Trash2 className="w-3.5 h-3.5" />
             <span>Удалить виджет</span>
           </button>
+          {selectedIds.length >= 2 && selectedIds.includes(widgetCtxMenu.w.id) && (
+            <>
+              <div className={`my-1 border-t ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`} />
+              <div className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>
+                Выбрано элементов: {selectedIds.length}
+              </div>
+              <button
+                onClick={() => {
+                  deleteSelectedItems();
+                  setWidgetCtxMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-rose-400 hover:bg-rose-500/15 font-semibold cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Удалить выбранные ({selectedIds.length})</span>
+              </button>
+              <button
+                onClick={() => {
+                  clearDesktopSelection();
+                  setWidgetCtxMenu(null);
+                }}
+                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left cursor-pointer ${
+                  isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+                }`}
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Снять выделение</span>
+              </button>
+            </>
+          )}
         </SmartContextMenu>
+      )}
+
+      {/* Luma OS 1.6.6: Live LMB Rubber-Band Marquee Selection Rectangle */}
+      {marquee?.active && (
+        <div
+          className="fixed pointer-events-none z-40 rounded-lg border-[1.5px] border-[var(--luma-accent)] bg-[var(--luma-accent)]/18 shadow-[0_0_24px_var(--luma-accent-soft)] backdrop-blur-[1px]"
+          style={{
+            left: `${Math.min(marquee.startX, marquee.curX)}px`,
+            top: `${Math.min(marquee.startY, marquee.curY)}px`,
+            width: `${Math.max(2, Math.abs(marquee.curX - marquee.startX))}px`,
+            height: `${Math.max(2, Math.abs(marquee.curY - marquee.startY))}px`,
+          }}
+        />
+      )}
+
+      {/* Luma OS 1.6.6: Floating Multi-Selection Action Bar */}
+      {selectedIds.length >= 2 && !resizingWidget && !resizingFolder && (
+        <div
+          data-no-marquee="true"
+          onClick={(e) => e.stopPropagation()}
+          className={`luma-spring-panel fixed ${
+            taskbarPosition === 'bottom' ? 'bottom-16' : 'bottom-4'
+          } left-1/2 -translate-x-1/2 z-40 border px-3 py-1.5 rounded-2xl shadow-2xl flex items-center gap-2 text-xs ${modalShellCls}`}
+        >
+          <span className="px-2 py-0.5 rounded-full bg-[var(--luma-accent)] text-white font-mono text-[11px] font-bold">
+            Выбрано: {selectedIds.length}
+          </span>
+          <button
+            onClick={openSelectedItems}
+            className={`px-2.5 py-1 rounded-xl font-semibold inline-flex items-center gap-1.5 cursor-pointer transition ${
+              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+            }`}
+            title="Открыть все выбранные элементы"
+          >
+            <Play className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+            <span>Открыть</span>
+          </button>
+          <button
+            onClick={packSelectedIntoNewFolder}
+            className={`px-2.5 py-1 rounded-xl font-semibold inline-flex items-center gap-1.5 cursor-pointer transition ${
+              isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+            }`}
+            title="Собрать выбранные ярлыки и файлы в новую папку"
+          >
+            <Folder className="w-3.5 h-3.5 text-sky-400" />
+            <span>Собрать в папку</span>
+          </button>
+          <button
+            onClick={deleteSelectedItems}
+            className="px-2.5 py-1 rounded-xl font-semibold inline-flex items-center gap-1.5 text-rose-400 hover:bg-rose-500/15 cursor-pointer transition"
+            title="Удалить выбранные элементы (Delete)"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Удалить</span>
+          </button>
+          <button
+            onClick={clearDesktopSelection}
+            className={`p-1 rounded-lg cursor-pointer transition ${
+              isDark ? 'hover:bg-white/10 text-zinc-400' : 'hover:bg-zinc-900/10 text-zinc-600'
+            }`}
+            title="Снять выделение (Esc)"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
 
       {/* SHORTCUT & FOLDER RIGHT-CLICK CONTEXT MENU */}
@@ -5178,8 +5593,61 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           y={shortcutCtxMenu.y}
           zIndex={65}
           onClick={(e) => e.stopPropagation()}
-          className={`luma-animate-in w-56 border p-1.5 shadow-2xl text-xs ${modalShellCls}`}
+          className={`luma-animate-in w-60 border p-1.5 shadow-2xl text-xs ${modalShellCls}`}
         >
+          {selectedIds.length >= 2 && selectedIds.includes(shortcutCtxMenu.sc.id) && (
+            <div className={`mb-1 pb-1 border-b space-y-0.5 ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
+              <div className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-[var(--luma-accent)] font-bold`}>
+                Выбрано элементов: {selectedIds.length}
+              </div>
+              <button
+                onClick={() => {
+                  openSelectedItems();
+                  setShortcutCtxMenu(null);
+                }}
+                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left font-semibold cursor-pointer ${
+                  isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+                }`}
+              >
+                <Play className="w-3.5 h-3.5 text-[var(--luma-accent)]" />
+                <span>Открыть выбранные ({selectedIds.length})</span>
+              </button>
+              <button
+                onClick={() => {
+                  packSelectedIntoNewFolder();
+                  setShortcutCtxMenu(null);
+                }}
+                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left font-semibold cursor-pointer ${
+                  isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+                }`}
+              >
+                <Folder className="w-3.5 h-3.5 text-sky-400" />
+                <span>Собрать в папку</span>
+              </button>
+              <button
+                onClick={() => {
+                  deleteSelectedItems();
+                  setShortcutCtxMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left text-rose-400 hover:bg-rose-500/15 font-semibold cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Удалить выбранные ({selectedIds.length})</span>
+              </button>
+              <button
+                onClick={() => {
+                  clearDesktopSelection();
+                  setShortcutCtxMenu(null);
+                }}
+                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left cursor-pointer ${
+                  isDark ? 'hover:bg-white/10' : 'hover:bg-zinc-900/10'
+                }`}
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Снять выделение</span>
+              </button>
+            </div>
+          )}
           <div className={`px-2.5 py-1.5 border-b font-bold truncate ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`}>
             {shortcutCtxMenu.sc.label}
           </div>

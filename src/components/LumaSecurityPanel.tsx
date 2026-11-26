@@ -98,6 +98,46 @@ export interface SecurityStatusData {
   crypto: string;
 }
 
+export interface HardcoreShieldConfig {
+  hardcore_mode: boolean;
+  auto_shred_remote_control: boolean;
+  usb_flash_guard: boolean;
+  block_foreign_files: boolean;
+  kill_remote_control_procs: boolean;
+}
+
+export interface UsbDriveInfo {
+  path: string;
+  label: string;
+  scanned_at: string;
+  threats: number;
+}
+
+export interface HardcoreShieldEvent {
+  id: string;
+  time: string;
+  action: string;
+  source: string;
+  name: string;
+  path: string;
+  reason: string;
+  sha256?: string;
+  success: boolean;
+}
+
+export interface HardcoreShieldStatus {
+  ok: boolean;
+  version: string;
+  rules_count: number;
+  config: HardcoreShieldConfig;
+  shredded_count: number;
+  blocked_foreign_count: number;
+  killed_processes_count: number;
+  usb_drives: UsbDriveInfo[];
+  events: HardcoreShieldEvent[];
+  last_tick_at: string;
+}
+
 interface LumaSecurityPanelProps {
   isDark: boolean;
   surfaceCls: string;
@@ -116,13 +156,15 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
   onOpenWindowsDefender,
 }) => {
   const [status, setStatus] = useState<SecurityStatusData | null>(null);
+  const [hardcore, setHardcore] = useState<HardcoreShieldStatus | null>(null);
+  const [hardcoreBusy, setHardcoreBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanLabel, setScanLabel] = useState('');
   const [customPath, setCustomPath] = useState('');
   const [newExclusion, setNewExclusion] = useState('');
   const [subTab, setSubTab] = useState<'scanner' | 'network' | 'startup_audit' | 'hosts_audit' | 'quarantine' | 'exclusions' | 'audit'>('scanner');
 
-  // LumaShield 1.5 Network Monitor, Startup Auditor & Hosts File DNS Integrity Auditor state
+  // LumaShield 3.0 Network Monitor, Startup Auditor & Hosts File DNS Integrity Auditor state
   const [tcpConns, setTcpConns] = useState<ActiveTcpConnectionInfo[]>([]);
   const [tcpLoading, setTcpLoading] = useState(false);
   const [tcpOnlySusp, setTcpOnlySusp] = useState(false);
@@ -131,6 +173,124 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
   const [startupLoading, setStartupLoading] = useState(false);
   const [hostsAudit, setHostsAudit] = useState<HostsAuditResult | null>(null);
   const [hostsLoading, setHostsLoading] = useState(false);
+
+  const fetchHardcore = async () => {
+    try {
+      const r = await fetch('/api/kernel/security/hardcore/config');
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.ok) setHardcore(d);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const updateHardcoreConfig = async (patch: Partial<HardcoreShieldConfig>) => {
+    const base: HardcoreShieldConfig = hardcore?.config || {
+      hardcore_mode: true,
+      auto_shred_remote_control: true,
+      usb_flash_guard: true,
+      block_foreign_files: true,
+      kill_remote_control_procs: true,
+    };
+    const next = { ...base, ...patch };
+    try {
+      const r = await fetch('/api/kernel/security/hardcore/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.ok) setHardcore(d);
+        onPushToast(
+          'LumaShield 3.0 · Жёсткая защита',
+          next.hardcore_mode
+            ? 'Активная Anti-RAT, USB и блокировка чужих файлов применена'
+            : 'Жёсткий режим временно приостановлен',
+          'success'
+        );
+      }
+    } catch {
+      onPushToast('LumaShield 3.0', 'Нет связи с ядром LumaCore 1.5.6', 'warning');
+    }
+  };
+
+  const runUsbGuardScan = async () => {
+    setHardcoreBusy(true);
+    try {
+      const r = await fetch('/api/kernel/security/hardcore/usb-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.status) setHardcore(d.status);
+        const drvCount = Array.isArray(d?.drives) ? d.drives.length : 0;
+        onPushToast(
+          'LumaShield 3.0 · Щит флешек (USB)',
+          drvCount === 0
+            ? 'Съёмные USB-флешки не подключены — авто-мониторинг активен'
+            : `Проверено флешек: ${drvCount} · файлов: ${d.scanned || 0} · уничтожено под ноль: ${d.shredded || 0}`,
+          (d.threats || 0) > 0 ? 'warning' : 'success'
+        );
+        await fetchStatus();
+      }
+    } catch {
+      onPushToast('LumaShield 3.0', 'Ошибка сканирования USB-флешек', 'warning');
+    } finally {
+      setHardcoreBusy(false);
+    }
+  };
+
+  const runAntiRatHunt = async () => {
+    setHardcoreBusy(true);
+    try {
+      const r = await fetch('/api/kernel/security/hardcore/hunt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.status) setHardcore(d.status);
+        onPushToast(
+          'LumaShield 3.0 · Охота на RAT / Управление ПК',
+          `Проверено: ${d.scanned || 0} · уничтожено под ноль: ${d.shredded || 0} · заблокировано чужих: ${d.blocked || 0} · убито процессов: ${d.killed || 0}`,
+          (d.threats || 0) > 0 ? 'warning' : 'success'
+        );
+        await fetchStatus();
+      }
+    } catch {
+      onPushToast('LumaShield 3.0', 'Ошибка активной охоты на RAT', 'warning');
+    } finally {
+      setHardcoreBusy(false);
+    }
+  };
+
+  const shredThreatToZero = async (t: SecurityThreatItem) => {
+    try {
+      const r = await fetch('/api/kernel/security/hardcore/shred', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: t.path, reason: t.reason, source: 'system' }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.status) setHardcore(d.status);
+        onPushToast(
+          'LumaShield 3.0 · Уничтожение под ноль',
+          d?.ok ? `Файл «${t.name}» перезаписан нулями и полностью удалён!` : d?.message || 'Файл защищён',
+          d?.ok ? 'success' : 'warning'
+        );
+        await fetchStatus();
+      }
+    } catch {
+      onPushToast('LumaShield 3.0', 'Не удалось выполнить удаление под ноль', 'warning');
+    }
+  };
 
   const fetchStatus = async () => {
     try {
@@ -142,6 +302,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
     } catch {
       // ignore
     }
+    void fetchHardcore();
   };
 
   const fetchNetworkMonitor = async () => {
@@ -544,11 +705,11 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
             <div className="min-w-0">
-              <div className="font-bold">LumaShield 2.5 + Windows Defender (Без конфликтов)</div>
+              <div className="font-bold">LumaShield 3.0 Hardcore + Windows Defender (Без конфликтов)</div>
               <div className="text-[11px] opacity-85">
                 {status?.defender?.available
-                  ? `Windows Defender активен (реальное время: ${status.defender.realtime_enabled ? 'ВКЛ' : 'ВЫКЛ'} · базы ${status.defender.signature_version}). LumaShield 2.5 усиливает защиту: 235+ эвристических правил, аудит автозагрузки и планировщика задач, защита от стилеров, BYOVD и LOLBins.`
-                  : 'LumaShield 2.5 работает в безопасном user-space режиме: 235+ правил, аудит автозагрузки и планировщика задач Windows, защита от стилеров/RAT/BYOVD, проверка архивов и макросов Office VBA, PE-маскировка и аудит Hosts/TCP.'}
+                  ? `Windows Defender активен (реальное время: ${status.defender.realtime_enabled ? 'ВКЛ' : 'ВЫКЛ'} · базы ${status.defender.signature_version}). LumaShield 3.0 усиливает защиту: 340+ правил, Anti-RAT уничтожение под ноль, Щит USB-флешек и Блокировка чужих файлов.`
+                  : 'LumaShield 3.0 работает в активном режиме: 340+ эвристических и Anti-RAT правил, автоматическое уничтожение под ноль файлов удалённого управления ПК, Щит USB-флешек, блокировка чужих файлов и аудит автозагрузки/Hosts/TCP.'}
               </div>
             </div>
           </div>
@@ -561,12 +722,144 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
             </button>
           )}
         </div>
+
+        {/* LUMASHIELD 3.0 HARDCORE ACTIVE DEFENSE PANEL (ANTI-RAT ZERO-SHREDDER + USB FLASH GUARD + FOREIGN BLOCKER) */}
+        <div
+          className={`p-3.5 rounded-2xl border space-y-3 text-xs ${
+            hardcore?.config?.hardcore_mode ?? true
+              ? isDark
+                ? 'bg-rose-500/[0.08] border-rose-500/35'
+                : 'bg-rose-500/[0.07] border-rose-500/35'
+              : surfaceCls
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0" />
+              <div className="min-w-0">
+                <div className="font-black flex items-center gap-2 flex-wrap">
+                  <span>LumaShield 3.0 · Жёсткая защита (Anti-RAT · USB · Чужие файлы)</span>
+                  <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 text-[9px] font-mono">
+                    {hardcore?.rules_count ?? 340}+ ПРАВИЛ
+                  </span>
+                </div>
+                <div className={`text-[11px] ${mutedCls}`}>
+                  Любой файл, пытающийся управлять ПК (RAT / Reverse Shell / Keylogger / USB-червь), перезаписывается нулями и удаляется под ноль. Ядро Windows и Luma OS защищены белым списком.
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+              <button
+                disabled={hardcoreBusy}
+                onClick={() => void runAntiRatHunt()}
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                {hardcoreBusy ? 'Проверка...' : 'Охота на RAT'}
+              </button>
+              <button
+                disabled={hardcoreBusy}
+                onClick={() => void runUsbGuardScan()}
+                className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${btnCls}`}
+              >
+                <FolderSearch className="w-3.5 h-3.5 text-sky-400" />
+                Проверить флешки (USB)
+              </button>
+            </div>
+          </div>
+
+          {/* 4 Live Hardcore Defense Counters */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono">
+            {[
+              ['Уничтожено под ноль', String(hardcore?.shredded_count ?? 0), 'text-rose-400'],
+              ['Заблокировано чужих', String(hardcore?.blocked_foreign_count ?? 0), 'text-amber-400'],
+              ['Убито RAT-процессов', String(hardcore?.killed_processes_count ?? 0), 'text-orange-400'],
+              ['USB-флешек под щитом', String(hardcore?.usb_drives?.length ?? 0), 'text-sky-400'],
+            ].map(([lbl, val, cls]) => (
+              <div key={lbl} className={`p-2 rounded-xl border ${isDark ? 'bg-black/30 border-white/10' : 'bg-white/60 border-zinc-900/10'}`}>
+                <div className={`text-[9px] uppercase ${mutedCls}`}>{lbl}</div>
+                <div className={`text-base font-black ${cls}`}>{val}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* 5 Master Hardcore Toggles */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {[
+              {
+                key: 'hardcore_mode' as const,
+                title: 'Жёсткий режим LumaShield 3.0',
+                sub: 'Непрерывный активный щит каждые 6 сек (система + USB)',
+                active: hardcore?.config?.hardcore_mode ?? true,
+              },
+              {
+                key: 'auto_shred_remote_control' as const,
+                title: 'Удалять под ноль файлы управления ПК',
+                sub: 'Перезапись нулями и удаление RAT, шеллов, кейлоггеров',
+                active: hardcore?.config?.auto_shred_remote_control ?? true,
+              },
+              {
+                key: 'usb_flash_guard' as const,
+                title: 'Щит USB-флешек в реальном времени',
+                sub: 'Авто-уничтожение autorun.inf, .lnk-червей и RAT с флешек',
+                active: hardcore?.config?.usb_flash_guard ?? true,
+              },
+              {
+                key: 'block_foreign_files' as const,
+                title: 'Блокировать чужие файлы',
+                sub: 'Изоляция подозрительных скачанных (Zone.Identifier) и USB-файлов',
+                active: hardcore?.config?.block_foreign_files ?? true,
+              },
+              {
+                key: 'kill_remote_control_procs' as const,
+                title: 'Авто-убийство RAT-процессов',
+                sub: 'Мгновенное завершение вредоносных процессов удалённого доступа',
+                active: hardcore?.config?.kill_remote_control_procs ?? true,
+              },
+            ].map((opt) => (
+              <label
+                key={opt.key}
+                className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 cursor-pointer ${
+                  opt.active ? 'border-rose-500/40 bg-rose-500/10' : btnCls
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="font-bold truncate">{opt.title}</div>
+                  <div className={`text-[10px] truncate ${mutedCls}`}>{opt.sub}</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={opt.active}
+                  onChange={(e) => void updateHardcoreConfig({ [opt.key]: e.target.checked })}
+                  className="accent-rose-500 w-4 h-4 shrink-0"
+                />
+              </label>
+            ))}
+          </div>
+
+          {/* Live Neutralization Log (when threats were shredded/blocked) */}
+          {hardcore?.events && hardcore.events.length > 0 && (
+            <div className={`p-2.5 rounded-xl border space-y-1 max-h-36 overflow-y-auto ${isDark ? 'bg-black/35 border-white/10' : 'bg-white/65 border-zinc-900/10'}`}>
+              <div className={`text-[10px] font-mono uppercase ${mutedCls}`}>
+                Журнал жёсткой нейтрализации ({hardcore.events.length})
+              </div>
+              {hardcore.events.slice(0, 8).map((ev) => (
+                <div key={ev.id} className="flex items-center justify-between gap-2 text-[10px] font-mono">
+                  <span className="truncate">
+                    <span className="text-rose-400 font-bold">[{ev.action}]</span> {ev.name} — {ev.reason}
+                  </span>
+                  <span className={`shrink-0 ${mutedCls}`}>{ev.time}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Sub-Tabs */}
       <div className="flex flex-wrap gap-1.5 text-xs">
         {[
-          { id: 'scanner' as const, label: 'Антивирус 2.5', badge: threats.length || undefined },
+          { id: 'scanner' as const, label: 'Антивирус 3.0', badge: threats.length || undefined },
           { id: 'hosts_audit' as const, label: 'Аудит Hosts (DNS)', badge: hostsAudit ? hostsAudit.suspicious_count || undefined : undefined },
           { id: 'network' as const, label: 'Сетевой экран', badge: suspTcpCount || (tcpConns.length || undefined) },
           {
@@ -880,10 +1173,18 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
                       </button>
                       <button
                         onClick={() => void quarantineThreat(t)}
-                        className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
                       >
                         <Lock className="w-3.5 h-3.5" />
                         В карантин
+                      </button>
+                      <button
+                        onClick={() => void shredThreatToZero(t)}
+                        className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                        title="Перезаписать файл нулями и навсегда уничтожить (LumaShield 3.0)"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Под ноль
                       </button>
                     </div>
                   </div>

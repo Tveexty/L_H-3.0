@@ -230,6 +230,26 @@ const RU_TO_EN_PHRASES: [string, string][] = [
   ['Стоп-кадр', 'Freeze'],
   ['Плей', 'Play'],
 
+  // 1.6.x Desktop Multi-Select, Dynamic Island & Spring Physics phrases
+  ['Пружинные анимации во всей системе', 'System-Wide Spring Animations'],
+  ['Пружинные анимации', 'Spring Animations'],
+  ['Поверх всех окон Windows и Chrome', 'Always On Top Over Chrome & Windows'],
+  ['Поверх всех окон', 'Always On Top'],
+  ['Динамический остров', 'Dynamic Island'],
+  ['Собрать в папку', 'Group into Folder'],
+  ['Удалить выбранные', 'Delete Selected'],
+  ['Открыть выбранные', 'Open Selected'],
+  ['Снять выделение', 'Clear Selection'],
+  ['Выбрано элементов', 'Selected Items'],
+  ['Выбрано', 'Selected'],
+  ['Пропускать клики мыши', 'Click-Through Mode'],
+  ['Блокировка позиции', 'Lock Position'],
+  ['Отступ от края', 'Edge Offset'],
+  ['Прозрачность капсулы', 'Capsule Opacity'],
+  ['Стиль капсулы', 'Capsule Style'],
+  ['Язык интерфейса системы', 'System Interface Language'],
+  ['Поиск языка интерфейса...', 'Search interface language...'],
+
   // Days of week & months
   ['Понедельник', 'Monday'], ['Вторник', 'Tuesday'], ['Среда', 'Wednesday'],
   ['Четверг', 'Thursday'], ['Пятница', 'Friday'], ['Суббота', 'Saturday'], ['Воскресенье', 'Sunday'],
@@ -249,6 +269,7 @@ const EN_TO_LOCALE: Partial<Record<LangCode, Record<string, string>>> = {
     'Night Light': 'Nachtlicht', 'Gaming Boost': 'Spielmodus', 'Microphone': 'Mikrofon', 'Home': 'Start',
     'Insert': 'Einfügen', 'Layout': 'Layout', 'Design': 'Entwurf', 'Formulas': 'Formeln', 'Data': 'Daten',
     'Review': 'Überprüfen', 'View': 'Ansicht', 'Export': 'Exportieren', 'Templates': 'Vorlagen',
+    'Always On Top': 'Immer im Vordergrund', 'Spring Animations': 'Federanimationen', 'Selected': 'Ausgewählt',
   },
   fr: {
     'Control Center': 'Centre de contrôle', 'Notification Center': 'Notifications', 'Settings': 'Paramètres',
@@ -259,6 +280,7 @@ const EN_TO_LOCALE: Partial<Record<LangCode, Record<string, string>>> = {
     'Calculator': 'Calculatrice', 'Recycle Bin': 'Corbeille', 'Screen Record': 'Enregistrer', 'Screenshot': 'Capture',
     'Do Not Disturb': 'Ne pas déranger', 'Night Light': 'Éclairage nocturne', 'Home': 'Accueil', 'Insert': 'Insertion',
     'View': 'Affichage', 'Export': 'Exporter', 'Templates': 'Modèles',
+    'Always On Top': 'Toujours au premier plan', 'Spring Animations': 'Animations à ressort', 'Selected': 'Sélectionné',
   },
   es: {
     'Control Center': 'Centro de control', 'Notification Center': 'Notificaciones', 'Settings': 'Configuración',
@@ -269,6 +291,7 @@ const EN_TO_LOCALE: Partial<Record<LangCode, Record<string, string>>> = {
     'Calculator': 'Calculadora', 'Recycle Bin': 'Papelera', 'Screen Record': 'Grabar pantalla', 'Screenshot': 'Captura',
     'Do Not Disturb': 'No molestar', 'Night Light': 'Luz nocturna', 'Home': 'Inicio', 'Insert': 'Insertar',
     'View': 'Vista', 'Export': 'Exportar', 'Templates': 'Plantillas',
+    'Always On Top': 'Siempre visible', 'Spring Animations': 'Animaciones elásticas', 'Selected': 'Seleccionado',
   },
   uk: {
     'Control Center': 'Панель керування', 'Notification Center': 'Центр сповіщень', 'Settings': 'Налаштування',
@@ -279,6 +302,150 @@ const EN_TO_LOCALE: Partial<Record<LangCode, Record<string, string>>> = {
     'Calculator': 'Калькулятор', 'Recycle Bin': 'Кошик', 'Screen Record': 'Запис екрана', 'Screenshot': 'Знімок екрана',
     'Do Not Disturb': 'Не турбувати', 'Night Light': 'Нічне світло', 'Home': 'Головна', 'Insert': 'Вставка',
     'View': 'Вигляд', 'Export': 'Експорт', 'Templates': 'Шаблони',
+    'Always On Top': 'Поверх усіх вікон', 'Spring Animations': 'Пружинні анімації', 'Selected': 'Вибрано',
+  },
+  be: {
+    'Control Center': 'Панэль кіравання', 'Notification Center': 'Цэнтр апавяшчэнняў', 'Settings': 'Налады',
+    'Desktop': 'Працоўны стол', 'Search': 'Пошук', 'Save': 'Захаваць', 'Cancel': 'Скасаваць', 'Open': 'Адкрыць',
+    'Close': 'Закрыць', 'Delete': 'Выдаліць', 'Clear': 'Ачысціць', 'Theme': 'Тэма', 'Dark': 'Цёмная', 'Light': 'Светлая',
+    'File Explorer': 'Праваднік', 'Calculator': 'Калькулятар', 'Recycle Bin': 'Кошык', 'Always On Top': 'Паверх усіх вокнаў',
+    'Selected': 'Выбрана', 'Spring Animations': 'Спружынныя анімацыі',
+  },
+  uz: {
+    'Control Center': 'Boshqaruv markazi', 'Notification Center': 'Bildirishnomalar', 'Settings': 'Sozlamalar',
+    'Desktop': 'Ish stoli', 'Search': 'Qidirish', 'Save': 'Saqlash', 'Cancel': 'Bekor qilish', 'Open': 'Ochish',
+    'Close': 'Yopish', 'Delete': 'O‘chirish', 'Clear': 'Tozalash', 'Theme': 'Mavzu', 'Dark': 'Qorong‘i', 'Light': 'Yorug‘',
+    'File Explorer': 'Fayl menejeri', 'Calculator': 'Kalkulyator', 'Recycle Bin': 'Savat', 'Selected': 'Tanlangan',
+  },
+  az: {
+    'Control Center': 'İdarəetmə Mərkəzi', 'Notification Center': 'Bildirişlər', 'Settings': 'Parametrlər',
+    'Desktop': 'İş masası', 'Search': 'Axtarış', 'Save': 'Yadda saxla', 'Cancel': 'Ləğv et', 'Open': 'Aç',
+    'Close': 'Bağla', 'Delete': 'Sil', 'Clear': 'Təmizlə', 'Theme': 'Tema', 'Dark': 'Qaranlıq', 'Light': 'Açıq',
+    'File Explorer': 'Fayl Bələdçisi', 'Calculator': 'Kalkulyator', 'Recycle Bin': 'Zibil qutusu', 'Selected': 'Seçildi',
+  },
+  ka: {
+    'Control Center': 'მართვის ცენტრი', 'Settings': 'პარამეტრები', 'Desktop': 'სამუშაო მაგიდა',
+    'Search': 'ძებნა', 'Save': 'შენახვა', 'Cancel': 'გაუქმება', 'Open': 'გახსნა', 'Close': 'დახურვა',
+    'Delete': 'წაშლა', 'Theme': 'თემა', 'Dark': 'ბნელი', 'Light': 'ნათელი', 'Selected': 'არჩეული',
+  },
+  hy: {
+    'Control Center': 'Կառավարման կենտրոն', 'Settings': 'Կարգավորումներ', 'Desktop': 'Աշխատասեղան',
+    'Search': 'Որոնում', 'Save': 'Պահպանել', 'Cancel': 'Չեղարկել', 'Open': 'Բացել', 'Close': 'Փակել',
+    'Delete': 'Ջնջել', 'Theme': 'Թեմա', 'Dark': 'Մուգ', 'Light': 'Բաց', 'Selected': 'Ընտրված',
+  },
+  cs: {
+    'Control Center': 'Ovládací centrum', 'Notification Center': 'Oznámení', 'Settings': 'Nastavení',
+    'Desktop': 'Plocha', 'Search': 'Hledat', 'Save': 'Uložit', 'Cancel': 'Zrušit', 'Open': 'Otevřít',
+    'Close': 'Zavřít', 'Delete': 'Smazat', 'Clear': 'Vymazat', 'Theme': 'Motiv', 'Dark': 'Tmavý', 'Light': 'Světlý',
+    'File Explorer': 'Průzkumník', 'Calculator': 'Kalkulačka', 'Recycle Bin': 'Koš', 'Selected': 'Vybráno',
+  },
+  sk: {
+    'Control Center': 'Ovládacie centrum', 'Notification Center': 'Upozornenia', 'Settings': 'Nastavenia',
+    'Desktop': 'Pracovná plocha', 'Search': 'Hľadať', 'Save': 'Uložiť', 'Cancel': 'Zrušiť', 'Open': 'Otvoriť',
+    'Close': 'Zavrieť', 'Delete': 'Vymazať', 'Clear': 'Vyčistiť', 'Theme': 'Motív', 'Dark': 'Tmavý', 'Light': 'Svetlý',
+    'File Explorer': 'Prieskumník', 'Calculator': 'Kalkulačka', 'Recycle Bin': 'Kôš', 'Selected': 'Vybraté',
+  },
+  bg: {
+    'Control Center': 'Контролен център', 'Notification Center': 'Известия', 'Settings': 'Настройки',
+    'Desktop': 'Работен плот', 'Search': 'Търсене', 'Save': 'Запази', 'Cancel': 'Отказ', 'Open': 'Отвори',
+    'Close': 'Затвори', 'Delete': 'Изтрий', 'Clear': 'Изчисти', 'Theme': 'Тема', 'Dark': 'Тъмна', 'Light': 'Светла',
+    'File Explorer': 'Файлов мениджър', 'Calculator': 'Калкулатор', 'Recycle Bin': 'Кошче', 'Selected': 'Избрани',
+  },
+  sr: {
+    'Control Center': 'Контролни центар', 'Notification Center': 'Обавештења', 'Settings': 'Подешавања',
+    'Desktop': 'Радна површина', 'Search': 'Претрага', 'Save': 'Сачувај', 'Cancel': 'Откажи', 'Open': 'Отвори',
+    'Close': 'Затвори', 'Delete': 'Обриши', 'Clear': 'Очисти', 'Theme': 'Тема', 'Dark': 'Тамна', 'Light': 'Светла',
+    'File Explorer': 'Истраживач', 'Calculator': 'Калкулатор', 'Recycle Bin': 'Корпа', 'Selected': 'Изабрано',
+  },
+  el: {
+    'Control Center': 'Κέντρο Ελέγχου', 'Notification Center': 'Ειδοποιήσεις', 'Settings': 'Ρυθμίσεις',
+    'Desktop': 'Επιφάνεια εργασίας', 'Search': 'Αναζήτηση', 'Save': 'Αποθήκευση', 'Cancel': 'Ακύρωση', 'Open': 'Άνοιγμα',
+    'Close': 'Κλείσιμο', 'Delete': 'Διαγραφή', 'Clear': 'Εκκαθάριση', 'Theme': 'Θέμα', 'Dark': 'Σκούρο', 'Light': 'Φωτεινό',
+    'File Explorer': 'Εξερεύνηση', 'Calculator': 'Αριθμομηχανή', 'Recycle Bin': 'Κάδος', 'Selected': 'Επιλεγμένα',
+  },
+  hu: {
+    'Control Center': 'Vezérlőközpont', 'Notification Center': 'Értesítések', 'Settings': 'Beállítások',
+    'Desktop': 'Asztal', 'Search': 'Keresés', 'Save': 'Mentés', 'Cancel': 'Mégse', 'Open': 'Megnyitás',
+    'Close': 'Bezárás', 'Delete': 'Törlés', 'Clear': 'Törlés', 'Theme': 'Téma', 'Dark': 'Sötét', 'Light': 'Világos',
+    'File Explorer': 'Intéző', 'Calculator': 'Számológép', 'Recycle Bin': 'Lomtár', 'Selected': 'Kijelölve',
+  },
+  sv: {
+    'Control Center': 'Kontrollcenter', 'Notification Center': 'Aviseringar', 'Settings': 'Inställningar',
+    'Desktop': 'Skrivbord', 'Search': 'Sök', 'Save': 'Spara', 'Cancel': 'Avbryt', 'Open': 'Öppna',
+    'Close': 'Stäng', 'Delete': 'Ta bort', 'Clear': 'Rensa', 'Theme': 'Tema', 'Dark': 'Mörkt', 'Light': 'Ljust',
+    'File Explorer': 'Utforskaren', 'Calculator': 'Kalkylator', 'Recycle Bin': 'Papperskorg', 'Selected': 'Valda',
+  },
+  no: {
+    'Control Center': 'Kontrollsenter', 'Notification Center': 'Varsler', 'Settings': 'Innstillinger',
+    'Desktop': 'Skrivebord', 'Search': 'Søk', 'Save': 'Lagre', 'Cancel': 'Avbryt', 'Open': 'Åpne',
+    'Close': 'Lukk', 'Delete': 'Slett', 'Clear': 'Tøm', 'Theme': 'Tema', 'Dark': 'Mørkt', 'Light': 'Lyst',
+    'File Explorer': 'Filutforsker', 'Calculator': 'Kalkulator', 'Recycle Bin': 'Papirkurv', 'Selected': 'Valgt',
+  },
+  fi: {
+    'Control Center': 'Ohjauskeskus', 'Notification Center': 'Ilmoitukset', 'Settings': 'Asetukset',
+    'Desktop': 'Työpöytä', 'Search': 'Haku', 'Save': 'Tallenna', 'Cancel': 'Peruuta', 'Open': 'Avaa',
+    'Close': 'Sulje', 'Delete': 'Poista', 'Clear': 'Tyhjennä', 'Theme': 'Teema', 'Dark': 'Tumma', 'Light': 'Vaalea',
+    'File Explorer': 'Resurssienhallinta', 'Calculator': 'Laskin', 'Recycle Bin': 'Roskakori', 'Selected': 'Valittu',
+  },
+  vi: {
+    'Control Center': 'Trung tâm điều khiển', 'Notification Center': 'Thông báo', 'Settings': 'Cài đặt',
+    'Desktop': 'Màn hình nền', 'Search': 'Tìm kiếm', 'Save': 'Lưu', 'Cancel': 'Hủy', 'Open': 'Mở',
+    'Close': 'Đóng', 'Delete': 'Xóa', 'Clear': 'Dọn sạch', 'Theme': 'Giao diện', 'Dark': 'Tối', 'Light': 'Sáng',
+    'File Explorer': 'Trình quản lý tệp', 'Calculator': 'Máy tính', 'Recycle Bin': 'Thùng rác', 'Selected': 'Đã chọn',
+  },
+  id: {
+    'Control Center': 'Pusat Kontrol', 'Notification Center': 'Notifikasi', 'Settings': 'Pengaturan',
+    'Desktop': 'Desktop', 'Search': 'Cari', 'Save': 'Simpan', 'Cancel': 'Batal', 'Open': 'Buka',
+    'Close': 'Tutup', 'Delete': 'Hapus', 'Clear': 'Bersihkan', 'Theme': 'Tema', 'Dark': 'Gelap', 'Light': 'Terang',
+    'File Explorer': 'Penjelajah File', 'Calculator': 'Kalkulator', 'Recycle Bin': 'Tempat Sampah', 'Selected': 'Dipilih',
+  },
+  th: {
+    'Control Center': 'ศูนย์ควบคุม', 'Notification Center': 'การแจ้งเตือน', 'Settings': 'การตั้งค่า',
+    'Desktop': 'เดสก์ท็อป', 'Search': 'ค้นหา', 'Save': 'บันทึก', 'Cancel': 'ยกเลิก', 'Open': 'เปิด',
+    'Close': 'ปิด', 'Delete': 'ลบ', 'Clear': 'ล้าง', 'Theme': 'ธีม', 'Dark': 'มืด', 'Light': 'สว่าง',
+    'File Explorer': 'ตัวจัดการไฟล์', 'Calculator': 'เครื่องคิดเลข', 'Recycle Bin': 'ถังรีไซเคิล', 'Selected': 'เลือกแล้ว',
+  },
+  he: {
+    'Control Center': 'מרכז הבקרה', 'Notification Center': 'התראות', 'Settings': 'הגדרות',
+    'Desktop': 'שולחן עבודה', 'Search': 'חיפוש', 'Save': 'שמור', 'Cancel': 'ביטול', 'Open': 'פתח',
+    'Close': 'סגור', 'Delete': 'מחק', 'Clear': 'נקה', 'Theme': 'ערכת נושא', 'Dark': 'כהה', 'Light': 'בהיר',
+    'File Explorer': 'סייר הקבצים', 'Calculator': 'מחשבון', 'Recycle Bin': 'סל המיחזור', 'Selected': 'נבחרו',
+  },
+  it: {
+    'Control Center': 'Centro di controllo', 'Notification Center': 'Notifiche', 'Settings': 'Impostazioni',
+    'Desktop': 'Scrivania', 'Search': 'Cerca', 'Save': 'Salva', 'Cancel': 'Annulla', 'Open': 'Apri',
+    'Close': 'Chiudi', 'Delete': 'Elimina', 'Clear': 'Pulisci', 'Theme': 'Tema', 'Dark': 'Scuro', 'Light': 'Chiaro',
+    'File Explorer': 'Esplora file', 'Calculator': 'Calcolatrice', 'Recycle Bin': 'Cestino', 'Selected': 'Selezionati',
+  },
+  pt: {
+    'Control Center': 'Central de Controle', 'Notification Center': 'Notificações', 'Settings': 'Configurações',
+    'Desktop': 'Área de trabalho', 'Search': 'Pesquisar', 'Save': 'Salvar', 'Cancel': 'Cancelar', 'Open': 'Abrir',
+    'Close': 'Fechar', 'Delete': 'Excluir', 'Clear': 'Limpar', 'Theme': 'Tema', 'Dark': 'Escuro', 'Light': 'Claro',
+    'File Explorer': 'Explorador', 'Calculator': 'Calculadora', 'Recycle Bin': 'Lixeira', 'Selected': 'Selecionados',
+  },
+  ko: {
+    'Control Center': '제어 센터', 'Notification Center': '알림 센터', 'Settings': '설정',
+    'Desktop': '바탕 화면', 'Search': '검색', 'Save': '저장', 'Cancel': '취소', 'Open': '열기',
+    'Close': '닫기', 'Delete': '삭제', 'Clear': '지우기', 'Theme': '테마', 'Dark': '다크', 'Light': '라이트',
+    'File Explorer': '파일 탐색기', 'Calculator': '계산기', 'Recycle Bin': '휴지통', 'Selected': '선택됨',
+  },
+  ar: {
+    'Control Center': 'مركز التحكم', 'Notification Center': 'الإشعارات', 'Settings': 'الإعدادات',
+    'Desktop': 'سطح المكتب', 'Search': 'بحث', 'Save': 'حفظ', 'Cancel': 'إلغاء', 'Open': 'فتح',
+    'Close': 'إغلاق', 'Delete': 'حذف', 'Clear': 'مسح', 'Theme': 'السمة', 'Dark': 'داكن', 'Light': 'فاتح',
+    'File Explorer': 'مستكشف الملفات', 'Calculator': 'الحاسبة', 'Recycle Bin': 'سلة المحذوفات', 'Selected': 'محدد',
+  },
+  kk: {
+    'Control Center': 'Басқару орталығы', 'Notification Center': 'Хабарландырулар', 'Settings': 'Баптаулар',
+    'Desktop': 'Жұмыс үстелі', 'Search': 'Іздеу', 'Save': 'Сақтау', 'Cancel': 'Бас тарту', 'Open': 'Ашу',
+    'Close': 'Жабу', 'Delete': 'Жою', 'Clear': 'Тазарту', 'Theme': 'Тақырып', 'Dark': 'Қараңғы', 'Light': 'Жарық',
+    'File Explorer': 'Жетектегіш', 'Calculator': 'Калькулятор', 'Recycle Bin': 'Себет', 'Selected': 'Таңдалды',
+  },
+  nl: {
+    'Control Center': 'Bedieningspaneel', 'Notification Center': 'Meldingen', 'Settings': 'Instellingen',
+    'Desktop': 'Bureaublad', 'Search': 'Zoeken', 'Save': 'Opslaan', 'Cancel': 'Annuleren', 'Open': 'Openen',
+    'Close': 'Sluiten', 'Delete': 'Verwijderen', 'Clear': 'Wissen', 'Theme': 'Thema', 'Dark': 'Donker', 'Light': 'Licht',
+    'File Explorer': 'Verkenner', 'Calculator': 'Rekenmachine', 'Recycle Bin': 'Prullenbak', 'Selected': 'Geselecteerd',
   },
   zh: {
     'Control Center': '控制中心', 'Notification Center': '通知中心', 'Settings': '设置',
@@ -288,7 +455,7 @@ const EN_TO_LOCALE: Partial<Record<LangCode, Record<string, string>>> = {
     'Weather & 7-Day Forecast': '天气与7天预报', 'Calendar & Events': '日历与日程', 'File Explorer': '文件管理器',
     'Calculator': '计算器', 'Recycle Bin': '回收站', 'Screen Record': '录屏', 'Screenshot': '截图',
     'Do Not Disturb': '勿扰模式', 'Night Light': '护眼夜灯', 'Home': '主页', 'Insert': '插入',
-    'View': '视图', 'Export': '导出', 'Templates': '模板',
+    'View': '视图', 'Export': '导出', 'Templates': '模板', 'Selected': '已选', 'Always On Top': '窗口置顶',
   },
   ja: {
     'Control Center': 'コントロールセンター', 'Notification Center': '通知センター', 'Settings': '設定',
@@ -298,6 +465,7 @@ const EN_TO_LOCALE: Partial<Record<LangCode, Record<string, string>>> = {
     'Weather & 7-Day Forecast': '天気と週間予報', 'Calendar & Events': 'カレンダー', 'File Explorer': 'エクスプローラー',
     'Calculator': '電卓', 'Recycle Bin': 'ゴミ箱', 'Screen Record': '画面録画', 'Screenshot': 'スクショ',
     'Do Not Disturb': 'おやすみモード', 'Home': 'ホーム', 'Insert': '挿入', 'View': '表示', 'Export': '書き出し',
+    'Selected': '選択済み', 'Always On Top': '常に手前に表示',
   },
   tr: {
     'Control Center': 'Denetim Merkezi', 'Notification Center': 'Bildirim Merkezi', 'Settings': 'Ayarlar',
@@ -306,6 +474,7 @@ const EN_TO_LOCALE: Partial<Record<LangCode, Record<string, string>>> = {
     'Clock & World Time': 'Saat ve Dünya Saati', 'Battery, Power & Peripherals': 'Pil ve Çevre Birimleri',
     'Weather & 7-Day Forecast': 'Hava Durumu (7 Gün)', 'Calendar & Events': 'Takvim', 'File Explorer': 'Dosya Gezgini',
     'Calculator': 'Hesap Makinesi', 'Recycle Bin': 'Çöp Kutusu', 'Screen Record': 'Ekran Kaydı', 'Screenshot': 'Ekran Görüntüsü',
+    'Selected': 'Seçildi', 'Always On Top': 'Her Zaman Üstte',
   },
   pl: {
     'Control Center': 'Centrum sterowania', 'Notification Center': 'Powiadomienia', 'Settings': 'Ustawienia',
@@ -313,6 +482,7 @@ const EN_TO_LOCALE: Partial<Record<LangCode, Record<string, string>>> = {
     'Close': 'Zamknij', 'Delete': 'Usuń', 'Clear': 'Wyczyść', 'Theme': 'Motyw', 'Dark': 'Ciemny', 'Light': 'Jasny',
     'Clock & World Time': 'Zegar i czas świata', 'Battery, Power & Peripherals': 'Bateria i urządzenia',
     'Weather & 7-Day Forecast': 'Pogoda na 7 dni', 'Calendar & Events': 'Kalendarz', 'File Explorer': 'Eksplorator',
+    'Selected': 'Zaznaczono', 'Always On Top': 'Zawsze na wierzchu',
   },
   ro: {
     'Control Center': 'Centru de control', 'Notification Center': 'Notificări', 'Settings': 'Setări',
@@ -320,6 +490,7 @@ const EN_TO_LOCALE: Partial<Record<LangCode, Record<string, string>>> = {
     'Close': 'Închide', 'Delete': 'Șterge', 'Clear': 'Curăță', 'Theme': 'Temă', 'Dark': 'Întunecat', 'Light': 'Luminos',
     'Clock & World Time': 'Ceas și Timp mondial', 'Battery, Power & Peripherals': 'Baterie și Periferice',
     'Weather & 7-Day Forecast': 'Vremea 7 zile', 'Calendar & Events': 'Calendar', 'File Explorer': 'Explorer',
+    'Selected': 'Selectate', 'Always On Top': 'Întotdeauna deasupra',
   },
 };
 

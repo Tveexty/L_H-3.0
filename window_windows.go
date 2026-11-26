@@ -422,7 +422,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.6.5 (Nitrogen)",
+			Title:  "Luma OS 1.6.6 (Nitrogen)",
 			Width:  1440,
 			Height: 900,
 			IconId: 1,

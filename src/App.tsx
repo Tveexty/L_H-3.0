@@ -1290,8 +1290,8 @@ export default function App() {
       source: 'system',
       appName: 'Luma OS 1.6.2',
       sender: 'Luma OS 1.6.2 Nitrogen',
-      title: 'Добро пожаловать в Luma OS 1.6.5 (Nitrogen · N-7)!',
-      body: 'LumaCore 1.5.5 · LumaShield 2.5 (275 правил) · Стиль Luma Nova · Luma AI 5.0 · Gamepad Studio · Очистка хвостов · Luma Peek (Space) · Умный Dock и Стеки.',
+      title: 'Добро пожаловать в Luma OS 1.6.6 (Nitrogen · N-7)!',
+      body: 'LumaCore 1.5.6 · LumaShield 2.5 (275 правил) · Стиль Luma Nova · Luma AI 5.0 · Gamepad Studio · Очистка хвостов · Luma Peek (Space) · Умный Dock и Стеки.',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       dateLabel: 'Сегодня',
       timestamp: Date.now(),
@@ -1525,21 +1525,81 @@ export default function App() {
   const [islandPosition, setIslandPosition] = useState<'top' | 'bottom'>(
     savedState?.islandPosition === 'bottom' ? 'bottom' : 'top'
   );
+  const [islandAnchor, setIslandAnchor] = useState<
+    'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
+  >(() => {
+    const a = savedState?.islandAnchor;
+    if (
+      a === 'top-left' ||
+      a === 'top-center' ||
+      a === 'top-right' ||
+      a === 'bottom-left' ||
+      a === 'bottom-center' ||
+      a === 'bottom-right'
+    ) {
+      return a;
+    }
+    return savedState?.islandPosition === 'bottom' ? 'bottom-center' : 'top-center';
+  });
+  const [islandOffsetY, setIslandOffsetY] = useState<number>(
+    typeof savedState?.islandOffsetY === 'number' ? savedState.islandOffsetY : 10
+  );
   const [islandSize, setIslandSize] = useState<'compact' | 'standard' | 'expanded'>(
     savedState?.islandSize || 'standard'
   );
+  const [islandStyle, setIslandStyle] = useState<'obsidian' | 'cryo' | 'frosted' | 'oled'>(
+    savedState?.islandStyle || 'obsidian'
+  );
+  const [islandOpacity, setIslandOpacity] = useState<number>(
+    typeof savedState?.islandOpacity === 'number' ? savedState.islandOpacity : 94
+  );
+  const [islandPinOverAllWindows, setIslandPinOverAllWindows] = useState<boolean>(
+    savedState?.islandPinOverAllWindows ?? true
+  );
+  const [islandAlwaysOverLuma, setIslandAlwaysOverLuma] = useState<boolean>(
+    savedState?.islandAlwaysOverLuma ?? false
+  );
+  const [islandShowInFullscreen, setIslandShowInFullscreen] = useState<boolean>(
+    savedState?.islandShowInFullscreen ?? false
+  );
+  const [islandClickThrough, setIslandClickThrough] = useState<boolean>(
+    savedState?.islandClickThrough ?? false
+  );
+  const [islandLocked, setIslandLocked] = useState<boolean>(
+    savedState?.islandLocked ?? true
+  );
+  const [islandHoverExpand, setIslandHoverExpand] = useState<boolean>(
+    savedState?.islandHoverExpand ?? true
+  );
+  const [islandShowClock, setIslandShowClock] = useState<boolean>(
+    savedState?.islandShowClock ?? true
+  );
+  const [islandShowTelemetry, setIslandShowTelemetry] = useState<boolean>(
+    savedState?.islandShowTelemetry ?? true
+  );
+  const [islandShowWeather, setIslandShowWeather] = useState<boolean>(
+    savedState?.islandShowWeather ?? false
+  );
+  const [islandShowDownloads, setIslandShowDownloads] = useState<boolean>(
+    savedState?.islandShowDownloads ?? true
+  );
+  const [islandShowNotifications, setIslandShowNotifications] = useState<boolean>(
+    savedState?.islandShowNotifications ?? true
+  );
+  const [nativeIslandOverlayActive, setNativeIslandOverlayActive] = useState<boolean>(false);
+  const [langSearchQuery, setLangSearchQuery] = useState<string>('');
   const [islandShowEq, setIslandShowEq] = useState<boolean>(savedState?.islandShowEq ?? true);
   const [islandShowClip, setIslandShowClip] = useState<boolean>(savedState?.islandShowClip ?? true);
   const [islandShowBattery, setIslandShowBattery] = useState<boolean>(savedState?.islandShowBattery ?? true);
   const [islandAutoClipboard, setIslandAutoClipboard] = useState<boolean>(savedState?.islandAutoClipboard ?? true);
-  const [islandGlowEnabled, setIslandGlowEnabled] = useState<boolean>(savedState?.islandGlowEnabled ?? false);
+  const [islandGlowEnabled, setIslandGlowEnabled] = useState<boolean>(savedState?.islandGlowEnabled ?? true);
   const [clipboardHistory, setClipboardHistory] = useState<ClipboardEntry[]>(
     Array.isArray(savedState?.clipboardHistory)
       ? savedState.clipboardHistory
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.6.5 (Nitrogen · N-7) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.6.6 (Nitrogen · N-7) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -1572,7 +1632,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.6.5 (Nitrogen · N-7)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.6.6 (Nitrogen · N-7)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -1587,8 +1647,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 1.5.5',
-      message: 'Инициализация оболочки Luma OS 1.6.5 (Nitrogen · N-7), LumaCore 1.5.5, LumaShield 2.5 и AI 5.0',
+      source: 'LumaCore 1.5.6',
+      message: 'Инициализация оболочки Luma OS 1.6.6 (Nitrogen · N-7), LumaCore 1.5.6, LumaShield 2.5 и AI 5.0',
       level: 'success',
     },
   ]);
@@ -1880,8 +1940,8 @@ export default function App() {
           downloaded_bytes: 2.1 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 16.4,
-          target_version: '1.6.5 (Nitrogen · N-7)',
-          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.6.5...',
+          target_version: '1.6.6 (Nitrogen · N-7)',
+          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.6.6...',
         },
       },
       {
@@ -1893,8 +1953,8 @@ export default function App() {
           downloaded_bytes: 10.2 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 27.6,
-          target_version: '1.6.5 (Nitrogen · N-7)',
-          message: 'Загрузка сборки LumaOS_1.6.5.exe (LumaCore 1.5.5 + HID Жесты + Пружинная физика)...',
+          target_version: '1.6.6 (Nitrogen · N-7)',
+          message: 'Загрузка сборки LumaOS_1.6.6.exe (LumaCore 1.5.6 + HID Жесты + Пружинная физика)...',
         },
       },
       {
@@ -1906,7 +1966,7 @@ export default function App() {
           downloaded_bytes: 23.1 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 36.2,
-          target_version: '1.6.5 (Nitrogen · N-7)',
+          target_version: '1.6.6 (Nitrogen · N-7)',
           message: 'Потоковая загрузка системы пружинных анимаций, магнитного Dock и 20 обоев QHD...',
         },
       },
@@ -1919,7 +1979,7 @@ export default function App() {
           downloaded_bytes: 35.0 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 19.4,
-          target_version: '1.6.5 (Nitrogen · N-7)',
+          target_version: '1.6.6 (Nitrogen · N-7)',
           sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
           message: 'Криптографическая проверка SHA-256 и подписи PE32+ (LumaShield 2.5)...',
         },
@@ -1933,9 +1993,9 @@ export default function App() {
           downloaded_bytes: 35.0 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 0,
-          target_version: '1.6.5 (Nitrogen · N-7)',
+          target_version: '1.6.6 (Nitrogen · N-7)',
           sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
-          message: 'Сборка Luma OS 1.6.5 (Nitrogen · N-7) проверена и готова к мгновенному запуску!',
+          message: 'Сборка Luma OS 1.6.6 (Nitrogen · N-7) проверена и готова к мгновенному запуску!',
         },
       },
     ];
@@ -2563,7 +2623,22 @@ export default function App() {
       dynamicIslandEnabled,
       dndEnabled,
       islandPosition,
+      islandAnchor,
+      islandOffsetY,
       islandSize,
+      islandStyle,
+      islandOpacity,
+      islandPinOverAllWindows,
+      islandAlwaysOverLuma,
+      islandShowInFullscreen,
+      islandClickThrough,
+      islandLocked,
+      islandHoverExpand,
+      islandShowClock,
+      islandShowTelemetry,
+      islandShowWeather,
+      islandShowDownloads,
+      islandShowNotifications,
       islandShowEq,
       islandShowClip,
       islandShowBattery,
@@ -2671,7 +2746,22 @@ export default function App() {
     dynamicIslandEnabled,
     dndEnabled,
     islandPosition,
+    islandAnchor,
+    islandOffsetY,
     islandSize,
+    islandStyle,
+    islandOpacity,
+    islandPinOverAllWindows,
+    islandAlwaysOverLuma,
+    islandShowInFullscreen,
+    islandClickThrough,
+    islandLocked,
+    islandHoverExpand,
+    islandShowClock,
+    islandShowTelemetry,
+    islandShowWeather,
+    islandShowDownloads,
+    islandShowNotifications,
     islandShowEq,
     islandShowClip,
     islandShowBattery,
@@ -3533,7 +3623,7 @@ export default function App() {
       .catch(() => setCodeContent(`// Не удалось загрузить ${selectedCodePath}`));
   }, [selectedCodePath, windows.kernel.open]);
 
-  // --- Dynamic Island 2.0 Reactive Pulse + Elastic Rubber-Band Notification Animation (1.5.1) ---
+  // --- Dynamic Island 2.0 Reactive Pulse + Elastic Rubber-Band Notification Animation + Native Win32 Overlay Sync (1.6.6) ---
   const triggerIslandPulse = useCallback((title: string, detail?: string, kind = 'info', barPct?: number) => {
     const isNotif =
       kind === 'notification' ||
@@ -3543,11 +3633,28 @@ export default function App() {
       kind === 'messenger' ||
       kind === 'system';
 
+    if (isNotif && !islandShowNotifications) return;
+
     if (islandPulseTimerRef.current) window.clearTimeout(islandPulseTimerRef.current);
     if (islandRubberSnapRef.current) window.clearTimeout(islandRubberSnapRef.current);
 
     setIslandPulse({ id: Date.now() + Math.random(), title, detail, kind, barPct });
     setIslandRubberPhase(isNotif ? 'expand' : 'idle');
+
+    // Mirror pulse onto the native Win32 HWND_TOPMOST Dynamic Island capsule floating over Chrome/Windows!
+    if (dynamicIslandEnabled && islandPinOverAllWindows) {
+      fetch('/api/kernel/island/overlay/pulse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          detail: detail || '',
+          kind,
+          bar_pct: typeof barPct === 'number' ? Math.round(barPct) : undefined,
+          duration_ms: isNotif ? 3200 : 2500,
+        }),
+      }).catch(() => {});
+    }
 
     if (isNotif) {
       // Elastic rubber-band expand -> hold briefly so message is readable -> snap back tightly!
@@ -3566,7 +3673,7 @@ export default function App() {
         islandPulseTimerRef.current = null;
       }, 2400);
     }
-  }, []);
+  }, [dynamicIslandEnabled, islandPinOverAllWindows, islandShowNotifications]);
 
   const dndEnabledNotifRef = useRef(dndEnabled);
   const isMutedNotifRef = useRef(isMuted);
@@ -3778,7 +3885,7 @@ export default function App() {
           void pollHostWindows();
         }
       } catch {
-        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.5.5', 'warning');
+        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.5.6', 'warning');
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3993,7 +4100,7 @@ export default function App() {
   executeGestureRef.current = executeGestureAction;
 
   useEffect(() => {
-    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 1.5.5 WM_INPUT + SSE fallback)
+    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 1.5.6 WM_INPUT + SSE fallback)
     let lastNativeFireAt = 0;
     let lastNativeKey = '';
     const dispatchMappedGesture = (gestureName: string, sourceTag: string) => {
@@ -4328,7 +4435,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Luma OS 1.6.5: Auto-Hide Visual Noise (dissolves bars/panels after 2.6s cursor idle in video/fullscreen) ---
+  // --- Luma OS 1.6.6: Auto-Hide Visual Noise (dissolves bars/panels after 2.6s cursor idle in video/fullscreen) ---
   useEffect(() => {
     const anyMenuOpen =
       startMenuOpen ||
@@ -4394,7 +4501,7 @@ export default function App() {
   const altTabEntries: AltTabEntry[] = useMemo(() => {
     const lumaTitles: Partial<Record<DexWinId, string>> = {
       apps: 'Приложения', explorer: 'Проводник', taskmgr: 'Диспетчер задач', terminal: 'Терминал',
-      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.5.5', settings: 'Настройки', plugins: 'Расширения',
+      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.5.6', settings: 'Настройки', plugins: 'Расширения',
       island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma AI 5.0 Nexus', utilities: 'Службы ОС',
       calculator: 'Калькулятор', calendar: 'Календарь', trash: 'Корзина', scenarios: 'Сценарии',
       code_studio: 'Code Studio Pro', cut_studio: 'Cut Studio Pro', office: 'Luma Office Pro',
@@ -5052,7 +5159,7 @@ export default function App() {
         );
       }
     } catch {
-      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.6.5.exe)', 'info');
+      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.6.6.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -5074,7 +5181,7 @@ export default function App() {
     }
   };
 
-  // --- Luma OS 1.6.5: 100% Native Wi-Fi & Bluetooth Connectivity Handlers (ZERO Windows Settings!) ---
+  // --- Luma OS 1.6.6: 100% Native Wi-Fi & Bluetooth Connectivity Handlers (ZERO Windows Settings!) ---
   const fetchWifiStatus = useCallback(async (rescan = false) => {
     setWifiLoading(true);
     try {
@@ -5150,7 +5257,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.5' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.6' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5242,7 +5349,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.5' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.5.6' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -6106,17 +6213,154 @@ export default function App() {
     setTaskbarHostWinPid(null);
   };
 
-  // Smart Island vertical placement so it never overlaps top or bottom taskbar
-  const islandAnchorCls =
-    islandPosition === 'bottom'
-      ? taskbarPosition === 'bottom' && isTaskbarShown
-        ? 'bottom-16'
-        : 'bottom-3'
-      : taskbarPosition === 'top' && isTaskbarShown
-      ? 'top-16'
-      : 'top-2.5';
+  // Luma OS 1.6.6: Smart 6-Point Dynamic Island Placement, 4 Themes & Native Win32 Always-On-Top Overlay Sync
+  const isIslandBottom = islandAnchor.startsWith('bottom');
+  const islandHorizontalCls = islandAnchor.endsWith('left')
+    ? 'left-4'
+    : islandAnchor.endsWith('right')
+    ? 'right-4'
+    : 'left-1/2 -translate-x-1/2';
+  const islandSafeOffsetPx = isIslandBottom
+    ? (taskbarPosition === 'bottom' && isTaskbarShown ? effectiveTaskbarSizePx + 10 : 0) + islandOffsetY
+    : (taskbarPosition === 'top' && isTaskbarShown ? effectiveTaskbarSizePx + 10 : dualTaskbarMode ? 48 : 0) + islandOffsetY;
+  const islandAnchorStyle: React.CSSProperties = isIslandBottom
+    ? { bottom: `${islandSafeOffsetPx}px` }
+    : { top: `${islandSafeOffsetPx}px` };
 
   const islandHeightCls = islandSize === 'compact' ? 'h-7' : islandSize === 'expanded' ? 'h-10' : 'h-8';
+  const islandSurfaceThemeCls =
+    islandStyle === 'cryo'
+      ? 'bg-[#09182e] text-sky-50 border-sky-400/40 backdrop-blur-2xl'
+      : islandStyle === 'frosted'
+      ? 'bg-[#f1f5f9] text-slate-900 border-white/75 backdrop-blur-2xl'
+      : islandStyle === 'oled'
+      ? 'bg-black text-white border-[var(--luma-accent)]/75'
+      : 'bg-[#0a0a0c] text-zinc-100 border-white/15 backdrop-blur-xl';
+
+  const activeIslandProgress = renderDockTask
+    ? { label: renderDockTask.title || 'Рендер', percent: renderDockTask.percent }
+    : updateProgress?.running
+    ? { label: 'Обновление OS', percent: updateProgress.percent }
+    : null;
+
+  // Sync Dynamic Island Always-On-Top Native Win32 Overlay configuration to LumaCore 1.5.6
+  useEffect(() => {
+    const payload = {
+      enabled: dynamicIslandEnabled,
+      pin_over_all_windows: islandPinOverAllWindows,
+      always_show_over_luma: islandAlwaysOverLuma,
+      show_in_fullscreen_apps: islandShowInFullscreen,
+      click_through: islandClickThrough,
+      locked: islandLocked,
+      position: islandAnchor,
+      offset_x: 0,
+      offset_y: islandOffsetY,
+      size: islandSize,
+      style: islandStyle,
+      opacity: islandOpacity,
+      accent_hex: customAccentOverride || currentTheme.accentHex,
+      glow_enabled: islandGlowEnabled,
+      hover_expand: islandHoverExpand,
+      show_clock: islandShowClock,
+      show_telemetry: islandShowTelemetry,
+      show_battery: islandShowBattery,
+      show_weather: islandShowWeather,
+      show_media: islandShowEq,
+      show_notifications: islandShowNotifications,
+      show_downloads: islandShowDownloads,
+      dnd_enabled: dndEnabled,
+    };
+    fetch('/api/kernel/island/overlay/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (typeof d?.native_active === 'boolean') setNativeIslandOverlayActive(d.native_active);
+      })
+      .catch(() => {});
+  }, [
+    dynamicIslandEnabled,
+    islandPinOverAllWindows,
+    islandAlwaysOverLuma,
+    islandShowInFullscreen,
+    islandClickThrough,
+    islandLocked,
+    islandAnchor,
+    islandOffsetY,
+    islandSize,
+    islandStyle,
+    islandOpacity,
+    customAccentOverride,
+    currentTheme.accentHex,
+    islandGlowEnabled,
+    islandHoverExpand,
+    islandShowClock,
+    islandShowTelemetry,
+    islandShowBattery,
+    islandShowWeather,
+    islandShowEq,
+    islandShowNotifications,
+    islandShowDownloads,
+    dndEnabled,
+  ]);
+
+  // Push live telemetry, track, timer & download progress to Native Win32 Always-On-Top Dynamic Island Overlay
+  useEffect(() => {
+    if (!dynamicIslandEnabled || !islandPinOverAllWindows) return;
+    const timerTxt = islandTimerRunning
+      ? formatLiveClock(islandTimerRemainingSec)
+      : islandStopwatchRunning
+      ? formatLiveClock(islandStopwatchSec)
+      : '';
+    const weatherTxt = liveSystem?.location?.city ? `${liveSystem.location.city}` : '';
+    const sendLive = () => {
+      fetch('/api/kernel/island/overlay/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          track_title: displayMediaPlaying || hasLiveOsMedia ? displayTrackTitle : '',
+          track_artist: displayMediaPlaying || hasLiveOsMedia ? displayTrackArtist : '',
+          media_playing: displayMediaPlaying,
+          timer_text: timerTxt,
+          weather_text: weatherTxt,
+          cpu_percent: Math.round(cpuLoad),
+          ram_percent: Math.round(ramLoad),
+          battery_percent: Math.round(batteryLevel),
+          battery_charging: isCharging,
+          download_label: activeIslandProgress?.label || '',
+          download_percent: activeIslandProgress?.percent || 0,
+          unread_count: unreadNotifCount,
+          accent_hex: customAccentOverride || currentTheme.accentHex,
+        }),
+      }).catch(() => {});
+    };
+    sendLive();
+    const id = window.setInterval(sendLive, 1500);
+    return () => window.clearInterval(id);
+  }, [
+    dynamicIslandEnabled,
+    islandPinOverAllWindows,
+    displayTrackTitle,
+    displayTrackArtist,
+    displayMediaPlaying,
+    hasLiveOsMedia,
+    islandTimerRunning,
+    islandTimerRemainingSec,
+    islandStopwatchRunning,
+    islandStopwatchSec,
+    cpuLoad,
+    ramLoad,
+    batteryLevel,
+    isCharging,
+    unreadNotifCount,
+    activeIslandProgress?.label,
+    activeIslandProgress?.percent,
+    liveSystem?.location?.city,
+    customAccentOverride,
+    currentTheme.accentHex,
+  ]);
 
   const isWinVisible = (id: DexWinId) =>
     windows[id].open && !windows[id].minimized && (windows[id].desktop ?? 1) === activeDesktop;
@@ -6256,12 +6500,22 @@ export default function App() {
         }}
       />
 
-      {/* ==================== LAYER 2: DYNAMIC ISLAND 2.0 (REACTIVE ACTIVITY PULSE + 7-BAR HARMONIC SPECTRUM + VINYL) ==================== */}
-      {dynamicIslandEnabled && (
+      {/* ==================== LAYER 2: DYNAMIC ISLAND 2.5 (ALWAYS-ON-TOP z-[9400] + 6 POSITIONS + 4 THEMES + NATIVE WIN32 OVERLAY) ==================== */}
+      {dynamicIslandEnabled && !(islandPinOverAllWindows && islandAlwaysOverLuma && nativeIslandOverlayActive) && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`fixed ${islandAnchorCls} left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 luma-noise-surface ${
-            visualNoiseHidden ? 'luma-noise-hidden-top' : ''
+          style={{
+            ...islandAnchorStyle,
+            opacity: Math.max(0.55, Math.min(1, islandOpacity / 100)),
+          }}
+          className={`fixed ${islandHorizontalCls} z-[9400] flex items-center gap-1.5 luma-noise-surface ${
+            islandClickThrough ? 'pointer-events-none' : ''
+          } ${
+            visualNoiseHidden && !islandShowInFullscreen
+              ? isIslandBottom
+                ? 'luma-noise-hidden-bottom'
+                : 'luma-noise-hidden-top'
+              : ''
           }`}
         >
           <div
@@ -6277,7 +6531,9 @@ export default function App() {
                 ? { boxShadow: '0 0 28px -2px var(--luma-accent-border), 0 12px 30px rgba(0,0,0,0.52)' }
                 : undefined
             }
-            className={`luma-island-pill ${islandHeightCls} pl-3 pr-2.5 rounded-full bg-[#0a0a0c]/95 text-zinc-100 border shadow-xl flex items-center gap-2.5 cursor-pointer whitespace-nowrap ${
+            className={`luma-island-pill ${islandHeightCls} pl-3 pr-2.5 rounded-full border shadow-xl flex items-center gap-2.5 cursor-pointer whitespace-nowrap transition-transform duration-200 ${islandSurfaceThemeCls} ${
+              islandHoverExpand ? 'hover:scale-[1.035]' : ''
+            } ${
               islandRubberPhase === 'expand'
                 ? 'luma-island-rubber-expand border-sky-400/80 px-4'
                 : islandRubberPhase === 'snap'
@@ -6286,7 +6542,7 @@ export default function App() {
                 ? 'luma-island-pulse border-[var(--luma-accent)]/70'
                 : displayMediaPlaying
                 ? 'luma-island-playing border-[var(--luma-accent)]/45'
-                : 'border-white/15'
+                : ''
             }`}
           >
             {islandPulse ? (
@@ -6326,11 +6582,11 @@ export default function App() {
                   )}
                 </span>
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-[11px] font-bold text-white truncate max-w-[200px]">
+                  <span className="text-[11px] font-bold truncate max-w-[200px]">
                     {islandPulse.title}
                   </span>
                   {islandPulse.detail && (
-                    <span className="text-[10px] font-mono text-zinc-300 truncate max-w-[180px]">
+                    <span className="text-[10px] font-mono opacity-80 truncate max-w-[180px]">
                       {islandPulse.detail}
                     </span>
                   )}
@@ -6356,7 +6612,7 @@ export default function App() {
                         <span
                           key={i}
                           className={`w-[2px] h-full rounded-full luma-wave-bar ${
-                            i % 2 === 0 ? 'bg-[var(--luma-accent)]' : 'bg-white/90'
+                            i % 2 === 0 ? 'bg-[var(--luma-accent)]' : islandStyle === 'frosted' ? 'bg-slate-700' : 'bg-white/90'
                           }`}
                           style={{ animationDelay: `${delay}s`, animationDuration: `${0.58 + (i % 3) * 0.16}s` }}
                         />
@@ -6364,25 +6620,51 @@ export default function App() {
                     </div>
                   </div>
                 ) : (
-                  <span className={`w-1.5 h-1.5 rounded-full ${dndEnabled ? 'bg-zinc-400' : 'bg-[var(--luma-accent)]'}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dndEnabled ? 'bg-zinc-400' : 'bg-[var(--luma-accent)]'}`} />
                 )}
 
                 <span className={`text-[11px] font-mono truncate ${islandSize === 'expanded' ? 'max-w-[240px]' : islandSize === 'compact' ? 'max-w-[120px]' : 'max-w-[180px]'}`}>
-                  {islandTimerRunning
+                  {islandShowDownloads && activeIslandProgress
+                    ? `${activeIslandProgress.label} · ${activeIslandProgress.percent}%`
+                    : islandTimerRunning
                     ? `⏱ ${formatLiveClock(islandTimerRemainingSec)}`
                     : islandStopwatchRunning
                     ? `⏱ ${formatLiveClock(islandStopwatchSec)}`
                     : displayMediaPlaying || hasLiveOsMedia
                     ? displayTrackTitle
+                    : islandShowWeather && liveSystem?.location?.city
+                    ? liveSystem.location.city
                     : clipboardHistory[0]?.text
                     ? `Буфер: ${clipboardHistory[0].text}`
                     : `События: ${unreadNotifCount}`}
                 </span>
 
+                {islandShowDownloads && activeIslandProgress && (
+                  <div className="w-12 h-1.5 rounded-full bg-white/15 overflow-hidden shrink-0">
+                    <div
+                      className="h-full rounded-full bg-[var(--luma-accent)] transition-all duration-200"
+                      style={{ width: `${Math.max(4, Math.min(100, activeIslandProgress.percent))}%` }}
+                    />
+                  </div>
+                )}
+
+                {islandShowTelemetry && islandSize !== 'compact' && (
+                  <span className="hidden md:inline-flex items-center gap-1.5 text-[10px] font-mono opacity-80 pl-1.5 border-l border-current/15">
+                    <span>CPU {Math.round(cpuLoad)}%</span>
+                    <span>RAM {Math.round(ramLoad)}%</span>
+                  </span>
+                )}
+
                 {islandShowBattery && islandSize !== 'compact' && (
-                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono text-zinc-400 pl-1.5 border-l border-white/10">
+                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono opacity-80 pl-1.5 border-l border-current/15">
                     <BatteryCharging className={`w-3 h-3 ${isCharging ? 'text-[var(--luma-accent)]' : ''}`} />
                     {batteryLevel}%
+                  </span>
+                )}
+
+                {islandShowClock && (
+                  <span className="inline-flex items-center text-[10px] font-mono font-bold pl-1.5 border-l border-current/15">
+                    {now.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12' })}
                   </span>
                 )}
 
@@ -6393,7 +6675,7 @@ export default function App() {
                       openIslandTab('clipboard');
                     }}
                     title={`Буфер обмена Luma Island (${clipboardHistory.length})`}
-                    className="px-1.5 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-[10px] font-mono inline-flex items-center gap-1 cursor-pointer transition"
+                    className="px-1.5 py-0.5 rounded-full bg-current/10 hover:bg-current/20 text-[10px] font-mono inline-flex items-center gap-1 cursor-pointer transition"
                   >
                     <Clipboard className="w-3 h-3 text-[var(--luma-accent)]" />
                     <span>{clipboardHistory.length}</span>
@@ -6416,16 +6698,16 @@ export default function App() {
 
                 {islandShowEq && (
                   <div
-                    className="flex items-center gap-0.5 pl-1.5 border-l border-white/10"
+                    className="flex items-center gap-0.5 pl-1.5 border-l border-current/15"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <button onClick={handlePrevTrack} className="p-1 rounded-full hover:bg-white/15 cursor-pointer">
+                    <button onClick={handlePrevTrack} className="p-1 rounded-full hover:bg-current/15 cursor-pointer">
                       <SkipBack className="w-3 h-3" />
                     </button>
                     <button onClick={handleToggleMediaPlay} className="p-1 rounded-full bg-[var(--luma-accent)] text-white cursor-pointer">
                       {displayMediaPlaying ? <Pause className="w-2.5 h-2.5" /> : <Play className="w-2.5 h-2.5" />}
                     </button>
-                    <button onClick={handleNextTrack} className="p-1 rounded-full hover:bg-white/15 cursor-pointer">
+                    <button onClick={handleNextTrack} className="p-1 rounded-full hover:bg-current/15 cursor-pointer">
                       <SkipForward className="w-3 h-3" />
                     </button>
                   </div>
@@ -6434,13 +6716,19 @@ export default function App() {
             )}
           </div>
 
-          <button
-            onClick={handleToggleDynamicIsland}
-            title="Скрыть Luma Island"
-            className="w-7 h-7 rounded-full bg-[#0a0a0c]/90 text-zinc-400 hover:text-white border border-white/15 flex items-center justify-center cursor-pointer"
-          >
-            <EyeOff className="w-3 h-3" />
-          </button>
+          {!islandClickThrough && (
+            <button
+              onClick={handleToggleDynamicIsland}
+              title="Скрыть Luma Island"
+              className={`w-7 h-7 rounded-full border flex items-center justify-center cursor-pointer transition ${
+                islandStyle === 'frosted'
+                  ? 'bg-white/90 text-slate-600 hover:text-slate-900 border-slate-300'
+                  : 'bg-[#0a0a0c]/90 text-zinc-400 hover:text-white border-white/15'
+              }`}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
       )}
 
@@ -7197,7 +7485,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 1.5.5`,
+                        sub: `${ramLoad}% занято · LumaCore 1.5.6`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -7223,8 +7511,8 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.6.5 (Nitrogen · N-7)'],
-                      ['Версия Ядра', 'LumaCore 1.5.5 (1.6.5)'],
+                      ['Версия ПО', '1.6.6 (Nitrogen · N-7)'],
+                      ['Версия Ядра', 'LumaCore 1.5.6 (1.6.6)'],
                       ['Безопасность', `LumaShield 2.5 (${kernelDiag?.security_rules ?? 275}+ правил)`],
                       ['Developer SDK', `v3.0 (${kernelDiag?.sdk_themes ?? Object.keys(customThemes).length} тем / ${kernelDiag?.sdk_plugins ?? plugins.length} плаг.)`],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
@@ -7650,7 +7938,7 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.6.5 (Nitrogen · N-7 · LumaCore 1.5.5 · LumaShield 2.5)"
+          subtitle="Luma OS 1.6.6 (Nitrogen · N-7 · LumaCore 1.5.6 · LumaShield 2.5)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -8195,7 +8483,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* MULTI-LANGUAGE SETTINGS (18 SYSTEM UI LANGUAGES + 120+ WORLD KEYBOARD LAYOUTS) */}
+              {/* MULTI-LANGUAGE SETTINGS (36 SYSTEM UI LANGUAGES + 120+ WORLD KEYBOARD LAYOUTS) */}
               {settingsTab === 'language' && (
                 <div className="space-y-4 text-xs">
                   <div className={`p-4 rounded-2xl border space-y-1.5 ${surfaceCls}`}>
@@ -8211,12 +8499,42 @@ export default function App() {
                     <div className={mutedCls}>{t('languageDesc')}</div>
                   </div>
 
-                  <div className="space-y-2">
-                    <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>
-                      Язык интерфейса системы ({LUMA_LANGUAGES.length})
+                  <div className="space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>
+                        Язык интерфейса системы ({LUMA_LANGUAGES.length})
+                      </div>
+                      <div className="relative w-full sm:w-64">
+                        <Search className={`w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 ${mutedCls}`} />
+                        <input
+                          type="text"
+                          value={langSearchQuery}
+                          onChange={(e) => setLangSearchQuery(e.target.value)}
+                          placeholder="Поиск языка интерфейса..."
+                          className={`w-full pl-8 pr-7 py-1.5 rounded-xl border text-xs outline-none ${btnCls}`}
+                        />
+                        {langSearchQuery && (
+                          <button
+                            onClick={() => setLangSearchQuery('')}
+                            className={`absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer ${mutedCls}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {LUMA_LANGUAGES.map((l) => {
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-[340px] overflow-y-auto pr-1">
+                      {LUMA_LANGUAGES.filter((l) => {
+                        const q = langSearchQuery.trim().toLowerCase();
+                        if (!q) return true;
+                        return (
+                          l.name.toLowerCase().includes(q) ||
+                          l.englishName.toLowerCase().includes(q) ||
+                          l.code.toLowerCase().includes(q) ||
+                          l.tag.toLowerCase().includes(q) ||
+                          l.locale.toLowerCase().includes(q)
+                        );
+                      }).map((l) => {
                         const active = lang === l.code;
                         return (
                           <button
@@ -8233,7 +8551,14 @@ export default function App() {
                             }`}
                           >
                             <div className="min-w-0">
-                              <div className="text-xs font-bold truncate">{l.name}</div>
+                              <div className="text-xs font-bold truncate flex items-center gap-1.5">
+                                <span className="truncate">{l.name}</span>
+                                {l.rtl && (
+                                  <span className="px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 text-[8px] font-mono">
+                                    RTL
+                                  </span>
+                                )}
+                              </div>
                               <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
                                 {l.englishName} · {l.locale}
                               </div>
@@ -8433,7 +8758,7 @@ export default function App() {
                     </button>
                   </div>
 
-                  {/* Flagship 1.6.5 Master Toggle: Замена горячих клавиш и жестов тачпада Windows */}
+                  {/* Flagship 1.6.6 Master Toggle: Замена горячих клавиш и жестов тачпада Windows */}
                   <div
                     onClick={() =>
                       !shellModeSaving &&
@@ -8454,7 +8779,7 @@ export default function App() {
                           <Keyboard className="w-4 h-4 text-[var(--luma-accent)] shrink-0" />
                           <span>Замена горячих клавиш</span>
                           <span className="px-1.5 py-0.5 rounded-md text-[9px] font-mono bg-[var(--luma-accent)] text-white">
-                            1.6.5
+                            1.6.6
                           </span>
                         </div>
                         <div className={`text-[11px] mt-1 leading-relaxed ${mutedCls}`}>
@@ -8543,7 +8868,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.6.5.exe).
+                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.6.6.exe).
                   </div>
                 </div>
               )}
@@ -8833,13 +9158,13 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Luma OS 1.6.5 Nitrogen: Auto-Hide Visual Noise, Magnetic Dock & System-Wide Spring Animations */}
+                  {/* Luma OS 1.6.6 Nitrogen: Auto-Hide Visual Noise, Magnetic Dock & System-Wide Spring Animations */}
                   <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
                     <div className="flex items-center justify-between gap-2">
                       <div>
                         <div className="font-bold flex items-center gap-2 flex-wrap">
                           <span>Авто-скрытие шума, Магнитный Dock и Пружинные анимации</span>
-                          <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 text-[9px] font-mono">1.6.5</span>
+                          <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 text-[9px] font-mono">1.6.6</span>
                         </div>
                         <div className={`text-[11px] ${mutedCls}`}>
                           Управление пружинной физикой во всей системе (окна, инерция, Dock, меню и панели), авто-скрытием в видео/F11 и магнитным увеличением иконок
@@ -9273,14 +9598,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.6.5 (Nitrogen)',
-                        message: 'Система оповещений Luma OS 1.6.5 (Nitrogen) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.6.6 (Nitrogen)',
+                        message: 'Система оповещений Luma OS 1.6.6 (Nitrogen) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.6.5 (Nitrogen)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.6.6 (Nitrogen)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -9292,7 +9617,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.6.5 (Nitrogen · N-7) · LumaCore 1.5.5</div>
+                      <div className="text-sm font-bold">Luma OS 1.6.6 (Nitrogen · N-7) · LumaCore 1.5.6</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -9331,36 +9656,162 @@ export default function App() {
                     className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer ${surfaceCls}`}
                   >
                     <div>
-                      <div className="text-sm font-bold">Luma Island (Динамический остров)</div>
-                      <div className={`text-xs ${mutedCls}`}>Плавающая капсула с эквалайзером, управлением треками, таймером и буфером обмена</div>
+                      <div className="text-sm font-bold flex items-center gap-2">
+                        <span>Luma Island (Динамический остров)</span>
+                        <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 text-[9px] font-mono">1.6.6</span>
+                      </div>
+                      <div className={`text-xs ${mutedCls}`}>Плавающая капсула с эквалайзером, телеметрией, часами, загрузками, таймером и буфером обмена</div>
                     </div>
                     <StatusPill active={dynamicIslandEnabled} />
                   </div>
 
-                  {/* Position & Size Controls */}
-                  <div className={`p-4 rounded-xl border grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs ${surfaceCls}`}>
-                    <div className="space-y-1.5">
-                      <div className={mutedCls}>Расположение капсулы:</div>
-                      <div className="flex gap-1.5">
-                        {(
-                          [
-                            ['top', 'Сверху'],
-                            ['bottom', 'Снизу'],
-                          ] as const
-                        ).map(([pos, label]) => (
-                          <button
-                            key={pos}
-                            onClick={() => setIslandPosition(pos)}
-                            className={`flex-1 py-1.5 rounded-lg border font-semibold cursor-pointer ${
-                              islandPosition === pos ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
+                  {/* Flagship 1.6.6: Real Native Win32 Always-On-Top Dynamic Island Over Chrome & All Windows Apps */}
+                  <div className={`p-4 rounded-xl border space-y-3 text-xs ${
+                    islandPinOverAllWindows
+                      ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                      : surfaceCls
+                  }`}>
+                    <div
+                      onClick={() => {
+                        setIslandPinOverAllWindows((v) => {
+                          const next = !v;
+                          pushToast(
+                            'Luma Island · Поверх окон',
+                            next
+                              ? 'Динамический остров прикреплён поверх Chrome и всех окон Windows!'
+                              : 'Режим поверх всех окон Windows отключён',
+                            'success'
+                          );
+                          return next;
+                        });
+                      }}
+                      className="flex items-center justify-between gap-3 cursor-pointer"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold flex items-center gap-2 flex-wrap">
+                          <span>Поверх всех окон Windows и Chrome (Прилипший оверлей)</span>
+                          <span className="px-1.5 py-0.5 rounded-md bg-[var(--luma-accent)] text-white text-[9px] font-mono">
+                            HWND_TOPMOST
+                          </span>
+                        </div>
+                        <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
+                          Нативная капсула LumaCore 1.5.6 остаётся прилипшей к выбранной части экрана поверх Google Chrome, игр, Telegram и всех программ Windows без перехвата фокуса
+                        </div>
                       </div>
+                      <StatusPill active={islandPinOverAllWindows} />
                     </div>
 
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {[
+                        {
+                          label: 'Блокировка позиции (прилипание)',
+                          sub: islandLocked ? 'Жёстко приклеена к зоне экрана' : 'Разблокировано: тяните капсулу мышью',
+                          active: islandLocked,
+                          toggle: () => setIslandLocked((v) => !v),
+                        },
+                        {
+                          label: 'Поверх полноэкранных игр и видео',
+                          sub: 'Не скрывать оверлей в F11 / YouTube / играх',
+                          active: islandShowInFullscreen,
+                          toggle: () => setIslandShowInFullscreen((v) => !v),
+                        },
+                        {
+                          label: 'Пропускать клики мыши (Click-Through)',
+                          sub: 'Клики проходят сквозь остров по вкладкам Chrome',
+                          active: islandClickThrough,
+                          toggle: () => setIslandClickThrough((v) => !v),
+                        },
+                        {
+                          label: 'Нативный оверлей даже поверх Luma',
+                          sub: 'Использовать единую Win32-капсулу везде',
+                          active: islandAlwaysOverLuma,
+                          toggle: () => setIslandAlwaysOverLuma((v) => !v),
+                        },
+                      ].map((row) => (
+                        <div
+                          key={row.label}
+                          onClick={row.toggle}
+                          className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 cursor-pointer ${surfaceCls}`}
+                        >
+                          <div className="min-w-0">
+                            <div className="font-bold truncate">{row.label}</div>
+                            <div className={`text-[10px] truncate ${mutedCls}`}>{row.sub}</div>
+                          </div>
+                          <StatusPill active={row.active} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 6-Zone Screen Anchor + Edge Offset Slider */}
+                  <div className={`p-4 rounded-xl border space-y-3 text-xs ${surfaceCls}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-bold">Положение на экране (6 зон прилипания)</div>
+                      <span className="text-[10px] font-mono text-[var(--luma-accent)] font-bold">
+                        {islandAnchor} · отступ {islandOffsetY}px
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(
+                        [
+                          ['top-left', '↖ Сверху слева'],
+                          ['top-center', '↑ Сверху по центру'],
+                          ['top-right', '↗ Сверху справа'],
+                          ['bottom-left', '↙ Снизу слева'],
+                          ['bottom-center', '↓ Снизу по центру'],
+                          ['bottom-right', '↘ Снизу справа'],
+                        ] as const
+                      ).map(([pos, label]) => (
+                        <button
+                          key={pos}
+                          onClick={() => {
+                            setIslandAnchor(pos);
+                            setIslandPosition(pos.startsWith('bottom') ? 'bottom' : 'top');
+                          }}
+                          className={`py-2 px-2 rounded-xl border font-semibold cursor-pointer transition ${
+                            islandAnchor === pos
+                              ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white'
+                              : btnCls
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[11px]">
+                          <span className={mutedCls}>Отступ от края экрана</span>
+                          <span className="font-mono font-bold">{islandOffsetY} px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={64}
+                          value={islandOffsetY}
+                          onChange={(e) => setIslandOffsetY(Number(e.target.value))}
+                          className="w-full accent-[var(--luma-accent)] cursor-pointer"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[11px]">
+                          <span className={mutedCls}>Прозрачность капсулы</span>
+                          <span className="font-mono font-bold">{islandOpacity}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={55}
+                          max={100}
+                          value={islandOpacity}
+                          onChange={(e) => setIslandOpacity(Number(e.target.value))}
+                          className="w-full accent-[var(--luma-accent)] cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Size & 4 Visual Capsule Themes */}
+                  <div className={`p-4 rounded-xl border grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs ${surfaceCls}`}>
                     <div className="space-y-1.5">
                       <div className={mutedCls}>Размер капсулы:</div>
                       <div className="flex gap-1">
@@ -9383,26 +9834,56 @@ export default function App() {
                         ))}
                       </div>
                     </div>
+
+                    <div className="space-y-1.5">
+                      <div className={mutedCls}>Стиль капсулы:</div>
+                      <div className="grid grid-cols-2 gap-1">
+                        {(
+                          [
+                            ['obsidian', 'Obsidian'],
+                            ['cryo', 'Cryo-Glass'],
+                            ['frosted', 'Frosted'],
+                            ['oled', 'Pure OLED'],
+                          ] as const
+                        ).map(([st, label]) => (
+                          <button
+                            key={st}
+                            onClick={() => setIslandStyle(st)}
+                            className={`py-1.5 rounded-lg border font-semibold cursor-pointer ${
+                              islandStyle === st ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Island Modules & Clipboard Auto-Capture Toggles */}
+                  {/* Island Modules & Behavior Toggles */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
                     {[
-                      { label: 'Медиа и эквалайзер', sub: 'Кнопки треков и индикатор звука', active: islandShowEq, toggle: () => setIslandShowEq((v) => !v) },
+                      { label: 'Живые часы в капсуле', sub: 'Точное время справа в острове', active: islandShowClock, toggle: () => setIslandShowClock((v) => !v) },
+                      { label: 'Телеметрия CPU / RAM', sub: 'Нагрузка процессора и памяти в реальном времени', active: islandShowTelemetry, toggle: () => setIslandShowTelemetry((v) => !v) },
+                      { label: 'Медиа и эквалайзер', sub: '7-полосный спектр и кнопки ⏮ ⏯ ⏭', active: islandShowEq, toggle: () => setIslandShowEq((v) => !v) },
+                      { label: 'Индикатор загрузок и рендера', sub: 'Шкала прогресса обновлений и Cut Studio', active: islandShowDownloads, toggle: () => setIslandShowDownloads((v) => !v) },
+                      { label: 'Погода и регион', sub: 'Отображать город в режиме ожидания', active: islandShowWeather, toggle: () => setIslandShowWeather((v) => !v) },
+                      { label: 'Индикатор батареи', sub: 'Показывать заряд и статус сети в капсуле', active: islandShowBattery, toggle: () => setIslandShowBattery((v) => !v) },
                       { label: 'Буфер обмена в острове', sub: 'Быстрая кнопка истории клипов', active: islandShowClip, toggle: () => setIslandShowClip((v) => !v) },
                       { label: 'Авто-захват буфера ОС', sub: 'Сохранять скопированное из Windows', active: islandAutoClipboard, toggle: () => setIslandAutoClipboard((v) => !v) },
-                      { label: 'Индикатор батареи', sub: 'Показывать заряд в капсуле', active: islandShowBattery, toggle: () => setIslandShowBattery((v) => !v) },
-                      { label: 'Подсветка контура', sub: 'Мягкий акцент вокруг капсулы', active: islandGlowEnabled, toggle: () => setIslandGlowEnabled((v) => !v) },
-                      { label: 'Режим «Не беспокоить»', sub: 'Скрывать всплывающие уведомления', active: dndEnabled, toggle: () => setDndEnabled((v) => !v) },
+                      { label: 'Подсветка контура (Glow)', sub: 'Мягкий неоновый акцент вокруг капсулы', active: islandGlowEnabled, toggle: () => setIslandGlowEnabled((v) => !v) },
+                      { label: 'Расширение при наведении', sub: 'Пружинный отклик при подведении курсора', active: islandHoverExpand, toggle: () => setIslandHoverExpand((v) => !v) },
+                      { label: 'Оповещения в Острове', sub: 'Показывать живые импульсы событий', active: islandShowNotifications, toggle: () => setIslandShowNotifications((v) => !v) },
+                      { label: 'Режим «Не беспокоить»', sub: 'Скрывать всплывающие оповещения', active: dndEnabled, toggle: () => setDndEnabled((v) => !v) },
                     ].map((row) => (
                       <div
                         key={row.label}
                         onClick={row.toggle}
-                        className={`p-3.5 rounded-xl border flex items-center justify-between gap-2 cursor-pointer ${surfaceCls}`}
+                        className={`p-3 rounded-xl border flex items-center justify-between gap-2 cursor-pointer ${surfaceCls}`}
                       >
                         <div className="min-w-0">
                           <div className="font-bold truncate">{row.label}</div>
-                          <div className={`text-[11px] truncate ${mutedCls}`}>{row.sub}</div>
+                          <div className={`text-[10px] truncate ${mutedCls}`}>{row.sub}</div>
                         </div>
                         <StatusPill active={row.active} />
                       </div>
@@ -9411,8 +9892,18 @@ export default function App() {
 
                   <div className="flex flex-wrap gap-2">
                     <button
-                      onClick={() => openIslandTab('clipboard')}
+                      onClick={() => {
+                        if (!dynamicIslandEnabled) setDynamicIslandEnabled(true);
+                        triggerIslandPulse('Luma Island 1.6.6', 'Поверх всех окон Chrome и Windows', 'info', 82);
+                      }}
                       className="px-4 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Тест импульса Острова
+                    </button>
+                    <button
+                      onClick={() => openIslandTab('clipboard')}
+                      className={`px-4 py-2 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer ${btnCls}`}
                     >
                       <Clipboard className="w-3.5 h-3.5" />
                       Открыть буфер обмена ({clipboardHistory.length})
@@ -10850,14 +11341,14 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.6.5 (NITROGEN · N-7)</div>
+                      <div className="text-base font-extrabold font-mono">LUMA OS 1.6.6 (NITROGEN · N-7)</div>
                       <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5.5 · LumaShield 2.5 (275 правил) · Luma Ai Nitrogen · Touch &amp; Stylus · Стиль Luma Nova · Gamepad Studio · Luma Peek
+                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.5.6 · LumaShield 2.5 (275 правил) · Luma Ai Nitrogen · Touch &amp; Stylus · Стиль Luma Nova · Gamepad Studio · Luma Peek
                       </div>
                     </div>
                     <a
-                      href="/LumaOS_1.6.5.exe"
-                      download="LumaOS_1.6.5.exe"
+                      href="/LumaOS_1.6.6.exe"
+                      download="LumaOS_1.6.6.exe"
                       className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                     >
                       <Download className="w-3.5 h-3.5" />
@@ -11693,27 +12184,91 @@ export default function App() {
               </div>
             )}
 
-            {/* INLINE ISLAND SETTINGS TAB */}
+            {/* INLINE ISLAND SETTINGS TAB (LUMA OS 1.6.6) */}
             {islandTab === 'settings' && (
               <div className="space-y-3 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className={`p-3.5 rounded-xl border space-y-2 ${surfaceCls}`}>
-                    <div className={mutedCls}>Положение капсулы</div>
-                    <div className="flex gap-1.5">
-                      {(['top', 'bottom'] as const).map((p) => (
-                        <button
-                          key={p}
-                          onClick={() => setIslandPosition(p)}
-                          className={`flex-1 py-1.5 rounded-lg border font-semibold cursor-pointer ${
-                            islandPosition === p ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
-                          }`}
-                        >
-                          {p === 'top' ? 'Сверху' : 'Снизу'}
-                        </button>
-                      ))}
+                <div
+                  onClick={() => setIslandPinOverAllWindows((v) => !v)}
+                  className={`p-3.5 rounded-xl border flex items-center justify-between gap-2 cursor-pointer ${
+                    islandPinOverAllWindows
+                      ? 'border-[var(--luma-accent)] bg-[var(--luma-accent-soft)]'
+                      : surfaceCls
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <span>Поверх Chrome и всех окон Windows</span>
+                      <span className="px-1.5 py-0.5 rounded bg-[var(--luma-accent)] text-white text-[9px] font-mono">TOPMOST</span>
+                    </div>
+                    <div className={`text-[10px] ${mutedCls}`}>Прилипший нативный Win32-оверлей без перехвата фокуса</div>
+                  </div>
+                  <StatusPill active={islandPinOverAllWindows} />
+                </div>
+
+                <div className={`p-3.5 rounded-xl border space-y-2 ${surfaceCls}`}>
+                  <div className="flex items-center justify-between">
+                    <span className={mutedCls}>Положение на экране (6 зон)</span>
+                    <span className="font-mono text-[10px] text-[var(--luma-accent)] font-bold">{islandAnchor}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    {(
+                      [
+                        ['top-left', '↖ В. лево'],
+                        ['top-center', '↑ В. центр'],
+                        ['top-right', '↗ В. право'],
+                        ['bottom-left', '↙ Н. лево'],
+                        ['bottom-center', '↓ Н. центр'],
+                        ['bottom-right', '↘ Н. право'],
+                      ] as const
+                    ).map(([pos, label]) => (
+                      <button
+                        key={pos}
+                        onClick={() => {
+                          setIslandAnchor(pos);
+                          setIslandPosition(pos.startsWith('bottom') ? 'bottom' : 'top');
+                        }}
+                        className={`py-1.5 px-1.5 rounded-lg border font-semibold cursor-pointer ${
+                          islandAnchor === pos ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5 pt-1">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px]">
+                        <span className={mutedCls}>Отступ</span>
+                        <span className="font-mono font-bold">{islandOffsetY}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={64}
+                        value={islandOffsetY}
+                        onChange={(e) => setIslandOffsetY(Number(e.target.value))}
+                        className="w-full accent-[var(--luma-accent)] cursor-pointer"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px]">
+                        <span className={mutedCls}>Прозрачность</span>
+                        <span className="font-mono font-bold">{islandOpacity}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={55}
+                        max={100}
+                        value={islandOpacity}
+                        onChange={(e) => setIslandOpacity(Number(e.target.value))}
+                        className="w-full accent-[var(--luma-accent)] cursor-pointer"
+                      />
                     </div>
                   </div>
-                  <div className={`p-3.5 rounded-xl border space-y-2 ${surfaceCls}`}>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className={`p-3 rounded-xl border space-y-1.5 ${surfaceCls}`}>
                     <div className={mutedCls}>Размер капсулы</div>
                     <div className="flex gap-1">
                       {(['compact', 'standard', 'expanded'] as const).map((s) => (
@@ -11729,22 +12284,54 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+                  <div className={`p-3 rounded-xl border space-y-1.5 ${surfaceCls}`}>
+                    <div className={mutedCls}>Стиль капсулы</div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {(
+                        [
+                          ['obsidian', 'Obsidian'],
+                          ['cryo', 'Cryo-Glass'],
+                          ['frosted', 'Frosted'],
+                          ['oled', 'Pure OLED'],
+                        ] as const
+                      ).map(([st, label]) => (
+                        <button
+                          key={st}
+                          onClick={() => setIslandStyle(st)}
+                          className={`py-1 rounded-lg border font-semibold cursor-pointer ${
+                            islandStyle === st ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white' : btnCls
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {[
+                    { label: 'Блокировка позиции', active: islandLocked, toggle: () => setIslandLocked((v) => !v) },
+                    { label: 'Поверх F11 / игр', active: islandShowInFullscreen, toggle: () => setIslandShowInFullscreen((v) => !v) },
+                    { label: 'Пропускать клики', active: islandClickThrough, toggle: () => setIslandClickThrough((v) => !v) },
+                    { label: 'Живые часы', active: islandShowClock, toggle: () => setIslandShowClock((v) => !v) },
+                    { label: 'Телеметрия CPU / RAM', active: islandShowTelemetry, toggle: () => setIslandShowTelemetry((v) => !v) },
+                    { label: 'Загрузки и рендер', active: islandShowDownloads, toggle: () => setIslandShowDownloads((v) => !v) },
                     { label: 'Медиа и эквалайзер', active: islandShowEq, toggle: () => setIslandShowEq((v) => !v) },
-                    { label: 'Буфер обмена в капсуле', active: islandShowClip, toggle: () => setIslandShowClip((v) => !v) },
+                    { label: 'Буфер обмена', active: islandShowClip, toggle: () => setIslandShowClip((v) => !v) },
                     { label: 'Авто-захват буфера ОС', active: islandAutoClipboard, toggle: () => setIslandAutoClipboard((v) => !v) },
                     { label: 'Индикатор заряда', active: islandShowBattery, toggle: () => setIslandShowBattery((v) => !v) },
                     { label: 'Свечение контура', active: islandGlowEnabled, toggle: () => setIslandGlowEnabled((v) => !v) },
+                    { label: 'Расширение при наведении', active: islandHoverExpand, toggle: () => setIslandHoverExpand((v) => !v) },
+                    { label: 'Оповещения в Острове', active: islandShowNotifications, toggle: () => setIslandShowNotifications((v) => !v) },
                     { label: 'Не беспокоить (DND)', active: dndEnabled, toggle: () => setDndEnabled((v) => !v) },
                   ].map((opt) => (
                     <button
                       key={opt.label}
                       onClick={opt.toggle}
-                      className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer ${surfaceCls}`}
+                      className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer ${surfaceCls}`}
                     >
-                      <span className="font-semibold">{opt.label}</span>
+                      <span className="font-semibold truncate pr-2">{opt.label}</span>
                       <StatusPill active={opt.active} />
                     </button>
                   ))}
@@ -12542,7 +13129,7 @@ export default function App() {
                     setTaskbarHostWinPid(null);
                     setTaskbarCtxMenu(null);
                   }}
-                  title={`${t('start', 'Пуск')} · Приложения и Обзор окон (Luma OS 1.6.5 Nitrogen)`}
+                  title={`${t('start', 'Пуск')} · Приложения и Обзор окон (Luma OS 1.6.6 Nitrogen)`}
                   className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
                     startMenuOpen
                       ? 'bg-[var(--luma-accent)] text-white'
@@ -12691,7 +13278,7 @@ export default function App() {
                 </button>
               )}
 
-              {/* Luma OS 1.6.5 Interactive Magnetic Smart Dock: Direct 1-Click Pinned Apps Launcher + Bounce + Live Badges & Progress Halo */}
+              {/* Luma OS 1.6.6 Interactive Magnetic Smart Dock: Direct 1-Click Pinned Apps Launcher + Bounce + Live Badges & Progress Halo */}
               {taskbarDirectLaunch && taskbarDirectAppIds.length > 0 && (
                 <>
                   {taskbarDirectAppIds
@@ -13410,13 +13997,13 @@ export default function App() {
                   setCarbonHubOpen(false);
                   setNotifShadeOpen(false);
                 }}
-                title="Пуск · Приложения и Обзор окон (Luma OS 1.6.5 Nitrogen)"
+                title="Пуск · Приложения и Обзор окон (Luma OS 1.6.6 Nitrogen)"
                 className={`h-8 px-2.5 rounded-xl flex items-center gap-1.5 text-xs font-bold cursor-pointer transition ${
                   startMenuOpen ? 'bg-[var(--luma-accent)] text-white' : btnCls + ' border'
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-current" />
-                <span>Luma 1.6.5</span>
+                <span>Luma 1.6.6</span>
               </button>
             )}
             <button
@@ -14660,7 +15247,7 @@ export default function App() {
               {!startSearch.trim() && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                    <span className={mutedCls}>Luma OS 1.6.5 (Nitrogen · N-7)</span>
+                    <span className={mutedCls}>Luma OS 1.6.6 (Nitrogen · N-7)</span>
                     <div className="flex items-center gap-1.5">
                       {enabledFeatures.privateVault && (
                         <button
@@ -14673,7 +15260,7 @@ export default function App() {
                           🔒 Приватный стол
                         </button>
                       )}
-                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.5.5</span>
+                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.5.6</span>
                     </div>
                   </div>
                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
@@ -14780,7 +15367,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.6.5 (Nitrogen)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.6.6 (Nitrogen)'}
                   </div>
                 </div>
               </div>
@@ -16058,7 +16645,7 @@ export default function App() {
         onNotify={(title, msg, level) => pushToast(title, msg, level || 'info')}
       />
 
-      {/* ==================== LUMA OS 1.6.5 (NITROGEN) LUMA NOVA STYLE TOP-RIGHT PILL & COMPACT PANEL ==================== */}
+      {/* ==================== LUMA OS 1.6.6 (NITROGEN) LUMA NOVA STYLE TOP-RIGHT PILL & COMPACT PANEL ==================== */}
       {isNova && (
         <div
           className={`transition-opacity duration-300 ${
@@ -16258,7 +16845,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.6.5 (Nitrogen · N-7) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
+                  Luma OS 1.6.6 (Nitrogen · N-7) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
                 </div>
               </div>
             </div>

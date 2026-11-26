@@ -1632,7 +1632,7 @@ export const LumaCodeStudioWindow: React.FC<LumaCodeStudioWindowProps> = ({ isDa
       {/* Pro IDE Status Bar */}
       <div className="px-3 py-1 bg-gradient-to-r from-cyan-700 to-blue-800 text-white text-[10px] font-mono flex items-center justify-between shrink-0 gap-2">
         <div className="flex items-center gap-3">
-          <span className="font-bold">Luma Code Studio 1.6.5 Pro · Ai Nitrogen</span>
+          <span className="font-bold">Luma Code Studio 1.6.6 Pro · Ai Nitrogen</span>
           <select
             value={activeTab?.language || 'plaintext'}
             onChange={(e) => updateActiveLanguage(e.target.value)}
