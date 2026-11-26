@@ -523,7 +523,7 @@ func runNativeDesktopWindow(url string, forceFullscreen bool) bool {
 		AutoFocus: true,
 		DataPath:  dataPath,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Luma OS 1.7.1 (Oxygen)",
+			Title:  getLumaWindowTitle(),
 			Width:  1440,
 			Height: 900,
 			IconId: 1,
@@ -673,6 +673,9 @@ func forceBringLumaToFront(lumaHwnd uintptr, pinTopmost bool) {
 	if lumaHwnd == 0 {
 		return
 	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	procIsIconic := user32WinDLL.NewProc("IsIconic")
 	procGetFg := user32WinDLL.NewProc("GetForegroundWindow")
 	procGetWinThreadProcId := user32WinDLL.NewProc("GetWindowThreadProcessId")
@@ -695,6 +698,7 @@ func forceBringLumaToFront(lumaHwnd uintptr, pinTopmost bool) {
 		_, _, _ = procShowWindow.Call(lumaHwnd, swShow)
 	}
 
+	curTid, _, _ := procHookGetCurrentThreadId.Call()
 	fgHwnd, _, _ := procGetFg.Call()
 	var fgTid, lumaTid uintptr
 	if fgHwnd != 0 {
@@ -702,10 +706,23 @@ func forceBringLumaToFront(lumaHwnd uintptr, pinTopmost bool) {
 	}
 	lumaTid, _, _ = procGetWinThreadProcId.Call(lumaHwnd, 0)
 
-	attached := false
+	attCurFg := false
+	attCurLuma := false
+	attFgLuma := false
+	if curTid != 0 && fgTid != 0 && curTid != fgTid {
+		if ok, _, _ := procAttachThreadInput.Call(curTid, fgTid, 1); ok != 0 {
+			attCurFg = true
+		}
+	}
+	if curTid != 0 && lumaTid != 0 && curTid != lumaTid {
+		if ok, _, _ := procAttachThreadInput.Call(curTid, lumaTid, 1); ok != 0 {
+			attCurLuma = true
+		}
+	}
 	if fgTid != 0 && lumaTid != 0 && fgTid != lumaTid {
-		ok, _, _ := procAttachThreadInput.Call(fgTid, lumaTid, 1)
-		attached = ok != 0
+		if ok, _, _ := procAttachThreadInput.Call(fgTid, lumaTid, 1); ok != 0 {
+			attFgLuma = true
+		}
 	}
 
 	_, _, _ = procAllowSetFg.Call(asfwAny)
@@ -715,8 +732,14 @@ func forceBringLumaToFront(lumaHwnd uintptr, pinTopmost bool) {
 	_, _, _ = procSetFocus.Call(lumaHwnd)
 	focusWebView2InnerChild(lumaHwnd)
 
-	if attached {
+	if attFgLuma {
 		_, _, _ = procAttachThreadInput.Call(fgTid, lumaTid, 0)
+	}
+	if attCurLuma {
+		_, _, _ = procAttachThreadInput.Call(curTid, lumaTid, 0)
+	}
+	if attCurFg {
+		_, _, _ = procAttachThreadInput.Call(curTid, fgTid, 0)
 	}
 
 	if pinTopmost {

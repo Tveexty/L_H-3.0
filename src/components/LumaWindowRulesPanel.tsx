@@ -119,7 +119,7 @@ export const LumaWindowRulesPanel: React.FC<LumaWindowRulesPanelProps> = ({
         onPushToast('Правила окон (KWin)', `Правило «${rule.name}» сохранено и активно`, 'success');
       }
     } catch {
-      onPushToast('Правила окон', 'Нет связи с ядром LumaCore 1.6.1', 'warning');
+      onPushToast('Правила окон', 'Нет связи с ядром LumaCore 1.6.2', 'warning');
     } finally {
       setBusy(false);
     }
@@ -266,14 +266,14 @@ export const LumaWindowRulesPanel: React.FC<LumaWindowRulesPanelProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-cyan-400 font-bold">
-              LUMA OS 1.7.1 OXYGEN · KWIN WINDOW RULES ENGINE
+              LUMA OS 1.7.2 OXYGEN · KWIN WINDOW RULES ENGINE
             </div>
             <div className="text-base font-extrabold flex items-center gap-2">
               <Layers className="w-4 h-4 text-cyan-400" />
               Продвинутый менеджер правил для окон
             </div>
             <div className={`text-xs ${mutedCls}`}>
-              Задайте правило один раз — ядро LumaCore 1.6.1 автоматически расставляет окна по мониторам, снимает рамки, держит поверх окон и включает игровой режим.
+              Задайте правило один раз — ядро LumaCore 1.6.2 автоматически расставляет окна по мониторам, снимает рамки, держит поверх окон и включает игровой режим.
             </div>
           </div>
           <button

@@ -1874,6 +1874,9 @@ func (p *platformProbe) FocusWindow(pid int) error {
 }
 
 func (p *platformProbe) FocusWindowWithHWND(pid int, targetHwnd uintptr) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	hwnd := targetHwnd
 	if hwnd != 0 {
 		procIsWin := modUser32.NewProc("IsWindow")
@@ -1900,9 +1903,16 @@ func (p *platformProbe) FocusWindowWithHWND(pid int, targetHwnd uintptr) error {
 	procAttachThread := modUser32.NewProc("AttachThreadInput")
 	procBringToTop := modUser32.NewProc("BringWindowToTop")
 	procSetActive := modUser32.NewProc("SetActiveWindow")
+	procSetFocus := modUser32.NewProc("SetFocus")
 	procShowWin := modUser32.NewProc("ShowWindow")
 	procSetWinPos := modUser32.NewProc("SetWindowPos")
+	procSwitchToWin := modUser32.NewProc("SwitchToThisWindow")
+	procGetAncestor := modUser32.NewProc("GetAncestor")
+	procGetLastPopup := modUser32.NewProc("GetLastActivePopup")
+	procIsWinEnabled := modUser32.NewProc("IsWindowEnabled")
+	procGetAsyncKey := modUser32.NewProc("GetAsyncKeyState")
 	procKeybdEvt := modUser32.NewProc("keybd_event")
+	procGetCurTid := modKernel32.NewProc("GetCurrentThreadId")
 
 	const (
 		asfwAny          = ^uintptr(0)
@@ -1911,9 +1921,22 @@ func (p *platformProbe) FocusWindowWithHWND(pid int, targetHwnd uintptr) error {
 		swpNoSizeLocal   = 0x0001
 		swpShowWinLocal  = 0x0040
 		hwndTopLocal     = 0
+		gaRoot           = 2
+		vkMenuLocal      = 0x12
+		vkLMenuLocal     = 0xA4
 		vkDummyAltUnlock = 0xE8
 		keyUpFlag        = 0x0002
 	)
+
+	// Resolve root window and any active enabled modal popup (so Chrome/Telegram/dialogs receive keyboard input immediately!)
+	if root, _, _ := procGetAncestor.Call(hwnd, gaRoot); root != 0 {
+		hwnd = root
+	}
+	if popup, _, _ := procGetLastPopup.Call(hwnd); popup != 0 && popup != hwnd {
+		if en, _, _ := procIsWinEnabled.Call(popup); en != 0 {
+			hwnd = popup
+		}
+	}
 
 	iconic, _, _ := procIsIconic.Call(hwnd)
 	if iconic != 0 {
@@ -1922,32 +1945,85 @@ func (p *platformProbe) FocusWindowWithHWND(pid int, targetHwnd uintptr) error {
 		_, _, _ = procShowWin.Call(hwnd, swShowNormal)
 	}
 
+	// CRITICAL FIX (1.7.2): HTTP handler runs on its own OS thread (curTid), NOT Luma's UI thread (fgTid)!
+	// Previously only fgTid<->targetTid were attached, so SetForegroundWindow silently failed while
+	// SetWindowPos visually raised the window — leaving keyboard input trapped in Luma OS and keeping
+	// Dynamic Island hidden until an LMB click! Now we lock OS thread & attach curTid<->fgTid<->targetTid!
+	curTid, _, _ := procGetCurTid.Call()
 	fgHwnd, _, _ := procGetFg.Call()
 	var fgTid, targetTid uintptr
+	var targetPid uint32
 	if fgHwnd != 0 {
 		fgTid, _, _ = procGetWinThread.Call(fgHwnd, 0)
 	}
-	targetTid, _, _ = procGetWinThread.Call(hwnd, 0)
+	targetTid, _, _ = procGetWinThread.Call(hwnd, uintptr(unsafe.Pointer(&targetPid)))
 
-	attached := false
+	// Grant target process unconditional foreground permission BEFORE switching
+	if targetPid != 0 {
+		_, _, _ = procAllowSetFg.Call(uintptr(targetPid))
+	}
+	_, _, _ = procAllowSetFg.Call(asfwAny)
+
+	attachedCurFg := false
+	attachedCurTarget := false
+	attachedFgTarget := false
+	if curTid != 0 && fgTid != 0 && curTid != fgTid {
+		if ok, _, _ := procAttachThread.Call(curTid, fgTid, 1); ok != 0 {
+			attachedCurFg = true
+		}
+	}
+	if curTid != 0 && targetTid != 0 && curTid != targetTid {
+		if ok, _, _ := procAttachThread.Call(curTid, targetTid, 1); ok != 0 {
+			attachedCurTarget = true
+		}
+	}
 	if fgTid != 0 && targetTid != 0 && fgTid != targetTid {
 		if ok, _, _ := procAttachThread.Call(fgTid, targetTid, 1); ok != 0 {
-			attached = true
+			attachedFgTarget = true
 		}
 	}
 
-	// Unlock Windows Foreground Lock Timeout & guarantee target rises above Luma Desktop cleanly!
-	_, _, _ = procAllowSetFg.Call(asfwAny)
+	// If Alt was physically released after Alt+Tab commit, clear any lingering menu activation state
+	altDown, _, _ := procGetAsyncKey.Call(vkMenuLocal)
+	if (altDown & 0x8000) == 0 {
+		_, _, _ = procKeybdEvt.Call(vkLMenuLocal, 0, keyUpFlag, 0)
+	}
 	_, _, _ = procKeybdEvt.Call(vkDummyAltUnlock, 0, 0, 0)
 	_, _, _ = procKeybdEvt.Call(vkDummyAltUnlock, 0, keyUpFlag, 0)
+
 	_, _, _ = procSetWinPos.Call(hwnd, hwndTopLocal, 0, 0, 0, 0, swpNoMoveLocal|swpNoSizeLocal|swpShowWinLocal)
 	_, _, _ = procBringToTop.Call(hwnd)
 	_, _, _ = procSetForegroundWindow.Call(hwnd)
 	_, _, _ = procSetActive.Call(hwnd)
+	_, _, _ = procSetFocus.Call(hwnd)
 
-	if attached {
+	// Verify real Win32 foreground transfer — if Windows still didn't transfer keyboard focus,
+	// invoke SwitchToThisWindow(hwnd, TRUE) (the exact Win32 Alt+Tab handoff API)!
+	fgAfter, _, _ := procGetFg.Call()
+	if fgAfter != hwnd {
+		_, _, _ = procSwitchToWin.Call(hwnd, 1)
+		_, _, _ = procSetForegroundWindow.Call(hwnd)
+		_, _, _ = procSetActive.Call(hwnd)
+		_, _, _ = procSetFocus.Call(hwnd)
+	}
+
+	if attachedFgTarget {
 		_, _, _ = procAttachThread.Call(fgTid, targetTid, 0)
 	}
+	if attachedCurTarget {
+		_, _, _ = procAttachThread.Call(curTid, targetTid, 0)
+	}
+	if attachedCurFg {
+		_, _, _ = procAttachThread.Call(curTid, fgTid, 0)
+	}
+
+	// Immediately wake Native Dynamic Island overlay so it appears instantaneously over the focused window!
+	notifyNativeIslandOverlayRedraw()
+	go func() {
+		time.Sleep(75 * time.Millisecond)
+		notifyNativeIslandOverlayRedraw()
+	}()
+
 	return nil
 }
 

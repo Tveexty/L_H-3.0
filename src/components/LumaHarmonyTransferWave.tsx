@@ -140,11 +140,23 @@ export const LumaHarmonyTransferWave: React.FC<LumaHarmonyTransferWaveProps> = (
 
   const openFile = () => {
     if (!active.path) return;
-    void fetch('/api/kernel/fs/open', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: active.path }),
-    }).catch(() => {});
+    const lower = active.path.toLowerCase();
+    const isImg = active.isImage || /\.(png|jpe?g|webp|bmp|gif|svg|ico)$/.test(lower);
+    if (isImg) {
+      window.dispatchEvent(
+        new CustomEvent('luma-open-internal-file', {
+          detail: { path: active.path, mode: 'photo', name: active.fileName },
+        })
+      );
+      setActive(null);
+      return;
+    }
+    window.dispatchEvent(
+      new CustomEvent('luma-open-internal-file', {
+        detail: { path: active.path, mode: 'auto', name: active.fileName },
+      })
+    );
+    setActive(null);
   };
 
   return (

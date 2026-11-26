@@ -92,11 +92,13 @@ export const LumaOxygenConnectWindow: React.FC<LumaOxygenConnectWindowProps> = (
   };
 
   const openFileOnPC = async (path: string) => {
-    await fetch('/api/kernel/fs/open', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path }),
-    }).catch(() => {});
+    const lower = path.toLowerCase();
+    const isImg = /\.(png|jpe?g|webp|bmp|gif|svg|ico)$/.test(lower);
+    window.dispatchEvent(
+      new CustomEvent('luma-open-internal-file', {
+        detail: { path, mode: isImg ? 'photo' : 'auto', name: path.split(/[\\/]/).pop() || path },
+      })
+    );
   };
 
   const sendFileToPhone = async () => {

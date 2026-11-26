@@ -366,8 +366,30 @@ export const LumaExplorerWindow: React.FC<{
       return;
     }
     const ext = (entry.ext || '').toLowerCase();
+    // Luma OS 1.7.2: Always open ALL photos directly inside built-in Luma Photo Studio!
     if (IMAGE_EXTS.includes(ext)) {
-      setPreview({ entry, kind: 'image', loading: false });
+      window.dispatchEvent(
+        new CustomEvent('luma-open-internal-file', {
+          detail: { path: entry.path, mode: 'photo', name: entry.name },
+        })
+      );
+      onPushToast('Luma Photo Studio', `Открыто в редакторе фото: ${entry.name}`, 'info');
+      return;
+    }
+    if (['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'].includes(ext)) {
+      window.dispatchEvent(
+        new CustomEvent('luma-open-internal-file', {
+          detail: { path: entry.path, mode: 'office', name: entry.name },
+        })
+      );
+      return;
+    }
+    if (MEDIA_EXTS.includes(ext)) {
+      window.dispatchEvent(
+        new CustomEvent('luma-open-internal-file', {
+          detail: { path: entry.path, mode: 'media', name: entry.name },
+        })
+      );
       return;
     }
     const textExts = [...CODE_EXTS, '.txt', '.md', '.log', '.ini', '.cfg', '.csv', '.xml', '.env', '.gitignore'];

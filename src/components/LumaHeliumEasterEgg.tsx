@@ -91,7 +91,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
       >
         <img
           src={oxygenHeroImg}
-          alt="Luma OS 1.7.1 Oxygen O-8 2.5D QHD"
+          alt="Luma OS 1.7.2 Oxygen O-8 2.5D QHD"
           loading="eager"
           decoding="sync"
           draggable={false}

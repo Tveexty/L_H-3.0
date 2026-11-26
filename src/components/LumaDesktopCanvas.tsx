@@ -2084,6 +2084,28 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
     }
     const hasAbsolutePath = entry.target.includes('\\') || entry.target.includes('/') || entry.target.includes(':');
     if (hasAbsolutePath) {
+      const lowerTarget = entry.target.toLowerCase();
+      const isDesktopPhoto = /\.(png|jpe?g|webp|bmp|gif|svg|ico|avif)$/.test(lowerTarget);
+      const isExecutable = /\.(exe|lnk|msi|bat|cmd|ps1|vbs|msc|cpl|appref-ms|url)$/.test(lowerTarget);
+      const isFolderShortcut = entry.kind === 'disk_folder' || (!isExecutable && !/\.[a-z0-9]{1,5}$/i.test(lowerTarget));
+      if (isDesktopPhoto) {
+        window.dispatchEvent(
+          new CustomEvent('luma-open-internal-file', {
+            detail: { path: entry.target, mode: 'photo', name: entry.label },
+          })
+        );
+        onPushToast('Luma Photo Studio', `Открыто в системе: ${entry.label}`, 'success');
+        return;
+      }
+      if (isFolderShortcut) {
+        window.dispatchEvent(
+          new CustomEvent('luma-open-internal-file', {
+            detail: { path: entry.target, mode: 'explorer', name: entry.label },
+          })
+        );
+        onPushToast('Проводник Luma OS', `Открыта папка: ${entry.label}`, 'info');
+        return;
+      }
       try {
         const r = await fetch('/api/kernel/open-path', {
           method: 'POST',

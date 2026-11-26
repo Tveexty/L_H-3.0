@@ -30,6 +30,7 @@ import {
   Compass,
   Copy,
   Cpu,
+  Crown,
   Disc3,
   Download,
   ExternalLink,
@@ -80,6 +81,7 @@ import {
   Plus,
   Power,
   Puzzle,
+  Radio,
   RefreshCw,
   Rocket,
   RotateCcw,
@@ -245,6 +247,13 @@ import { LumaSmartClipboardModal } from './components/LumaSmartClipboardModal';
 import { LumaOxygenOSD } from './components/LumaOxygenOSD';
 import { LumaOxygenConnectWindow } from './components/LumaOxygenConnectWindow';
 import { LumaHarmonyTransferWave } from './components/LumaHarmonyTransferWave';
+import { LumaPhotoEditorWindow } from './components/LumaPhotoEditorWindow';
+import { LumaSuperDeviceWindow } from './components/LumaSuperDeviceWindow';
+import {
+  DEFAULT_MODULAR_PANEL_CONFIG,
+  LumaModularPanelBar,
+  ModularPanelConfig,
+} from './components/LumaModularPanelBar';
 import { getLangLocale, LUMA_LANGUAGES, LumaLangCode, tr } from './i18n/translations';
 import { useLumaAutoTranslate } from './i18n/LumaAutoTranslator';
 
@@ -307,7 +316,9 @@ type DexWinId =
   | 'office'
   | 'gamepad'
   | 'uninstaller'
-  | 'oxygen_connect';
+  | 'oxygen_connect'
+  | 'photo_editor'
+  | 'superdevice';
 type AnimationPreset = 'harmony7' | 'standard' | 'spring' | 'glide' | 'silk' | 'elastic' | 'none';
 type TaskbarSizePreset = 'compact' | 'standard' | 'large';
 type FontPreset = 'sans' | 'mono' | 'rounded';
@@ -536,6 +547,8 @@ const INITIAL_WINDOWS: Record<DexWinId, DexWinState> = {
   gamepad: { open: false, minimized: false, z: 20, desktop: 1 },
   uninstaller: { open: false, minimized: false, z: 20, desktop: 1 },
   oxygen_connect: { open: false, minimized: false, z: 20, desktop: 1 },
+  photo_editor: { open: false, minimized: false, z: 20, desktop: 1 },
+  superdevice: { open: false, minimized: false, z: 20, desktop: 1 },
 };
 
 export default function App() {
@@ -1054,7 +1067,7 @@ export default function App() {
   );
   const [liveWallpaper, setLiveWallpaper] = useState<LiveWallpaperId>(savedState?.liveWallpaper || '');
 
-  // --- Luma OS 1.7.1 Oxygen: Smart Clipboard Modal + KWin Runtime Game/DND Overrides ---
+  // --- Luma OS 1.7.2 Oxygen: Smart Clipboard Modal + KWin Runtime Game/DND Overrides ---
   const [smartClipboardOpen, setSmartClipboardOpen] = useState<boolean>(false);
   const [kwinAutoDnd, setKwinAutoDnd] = useState<boolean>(false);
   const [kwinNoCompositor, setKwinNoCompositor] = useState<boolean>(false);
@@ -1318,10 +1331,10 @@ export default function App() {
     {
       id: 'notif_nitrogen_welcome_160',
       source: 'system',
-      appName: 'Luma OS 1.7.1',
-      sender: 'Luma OS 1.7.1 Oxygen',
-      title: 'Добро пожаловать в Luma OS 1.7.1 (Oxygen · O-8)!',
-      body: 'LumaCore 1.6.1 · LumaShield 3.2 (340+ правил) · Волна HarmonyOS при передаче файлов · 1-Тап Oxygen Connect + быстрый тачпад · Полноценный Circle to Search · KWin Правила окон · Полка Dropzone · Умный буфер (OCR).',
+      appName: 'Luma OS 1.7.2',
+      sender: 'Luma OS 1.7.2 Oxygen',
+      title: 'Добро пожаловать в Luma OS 1.7.2 (Oxygen · O-8)!',
+      body: 'LumaCore 1.6.2 · LumaShield 3.2 (340+ правил) · Волна HarmonyOS при передаче файлов · 1-Тап Oxygen Connect + быстрый тачпад · Полноценный Circle to Search · KWin Правила окон · Полка Dropzone · Умный буфер (OCR).',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       dateLabel: 'Сегодня',
       timestamp: Date.now(),
@@ -1394,6 +1407,69 @@ export default function App() {
   const zCounterRef = useRef<number>(25);
   const [explorerStartPath, setExplorerStartPath] = useState<string>('~');
   const [explorerKey, setExplorerKey] = useState<number>(1);
+  // --- Luma OS 1.7.2: Built-in Photo Studio, Base/Pro Edition, System File Handlers & Modular Panel ---
+  const [photoEditorPath, setPhotoEditorPath] = useState<string>('');
+  const [photoEditorKey, setPhotoEditorKey] = useState<number>(1);
+  const [editionInfo, setEditionInfo] = useState<{
+    edition: 'base' | 'pro';
+    edition_label: string;
+    is_pro: boolean;
+    is_admin: boolean;
+    full_rights: boolean;
+    can_elevate: boolean;
+  }>({
+    edition: 'pro',
+    edition_label: 'Luma OS 1.7.2 Pro',
+    is_pro: true,
+    is_admin: false,
+    full_rights: false,
+    can_elevate: true,
+  });
+  const [sysHandlers, setSysHandlers] = useState<{
+    photos_in_luma: boolean;
+    explorer_in_luma: boolean;
+    code_in_luma: boolean;
+    office_in_luma: boolean;
+    os_registered: boolean;
+    message?: string;
+  }>({
+    photos_in_luma: true,
+    explorer_in_luma: true,
+    code_in_luma: true,
+    office_in_luma: true,
+    os_registered: false,
+  });
+  const [modularPanelCfg, setModularPanelCfg] = useState<ModularPanelConfig>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('luma_modular_panel_v172') || 'null');
+      if (raw && Array.isArray(raw.order)) return { ...DEFAULT_MODULAR_PANEL_CONFIG, ...raw };
+    } catch {
+      // ignore
+    }
+    return DEFAULT_MODULAR_PANEL_CONFIG;
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('luma_modular_panel_v172', JSON.stringify(modularPanelCfg));
+    } catch {
+      // ignore
+    }
+  }, [modularPanelCfg]);
+  useEffect(() => {
+    void fetch('/api/kernel/edition')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.ok) setEditionInfo(d);
+      })
+      .catch(() => {});
+    void fetch('/api/kernel/system-handlers')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.ok) setSysHandlers(d);
+      })
+      .catch(() => {});
+  }, []);
+  const taskbarWheelRef = useRef<number>(0);
   const [spotlightOpen, setSpotlightOpen] = useState<boolean>(false);
   const [startMenuOpen, setStartMenuOpen] = useState<boolean>(false);
   const [startMenuTab, setStartMenuTab] = useState<'apps' | 'overview'>('apps');
@@ -1631,7 +1707,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.7.1 (Oxygen · O-8) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.7.2 (Oxygen · O-8) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -1664,7 +1740,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.7.1 (Oxygen · O-8)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.7.2 (Oxygen · O-8)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -1679,8 +1755,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 1.6.1',
-      message: 'Инициализация оболочки Luma OS 1.7.1 (Oxygen · O-8), LumaCore 1.6.1, LumaShield 3.2 Zero-Freeze и AI 5.0',
+      source: 'LumaCore 1.6.2',
+      message: 'Инициализация оболочки Luma OS 1.7.2 (Oxygen · O-8), LumaCore 1.6.2, LumaShield 3.2 Zero-Freeze и AI 5.0',
       level: 'success',
     },
   ]);
@@ -1972,8 +2048,8 @@ export default function App() {
           downloaded_bytes: 2.1 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 16.4,
-          target_version: '1.7.1 (Oxygen · O-8)',
-          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.7.1...',
+          target_version: '1.7.2 (Oxygen · O-8)',
+          message: 'Соединение с репозиторием GitHub и проверка манифеста Luma OS 1.7.2...',
         },
       },
       {
@@ -1985,8 +2061,8 @@ export default function App() {
           downloaded_bytes: 10.2 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 27.6,
-          target_version: '1.7.1 (Oxygen · O-8)',
-          message: 'Загрузка сборки LumaOS_1.7.1.exe (LumaCore 1.6.1 + HID Жесты + Пружинная физика)...',
+          target_version: '1.7.2 (Oxygen · O-8)',
+          message: 'Загрузка сборки LumaOS_1.7.2_Pro.exe (LumaCore 1.6.2 + HID Жесты + Пружинная физика)...',
         },
       },
       {
@@ -1998,7 +2074,7 @@ export default function App() {
           downloaded_bytes: 23.1 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 36.2,
-          target_version: '1.7.1 (Oxygen · O-8)',
+          target_version: '1.7.2 (Oxygen · O-8)',
           message: 'Потоковая загрузка волны HarmonyOS, Circle to Search Vision, 1-Тап Oxygen Connect и 21 обоев QHD...',
         },
       },
@@ -2011,7 +2087,7 @@ export default function App() {
           downloaded_bytes: 35.0 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 19.4,
-          target_version: '1.7.1 (Oxygen · O-8)',
+          target_version: '1.7.2 (Oxygen · O-8)',
           sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
           message: 'Криптографическая проверка SHA-256 и подписи PE32+ (LumaShield 3.2)...',
         },
@@ -2025,9 +2101,9 @@ export default function App() {
           downloaded_bytes: 35.0 * 1024 * 1024,
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 0,
-          target_version: '1.7.1 (Oxygen · O-8)',
+          target_version: '1.7.2 (Oxygen · O-8)',
           sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
-          message: 'Сборка Luma OS 1.7.1 (Oxygen · O-8) проверена и готова к мгновенному запуску!',
+          message: 'Сборка Luma OS 1.7.2 (Oxygen · O-8) проверена и готова к мгновенному запуску!',
         },
       },
     ];
@@ -2185,6 +2261,74 @@ export default function App() {
     }
     openWindow('explorer');
   };
+
+  // Luma OS 1.7.2: Universal System File Router — open ALL photos, folders, docs & media inside Luma OS!
+  const openFileInLumaSystem = useCallback(
+    (targetPath: string, forcedMode: string = 'auto', displayName?: string) => {
+      const clean = (targetPath || '').trim();
+      if (!clean) return;
+      const lower = clean.toLowerCase();
+      const isImg = /\.(png|jpe?g|webp|bmp|gif|svg|ico|avif)$/.test(lower);
+      const isOffice = /\.(docx?|xlsx?|pptx?|csv|rtf|odt)$/.test(lower);
+      const isMedia = /\.(mp4|mkv|avi|mov|webm|mp3|wav|flac|ogg|m4a)$/.test(lower);
+      const isCode = /\.(txt|md|json|jsx?|tsx?|go|py|css|html?|xml|ya?ml|ini|cfg|log|sh|ps1|rs|cpp|c|h|cs|sql)$/.test(lower);
+      if (forcedMode === 'photo' || (forcedMode === 'auto' && isImg && sysHandlers.photos_in_luma)) {
+        setPhotoEditorPath(clean);
+        setPhotoEditorKey((k) => k + 1);
+        openWindow('photo_editor');
+        return;
+      }
+      if (forcedMode === 'explorer' || (!isImg && !isOffice && !isMedia && !isCode && !/\.[a-z0-9]{1,5}$/i.test(lower))) {
+        openExplorerAt(clean);
+        return;
+      }
+      if (forcedMode === 'office' || (forcedMode === 'auto' && isOffice && sysHandlers.office_in_luma)) {
+        openWindow('office');
+        pushToast('Luma Office Pro', `Открыт документ: ${displayName || clean.split(/[\\/]/).pop()}`, 'info');
+        return;
+      }
+      if (forcedMode === 'media' || (forcedMode === 'auto' && isMedia)) {
+        openWindow('cut_studio');
+        pushToast('Luma Cut Studio', `Медиафайл открыт в системе: ${displayName || clean.split(/[\\/]/).pop()}`, 'info');
+        return;
+      }
+      if (forcedMode === 'code' || (forcedMode === 'auto' && isCode && sysHandlers.code_in_luma)) {
+        openWindow('code_studio');
+        pushToast('Luma Code Studio', `Файл открыт в IDE: ${displayName || clean.split(/[\\/]/).pop()}`, 'info');
+        return;
+      }
+      openExplorerAt(clean.replace(/[\\/][^\\/]+$/, '') || '~');
+    },
+    [sysHandlers]
+  );
+
+  useEffect(() => {
+    const onInternalOpen = (e: Event) => {
+      const det = (e as CustomEvent<{ path?: string; mode?: string; name?: string }>).detail;
+      if (det?.path) openFileInLumaSystem(det.path, det.mode || 'auto', det.name);
+    };
+    window.addEventListener('luma-open-internal-file', onInternalOpen);
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource('/api/kernel/external-open/events');
+      es.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg?.type === 'open' && msg?.item?.path) {
+            openFileInLumaSystem(msg.item.path, msg.item.mode || 'auto', msg.item.name);
+          }
+        } catch {
+          // ignore
+        }
+      };
+    } catch {
+      // offline
+    }
+    return () => {
+      window.removeEventListener('luma-open-internal-file', onInternalOpen);
+      es?.close();
+    };
+  }, [openFileInLumaSystem]);
 
   const openIslandTab = (tab: typeof islandTab) => {
     setIslandTab(tab);
@@ -3949,7 +4093,7 @@ export default function App() {
           void pollHostWindows();
         }
       } catch {
-        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.6.1', 'warning');
+        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 1.6.2', 'warning');
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4164,7 +4308,7 @@ export default function App() {
   executeGestureRef.current = executeGestureAction;
 
   useEffect(() => {
-    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 1.6.1 WM_INPUT + SSE fallback)
+    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 1.6.2 WM_INPUT + SSE fallback)
     let lastNativeFireAt = 0;
     let lastNativeKey = '';
     const dispatchMappedGesture = (gestureName: string, sourceTag: string) => {
@@ -4565,11 +4709,12 @@ export default function App() {
   const altTabEntries: AltTabEntry[] = useMemo(() => {
     const lumaTitles: Partial<Record<DexWinId, string>> = {
       apps: 'Приложения', explorer: 'Проводник', taskmgr: 'Диспетчер задач', terminal: 'Терминал',
-      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.6.1', settings: 'Настройки', plugins: 'Расширения',
+      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 1.6.2', settings: 'Настройки', plugins: 'Расширения',
       island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma Ai Nitrogen', utilities: 'Службы ОС',
       calculator: 'Калькулятор', calendar: 'Календарь', trash: 'Корзина', scenarios: 'Сценарии',
       code_studio: 'Code Studio Pro', cut_studio: 'Cut Studio Pro', office: 'Luma Office Pro',
       gamepad: 'Luma Gamepad Studio', uninstaller: 'Luma Uninstaller', oxygen_connect: 'Oxygen Connect (Android)',
+      photo_editor: 'Luma Photo Studio', superdevice: 'Суперустройство (Экосистема)',
     };
     const homeEntry: AltTabEntry & { _mru: number } = {
       key: 'luma_home_desktop',
@@ -4704,7 +4849,7 @@ export default function App() {
         const wid = item.id as DexWinId;
         openWindow(wid);
       } else if (item.pid) {
-        // Luma OS 1.7.1 Oxygen Permanent Alt+Tab Fix:
+        // Luma OS 1.7.2 Oxygen Permanent Alt+Tab Fix:
         // Single atomic call to /api/kernel/windows/focus synchronously strips HWND_TOPMOST
         // from Luma OS and executes AttachThreadInput + FocusWindowWithHWND(pid, hwnd)!
         void handleFocusHostWindow(item.pid, item.hwnd);
@@ -5234,7 +5379,7 @@ export default function App() {
         );
       }
     } catch {
-      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.7.1.exe)', 'info');
+      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.7.2_Pro.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -5332,7 +5477,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 1.6.1' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.6.2' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5424,7 +5569,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 1.6.1' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 1.6.2' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -6228,7 +6373,9 @@ export default function App() {
   const rawTaskbarApps: { id: DexWinId; label: string; icon: React.ReactNode; pinned: boolean }[] = [
     { id: 'explorer', label: t('explorer', 'Проводник'), icon: <FolderOpen className="w-4 h-4" />, pinned: true },
     { id: 'apps', label: t('apps', 'Приложения'), icon: <AppWindow className="w-4 h-4" />, pinned: true },
-    { id: 'oxygen_connect', label: 'Oxygen Connect', icon: <Smartphone className="w-4 h-4 text-sky-400" />, pinned: true },
+    { id: 'superdevice', label: 'Суперустройство', icon: <Radio className="w-4 h-4 text-blue-400" />, pinned: true },
+    { id: 'photo_editor', label: 'Фотостудия', icon: <Image className="w-4 h-4 text-sky-400" />, pinned: true },
+    { id: 'oxygen_connect', label: 'Oxygen Connect', icon: <Smartphone className="w-4 h-4 text-cyan-400" />, pinned: true },
     { id: 'office', label: 'Office Studio', icon: <FileText className="w-4 h-4" />, pinned: true },
     ...(enabledFeatures.calendar ? [{ id: 'calendar' as DexWinId, label: 'Календарь', icon: <Calendar className="w-4 h-4" />, pinned: true }] : []),
     ...(enabledFeatures.codeStudio ? [{ id: 'code_studio' as DexWinId, label: 'Code Studio', icon: <Code2 className="w-4 h-4" />, pinned: true }] : []),
@@ -6331,7 +6478,7 @@ export default function App() {
     ? { label: 'Обновление OS', percent: updateProgress.percent }
     : null;
 
-  // Sync Dynamic Island Always-On-Top Native Win32 Overlay configuration to LumaCore 1.6.1
+  // Sync Dynamic Island Always-On-Top Native Win32 Overlay configuration to LumaCore 1.6.2
   useEffect(() => {
     const payload = {
       enabled: dynamicIslandEnabled,
@@ -7573,7 +7720,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 1.6.1`,
+                        sub: `${ramLoad}% занято · LumaCore 1.6.2`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -7599,8 +7746,8 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.7.1 (Oxygen · O-8)'],
-                      ['Версия Ядра', 'LumaCore 1.6.1 (1.7.1)'],
+                      ['Версия ПО', '1.7.2 (Oxygen · O-8)'],
+                      ['Версия Ядра', 'LumaCore 1.6.2 (1.7.1)'],
                       ['Безопасность', `LumaShield 3.2 (${kernelDiag?.security_rules ?? 340}+ правил)`],
                       ['Developer SDK', `v3.0 (${kernelDiag?.sdk_themes ?? Object.keys(customThemes).length} тем / ${kernelDiag?.sdk_plugins ?? plugins.length} плаг.)`],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
@@ -8054,12 +8201,87 @@ export default function App() {
         </div>
       )}
 
-      {/* WINDOW 5: SYSTEM SETTINGS (1.7 OXYGEN) */}
+      {/* WINDOW: LUMA PHOTO STUDIO (1.7.2 BUILT-IN SYSTEM PHOTO EDITOR) */}
+      {windows.photo_editor.open && (
+        <div style={{ display: isWinVisible('photo_editor') ? 'contents' : 'none' }}>
+          <DexWindow
+            id="photo_editor"
+            title="Luma Photo Studio 1.7.2"
+            subtitle="Встроенный редактор фото · 12 фильтров · Свет/Цвет · Обрезка · Рисование · До/После · Экспорт"
+            icon={<Image className="w-4 h-4 text-sky-400" />}
+            isDark={isDark}
+            designStyle={designStyle}
+            windowControlsStyle={windowControlsStyle}
+            taskbarPosition={taskbarPosition}
+            taskbarSizePx={effectiveTaskbarSizePx}
+            topBarOffsetPx={dualTaskbarMode ? 46 : 0}
+            snapCommand={snapCommands.photo_editor || null}
+            zIndex={getWinZ('photo_editor')}
+            alwaysOnTop={Boolean(windows.photo_editor.alwaysOnTop)}
+            onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('photo_editor')}
+            initialWidth={1120}
+            initialHeight={720}
+            onFocus={() => focusWindow('photo_editor')}
+            onMinimize={() => minimizeWindow('photo_editor')}
+            onClose={() => closeWindow('photo_editor')}
+          >
+            <LumaPhotoEditorWindow
+              key={photoEditorKey}
+              initialPath={photoEditorPath}
+              isDark={isDark}
+              isPro={editionInfo.is_pro}
+              onSetWallpaper={(url) => setWallpaperImageUrl(url)}
+              onPushToast={pushToast}
+            />
+          </DexWindow>
+        </div>
+      )}
+
+      {/* WINDOW: HARMONYOS SUPERDEVICE ECOSYSTEM HUB (1.7.2) */}
+      {windows.superdevice.open && (
+        <div style={{ display: isWinVisible('superdevice') ? 'contents' : 'none' }}>
+          <DexWindow
+            id="superdevice"
+            title="Суперустройство · Экосистема Luma OS 1.7.2"
+            subtitle="HarmonyOS SuperDevice · Перетащите устройство на ПК для объединения в экосистему"
+            icon={<Radio className="w-4 h-4 text-blue-400" />}
+            isDark={isDark}
+            designStyle={designStyle}
+            windowControlsStyle={windowControlsStyle}
+            taskbarPosition={taskbarPosition}
+            taskbarSizePx={effectiveTaskbarSizePx}
+            topBarOffsetPx={dualTaskbarMode ? 46 : 0}
+            snapCommand={snapCommands.superdevice || null}
+            zIndex={getWinZ('superdevice')}
+            alwaysOnTop={Boolean(windows.superdevice.alwaysOnTop)}
+            onToggleAlwaysOnTop={() => toggleWindowAlwaysOnTop('superdevice')}
+            initialWidth={980}
+            initialHeight={690}
+            onFocus={() => focusWindow('superdevice')}
+            onMinimize={() => minimizeWindow('superdevice')}
+            onClose={() => closeWindow('superdevice')}
+          >
+            <LumaSuperDeviceWindow
+              isDark={isDark}
+              isPro={editionInfo.is_pro}
+              onOpenWindow={(w) => {
+                if (w === 'window_rules') openWindow('settings', 'window_rules');
+                else openWindow(w as DexWinId);
+              }}
+              onOpenLens={() => setLensSearchOpen(true)}
+              onOpenClipboard={() => setSmartClipboardOpen(true)}
+              onPushToast={pushToast}
+            />
+          </DexWindow>
+        </div>
+      )}
+
+      {/* WINDOW 5: SYSTEM SETTINGS (1.7.2 OXYGEN) */}
       {isWinVisible('settings') && (
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.7 (Oxygen · O-8 · LumaCore 1.6.1 · LumaShield 3.2)"
+          subtitle="Luma OS 1.7.2 (Oxygen · O-8 · LumaCore 1.6.2 · LumaShield 3.2)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -9000,7 +9222,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.7.1.exe).
+                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.7.2_Pro.exe).
                   </div>
                 </div>
               )}
@@ -9024,6 +9246,89 @@ export default function App() {
                       <Cpu className="w-3.5 h-3.5" />
                       Открыть Диспетчер задач
                     </button>
+                  </div>
+
+                  {/* Luma OS 1.7.2: Modular Panel Bar & KDE/Waybar Scroll Actions + System File Opening */}
+                  <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-bold flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-blue-400" />
+                          Модульная панель виджетов и Scroll Actions (KDE / Waybar)
+                        </div>
+                        <div className={`mt-0.5 ${mutedCls}`}>
+                          Собирайте верхнюю или нижнюю панель из блоков (Погода, Курсы валют, CPU/GPU, Трек, Буфер, Pomodoro) и меняйте их местами перетаскиванием. Колесо мыши над звуком, яркостью, окнами и столами работает без кликов!
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setModularPanelCfg((c) => ({ ...c, enabled: !c.enabled }))}
+                          className={`px-3 py-1.5 rounded-xl font-bold cursor-pointer border ${
+                            modularPanelCfg.enabled ? 'bg-blue-600 border-blue-400 text-white' : btnCls
+                          }`}
+                        >
+                          {modularPanelCfg.enabled ? 'Модульная панель: ВКЛ' : 'Модульная панель: ВЫКЛ'}
+                        </button>
+                        <button
+                          onClick={() => setModularPanelCfg((c) => ({ ...c, position: c.position === 'top' ? 'bottom' : 'top' }))}
+                          className={`px-3 py-1.5 rounded-xl font-bold cursor-pointer border ${btnCls}`}
+                        >
+                          Позиция: {modularPanelCfg.position === 'top' ? 'Сверху' : 'Снизу'}
+                        </button>
+                        <button
+                          onClick={() => setModularPanelCfg((c) => ({ ...c, scrollActions: !c.scrollActions }))}
+                          className={`px-3 py-1.5 rounded-xl font-bold cursor-pointer border ${
+                            modularPanelCfg.scrollActions ? 'bg-emerald-600 border-emerald-400 text-white' : btnCls
+                          }`}
+                        >
+                          Scroll Actions: {modularPanelCfg.scrollActions ? 'ВКЛ' : 'ВЫКЛ'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="font-bold">Системное открытие всех файлов через Luma OS (Фото → Фотостудия, Папки → Проводник)</div>
+                        <div className={mutedCls}>{sysHandlers.message || 'Фото, папки и документы открываются внутри Luma OS'}</div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={async () => {
+                            const r = await fetch('/api/kernel/system-handlers', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ ...sysHandlers, register_os: true }),
+                            }).catch(() => null);
+                            if (r?.ok) {
+                              const d = await r.json();
+                              setSysHandlers(d);
+                              pushToast('Файлы через Luma OS', d.message || 'Интеграция в Windows выполнена', 'success');
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-blue-600 text-white font-bold cursor-pointer"
+                        >
+                          {sysHandlers.os_registered ? '✓ Интегрировано в Windows' : 'Интегрировать в Windows (HKCU)'}
+                        </button>
+                        {sysHandlers.os_registered && (
+                          <button
+                            onClick={async () => {
+                              const r = await fetch('/api/kernel/system-handlers', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ action: 'restore' }),
+                              }).catch(() => null);
+                              if (r?.ok) {
+                                const d = await r.json();
+                                setSysHandlers(d);
+                                pushToast('Файлы Windows', 'Стандартные ассоциации Windows восстановлены', 'info');
+                              }
+                            }}
+                            className={`px-3 py-1.5 rounded-xl border font-semibold cursor-pointer ${btnCls}`}
+                          >
+                            Сбросить
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   <div className={`p-4 rounded-xl border grid grid-cols-1 sm:grid-cols-2 gap-4 ${surfaceCls}`}>
@@ -9290,7 +9595,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Luma OS 1.7.1 Oxygen: Auto-Hide Visual Noise, Magnetic Dock & System-Wide Spring Animations */}
+                  {/* Luma OS 1.7.2 Oxygen: Auto-Hide Visual Noise, Magnetic Dock & System-Wide Spring Animations */}
                   <div className={`p-4 rounded-xl border space-y-2.5 ${surfaceCls}`}>
                     <div className="flex items-center justify-between gap-2">
                       <div>
@@ -9730,14 +10035,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.7.1 (Oxygen)',
-                        message: 'Система оповещений Luma OS 1.7.1 (Oxygen) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.7.2 (Oxygen)',
+                        message: 'Система оповещений Luma OS 1.7.2 (Oxygen) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.7.1 (Oxygen)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.7.2 (Oxygen)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -9749,7 +10054,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.7.1 (Oxygen · O-8) · LumaCore 1.6.1</div>
+                      <div className="text-sm font-bold">Luma OS 1.7.2 (Oxygen · O-8) · LumaCore 1.6.2</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -9827,7 +10132,7 @@ export default function App() {
                           </span>
                         </div>
                         <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
-                          Нативная капсула LumaCore 1.6.1 остаётся прилипшей к выбранной части экрана поверх Google Chrome, игр, Telegram и всех программ Windows без перехвата фокуса
+                          Нативная капсула LumaCore 1.6.2 остаётся прилипшей к выбранной части экрана поверх Google Chrome, игр, Telegram и всех программ Windows без перехвата фокуса
                         </div>
                       </div>
                       <StatusPill active={islandPinOverAllWindows} />
@@ -11472,21 +11777,71 @@ export default function App() {
               {/* ABOUT + COMPLETE VERSION HISTORY (WITH 1.7 OXYGEN) */}
               {settingsTab === 'about' && (
                 <div className="space-y-4">
-                  <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
-                    <div>
-                      <div className="text-base font-extrabold font-mono">LUMA OS 1.7.1 (OXYGEN · O-8)</div>
-                      <div className={`text-xs ${mutedCls}`}>
-                        Настольная оболочка · Сетка {desktopCols}×10 ({desktopCols * 10} ячеек) · Ядро LumaCore 1.6.1 · LumaShield 3.2 (340+ правил) · Волна HarmonyOS · Полноценный Circle to Search · 1-Тап Oxygen Connect · Правила окон (KWin) · Полка Dropzone · Умный буфер (OCR) · Per-App Аудио-центр · Капсульные OSD · Luma Ai Nitrogen
+                  <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-base font-extrabold font-mono flex items-center gap-2">
+                          <span>{editionInfo.edition_label.toUpperCase()} (OXYGEN · O-8)</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            editionInfo.is_pro ? 'bg-blue-600 text-white' : 'bg-white/10 text-white/75'
+                          }`}>
+                            {editionInfo.is_pro ? (editionInfo.is_admin ? 'PRO · ПОЛНЫЕ ПРАВА' : 'PRO EDITION') : 'BASE EDITION'}
+                          </span>
+                        </div>
+                        <div className={`text-xs mt-1 ${mutedCls}`}>
+                          Ядро LumaCore 1.6.2 · LumaShield 3.2 · Luma Photo Studio · Системное открытие всех файлов · Модульная панель + Scroll Actions (KDE/Waybar) · HarmonyOS Панель управления · Суперустройство · Фикс фокуса Alt+Tab
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {editionInfo.is_pro && editionInfo.can_elevate && (
+                          <button
+                            onClick={async () => {
+                              const r = await fetch('/api/kernel/edition/elevate', { method: 'POST' }).catch(() => null);
+                              if (r?.ok) pushToast('Luma OS 1.7.2 Pro', 'Запрошен перезапуск с полными правами Администратора (UAC)', 'success');
+                            }}
+                            className="px-3 py-2 rounded-xl bg-amber-500 text-black text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Crown className="w-3.5 h-3.5" /> Полные права (Admin)
+                          </button>
+                        )}
+                        <a
+                          href="/LumaOS_1.7.2_Pro.exe"
+                          download="LumaOS_1.7.2_Pro.exe"
+                          className="px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
+                        >
+                          <Download className="w-3.5 h-3.5" /> Pro EXE
+                        </a>
+                        <a
+                          href="/LumaOS_1.7.2_Base.exe"
+                          download="LumaOS_1.7.2_Base.exe"
+                          className={`px-3 py-2 rounded-xl border text-xs font-mono font-bold inline-flex items-center gap-1.5 ${btnCls}`}
+                        >
+                          <Download className="w-3.5 h-3.5" /> Base EXE
+                        </a>
                       </div>
                     </div>
-                    <a
-                      href="/LumaOS_1.7.1.exe"
-                      download="LumaOS_1.7.1.exe"
-                      className="px-3.5 py-2 rounded-xl bg-[var(--luma-accent)] text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      LumaOS_1.7.1.exe
-                    </a>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-[11px]">
+                      <div className={`p-3 rounded-xl border ${!editionInfo.is_pro ? 'border-sky-400/60 bg-sky-500/10' : 'border-white/10 bg-white/[0.03]'}`}>
+                        <div className="font-black text-xs mb-1">Luma OS 1.7.2 Base (Обычная)</div>
+                        <ul className={`space-y-0.5 ${mutedCls}`}>
+                          <li>• Стандартные права пользователя (без UAC при старте)</li>
+                          <li>• Luma Photo Studio (до 2K), Проводник, HarmonyOS Панель</li>
+                          <li>• Модульная панель + Scroll Actions (KDE/Waybar)</li>
+                          <li>• Суперустройство, Oxygen Connect, Circle to Search, LumaShield</li>
+                        </ul>
+                      </div>
+                      <div className={`p-3 rounded-xl border ${editionInfo.is_pro ? 'border-blue-400/70 bg-blue-600/15' : 'border-white/10 bg-white/[0.03]'}`}>
+                        <div className="font-black text-xs mb-1 flex items-center gap-1.5">
+                          <Crown className="w-3.5 h-3.5 text-amber-300" /> Luma OS 1.7.2 Pro (Полные права + Макс. опции)
+                        </div>
+                        <ul className={`space-y-0.5 ${mutedCls}`}>
+                          <li>• Полные права Администратора (UAC управление + системные службы)</li>
+                          <li>• Luma Photo Studio Pro 4K (30 шагов Undo) + Системные ассоциации Windows</li>
+                          <li>• LumaShield 3.2 Hardcore Anti-RAT &amp; USB Shield + SwapBoost + Стоп-зарядка</li>
+                          <li>• Суперустройство Pro + KWin Game Boost + Developer SDK Studio</li>
+                        </ul>
+                      </div>
+                    </div>
                   </div>
 
                   <div className={`p-3.5 rounded-xl border space-y-2 ${surfaceCls}`}>
@@ -13153,14 +13508,10 @@ export default function App() {
           onMouseEnter={openTaskbarHover}
           onMouseLeave={scheduleTaskbarHoverClose}
           style={{ height: `${taskbarSizePx}px` }}
-          className={`fixed z-[8900] flex items-center justify-between px-2.5 gap-2 luma-noise-surface ${
-            isPixel
-              ? taskbarPosition === 'top'
-                ? 'top-2 inset-x-3 rounded-full border shadow-xl'
-                : 'bottom-2 inset-x-3 rounded-full border shadow-xl'
-              : taskbarPosition === 'top'
-              ? 'top-0 inset-x-0 border-b'
-              : 'bottom-0 inset-x-0 border-t'
+          className={`fixed z-[8900] flex items-center justify-between px-3 gap-2 luma-noise-surface ${
+            taskbarPosition === 'top'
+              ? 'top-2 inset-x-3 rounded-[26px] border shadow-[0_18px_50px_rgba(0,0,0,0.48)]'
+              : 'bottom-2 inset-x-3 rounded-[26px] border shadow-[0_18px_50px_rgba(0,0,0,0.52)]'
           } ${
             visualNoiseHidden
               ? taskbarPosition === 'top'
@@ -13262,7 +13613,7 @@ export default function App() {
                     setTaskbarHostWinPid(null);
                     setTaskbarCtxMenu(null);
                   }}
-                  title={`${t('start', 'Пуск')} · Приложения и Обзор окон (Luma OS 1.7.1 Oxygen)`}
+                  title={`${t('start', 'Пуск')} · Приложения и Обзор окон (Luma OS 1.7.2 Oxygen)`}
                   className={`w-9 h-9 ${isPixel ? 'rounded-full' : 'rounded-xl'} flex items-center justify-center transition cursor-pointer ${
                     startMenuOpen
                       ? 'bg-[var(--luma-accent)] text-white'
@@ -13308,13 +13659,7 @@ export default function App() {
                 setSmartDock((prev) => ({ ...prev, stacks: next }))
               }
               onOpenFolderInExplorer={(p) => openExplorerAt(p)}
-              onOpenFile={(p) => {
-                void fetch('/api/kernel/fs', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ action: 'open', path: p }),
-                }).catch(() => {});
-              }}
+              onOpenFile={(p) => openFileInLumaSystem(p, 'auto')}
               onQuickLook={openQuickLook}
               onNotify={(title, msg) => pushToast(title, msg, 'success')}
             />
@@ -13337,6 +13682,32 @@ export default function App() {
               onMouseMove={handleDockMagneticMove}
               onMouseLeave={handleDockMagneticLeave}
               onWheel={(e) => {
+                if (modularPanelCfg.scrollActions && Math.abs(e.deltaY) > 0 && !e.shiftKey) {
+                  const now = Date.now();
+                  if (now - taskbarWheelRef.current > 170) {
+                    taskbarWheelRef.current = now;
+                    const dir = e.deltaY > 0 ? 1 : -1;
+                    const openLuma = openSystemWindowsList.map((w) => ({ kind: 'luma' as const, id: w.id }));
+                    const openHost = (taskbarShowHostWindows ? hostWindows : []).map((h) => ({ kind: 'host' as const, pid: h.pid, hwnd: h.hwnd }));
+                    const allTargets = [...openLuma, ...openHost];
+                    if (allTargets.length > 0) {
+                      e.preventDefault();
+                      const curIdx = openLuma.findIndex((x) => windows[x.id].z === topVisibleZ && !windows[x.id].minimized);
+                      const nextIdx = ((curIdx < 0 ? 0 : curIdx) + dir + allTargets.length) % allTargets.length;
+                      const tgt = allTargets[nextIdx];
+                      if (tgt.kind === 'luma') {
+                        openWindow(tgt.id);
+                      } else {
+                        void fetch('/api/kernel/windows/focus', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ pid: tgt.pid, hwnd: tgt.hwnd || 0 }),
+                        }).catch(() => {});
+                      }
+                      return;
+                    }
+                  }
+                }
                 if (totalBarTabsCount > 9 && Math.abs(e.deltaY) > 0) {
                   e.currentTarget.scrollLeft += e.deltaY;
                 }
@@ -14043,8 +14414,34 @@ export default function App() {
               )}
             </button>
 
-            {/* System Tray Control Center Trigger */}
+            {/* Quick HarmonyOS SuperDevice Pill on Taskbar */}
             <button
+              onClick={() => openWindow('superdevice')}
+              title="Суперустройство (Экосистема Luma OS 1.7.2)"
+              className={`h-8 px-2.5 rounded-full border flex items-center gap-1.5 text-[11px] font-bold cursor-pointer transition ${
+                windows.superdevice.open
+                  ? 'bg-[#2563eb] border-blue-400 text-white shadow-md shadow-blue-600/35'
+                  : btnCls
+              }`}
+            >
+              <Radio className="w-3.5 h-3.5 text-blue-400" />
+              <span className="hidden 2xl:inline">Экосистема</span>
+            </button>
+
+            {/* System Tray Control Center Trigger (Scroll Wheel adjusts Volume directly!) */}
+            <button
+              onWheel={(e) => {
+                if (!modularPanelCfg.scrollActions) return;
+                e.preventDefault();
+                const nextVol = Math.max(0, Math.min(100, (isMuted ? 0 : volume) + (e.deltaY < 0 ? 4 : -4)));
+                setVolume(nextVol);
+                setIsMuted(nextVol === 0);
+                void fetch('/api/kernel/audio', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ volume: nextVol, mute: nextVol === 0 }),
+                }).catch(() => {});
+              }}
               onClick={() => {
                 setControlCenterOpen((v) => !v);
                 setNotifShadeOpen(false);
@@ -14130,13 +14527,13 @@ export default function App() {
                   setCarbonHubOpen(false);
                   setNotifShadeOpen(false);
                 }}
-                title="Пуск · Приложения и Обзор окон (Luma OS 1.7.1 Oxygen)"
+                title="Пуск · Приложения и Обзор окон (Luma OS 1.7.2 Oxygen)"
                 className={`h-8 px-2.5 rounded-xl flex items-center gap-1.5 text-xs font-bold cursor-pointer transition ${
                   startMenuOpen ? 'bg-[var(--luma-accent)] text-white' : btnCls + ' border'
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-current" />
-                <span>Luma 1.7.1</span>
+                <span>Luma 1.7.2</span>
               </button>
             )}
             <button
@@ -15380,7 +15777,7 @@ export default function App() {
               {!startSearch.trim() && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                    <span className={mutedCls}>Luma OS 1.7.1 (Oxygen · O-8)</span>
+                    <span className={mutedCls}>Luma OS 1.7.2 (Oxygen · O-8)</span>
                     <div className="flex items-center gap-1.5">
                       {enabledFeatures.privateVault && (
                         <button
@@ -15393,7 +15790,7 @@ export default function App() {
                           🔒 Приватный стол
                         </button>
                       )}
-                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.6.1</span>
+                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 1.6.2</span>
                     </div>
                   </div>
                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
@@ -15500,7 +15897,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.7.1 (Oxygen)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.7.2 (Oxygen)'}
                   </div>
                 </div>
               </div>
@@ -16539,8 +16936,12 @@ export default function App() {
             return { ...prev, [key]: nextVal };
           });
         }}
+        isPro={editionInfo.is_pro}
+        isAdmin={editionInfo.is_admin}
+        onOpenLens={() => setLensSearchOpen(true)}
         onOpenWindow={(w) => {
           if (w === 'security') openWindow('settings', 'security');
+          else if (w === 'window_rules') openWindow('settings', 'window_rules');
           else openWindow(w as DexWinId);
         }}
         onOpenVault={() => setVaultOpen(true)}
@@ -16997,7 +17398,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.7.1 (Oxygen · O-8) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
+                  Luma OS 1.7.2 (Oxygen · O-8) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
                 </div>
               </div>
             </div>
@@ -17369,7 +17770,57 @@ export default function App() {
         }}
       />
 
-      {/* ==================== LUMA OS 1.7.1 (OXYGEN): HARMONYOS FULL-SCREEN FILE TRANSFER WAVE ==================== */}
+      {/* ==================== LUMA OS 1.7.2 (OXYGEN): MODULAR WIDGET PANEL + KDE/WAYBAR SCROLL ACTIONS ==================== */}
+      <LumaModularPanelBar
+        config={modularPanelCfg}
+        onChangeConfig={setModularPanelCfg}
+        isDark={isDark}
+        isPro={editionInfo.is_pro}
+        isAdmin={editionInfo.is_admin}
+        visualNoiseHidden={visualNoiseHidden}
+        weatherTemp="+21°"
+        weatherDesc="Ясно"
+        weatherCity={liveSystem?.location?.city || 'Luma OS'}
+        cpuLoad={cpuLoad}
+        gpuLoad={Math.round(liveSystem?.gpu_percent || 0)}
+        ramLoad={ramLoad}
+        mediaTitle={selectedOsSession?.title || (liveSystem?.media?.available ? liveSystem.media.title : '')}
+        mediaPlaying={Boolean(selectedOsSession?.is_playing || mediaPlaying)}
+        onMediaAction={(action) => {
+          void fetch('/api/kernel/media', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action }),
+          }).catch(() => {});
+        }}
+        clipboardTexts={clipboardHistory.map((c) => c.text).filter(Boolean)}
+        onOpenClipboard={() => setSmartClipboardOpen(true)}
+        onCopyText={(txt) => void copyTextToClipboard(txt)}
+        activeDesktop={activeDesktop}
+        desktopCount={virtualDesktops.length}
+        onSwitchDesktop={(n) => setActiveDesktop(n)}
+        brightness={screenBrightness}
+        onBrightnessChange={setScreenBrightness}
+        volume={volume}
+        muted={isMuted}
+        onVolumeChange={(v) => {
+          setVolume(v);
+          setIsMuted(v === 0);
+          void fetch('/api/kernel/audio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ volume: v, mute: v === 0 }),
+          }).catch(() => {});
+        }}
+        onToggleMute={handleToggleMute}
+        onOpenSuperDevice={() => openWindow('superdevice')}
+        onOpenPhotoStudio={() => openWindow('photo_editor')}
+        onOpenTaskMgr={() => openWindow('taskmgr')}
+        onOpenEditionSettings={() => openWindow('settings', 'about')}
+        onPushToast={pushToast}
+      />
+
+      {/* ==================== LUMA OS 1.7.2 (OXYGEN): HARMONYOS FULL-SCREEN FILE TRANSFER WAVE ==================== */}
       <LumaHarmonyTransferWave isDark={isDark} onPushToast={pushToast} />
 
       {/* ==================== OXYGEN 1.7.1 AWAKENING ANIMATION & PLAYABLE MINI-GAMES (NEW + CLASSIC) ==================== */}
