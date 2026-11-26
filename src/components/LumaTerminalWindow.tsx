@@ -275,7 +275,7 @@ export const LumaTerminalWindow: React.FC<LumaTerminalWindowProps> = ({
       appendToTab(
         tid,
         [
-          'LUMA PRO TERMINAL 1.6.6 NITROGEN — СПРАВОЧНИК КОМАНД (55+):',
+          'LUMA PRO TERMINAL 1.6.6b NITROGEN — СПРАВОЧНИК КОМАНД (55+):',
           '  ── АВТОНОМНЫЙ ИИ-АГЕНТ (LUMA AI 5.0 NEXUS) ─────────────────────',
           '  ai <задача/вопрос>     — думает, выполняет действия в ОС и ищет по всему интернету',
           '  ── СИСТЕМА И ЖЕЛЕЗО ────────────────────────────────────────────────',

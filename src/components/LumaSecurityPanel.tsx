@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Shield,
   ShieldCheck,
@@ -174,9 +174,45 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
   const [hostsAudit, setHostsAudit] = useState<HostsAuditResult | null>(null);
   const [hostsLoading, setHostsLoading] = useState(false);
 
+  const scanAbortRef = useRef<AbortController | null>(null);
+
+  const fetchWithTimeout = async (url: string, init: RequestInit = {}, timeoutMs = 15000, trackCancel = false) => {
+    const ctrl = new AbortController();
+    if (trackCancel) {
+      try {
+        scanAbortRef.current?.abort();
+      } catch {
+        // ignore
+      }
+      scanAbortRef.current = ctrl;
+    }
+    const timer = window.setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...init, signal: ctrl.signal });
+    } finally {
+      window.clearTimeout(timer);
+      if (trackCancel && scanAbortRef.current === ctrl) {
+        scanAbortRef.current = null;
+      }
+    }
+  };
+
+  const cancelActiveScan = () => {
+    try {
+      scanAbortRef.current?.abort();
+    } catch {
+      // ignore
+    }
+    scanAbortRef.current = null;
+    setScanning(false);
+    setHardcoreBusy(false);
+    setScanLabel('');
+    onPushToast('LumaShield 3.0b', 'Проверка остановлена пользователем', 'info');
+  };
+
   const fetchHardcore = async () => {
     try {
-      const r = await fetch('/api/kernel/security/hardcore/config');
+      const r = await fetchWithTimeout('/api/kernel/security/hardcore/config', {}, 8000);
       if (r.ok) {
         const d = await r.json();
         if (d?.ok) setHardcore(d);
@@ -196,16 +232,20 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
     };
     const next = { ...base, ...patch };
     try {
-      const r = await fetch('/api/kernel/security/hardcore/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(next),
-      });
+      const r = await fetchWithTimeout(
+        '/api/kernel/security/hardcore/config',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(next),
+        },
+        8000
+      );
       if (r.ok) {
         const d = await r.json();
         if (d?.ok) setHardcore(d);
         onPushToast(
-          'LumaShield 3.0 · Жёсткая защита',
+          'LumaShield 3.0b · Жёсткая защита',
           next.hardcore_mode
             ? 'Активная Anti-RAT, USB и блокировка чужих файлов применена'
             : 'Жёсткий режим временно приостановлен',
@@ -213,24 +253,29 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         );
       }
     } catch {
-      onPushToast('LumaShield 3.0', 'Нет связи с ядром LumaCore 1.5.6', 'warning');
+      onPushToast('LumaShield 3.0b', 'Нет связи с ядром LumaCore 1.5.6b', 'warning');
     }
   };
 
   const runUsbGuardScan = async () => {
     setHardcoreBusy(true);
     try {
-      const r = await fetch('/api/kernel/security/hardcore/usb-scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
+      const r = await fetchWithTimeout(
+        '/api/kernel/security/hardcore/usb-scan',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+        20000,
+        true
+      );
       if (r.ok) {
         const d = await r.json();
         if (d?.status) setHardcore(d.status);
         const drvCount = Array.isArray(d?.drives) ? d.drives.length : 0;
         onPushToast(
-          'LumaShield 3.0 · Щит флешек (USB)',
+          'LumaShield 3.0b · Щит флешек (USB)',
           drvCount === 0
             ? 'Съёмные USB-флешки не подключены — авто-мониторинг активен'
             : `Проверено флешек: ${drvCount} · файлов: ${d.scanned || 0} · уничтожено под ноль: ${d.shredded || 0}`,
@@ -239,7 +284,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
         await fetchStatus();
       }
     } catch {
-      onPushToast('LumaShield 3.0', 'Ошибка сканирования USB-флешек', 'warning');
+      onPushToast('LumaShield 3.0b', 'Проверка USB остановлена или превысила таймаут', 'warning');
     } finally {
       setHardcoreBusy(false);
     }
@@ -248,23 +293,28 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
   const runAntiRatHunt = async () => {
     setHardcoreBusy(true);
     try {
-      const r = await fetch('/api/kernel/security/hardcore/hunt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
+      const r = await fetchWithTimeout(
+        '/api/kernel/security/hardcore/hunt',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+        20000,
+        true
+      );
       if (r.ok) {
         const d = await r.json();
         if (d?.status) setHardcore(d.status);
         onPushToast(
-          'LumaShield 3.0 · Охота на RAT / Управление ПК',
+          'LumaShield 3.0b · Охота на RAT / Управление ПК',
           `Проверено: ${d.scanned || 0} · уничтожено под ноль: ${d.shredded || 0} · заблокировано чужих: ${d.blocked || 0} · убито процессов: ${d.killed || 0}`,
           (d.threats || 0) > 0 ? 'warning' : 'success'
         );
         await fetchStatus();
       }
     } catch {
-      onPushToast('LumaShield 3.0', 'Ошибка активной охоты на RAT', 'warning');
+      onPushToast('LumaShield 3.0b', 'Охота на RAT остановлена или превысила таймаут', 'warning');
     } finally {
       setHardcoreBusy(false);
     }
@@ -272,29 +322,33 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
 
   const shredThreatToZero = async (t: SecurityThreatItem) => {
     try {
-      const r = await fetch('/api/kernel/security/hardcore/shred', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: t.path, reason: t.reason, source: 'system' }),
-      });
+      const r = await fetchWithTimeout(
+        '/api/kernel/security/hardcore/shred',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: t.path, reason: t.reason, source: 'system' }),
+        },
+        10000
+      );
       if (r.ok) {
         const d = await r.json();
         if (d?.status) setHardcore(d.status);
         onPushToast(
-          'LumaShield 3.0 · Уничтожение под ноль',
+          'LumaShield 3.0b · Уничтожение под ноль',
           d?.ok ? `Файл «${t.name}» перезаписан нулями и полностью удалён!` : d?.message || 'Файл защищён',
           d?.ok ? 'success' : 'warning'
         );
         await fetchStatus();
       }
     } catch {
-      onPushToast('LumaShield 3.0', 'Не удалось выполнить удаление под ноль', 'warning');
+      onPushToast('LumaShield 3.0b', 'Не удалось выполнить удаление под ноль', 'warning');
     }
   };
 
   const fetchStatus = async () => {
     try {
-      const r = await fetch('/api/kernel/security/status');
+      const r = await fetchWithTimeout('/api/kernel/security/status', {}, 8000);
       if (r.ok) {
         const d = await r.json();
         if (d?.ok) setStatus(d);
@@ -460,33 +514,43 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
     setScanning(true);
     setScanLabel(
       mode === 'quick'
-        ? 'Быстрая проверка LumaShield 2.0 (Загрузки, Рабочий стол, Архивы/VBA, PE-маскировка)...'
+        ? 'Быстрая проверка LumaShield 3.0b (Загрузки, Рабочий стол, Zero-Freeze)...'
         : mode === 'deep'
-        ? 'Глубокое сканирование LumaShield 2.0 (175+ правил, Telegram/Браузер-стилеры, Кейлоггеры, Архивы/Макросы, Энтропия)...'
+        ? 'Глубокое сканирование LumaShield 3.0b (340+ правил, Anti-RAT, Архивы/Макросы, Энтропия)...'
         : mode === 'startup'
         ? 'Аудит автозагрузки и скриптов...'
         : mode === 'processes'
-        ? 'Инспекция 150 активных процессов (35+ сигнатур майнеров/RAT/стилеров + Temp)...'
+        ? 'Инспекция активных процессов (сигнатуры майнеров/RAT/стилеров)...'
         : `Проверка: ${path || '~'}...`
     );
     try {
-      const r = await fetch('/api/kernel/security/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, path }),
-      });
+      const r = await fetchWithTimeout(
+        '/api/kernel/security/scan',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode, path }),
+        },
+        20000,
+        true
+      );
       const d = await r.json();
       await fetchStatus();
-      const count = d?.threats?.length ?? 0;
-      onPushToast(
-        'LumaShield 2.0',
-        count > 0
-          ? `Обнаружено угроз: ${count} (проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс)`
-          : `Угроз не найдено · Проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс`,
-        count > 0 ? 'warning' : 'success'
-      );
+      if (d?.busy) {
+        onPushToast('LumaShield 3.0b', d.message || 'Проверка уже выполняется', 'info');
+      } else {
+        const count = d?.threats?.length ?? 0;
+        const limitNote = d?.timed_out ? ' · лимит Zero-Freeze' : '';
+        onPushToast(
+          'LumaShield 3.0b',
+          count > 0
+            ? `Обнаружено угроз: ${count} (проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс${limitNote})`
+            : `Угроз не найдено · Проверено ${d.files_scanned} объектов за ${d.elapsed_ms} мс${limitNote}`,
+          count > 0 ? 'warning' : 'success'
+        );
+      }
     } catch {
-      onPushToast('LumaShield 2.0', 'Не удалось выполнить сканирование', 'warning');
+      onPushToast('LumaShield 3.0b', 'Сканирование остановлено или превысило таймаут', 'warning');
     } finally {
       setScanning(false);
       setScanLabel('');
@@ -738,7 +802,7 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
               <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0" />
               <div className="min-w-0">
                 <div className="font-black flex items-center gap-2 flex-wrap">
-                  <span>LumaShield 3.0 · Жёсткая защита (Anti-RAT · USB · Чужие файлы)</span>
+                  <span>LumaShield 3.0b · Жёсткая защита (Anti-RAT · USB · Zero-Freeze)</span>
                   <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 text-[9px] font-mono">
                     {hardcore?.rules_count ?? 340}+ ПРАВИЛ
                   </span>
@@ -765,6 +829,14 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
                 <FolderSearch className="w-3.5 h-3.5 text-sky-400" />
                 Проверить флешки (USB)
               </button>
+              {hardcoreBusy && (
+                <button
+                  onClick={cancelActiveScan}
+                  className="px-2.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold cursor-pointer"
+                >
+                  Остановить
+                </button>
+              )}
             </div>
           </div>
 
@@ -788,8 +860,8 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
             {[
               {
                 key: 'hardcore_mode' as const,
-                title: 'Жёсткий режим LumaShield 3.0',
-                sub: 'Непрерывный активный щит каждые 6 сек (система + USB)',
+                title: 'Жёсткий режим LumaShield 3.0b',
+                sub: 'Непрерывный Zero-Freeze щит каждые 20 сек (кэш 0% CPU)',
                 active: hardcore?.config?.hardcore_mode ?? true,
               },
               {
@@ -1104,7 +1176,15 @@ export const LumaSecurityPanel: React.FC<LumaSecurityPanelProps> = ({
 
             {scanning && (
               <div className="space-y-1.5 pt-1">
-                <div className="text-xs font-mono text-[var(--luma-accent)]">{scanLabel}</div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-mono text-[var(--luma-accent)] truncate">{scanLabel}</div>
+                  <button
+                    onClick={cancelActiveScan}
+                    className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold cursor-pointer shrink-0"
+                  >
+                    Остановить
+                  </button>
+                </div>
                 <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
                   <div className="h-full w-2/3 bg-[var(--luma-accent)] rounded-full animate-pulse" />
                 </div>

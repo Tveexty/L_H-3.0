@@ -252,7 +252,7 @@ export const LumaAccessibilityGesturesPanel: React.FC<LumaAccessibilityGesturesP
             <div>
               <div className="text-xs font-black flex flex-wrap items-center gap-2">
                 <span>Управление жестами и Luma Обвести для поиска</span>
-                <span className="px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400 text-[9px] font-mono">1.6.6 · HID</span>
+                <span className="px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400 text-[9px] font-mono">1.6.6b · HID</span>
                 <span
                   className={`px-1.5 py-0.5 rounded-md text-[9px] font-mono ${
                     nativeTpStatus?.raw_input_active

@@ -13,10 +13,11 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-// ==================== LUMA OS 1.6.6: LUMASHIELD 3.0 HARDCORE ACTIVE DEFENSE ====================
+// ==================== LUMA OS 1.6.6b: LUMASHIELD 3.0b HARDCORE ACTIVE DEFENSE (ZERO-FREEZE) ====================
 // Active Anti-RAT / Remote-Control Zero-Shredder, Real-Time USB/Flash Drive Guard,
 // and Foreign Untrusted File Blocker with strict OS-core & Luma OS self-protection whitelist.
 
@@ -74,6 +75,7 @@ var (
 	hcSeenForeign     = map[string]int64{}
 	hcStarted         bool
 	hcSecurityKernel  *SecurityKernel
+	hcScanRunning     atomic.Bool
 )
 
 func defaultHardcoreShieldConfig() HardcoreShieldConfig {
@@ -150,15 +152,15 @@ var remoteControlSignatures = []struct {
 	{"vssadmin delete shadows", "Попытка удалить теневые копии (Ransomware)", 100},
 	{"wmic shadowcopy delete", "Попытка уничтожить резервные копии Windows", 100},
 	{"bcdedit /set {default} recoveryenabled no", "Попытка отключить восстановление Windows", 100},
-	{"currentversion\\run", "Попытка скрытого закрепления в автозагрузке Windows", 45},
-	{"schtasks /create", "Попытка скрытого закрепления в планировщике задач", 50},
+	{"currentversion\\run", "Попытка скрытого закрепления в автозагрузке Windows", 30},
+	{"schtasks /create", "Попытка скрытого закрепления в планировщике задач", 40},
 
 	// USB Flash Drive Worms & Autorun Hijackers
 	{"[autorun]", "Вредоносный автозапуск с USB-флешки (autorun.inf)", 95},
 	{"shellexecute=", "Скрытый автозапуск файла с USB-флешки", 85},
 	{"open=", "Автозапуск исполняемого файла с USB-флешки", 45},
-	{"wscript.shell", "Скриптовое управление ПК (WScript.Shell)", 55},
-	{"shell.application", "Скрытый запуск процессов через Shell.Application", 50},
+	{"wscript.shell", "Скриптовое управление ПК (WScript.Shell)", 35},
+	{"shell.application", "Скрытый запуск процессов через Shell.Application", 35},
 	{"createremotethread", "Инъекция кода в чужой процесс (CreateRemoteThread)", 90},
 	{"virtualallocex", "Выделение памяти в чужом процессе (Process Injection)", 80},
 	{"writeprocessmemory", "Запись вредоносного кода в чужой процесс", 85},
@@ -219,16 +221,16 @@ func startHardcoreShieldEngine(sk *SecurityKernel) {
 
 	loadHardcoreShieldConfig()
 	if sk != nil {
-		sk.LogAudit("ok", "shield3", "LumaShield 3.0 Hardcore Active Defense запущен", "340+ правил Anti-RAT, Щит USB-флешек, Блокировка чужих файлов и Авто-уничтожение под ноль")
+		sk.LogAudit("ok", "shield3", "LumaShield 3.0b Hardcore Active Defense запущен", "340+ правил Anti-RAT, Zero-Freeze движок, Щит USB-флешек, Блокировка чужих файлов и Авто-уничтожение под ноль")
 	}
 
 	go func() {
 		defer func() { _ = recover() }()
-		// Initial quick USB scan on boot
-		time.Sleep(4 * time.Second)
+		// Initial delayed scan on boot so UI renders at 60 FPS first
+		time.Sleep(6 * time.Second)
 		runHardcoreGuardTick()
 
-		ticker := time.NewTicker(6 * time.Second)
+		ticker := time.NewTicker(20 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			func() {
@@ -484,7 +486,7 @@ func analyzeRemoteControlThreat(path string, info os.FileInfo, isUsb bool) (bool
 		}
 	}
 
-	// 4. Content inspection (read up to 512 KB for fast deep heuristic matching)
+	// 4. Content inspection (read up to 128 KB for fast, zero-freeze heuristic matching)
 	isForeign := isUsb || hasMarkOfTheWeb(path)
 	if !dangerousForeignExts[ext] && ext != ".txt" && ext != ".py" && ext != ".sh" && ext != ".rb" && ext != ".php" {
 		return false, false, 0, ""
@@ -494,7 +496,7 @@ func analyzeRemoteControlThreat(path string, info os.FileInfo, isUsb bool) (bool
 	if err != nil {
 		return false, false, 0, ""
 	}
-	buf := make([]byte, 512*1024)
+	buf := make([]byte, 128*1024)
 	n, _ := f.Read(buf)
 	_ = f.Close()
 	if n <= 0 {
@@ -504,13 +506,13 @@ func analyzeRemoteControlThreat(path string, info os.FileInfo, isUsb bool) (bool
 
 	// Check EICAR test string
 	if bytes.Contains(sample, []byte(eicarStandardSignature)) {
-		return true, true, 100, "Тестовая вирусная сигнатура EICAR (LumaShield 3.0)"
+		return true, true, 100, "Тестовая вирусная сигнатура EICAR (LumaShield 3.0b)"
 	}
 
 	lowerSample := strings.ToLower(string(sample))
 	// Also normalize UTF-16LE ASCII strings common in .NET / Windows RAT binaries
 	var asciiFold strings.Builder
-	if bytes.Contains(sample, []byte{0x00}) && n <= 256*1024 {
+	if bytes.Contains(sample, []byte{0x00}) && n <= 128*1024 {
 		asciiFold.Grow(n / 2)
 		for i := 0; i < n; i++ {
 			b := sample[i]
@@ -558,12 +560,12 @@ func analyzeRemoteControlThreat(path string, info os.FileInfo, isUsb bool) (bool
 		return true, true, totalScore, fmt.Sprintf("%s (риск %d/100, совпадений: %d)", topReason, minIntVal(100, totalScore), matchedHits)
 	}
 
-	// Foreign untrusted script/executable with Mark-of-the-Web or on USB with suspicious hits (>= 45)
-	if isForeign && dangerousForeignExts[ext] && totalScore >= 45 {
+	// Foreign untrusted script/executable with Mark-of-the-Web or on USB with suspicious hits (>= 55)
+	if isForeign && dangerousForeignExts[ext] && totalScore >= 55 {
 		return false, true, totalScore, fmt.Sprintf("Подозрительный чужой файл (%s · риск %d/100)", topReason, totalScore)
 	}
 
-	// Strict foreign script blocker for USB hidden/script payloads (.vbs/.vbe/.hta/.pif/.scr/.bat/.ps1)
+	// Strict foreign script blocker for USB hidden/script payloads (.vbs/.vbe/.hta/.pif/.scr)
 	if isUsb && (ext == ".vbs" || ext == ".vbe" || ext == ".hta" || ext == ".pif" || ext == ".scr") {
 		return true, true, 90, fmt.Sprintf("Опасный исполняемый скрипт на USB-флешке (%s)", ext)
 	}
@@ -578,8 +580,8 @@ func minIntVal(a, b int) int {
 	return b
 }
 
-func scanDirectoryHardcore(rootDir string, isUsb bool, maxDepth int, cfg HardcoreShieldConfig) (scanned int, threatsFound int, shredded int, blocked int) {
-	if rootDir == "" {
+func scanDirectoryHardcore(rootDir string, isUsb bool, maxDepth int, cfg HardcoreShieldConfig, deadline time.Time, useCache bool) (scanned int, threatsFound int, shredded int, blocked int) {
+	if rootDir == "" || time.Now().After(deadline) {
 		return
 	}
 	rootClean := filepath.Clean(rootDir)
@@ -587,12 +589,21 @@ func scanDirectoryHardcore(rootDir string, isUsb bool, maxDepth int, cfg Hardcor
 		if err != nil || d == nil {
 			return nil
 		}
+		if time.Now().After(deadline) {
+			return filepath.SkipAll
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if d.IsDir() {
 			if p == rootClean {
 				return nil
 			}
 			nameLow := strings.ToLower(d.Name())
-			if nameLow == "system volume information" || nameLow == "$recycle.bin" || nameLow == ".git" || nameLow == "node_modules" {
+			if isCloudOrHeavySystemDir(nameLow) {
 				return filepath.SkipDir
 			}
 			rel, rErr := filepath.Rel(rootClean, p)
@@ -604,14 +615,48 @@ func scanDirectoryHardcore(rootDir string, isUsb bool, maxDepth int, cfg Hardcor
 			}
 			return nil
 		}
-		if scanned >= 800 {
+		if scanned >= 400 {
 			return filepath.SkipAll
 		}
 		info, iErr := d.Info()
-		if iErr != nil || info == nil || info.Size() > 40*1024*1024 {
+		if iErr != nil || info == nil || info.Mode()&os.ModeSymlink != 0 || info.Size() > 25*1024*1024 {
 			return nil
 		}
+
+		// Cache unchanged files in background ticks so idle CPU & USB I/O stay at 0%!
+		if useCache {
+			stamp := info.ModTime().UnixNano() ^ info.Size()
+			hcMu.RLock()
+			var prev int64
+			var seen bool
+			if isUsb {
+				prev, seen = hcSeenUsbPaths[p]
+			} else {
+				prev, seen = hcSeenForeign[p]
+			}
+			hcMu.RUnlock()
+			if seen && prev == stamp {
+				return nil
+			}
+			hcMu.Lock()
+			if isUsb {
+				if len(hcSeenUsbPaths) > 8000 {
+					hcSeenUsbPaths = map[string]int64{}
+				}
+				hcSeenUsbPaths[p] = stamp
+			} else {
+				if len(hcSeenForeign) > 8000 {
+					hcSeenForeign = map[string]int64{}
+				}
+				hcSeenForeign[p] = stamp
+			}
+			hcMu.Unlock()
+		}
+
 		scanned++
+		if scanned%16 == 0 {
+			runtime.Gosched()
+		}
 
 		isRC, isForeignSusp, _, reason := analyzeRemoteControlThreat(p, info, isUsb)
 		if isRC {
@@ -665,25 +710,39 @@ func scanDirectoryHardcore(rootDir string, isUsb bool, maxDepth int, cfg Hardcor
 }
 
 func runHardcoreGuardTick() {
+	// Never overlap with manual scans or another hardcore guard tick!
 	hcMu.RLock()
 	cfg := hcConfig
+	sk := hcSecurityKernel
 	hcMu.RUnlock()
+	if !cfg.HardcoreMode {
+		return
+	}
+	if sk != nil && sk.scanInProgress.Load() {
+		return
+	}
+	if !hcScanRunning.CompareAndSwap(false, true) {
+		return
+	}
+	defer hcScanRunning.Store(false)
 
 	nowStr := time.Now().Format("15:04:05")
 	hcMu.Lock()
 	hcLastTickAt = nowStr
 	hcMu.Unlock()
 
-	if !cfg.HardcoreMode {
-		return
-	}
+	tickDeadline := time.Now().Add(4 * time.Second)
 
-	// 1. Real-Time USB / Flash Drive Guard
+	// 1. Real-Time USB / Flash Drive Guard (strictly cached: 0% I/O on unchanged files!)
 	if cfg.UsbFlashGuard {
 		drives := listRemovableDrives()
 		updated := make([]UsbDriveInfo, 0, len(drives))
 		for _, drv := range drives {
-			_, threats, _, _ := scanDirectoryHardcore(drv.Path, true, 2, cfg)
+			if time.Now().After(tickDeadline) {
+				updated = append(updated, drv)
+				continue
+			}
+			_, threats, _, _ := scanDirectoryHardcore(drv.Path, true, 2, cfg, tickDeadline, true)
 			drv.ScannedAt = nowStr
 			drv.Threats = threats
 			updated = append(updated, drv)
@@ -693,28 +752,35 @@ func runHardcoreGuardTick() {
 		hcMu.Unlock()
 	}
 
-	// 2. Real-Time Foreign File Blocker (Downloads / Temp / Desktop)
-	if cfg.BlockForeignFiles || cfg.AutoShredRemoteControl {
+	// 2. Real-Time Foreign File Blocker (Downloads / Temp / Desktop — strictly cached!)
+	if (cfg.BlockForeignFiles || cfg.AutoShredRemoteControl) && time.Now().Before(tickDeadline) {
 		home, _ := os.UserHomeDir()
 		watchDirs := []string{filepath.Join(os.TempDir(), "LumaShield_Test")}
 		if home != "" {
 			watchDirs = append(watchDirs, filepath.Join(home, "Downloads"), filepath.Join(home, "Desktop"))
 		}
+		checked := 0
 		for _, dir := range watchDirs {
+			if time.Now().After(tickDeadline) {
+				break
+			}
 			entries, err := os.ReadDir(dir)
 			if err != nil {
 				continue
 			}
 			for _, e := range entries {
-				if e.IsDir() {
+				if time.Now().After(tickDeadline) {
+					break
+				}
+				if e.IsDir() || e.Type()&os.ModeSymlink != 0 {
 					continue
 				}
 				full := filepath.Join(dir, e.Name())
 				info, err := e.Info()
-				if err != nil || info == nil || info.Size() > 40*1024*1024 {
+				if err != nil || info == nil || info.Mode()&os.ModeSymlink != 0 || info.Size() > 25*1024*1024 {
 					continue
 				}
-				stamp := info.ModTime().UnixNano()
+				stamp := info.ModTime().UnixNano() ^ info.Size()
 				hcMu.RLock()
 				prev, seen := hcSeenForeign[full]
 				hcMu.RUnlock()
@@ -722,30 +788,33 @@ func runHardcoreGuardTick() {
 					continue
 				}
 				hcMu.Lock()
+				if len(hcSeenForeign) > 8000 {
+					hcSeenForeign = map[string]int64{}
+				}
 				hcSeenForeign[full] = stamp
 				hcMu.Unlock()
+
+				checked++
+				if checked%16 == 0 {
+					runtime.Gosched()
+				}
 
 				isRC, isForeignSusp, _, reason := analyzeRemoteControlThreat(full, info, false)
 				if isRC && cfg.AutoShredRemoteControl {
 					_, _, _ = ShredFileToZero(full, reason, "system")
-				} else if isForeignSusp && cfg.BlockForeignFiles {
-					hcMu.RLock()
-					sk := hcSecurityKernel
-					hcMu.RUnlock()
-					if sk != nil {
-						if _, qErr := sk.QuarantineFile(full, reason, "high"); qErr == nil {
-							hcMu.Lock()
-							hcBlockedForeign++
-							hcMu.Unlock()
-							appendHardcoreEvent(HardcoreShieldEvent{
-								Action:  "blocked_foreign",
-								Source:  "foreign",
-								Name:    filepath.Base(full),
-								Path:    full,
-								Reason:  reason,
-								Success: true,
-							})
-						}
+				} else if isForeignSusp && cfg.BlockForeignFiles && sk != nil {
+					if _, qErr := sk.QuarantineFile(full, reason, "high"); qErr == nil {
+						hcMu.Lock()
+						hcBlockedForeign++
+						hcMu.Unlock()
+						appendHardcoreEvent(HardcoreShieldEvent{
+							Action:  "blocked_foreign",
+							Source:  "foreign",
+							Name:    filepath.Base(full),
+							Path:    full,
+							Reason:  reason,
+							Success: true,
+						})
 					}
 				}
 			}
@@ -753,7 +822,7 @@ func runHardcoreGuardTick() {
 	}
 
 	// 3. Active Remote-Control Process Killer
-	if cfg.KillRemoteControlProcs {
+	if cfg.KillRemoteControlProcs && time.Now().Before(tickDeadline) {
 		hits := scanSuspiciousRemoteProcesses()
 		for _, hit := range hits {
 			if isProtectedCoreProcess(hit.Name) || isProtectedCorePath(hit.Path) {
@@ -801,7 +870,7 @@ func getHardcoreShieldStatus() HardcoreShieldStatus {
 	exePath, _ := os.Executable()
 	return HardcoreShieldStatus{
 		Ok:                true,
-		Version:           "3.0",
+		Version:           "3.0b",
 		RulesCount:        340,
 		Config:            cfg,
 		ShreddedCount:     shredded,
@@ -833,7 +902,7 @@ func registerHardcoreShieldRoutes(mux *http.ServeMux, sk *SecurityKernel) {
 			hcMu.Unlock()
 			saveHardcoreShieldConfig(next)
 			if sk != nil {
-				sk.LogAudit("ok", "shield3", "Настройки LumaShield 3.0 обновлены", fmt.Sprintf("Hardcore=%v · AutoShred=%v · USB=%v · Foreign=%v · ProcKill=%v",
+				sk.LogAudit("ok", "shield3", "Настройки LumaShield 3.0b обновлены", fmt.Sprintf("Hardcore=%v · AutoShred=%v · USB=%v · Foreign=%v · ProcKill=%v",
 					next.HardcoreMode, next.AutoShredRemoteControl, next.UsbFlashGuard, next.BlockForeignFiles, next.KillRemoteControlProcs))
 			}
 		}
@@ -854,7 +923,7 @@ func registerHardcoreShieldRoutes(mux *http.ServeMux, sk *SecurityKernel) {
 			return
 		}
 		if req.Reason == "" {
-			req.Reason = "Ручное уничтожение угрозы под ноль (LumaShield 3.0)"
+			req.Reason = "Ручное уничтожение угрозы под ноль (LumaShield 3.0b)"
 		}
 		if req.Source == "" {
 			req.Source = "system"
@@ -871,6 +940,17 @@ func registerHardcoreShieldRoutes(mux *http.ServeMux, sk *SecurityKernel) {
 	// Force immediate deep USB / Flash Drive scan (+ optional custom directory for verification)
 	mux.HandleFunc("/api/kernel/security/hardcore/usb-scan", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if !hcScanRunning.CompareAndSwap(false, true) {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":      true,
+				"busy":    true,
+				"message": "Проверка USB уже выполняется",
+				"status":  getHardcoreShieldStatus(),
+			})
+			return
+		}
+		defer hcScanRunning.Store(false)
+
 		var req struct {
 			CustomPath string `json:"custom_path"`
 		}
@@ -885,13 +965,14 @@ func registerHardcoreShieldRoutes(mux *http.ServeMux, sk *SecurityKernel) {
 			drives = append(drives, UsbDriveInfo{Path: req.CustomPath, Label: "USB Target"})
 		}
 
+		deadline := time.Now().Add(6 * time.Second)
 		totalScanned := 0
 		totalThreats := 0
 		totalShredded := 0
 		totalBlocked := 0
 		nowStr := time.Now().Format("15:04:05")
 		for i := range drives {
-			sc, th, sh, bl := scanDirectoryHardcore(drives[i].Path, true, 3, cfg)
+			sc, th, sh, bl := scanDirectoryHardcore(drives[i].Path, true, 3, cfg, deadline, false)
 			drives[i].ScannedAt = nowStr
 			drives[i].Threats = th
 			totalScanned += sc
@@ -917,6 +998,17 @@ func registerHardcoreShieldRoutes(mux *http.ServeMux, sk *SecurityKernel) {
 	// Active Anti-RAT & Remote-Control Hunt across system folders, USB drives & running processes
 	mux.HandleFunc("/api/kernel/security/hardcore/hunt", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if !hcScanRunning.CompareAndSwap(false, true) {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":      true,
+				"busy":    true,
+				"message": "Охота на RAT уже выполняется",
+				"status":  getHardcoreShieldStatus(),
+			})
+			return
+		}
+		defer hcScanRunning.Store(false)
+
 		var req struct {
 			CustomPath string `json:"custom_path"`
 		}
@@ -926,6 +1018,7 @@ func registerHardcoreShieldRoutes(mux *http.ServeMux, sk *SecurityKernel) {
 		cfg := hcConfig
 		hcMu.RUnlock()
 
+		deadline := time.Now().Add(6 * time.Second)
 		totalScanned := 0
 		totalThreats := 0
 		totalShredded := 0
@@ -975,7 +1068,10 @@ func registerHardcoreShieldRoutes(mux *http.ServeMux, sk *SecurityKernel) {
 			dirs = append(dirs, filepath.Join(os.TempDir(), "LumaShield_Test"))
 		}
 		for _, dir := range dirs {
-			sc, th, sh, bl := scanDirectoryHardcore(dir, false, 2, cfg)
+			if time.Now().After(deadline) {
+				break
+			}
+			sc, th, sh, bl := scanDirectoryHardcore(dir, false, 2, cfg, deadline, false)
 			totalScanned += sc
 			totalThreats += th
 			totalShredded += sh
@@ -984,7 +1080,10 @@ func registerHardcoreShieldRoutes(mux *http.ServeMux, sk *SecurityKernel) {
 
 		// 3. Scan connected USB drives
 		for _, drv := range listRemovableDrives() {
-			sc, th, sh, bl := scanDirectoryHardcore(drv.Path, true, 2, cfg)
+			if time.Now().After(deadline) {
+				break
+			}
+			sc, th, sh, bl := scanDirectoryHardcore(drv.Path, true, 2, cfg, deadline, false)
 			totalScanned += sc
 			totalThreats += th
 			totalShredded += sh

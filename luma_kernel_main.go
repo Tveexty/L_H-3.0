@@ -48,10 +48,10 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.6.6"
+	KernelVersion       = "1.6.6b"
 	KernelCodename      = "Nitrogen"
-	KernelEngineVersion = "1.5.6"
-	SecurityCoreVersion = "3.0"
+	KernelEngineVersion = "1.5.6b"
+	SecurityCoreVersion = "3.0b"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
 )
@@ -3129,15 +3129,15 @@ func main() {
 	registerNitrogen16Routes(mux, kernel, osNotifBridge)
 	// Luma OS 1.6.6: Native Win32 Always-On-Top Dynamic Island Overlay (above Chrome & all Windows apps)
 	registerIslandOverlayRoutes(mux)
-	// Luma OS 1.6.6: LumaShield 3.0 Hardcore Active Defense (Anti-RAT Zero-Shredder + USB Flash Guard + Foreign Blocker)
+	// Luma OS 1.6.6b: LumaShield 3.0b Hardcore Active Defense (Zero-Freeze Engine + Anti-RAT Zero-Shredder + USB Flash Guard)
 	registerHardcoreShieldRoutes(mux, kernel.security)
 
-	// Serve standalone executable download for LumaOS_1.6.6.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.6.6b.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.6.6b.exe", "LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.6.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.6b.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -3145,12 +3145,13 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.6.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.6.6b.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}
+	mux.HandleFunc("/LumaOS_1.6.6b.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.6.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.5.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.4.exe", serveExe)
@@ -3222,8 +3223,8 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  LUMA OS 1.6.6 (NITROGEN · N-7) — LUMACORE 1.5.6 & LUMASHIELD 3.0")
-	log.Printf("  - Hardcore Anti-RAT Zero-Shredder, USB Flash Guard & Foreign File Blocker")
+	log.Printf("  LUMA OS 1.6.6b (NITROGEN · N-7) — LUMACORE 1.5.6b & LUMASHIELD 3.0b")
+	log.Printf("  - Zero-Freeze Antivirus Engine, Anti-RAT Zero-Shredder & USB Flash Guard")
 	log.Printf("  - Always-On-Top Dynamic Island, Desktop LMB Multi-Select & 36 UI Languages")
 	log.Printf("  - Desktop Environment:          http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:   tcp://127.0.0.1:%d", *rpcPort)

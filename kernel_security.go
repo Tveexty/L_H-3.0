@@ -15,12 +15,13 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-// LumaShield 2.5 — Next-Gen Zero-Conflict Antivirus & Threat Detection Engine for Luma OS 1.6 (Nitrogen).
-// Runs cleanly alongside Windows Defender with zero driver conflicts:
-//   - 230+ heuristic, behavioral & YARA-like rules (Telegram/Discord/Browser/Crypto/Cloud/Dev Stealers, Ransomware,
+// LumaShield 3.0b — Next-Gen Zero-Freeze & Zero-Conflict Antivirus Engine for Luma OS 1.6.6b (Nitrogen).
+// Runs cleanly alongside Windows Defender with zero driver conflicts and guaranteed non-blocking UI:
+//   - 340+ heuristic, behavioral & Anti-RAT rules (Telegram/Discord/Browser/Crypto/Cloud/Dev Stealers, Ransomware,
 //     BYOVD Drivers, Keyloggers, Crypto-Clippers, Reverse Shells, LOLBins, AMSI/ETW/UAC Bypass, Rootkits, Office Macros)
 //   - Deep Archive & Office Macro Inspector (.zip, .docm, .xlsm, .pptm, .docx, .xlsx, .pptx -> vbaProject.bin & hidden EXEs)
 //   - PE Header ("MZ") Masquerading & Shannon Entropy Packed-Binary Detector (>7.55) across Downloads/Desktop/Documents/Temp
@@ -43,6 +44,8 @@ type SecurityKernel struct {
 	guardKnownFiles      map[string]int64
 	defender             DefenderStatus
 	defenderAt           time.Time
+	scanInProgress       atomic.Bool
+	defenderRefreshing   atomic.Bool
 }
 
 func NewSecurityKernel() *SecurityKernel {
@@ -64,7 +67,7 @@ func NewSecurityKernel() *SecurityKernel {
 	}
 	sk.loadQuarantineIndex()
 	sk.loadExclusions()
-	sk.LogAudit("ok", "kernel", "LumaShield 1.3 инициализирован", "20+ эвристических правил, PE-маскировка, энтропия Шеннона, Real-Time Guard и совместимость с Windows Defender")
+	sk.LogAudit("ok", "kernel", "LumaShield 3.0b инициализирован", "340+ эвристических правил, Zero-Freeze движок, PE-маскировка, энтропия Шеннона, Real-Time Guard и совместимость с Windows Defender")
 	go sk.realtimeGuardLoop()
 	return sk
 }
@@ -82,60 +85,79 @@ func (s *SecurityKernel) realtimeGuardLoop() {
 }
 
 func (s *SecurityKernel) realtimeGuardTick() {
-		s.mu.RLock()
-		enabled := s.realtimeGuardEnabled
-		s.mu.RUnlock()
-		if !enabled {
+	// Never overlap with an active manual scan to keep UI and disk I/O 100% responsive
+	if s.scanInProgress.Load() {
+		return
+	}
+	s.mu.RLock()
+	enabled := s.realtimeGuardEnabled
+	s.mu.RUnlock()
+	if !enabled {
+		return
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	checked := 0
+	home, _ := os.UserHomeDir()
+	dirs := []string{filepath.Join(os.TempDir(), "LumaShield_Test")}
+	if home != "" {
+		dirs = append(dirs, filepath.Join(home, "Downloads"), filepath.Join(home, "Desktop"))
+	}
+	for _, dir := range dirs {
+		if time.Now().After(deadline) || s.scanInProgress.Load() {
 			return
 		}
-		home, _ := os.UserHomeDir()
-		dirs := []string{filepath.Join(os.TempDir(), "LumaShield_Test")}
-		if home != "" {
-			dirs = append(dirs, filepath.Join(home, "Downloads"), filepath.Join(home, "Desktop"))
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
 		}
-		for _, dir := range dirs {
-			entries, err := os.ReadDir(dir)
-			if err != nil {
+		for _, e := range entries {
+			if time.Now().After(deadline) || s.scanInProgress.Load() {
+				return
+			}
+			if e.IsDir() || e.Type()&os.ModeSymlink != 0 {
 				continue
 			}
-			for _, e := range entries {
-				if e.IsDir() {
-					continue
-				}
-				full := filepath.Join(dir, e.Name())
-				info, err := e.Info()
-				if err != nil || info == nil {
-					continue
-				}
-				stamp := info.ModTime().Unix()
-				s.mu.RLock()
-				prevStamp, seen := s.guardKnownFiles[full]
-				s.mu.RUnlock()
-				if seen && prevStamp == stamp {
-					continue
-				}
+			full := filepath.Join(dir, e.Name())
+			info, err := e.Info()
+			if err != nil || info == nil || info.Mode()&os.ModeSymlink != 0 {
+				continue
+			}
+			stamp := info.ModTime().UnixNano() ^ info.Size()
+			s.mu.RLock()
+			prevStamp, seen := s.guardKnownFiles[full]
+			s.mu.RUnlock()
+			if seen && prevStamp == stamp {
+				continue
+			}
+			s.mu.Lock()
+			if len(s.guardKnownFiles) > 8000 {
+				s.guardKnownFiles = map[string]int64{}
+			}
+			s.guardKnownFiles[full] = stamp
+			s.mu.Unlock()
+			checked++
+			if checked%16 == 0 {
+				runtime.Gosched()
+			}
+			if thr := s.inspectSingleFile(full, info); thr != nil {
 				s.mu.Lock()
-				s.guardKnownFiles[full] = stamp
+				dup := false
+				for _, cur := range s.lastThreats {
+					if cur.Path == thr.Path {
+						dup = true
+						break
+					}
+				}
+				if !dup {
+					s.lastThreats = append([]SecurityThreat{*thr}, s.lastThreats...)
+				}
 				s.mu.Unlock()
-				if thr := s.inspectSingleFile(full, info); thr != nil {
-					s.mu.Lock()
-					dup := false
-					for _, cur := range s.lastThreats {
-						if cur.Path == thr.Path {
-							dup = true
-							break
-						}
-					}
-					if !dup {
-						s.lastThreats = append([]SecurityThreat{*thr}, s.lastThreats...)
-					}
-					s.mu.Unlock()
-					if !dup {
-						s.LogAudit("danger", "realtime-guard", "Real-Time Guard: обнаружена угроза", fmt.Sprintf("%s (%s)", thr.Name, thr.Category))
-					}
+				if !dup {
+					s.LogAudit("danger", "realtime-guard", "Real-Time Guard: обнаружена угроза", fmt.Sprintf("%s (%s)", thr.Name, thr.Category))
 				}
 			}
 		}
+	}
 }
 
 func (s *SecurityKernel) SetRealtimeGuard(enabled bool) bool {
@@ -917,7 +939,37 @@ func (s *SecurityKernel) GenerateAuditReport(probe *platformProbe) map[string]in
 	}
 }
 
+func isCloudOrHeavySystemDir(nameLow string) bool {
+	switch nameLow {
+	case "node_modules", ".git", ".luma_quarantine", "windows", "winsxs",
+		"$recycle.bin", "system volume information", "onedrive", "google drive",
+		"dropbox", "icloud", "icloud drive", "yandexdisk", "appdata", "programdata":
+		return true
+	}
+	return strings.HasPrefix(nameLow, "onedrive")
+}
+
 func (s *SecurityKernel) RunScan(mode, customPath string, probe *platformProbe) map[string]interface{} {
+	if !s.scanInProgress.CompareAndSwap(false, true) {
+		s.mu.RLock()
+		lastT := s.lastThreats
+		lastTime := s.lastScanTime
+		lastFiles := s.lastScanFiles
+		lastMs := s.lastScanMs
+		s.mu.RUnlock()
+		return map[string]interface{}{
+			"ok":            true,
+			"busy":          true,
+			"mode":          mode,
+			"files_scanned": lastFiles,
+			"elapsed_ms":    lastMs,
+			"threats":       lastT,
+			"scanned_at":    lastTime,
+			"message":       "Проверка уже выполняется — дождитесь завершения текущей проверки",
+		}
+	}
+	defer s.scanInProgress.Store(false)
+
 	start := time.Now()
 	var roots []string
 	normMode := strings.ToLower(strings.TrimSpace(mode))
@@ -947,7 +999,7 @@ func (s *SecurityKernel) RunScan(mode, customPath string, probe *platformProbe) 
 				filepath.Join(home, "Pictures"),
 			)
 		}
-		roots = append(roots, filepath.Join(os.TempDir(), "LumaShield_Test"), os.TempDir())
+		roots = append(roots, filepath.Join(os.TempDir(), "LumaShield_Test"))
 		if runtime.GOOS == "windows" {
 			appData := os.Getenv("APPDATA")
 			if appData != "" {
@@ -989,42 +1041,84 @@ func (s *SecurityKernel) RunScan(mode, customPath string, probe *platformProbe) 
 
 	var threats []SecurityThreat
 	filesScanned := 0
-	maxFiles := 3000
+	maxFiles := 1800
+	maxDepth := 4
+	timeBudget := 8 * time.Second
 	if normMode == "deep" {
-		maxFiles = 8500
+		maxFiles = 4000
+		maxDepth = 5
+		timeBudget = 14 * time.Second
 	} else if normMode == "custom" {
-		maxFiles = 6000
+		maxFiles = 3500
+		maxDepth = 5
+		timeBudget = 14 * time.Second
 	}
+	deadline := start.Add(timeBudget)
+	timedOut := false
 
 	for _, root := range roots {
 		if root == "" {
 			continue
 		}
-		st, err := os.Stat(root)
-		if err != nil {
+		if time.Now().After(deadline) {
+			timedOut = true
+			break
+		}
+		if filesScanned >= maxFiles {
+			break
+		}
+		rootClean := filepath.Clean(root)
+		st, err := os.Lstat(rootClean)
+		if err != nil || st.Mode()&os.ModeSymlink != 0 {
 			continue
 		}
 		if !st.IsDir() {
 			filesScanned++
-			if thr := s.inspectSingleFile(root, st); thr != nil {
+			if thr := s.inspectSingleFile(rootClean, st); thr != nil {
 				threats = append(threats, *thr)
 			}
 			continue
 		}
-		_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
-			if err != nil || info == nil {
+		_ = filepath.WalkDir(rootClean, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d == nil {
 				return nil
 			}
-			if info.IsDir() {
-				base := strings.ToLower(info.Name())
-				if base == "node_modules" || base == ".git" || base == ".luma_quarantine" || base == "windows" || base == "winsxs" || s.isExcluded(p) {
+			if time.Now().After(deadline) {
+				timedOut = true
+				return filepath.SkipAll
+			}
+			if d.Type()&os.ModeSymlink != 0 {
+				if d.IsDir() {
 					return filepath.SkipDir
+				}
+				return nil
+			}
+			if d.IsDir() {
+				if p == rootClean {
+					return nil
+				}
+				base := strings.ToLower(d.Name())
+				if isCloudOrHeavySystemDir(base) || s.isExcluded(p) {
+					return filepath.SkipDir
+				}
+				if rel, rErr := filepath.Rel(rootClean, p); rErr == nil {
+					depth := strings.Count(filepath.ToSlash(rel), "/") + 1
+					if depth > maxDepth {
+						return filepath.SkipDir
+					}
 				}
 				return nil
 			}
 			filesScanned++
 			if filesScanned > maxFiles {
 				return filepath.SkipAll
+			}
+			if filesScanned%32 == 0 {
+				runtime.Gosched()
+			}
+			info, iErr := d.Info()
+			if iErr != nil || info == nil || info.Mode()&os.ModeSymlink != 0 {
+				return nil
 			}
 			if thr := s.inspectSingleFile(p, info); thr != nil {
 				threats = append(threats, *thr)
@@ -1033,8 +1127,8 @@ func (s *SecurityKernel) RunScan(mode, customPath string, probe *platformProbe) 
 		})
 	}
 
-	// Audit startup persistence & active processes on quick/deep/startup scans
-	if probe != nil && (normMode == "quick" || normMode == "deep" || normMode == "startup") {
+	// Audit startup persistence & active processes on quick/deep/startup scans (only if within budget)
+	if probe != nil && !timedOut && (normMode == "quick" || normMode == "deep" || normMode == "startup") {
 		for _, item := range probe.ListStartupItems() {
 			lowCmd := strings.ToLower(item.Command)
 			if strings.Contains(lowCmd, "-encodedcommand") || strings.Contains(lowCmd, "mshta http") ||
@@ -1050,7 +1144,7 @@ func (s *SecurityKernel) RunScan(mode, customPath string, probe *platformProbe) 
 				})
 			}
 		}
-		if normMode == "deep" {
+		if normMode == "deep" && time.Now().Before(deadline) {
 			procThreats := s.ScanRunningProcesses(probe)
 			threats = append(threats, procThreats...)
 		}
@@ -1071,16 +1165,20 @@ func (s *SecurityKernel) RunScan(mode, customPath string, probe *platformProbe) 
 
 	level := "ok"
 	msg := fmt.Sprintf("Сканирование (%s): проверено %d файлов за %d мс · угроз: %d", normMode, filesScanned, elapsed, len(threats))
+	if timedOut {
+		msg += " (ограничено по времени Zero-Freeze)"
+	}
 	if len(threats) > 0 {
 		level = "danger"
 	}
-	s.LogAudit(level, "antivirus", "Проверка LumaShield 1.3 завершена", msg)
+	s.LogAudit(level, "antivirus", "Проверка LumaShield 3.0b завершена", msg)
 
 	return map[string]interface{}{
 		"ok":            true,
 		"mode":          normMode,
 		"files_scanned": filesScanned,
 		"elapsed_ms":    elapsed,
+		"timed_out":     timedOut,
 		"threats":       threats,
 		"scanned_at":    s.lastScanTime,
 	}
@@ -1215,16 +1313,21 @@ func (s *SecurityKernel) CreateEicarTestFile() (string, error) {
 
 func (s *SecurityKernel) StatusSnapshot(probe *platformProbe) map[string]interface{} {
 	s.mu.RLock()
-	needDefender := time.Since(s.defenderAt) > 60*time.Second || s.defenderAt.IsZero()
+	needDefender := time.Since(s.defenderAt) > 90*time.Second || s.defenderAt.IsZero()
 	def := s.defender
 	s.mu.RUnlock()
 
-	if needDefender && probe != nil {
-		def = probe.GetDefenderStatus()
-		s.mu.Lock()
-		s.defender = def
-		s.defenderAt = time.Now()
-		s.mu.Unlock()
+	// Refresh Windows Defender status asynchronously so /api/kernel/security/status NEVER stalls UI!
+	if needDefender && probe != nil && s.defenderRefreshing.CompareAndSwap(false, true) {
+		go func() {
+			defer s.defenderRefreshing.Store(false)
+			defer func() { _ = recover() }()
+			fresh := probe.GetDefenderStatus()
+			s.mu.Lock()
+			s.defender = fresh
+			s.defenderAt = time.Now()
+			s.mu.Unlock()
+		}()
 	}
 
 	s.mu.RLock()
@@ -1250,12 +1353,13 @@ func (s *SecurityKernel) StatusSnapshot(probe *platformProbe) map[string]interfa
 	return map[string]interface{}{
 		"ok":                     true,
 		"security_core_version":  SecurityCoreVersion,
-		"engine_name":            "LumaShield 2.5 (230+ Rules · Stealer/BYOVD/Syscall/VBA Shield · Archive Scan · PE/Entropy · Startup/Tasks/Hosts/Net Guard)",
+		"engine_name":            "LumaShield 3.0b (340+ Rules · Anti-RAT Zero-Shredder · USB Flash Guard · Zero-Freeze Engine)",
 		"rules_count":            len(scriptHeuristics) + len(suspiciousDoubleExts) + len(ransomwareExts) + 5,
 		"archive_macro_guard":    true,
 		"stealer_shield":         true,
 		"tasks_audit_supported":  true,
 		"realtime_guard_enabled": s.realtimeGuardEnabled,
+		"scan_in_progress":       s.scanInProgress.Load(),
 		"score":                  score,
 		"defender":               def,
 		"last_scan_time":         s.lastScanTime,
