@@ -685,6 +685,11 @@ func main() {
 	startFullscreen := flag.Bool("fullscreen", false, "Start Luma OS 1.2.0 (Lithium) immediately in fullscreen mode")
 	flag.Parse()
 
+	// Clean up any leftover *.exe.old from a previous in-place Windows OTA self-update
+	if curExe, err := os.Executable(); err == nil && curExe != "" {
+		_ = os.Remove(curExe + ".old")
+	}
+
 	// Handle double-clicking photos/folders/files registered to open inside Luma OS!
 	if handleStartupExternalOpenArgs(flag.Args(), *httpPort) {
 		return
@@ -3188,7 +3193,7 @@ func main() {
 
 	// Serve standalone executable download for LumaOS_1.7.1.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.7.2_Pro.exe", "LumaOS_1.7.2_Base.exe", "LumaOS_1.7.1.exe", "LumaOS_1.7.exe", "LumaOS_1.6.7.exe", "LumaOS_1.6.6b.exe", "LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.7.2_Pro.exe", "LumaOS_1.7.2.exe", "LumaOS_1.7.2_Base.exe", "LumaOS_1.7.1.exe", "LumaOS_1.7.exe", "LumaOS_1.6.7.exe", "LumaOS_1.6.6b.exe", "LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
 				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.7.2_Pro.exe"`)
@@ -3218,7 +3223,7 @@ func main() {
 	}
 	mux.HandleFunc("/LumaOS_1.7.2_Pro.exe", serveNamedExe("LumaOS_1.7.2_Pro.exe"))
 	mux.HandleFunc("/LumaOS_1.7.2_Base.exe", serveNamedExe("LumaOS_1.7.2_Base.exe"))
-	mux.HandleFunc("/LumaOS_1.7.2.exe", serveExe)
+	mux.HandleFunc("/LumaOS_1.7.2.exe", serveNamedExe("LumaOS_1.7.2.exe"))
 	mux.HandleFunc("/LumaOS_1.7.1.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.7.exe", serveExe)
 	mux.HandleFunc("/LumaOS_1.6.7.exe", serveExe)

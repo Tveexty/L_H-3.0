@@ -109,14 +109,14 @@
 
 ---
 
-## Скачать Luma OS (все 31 сборки сохранены)
+## Скачать Luma OS (все 32 сборки сохранены)
 
 Все исполняемые файлы автономны (**Single-Binary Portable EXE** — встроенный фронтенд + Go-ядро, установка не требуется):
 
 | Версия | Кодовое имя | Ядро / Возможности | Прямая ссылка |
 | :--- | :--- | :--- | :--- |
-| **1.7.2 Pro (Рекомендуем)** | **Oxygen · O-8 Pro** | `LumaCore 1.6.2` · `👑 Полные права Admin` · `Luma Photo Studio 4K` · `Файлы через Luma OS (HKCU)` · `Модульная панель + Scroll Actions` · `HarmonyOS UI + Суперустройство` · `Фикс фокуса Alt+Tab + Island` | [**LumaOS_1.7.2_Pro.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.2_Pro.exe) |
-| **1.7.2 Base** | **Oxygen · O-8 Base** | `LumaCore 1.6.2` · `Стандартные права (без UAC)` · `Luma Photo Studio` · `Модульная панель + Scroll Actions` · `HarmonyOS UI + Суперустройство` · `Фикс фокуса Alt+Tab + Island` | [**LumaOS_1.7.2_Base.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.2_Base.exe) |
+| **1.7.2 Pro (Рекомендуем)** | **Oxygen · O-8 Pro** | `LumaCore 1.6.2` · `👑 Полные права Admin` · `Luma Photo Studio 4K` · `Файлы через Luma OS (HKCU)` · `Единый Circle to Search` · `Модульная панель + Scroll Actions` · `HarmonyOS UI + Суперустройство` · `Фикс Alt+Tab + OTA` | [**LumaOS_1.7.2_Pro.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.2_Pro.exe) · [OTA (`LumaOS_1.7.2.exe`)](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.2.exe) |
+| **1.7.2 Base** | **Oxygen · O-8 Base** | `LumaCore 1.6.2` · `Стандартные права (без UAC)` · `Luma Photo Studio` · `Единый Circle to Search` · `Модульная панель + Scroll Actions` · `HarmonyOS UI + Суперустройство` · `Фикс Alt+Tab + OTA` | [**LumaOS_1.7.2_Base.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.2_Base.exe) |
 | **1.7.1** | **Oxygen · O-8** | `LumaCore 1.6.1` · `🌊 Полноэкранная волна HarmonyOS` · `📱 1-Тап UI телефона` · `🖱️ Быстрый тачпад 1.4×` · `🔍 Полноценный Circle to Search` | [LumaOS_1.7.1.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.1.exe) |
 | **1.7** | **Oxygen · O-8** | `LumaCore 1.6.0` · `100% Иконки` · `Умный автозапуск` · `KWin Правила окон` · `Полка Dropzone` · `Умный буфер (OCR)` · `Per-App Аудио` · `Капсульные OSD` · `Oxygen Connect` | [LumaOS_1.7.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.exe) |
 | **1.6.7 (Финал 1.6.x)** | **Nitrogen · N-7** | `LumaCore 1.5.7` · `LumaShield 3.1` · `Фикс курсора/кликов Dynamic Island` · `Нативный Zero-Freeze выбор файла` · `old protatips/` | [LumaOS_1.6.7.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.7.exe) |

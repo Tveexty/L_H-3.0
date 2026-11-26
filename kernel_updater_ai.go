@@ -144,30 +144,37 @@ func CheckGitHubUpdate(repoURL string) UpdateCheckResult {
 
 	rel, err := fetchRel(fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo))
 	if err != nil {
-		// Fallback to list of releases (e.g., if latest is prerelease or tag-only)
+		// Fallback 1: list of releases via GitHub REST API (e.g., if latest is prerelease or tag-only)
 		req, _ := http.NewRequest("GET", fmt.Sprintf("https://api.github.com/repos/%s/%s/releases?per_page=10", owner, repo), nil)
 		req.Header.Set("Accept", "application/vnd.github+json")
 		req.Header.Set("User-Agent", "LumaOS-Updater/"+KernelVersion)
-		resp, err2 := client.Do(req)
-		if err2 != nil {
-			res.Error = fmt.Sprintf("Нет соединения с GitHub: %v", err)
-			return res
-		}
-		defer resp.Body.Close()
-		var list []ghReleasePayload
-		if err3 := json.NewDecoder(resp.Body).Decode(&list); err3 != nil || len(list) == 0 {
-			res.Error = fmt.Sprintf("Релизы не найдены на GitHub (%v)", err)
-			return res
-		}
-		for i := range list {
-			if !list[i].Draft {
-				rel = &list[i]
-				break
+		if resp, err2 := client.Do(req); err2 == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				var list []ghReleasePayload
+				if err3 := json.NewDecoder(resp.Body).Decode(&list); err3 == nil && len(list) > 0 {
+					for i := range list {
+						if !list[i].Draft {
+							rel = &list[i]
+							break
+						}
+					}
+					if rel == nil {
+						rel = &list[0]
+					}
+				}
 			}
 		}
-		if rel == nil {
-			rel = &list[0]
+	}
+	if rel == nil {
+		// Fallback 2 (Rate-Limit-Proof): resolve https://github.com/{owner}/{repo}/releases/latest 302 redirect
+		// Bypasses api.github.com's 60 req/hr unauthenticated rate limit (HTTP 403) completely!
+		webRel, errWeb := fetchLatestReleaseViaWebRedirect(owner, repo)
+		if errWeb != nil || webRel == nil {
+			res.Error = fmt.Sprintf("Нет соединения с GitHub (%v / %v)", err, errWeb)
+			return res
 		}
+		rel = webRel
 	}
 
 	latestClean := strings.TrimPrefix(strings.TrimSpace(rel.TagName), "v")
@@ -175,18 +182,16 @@ func CheckGitHubUpdate(repoURL string) UpdateCheckResult {
 		latestClean = KernelVersion
 	}
 
-	downloadURL := ""
+	downloadURL, probedSize := resolveReleaseDownloadURL(owner, repo, latestClean, rel, client)
 	var assetSize int64
 	for _, a := range rel.Assets {
-		if strings.HasSuffix(strings.ToLower(a.Name), ".exe") {
-			downloadURL = a.BrowserDownloadURL
+		if a.BrowserDownloadURL == downloadURL {
 			assetSize = a.Size
 			break
 		}
 	}
-	if downloadURL == "" {
-		// Direct raw EXE path from main branch matching our LumaOS_<ver>.exe convention
-		downloadURL = fmt.Sprintf("https://github.com/%s/%s/raw/main/LumaOS_%s.exe", owner, repo, latestClean)
+	if assetSize <= 0 && probedSize > 0 {
+		assetSize = probedSize
 	}
 
 	res.OK = true
@@ -205,6 +210,191 @@ func CheckGitHubUpdate(repoURL string) UpdateCheckResult {
 	res.UpdateLevel, res.UpdateLevelLabel = classifyUpdateLevel(KernelVersion, latestClean)
 	res.ChangelogHighlights = extractChangelogHighlights(rel.Body, 6)
 	return res
+}
+
+// fetchLatestReleaseViaWebRedirect resolves the latest GitHub release tag via
+// https://github.com/{owner}/{repo}/releases/latest (302 -> .../releases/tag/<tag>)
+// so OTA update checks keep working even when api.github.com returns HTTP 403 rate limit exceeded.
+func fetchLatestReleaseViaWebRedirect(owner, repo string) (*ghReleasePayload, error) {
+	noRedirectClient := &http.Client{
+		Timeout: 8 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	latestURL := fmt.Sprintf("https://github.com/%s/%s/releases/latest", owner, repo)
+	var loc string
+	for _, method := range []string{"HEAD", "GET"} {
+		req, err := http.NewRequest(method, latestURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", "LumaOS-Updater/"+KernelVersion)
+		resp, err := noRedirectClient.Do(req)
+		if err != nil {
+			continue
+		}
+		_ = resp.Body.Close()
+		if l := strings.TrimSpace(resp.Header.Get("Location")); l != "" && strings.Contains(l, "/releases/tag/") {
+			loc = l
+			break
+		}
+	}
+	if loc == "" {
+		return nil, fmt.Errorf("не удалось определить последний релиз на github.com")
+	}
+	idx := strings.Index(loc, "/releases/tag/")
+	if idx < 0 {
+		return nil, fmt.Errorf("неожиданный редирект релиза: %s", loc)
+	}
+	tag := strings.TrimSpace(loc[idx+len("/releases/tag/"):])
+	if q := strings.IndexAny(tag, "?#/"); q >= 0 {
+		tag = tag[:q]
+	}
+	if tag == "" {
+		return nil, fmt.Errorf("пустой тег релиза")
+	}
+	cleanVer := strings.TrimPrefix(tag, "v")
+	rel := &ghReleasePayload{
+		TagName: tag,
+		Name:    "Luma OS " + cleanVer,
+		HTMLURL: fmt.Sprintf("https://github.com/%s/%s/releases/tag/%s", owner, repo, tag),
+	}
+	// Optionally load release patch notes directly from raw.githubusercontent.com (0 API rate limit)
+	rawClient := &http.Client{Timeout: 5 * time.Second}
+	notesURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/main/PATCH_NOTES_%s.md", owner, repo, cleanVer)
+	if req, err := http.NewRequest("GET", notesURL, nil); err == nil {
+		req.Header.Set("User-Agent", "LumaOS-Updater/"+KernelVersion)
+		if resp, err := rawClient.Do(req); err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				if data, rerr := io.ReadAll(io.LimitReader(resp.Body, 48*1024)); rerr == nil && len(data) > 0 {
+					rel.Body = string(data)
+				}
+			}
+		}
+	}
+	return rel, nil
+}
+
+// buildCandidateExeURLs generates edition-aware download URL candidates in priority order
+// so OTA updates NEVER fail with HTTP 404 whether a release ships LumaOS_<ver>.exe, _Pro.exe, or _Base.exe.
+func buildCandidateExeURLs(owner, repo, ver, primaryURL, releaseBody string) []string {
+	out := make([]string, 0, 12)
+	seen := map[string]bool{}
+	add := func(u string) {
+		u = strings.TrimSpace(u)
+		if u == "" || seen[u] {
+			return
+		}
+		seen[u] = true
+		out = append(out, u)
+	}
+
+	cleanVer := strings.TrimPrefix(strings.TrimSpace(ver), "v")
+	lowVer := strings.ToLower(cleanVer)
+	wantPro := isProEdition()
+	if strings.Contains(lowVer, "base") {
+		wantPro = false
+	} else if strings.Contains(lowVer, "pro") {
+		wantPro = true
+	}
+	baseNumVer := cleanVer
+	if idx := strings.Index(baseNumVer, " "); idx > 0 {
+		baseNumVer = strings.TrimSpace(baseNumVer[:idx])
+	}
+	baseRaw := fmt.Sprintf("https://github.com/%s/%s/raw/main", owner, repo)
+	directRaw := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/main", owner, repo)
+
+	if primaryURL != "" {
+		add(primaryURL)
+	}
+
+	// Parse direct GitHub raw .exe links from release notes body
+	if releaseBody != "" {
+		re := regexp.MustCompile(`https://(?:github\.com|raw\.githubusercontent\.com)/[^\s\)\"']+\.exe`)
+		matches := re.FindAllString(releaseBody, -1)
+		wantSuffix := "_pro.exe"
+		if !wantPro {
+			wantSuffix = "_base.exe"
+		}
+		for _, m := range matches {
+			if strings.HasSuffix(strings.ToLower(m), wantSuffix) {
+				add(m)
+			}
+		}
+		for _, m := range matches {
+			add(m)
+		}
+	}
+
+	if baseNumVer != "" {
+		var names []string
+		if wantPro {
+			names = []string{
+				fmt.Sprintf("LumaOS_%s_Pro.exe", baseNumVer),
+				fmt.Sprintf("LumaOS_%s.exe", baseNumVer),
+				fmt.Sprintf("LumaOS_%s_Base.exe", baseNumVer),
+			}
+		} else {
+			names = []string{
+				fmt.Sprintf("LumaOS_%s_Base.exe", baseNumVer),
+				fmt.Sprintf("LumaOS_%s.exe", baseNumVer),
+				fmt.Sprintf("LumaOS_%s_Pro.exe", baseNumVer),
+			}
+		}
+		for _, n := range names {
+			add(baseRaw + "/" + n)
+		}
+		for _, n := range names {
+			add(directRaw + "/" + n)
+		}
+	}
+	return out
+}
+
+func resolveReleaseDownloadURL(owner, repo, latestClean string, rel *ghReleasePayload, client *http.Client) (string, int64) {
+	// 1. Prefer attached release asset matching current edition
+	wantSuffix := "_pro.exe"
+	if !isProEdition() {
+		wantSuffix = "_base.exe"
+	}
+	for _, a := range rel.Assets {
+		low := strings.ToLower(a.Name)
+		if strings.HasSuffix(low, wantSuffix) && a.BrowserDownloadURL != "" {
+			return a.BrowserDownloadURL, a.Size
+		}
+	}
+	for _, a := range rel.Assets {
+		if strings.HasSuffix(strings.ToLower(a.Name), ".exe") && a.BrowserDownloadURL != "" {
+			return a.BrowserDownloadURL, a.Size
+		}
+	}
+
+	// 2. Probe edition-aware raw/main & raw.githubusercontent.com candidates with fast HEAD request so we always return a live HTTP 200 URL!
+	candidates := buildCandidateExeURLs(owner, repo, latestClean, "", rel.Body)
+	probeClient := &http.Client{Timeout: 4 * time.Second}
+	if client != nil {
+		probeClient.Transport = client.Transport
+	}
+	for _, cand := range candidates {
+		req, err := http.NewRequest("HEAD", cand, nil)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("User-Agent", "LumaOS-Updater/"+KernelVersion)
+		if resp, err := probeClient.Do(req); err == nil {
+			sz := resp.ContentLength
+			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return cand, sz
+			}
+		}
+	}
+	if len(candidates) > 0 {
+		return candidates[0], 0
+	}
+	return fmt.Sprintf("https://github.com/%s/%s/raw/main/LumaOS_%s.exe", owner, repo, latestClean), 0
 }
 
 // classifyUpdateLevel strictly implements Luma OS SemVer hierarchy X.Y.Z:
@@ -289,28 +479,50 @@ func StartGitHubSelfUpdate(downloadURL, targetVersion string, kernel *LumaKernel
 	go func() {
 		backupCurrentBinaryForRollback()
 		client := &http.Client{Timeout: 5 * time.Minute}
-		req, err := http.NewRequest("GET", downloadURL, nil)
-		if err != nil {
-			setUpdaterState(UpdateProgressState{Stage: "error", Error: err.Error(), Message: "Неверный URL обновления"})
-			return
-		}
-		req.Header.Set("User-Agent", "LumaOS-Updater/"+KernelVersion)
 
-		resp, err := client.Do(req)
-		if err != nil {
-			setUpdaterState(UpdateProgressState{Stage: "error", Error: err.Error(), Message: "Ошибка подключения к GitHub"})
+		owner, repo := extractRepoOwnerName(downloadURL)
+		candidates := buildCandidateExeURLs(owner, repo, targetVersion, downloadURL, "")
+		var resp *http.Response
+		var usedURL string
+		var lastStatus int
+		var lastErr error
+
+		for _, candURL := range candidates {
+			req, err := http.NewRequest("GET", candURL, nil)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			req.Header.Set("User-Agent", "LumaOS-Updater/"+KernelVersion)
+			r, err := client.Do(req)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			if r.StatusCode == http.StatusOK {
+				resp = r
+				usedURL = candURL
+				break
+			}
+			lastStatus = r.StatusCode
+			_ = r.Body.Close()
+		}
+
+		if resp == nil {
+			if lastStatus > 0 {
+				setUpdaterState(UpdateProgressState{
+					Stage:   "error",
+					Error:   fmt.Sprintf("HTTP %d", lastStatus),
+					Message: fmt.Sprintf("Файл обновления недоступен на GitHub (HTTP %d)", lastStatus),
+				})
+			} else if lastErr != nil {
+				setUpdaterState(UpdateProgressState{Stage: "error", Error: lastErr.Error(), Message: "Ошибка подключения к GitHub"})
+			} else {
+				setUpdaterState(UpdateProgressState{Stage: "error", Error: "no download candidate", Message: "Не найден файл обновления на GitHub"})
+			}
 			return
 		}
 		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			setUpdaterState(UpdateProgressState{
-				Stage:   "error",
-				Error:   fmt.Sprintf("HTTP %d", resp.StatusCode),
-				Message: fmt.Sprintf("Файл обновления недоступен на GitHub (HTTP %d)", resp.StatusCode),
-			})
-			return
-		}
 
 		total := resp.ContentLength
 		exePath, _ := os.Executable()
@@ -318,11 +530,22 @@ func StartGitHubSelfUpdate(downloadURL, targetVersion string, kernel *LumaKernel
 		if targetDir == "" || targetDir == "." {
 			targetDir = os.TempDir()
 		}
-		safeVer := strings.ReplaceAll(strings.TrimSpace(targetVersion), " ", "_")
-		if safeVer == "" {
-			safeVer = "latest"
+
+		// Derive exact output EXE filename from resolved URL (e.g. LumaOS_1.7.2_Pro.exe / LumaOS_1.7.2_Base.exe / LumaOS_1.7.2.exe)
+		outName := ""
+		if u, uerr := url.Parse(usedURL); uerr == nil {
+			base := filepath.Base(u.Path)
+			if strings.HasSuffix(strings.ToLower(base), ".exe") && len(base) > 4 {
+				outName = base
+			}
 		}
-		outName := fmt.Sprintf("LumaOS_%s.exe", safeVer)
+		if outName == "" {
+			safeVer := strings.ReplaceAll(strings.TrimSpace(targetVersion), " ", "_")
+			if safeVer == "" {
+				safeVer = "latest"
+			}
+			outName = fmt.Sprintf("LumaOS_%s.exe", safeVer)
+		}
 		tmpPath := filepath.Join(targetDir, outName+".download")
 
 		outFile, err := os.Create(tmpPath)
@@ -422,11 +645,23 @@ func StartGitHubSelfUpdate(downloadURL, targetVersion string, kernel *LumaKernel
 			return
 		}
 
+		// Safe Windows atomic swap: if target EXE is currently running & locked by Windows,
+		// rename the running EXE to *.old FIRST (allowed by NTFS!) and then move new EXE into place!
 		finalPath := filepath.Join(targetDir, outName)
-		_ = os.Remove(finalPath)
-		if err := os.Rename(tmpPath, finalPath); err != nil {
-			setUpdaterState(UpdateProgressState{Stage: "error", Error: err.Error(), Message: "Не удалось финализировать файл"})
-			return
+		deferredSwap := false
+		if _, statErr := os.Stat(finalPath); statErr == nil {
+			if rmErr := os.Remove(finalPath); rmErr != nil {
+				oldPath := finalPath + ".old"
+				_ = os.Remove(oldPath)
+				if renOldErr := os.Rename(finalPath, oldPath); renOldErr != nil {
+					deferredSwap = true
+				}
+			}
+		}
+		if !deferredSwap {
+			if err := os.Rename(tmpPath, finalPath); err != nil {
+				deferredSwap = true
+			}
 		}
 		sum := hex.EncodeToString(hasher.Sum(nil))
 
@@ -447,20 +682,28 @@ func StartGitHubSelfUpdate(downloadURL, targetVersion string, kernel *LumaKernel
 				Message:         "Переход на новую версию Luma OS " + targetVersion + "...",
 			})
 
-			// Give UI 900ms to render 100% progress bar, then cleanly hand off, update Autostart Run key & relaunch new EXE!
+			// Give UI 900ms to render 100% progress bar, then cleanly hand off, swap if locked, update Autostart Run key & relaunch new EXE!
 			go func() {
 				time.Sleep(900 * time.Millisecond)
 				restoreWindowsShell()
-				escPath := strings.ReplaceAll(finalPath, "'", "''")
-				// If Windows Autostart is enabled, immediately rewrite HKCU\...\Run\LumaOS to point to the newly installed version!
+				escFinal := strings.ReplaceAll(finalPath, "'", "''")
+				escTmp := strings.ReplaceAll(tmpPath, "'", "''")
+				swapCmd := ""
+				if deferredSwap {
+					swapCmd = fmt.Sprintf(`Move-Item -LiteralPath '%s' -Destination '%s' -Force -ErrorAction SilentlyContinue; `, escTmp, escFinal)
+				}
 				helper := fmt.Sprintf(
-					`$p='%s'; $rk='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'; $cur=(Get-ItemProperty -Path $rk -Name 'LumaOS' -ErrorAction SilentlyContinue).LumaOS; if ($cur) { $arg = if ($cur -like '*--fullscreen*') { ' --fullscreen' } else { '' }; Set-ItemProperty -Path $rk -Name 'LumaOS' -Value ('"' + $p + '"' + $arg) -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 1100; Start-Process -FilePath $p`,
-					escPath,
+					`Start-Sleep -Milliseconds 1100; %s$p='%s'; $rk='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'; $cur=(Get-ItemProperty -Path $rk -Name 'LumaOS' -ErrorAction SilentlyContinue).LumaOS; if ($cur) { $arg = if ($cur -like '*--fullscreen*') { ' --fullscreen' } else { '' }; Set-ItemProperty -Path $rk -Name 'LumaOS' -Value ('"' + $p + '"' + $arg) -ErrorAction SilentlyContinue }; Start-Process -FilePath $p`,
+					swapCmd,
+					escFinal,
 				)
 				_ = exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", helper).Start()
 				os.Exit(0)
 			}()
 		} else {
+			if deferredSwap {
+				finalPath = tmpPath
+			}
 			setUpdaterState(UpdateProgressState{
 				Running:         false,
 				Stage:           "done",
@@ -537,8 +780,9 @@ func ListRollbackReleases(repoURL string) []RollbackReleaseEntry {
 	baseRaw := fmt.Sprintf("https://github.com/%s/%s/raw/main", owner, repo)
 
 	curated := []RollbackReleaseEntry{
-		{Version: "1.7.2 Pro", Tag: "v1.7.2", Title: "Luma OS 1.7.2 Pro (Oxygen · O-8 · Полные права)", DownloadURL: baseRaw + "/LumaOS_1.7.2_Pro.exe", Summary: "Редакция Pro с полными правами Администратора: встроенный фоторедактор Luma Photo Studio, открытие всех фото и папок через Luma OS, модульная панель с Drag&Drop-виджетами (погода, курсы валют, CPU/GPU, трек, буфер, Pomodoro), Scroll Actions (KDE/Waybar), обновлённая панель в стиле HarmonyOS, экосистема Суперустройство и полный фикс фокуса Alt+Tab + Dynamic Island"},
-		{Version: "1.7.2 Base", Tag: "v1.7.2", Title: "Luma OS 1.7.2 Base (Oxygen · O-8)", DownloadURL: baseRaw + "/LumaOS_1.7.2_Base.exe", Summary: "Базовая редакция Luma OS 1.7.2: фоторедактор Luma Photo Studio, модульная панель, Scroll Actions (KDE/Waybar), стиль HarmonyOS, Суперустройство и фикс фокуса Alt+Tab"},
+		{Version: "1.7.2", Tag: "v1.7.2", Title: "Luma OS 1.7.2 Pro (Oxygen · O-8 · Универсальная OTA-сборка)", DownloadURL: baseRaw + "/LumaOS_1.7.2.exe", Summary: "Флагманская сборка Pro с полными правами: Luma Photo Studio 4K, системное открытие всех фото и папок, единый Circle to Search (ПК + Телефон · Ctrl+Shift+Space), модульная панель + Scroll Actions (KDE/Waybar), стиль HarmonyOS + Суперустройство и полный фикс Alt+Tab + Dynamic Island"},
+		{Version: "1.7.2 Pro", Tag: "v1.7.2", Title: "Luma OS 1.7.2 Pro (Oxygen · O-8 · Полные права)", DownloadURL: baseRaw + "/LumaOS_1.7.2_Pro.exe", Summary: "Редакция Pro с полными правами Администратора: встроенный фоторедактор Luma Photo Studio 4K, открытие всех фото и папок через Luma OS, единый Circle to Search (ПК + Телефон), модульная панель с Drag&Drop-виджетами, Scroll Actions (KDE/Waybar), стиль HarmonyOS, экосистема Суперустройство и полный фикс Alt+Tab + Dynamic Island"},
+		{Version: "1.7.2 Base", Tag: "v1.7.2", Title: "Luma OS 1.7.2 Base (Oxygen · O-8)", DownloadURL: baseRaw + "/LumaOS_1.7.2_Base.exe", Summary: "Базовая редакция Luma OS 1.7.2 без UAC: фоторедактор Luma Photo Studio, единый Circle to Search, модульная панель, Scroll Actions (KDE/Waybar), стиль HarmonyOS, Суперустройство и фикс фокуса Alt+Tab"},
 		{Version: "1.7.1", Tag: "v1.7.1", Title: "Luma OS 1.7.1 (Oxygen · O-8)", DownloadURL: baseRaw + "/LumaOS_1.7.1.exe", Summary: "Волна отправки/приёма файлов HarmonyOS из центра по всему экрану (ПК + телефон), максимально простой 1-тап интерфейс Oxygen Connect на смартфоне, ускоренная плавная сенса тачпада с телефона и полноценный мультимодальный Circle to Search с визуальным анализом экрана"},
 		{Version: "1.7", Tag: "v1.7", Title: "Luma OS 1.7 (Oxygen · O-8)", DownloadURL: baseRaw + "/LumaOS_1.7.exe", Summary: "Флагманское обновление Oxygen (O-8 · LumaCore 1.6.0): 100% загрузка всех иконок (COM STA + ExtractIconExW + SVG-фоллбэк), автообновление автозапуска на самую свежую версию ОС, неломаемый Alt+Tab, менеджер правил окон KWin, полка Drag & Drop (Yoink/Dropzone), умный буфер обмена с категориями/OCR/Ctrl+Shift+V, Per-App Audio Hub, OSD-капсулы нового уровня, обои Oxygen 2.5D, новая мини-игра «Oxygen Pulse 2.5D» на выбор со старой и приложение Oxygen Connect для Android (HarmonyOS SuperHub)"},
 		{Version: "1.6.7", Tag: "v1.6.7", Title: "Luma OS 1.6.7 (Nitrogen · Final 1.6.x)", DownloadURL: baseRaw + "/LumaOS_1.6.7.exe", Summary: "Финальное стабильное обновление ветки 1.6.x: исправлен зависающий курсор загрузки и нерабочие клики на Dynamic Island поверх Chrome и окон Windows (Win32 WM_SETCURSOR + WM_NCHITTEST + IDC_ARROW/IDC_HAND), полностью починен выбор и проверка конкретного файла в антивирусе LumaShield 3.1 (нативный Win32 GetOpenFileNameW + TopMost диалог папок + лимит 2–4 МБ без зависания WebView2/ОЗУ), добавлены таймауты на все системные вызовы и наведён порядок в репозитории (папка old protatips)"},
