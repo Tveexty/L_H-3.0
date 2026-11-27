@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"math"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -899,7 +900,128 @@ func parseODPBytes(raw []byte) ([]OfficeSlide, error) {
 	return slides, nil
 }
 
-// ==================== DOCX PARSER (REAL WORD OPEN WITH HEADINGS, FORMATTING, TABLES & IMAGES) ====================
+// ==================== DOCX PARSER (1:1 HIGH-FIDELITY WORD RENDERER: FONTS, COLORS, SIZES, TABLES, BORDERS, LINKS & IMAGES) ====================
+
+func docxAttrVal(attrs []xml.Attr, local string) string {
+	for _, a := range attrs {
+		if a.Name.Local == local {
+			return a.Value
+		}
+	}
+	return ""
+}
+
+func docxDxaToPt(raw string) (float64, bool) {
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil {
+		return 0, false
+	}
+	return v / 20.0, true
+}
+
+func docxBorderCSS(attrs []xml.Attr) (string, bool) {
+	val := strings.ToLower(strings.TrimSpace(docxAttrVal(attrs, "val")))
+	if val == "" || val == "none" || val == "nil" {
+		return "none", true
+	}
+	szRaw := docxAttrVal(attrs, "sz")
+	sz, err := strconv.ParseFloat(szRaw, 64)
+	if err != nil || sz <= 0 {
+		sz = 4
+	}
+	pt := sz / 8.0
+	if pt < 0.5 {
+		pt = 0.5
+	}
+	col := strings.TrimSpace(docxAttrVal(attrs, "color"))
+	if col == "" || strings.EqualFold(col, "auto") {
+		col = "cbd5e1"
+	}
+	if !strings.HasPrefix(col, "#") {
+		col = "#" + col
+	}
+	style := "solid"
+	switch val {
+	case "dashed", "dashsmallgap":
+		style = "dashed"
+	case "dotted":
+		style = "dotted"
+	case "double":
+		style = "double"
+	}
+	return fmt.Sprintf("%.2fpt %s %s", pt, style, col), true
+}
+
+func docxHighlightCSS(val string) string {
+	switch strings.ToLower(strings.TrimSpace(val)) {
+	case "yellow":
+		return "#fef08a"
+	case "green":
+		return "#bbf7d0"
+	case "cyan":
+		return "#a5f3fc"
+	case "magenta":
+		return "#f5d0fe"
+	case "blue":
+		return "#bfdbfe"
+	case "red":
+		return "#fecaca"
+	case "lightgray", "light_gray":
+		return "#e2e8f0"
+	case "darkgray", "dark_gray":
+		return "#94a3b8"
+	}
+	return ""
+}
+
+func docxEscapeTextPreserveSpaces(txt string) string {
+	esc := html.EscapeString(txt)
+	if !strings.Contains(esc, "  ") && !strings.HasPrefix(esc, " ") && !strings.HasSuffix(esc, " ") {
+		return esc
+	}
+	var b strings.Builder
+	b.Grow(len(esc) + 16)
+	runes := []rune(esc)
+	for i, r := range runes {
+		if r == ' ' {
+			prevSpace := i > 0 && runes[i-1] == ' '
+			nextSpace := i+1 < len(runes) && runes[i+1] == ' '
+			if prevSpace || nextSpace || i == 0 || i == len(runes)-1 {
+				b.WriteString("&nbsp;")
+			} else {
+				b.WriteRune(' ')
+			}
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+type docxTableState struct {
+	buf           strings.Builder
+	gridColsPt    []float64
+	fixedLayout   bool
+	tblWidthPt    float64
+	tblWidthPct   float64
+	defaultBdr    map[string]string // top/right/bottom/left/insideH/insideV
+	defaultPadPt  [4]float64        // top, right, bottom, left
+	hasDefaultPad bool
+}
+
+type docxCellState struct {
+	buf       strings.Builder
+	widthPt   float64
+	widthPct  float64
+	gridSpan  int
+	vAlign    string
+	bgColor   string
+	borders   map[string]string
+	padPt     [4]float64
+	hasPad    [4]bool
+	vMerge    string // "restart" | "continue" | ""
+	colIdx    int
+}
 
 func parseDOCXBytes(raw []byte) (string, []string, error) {
 	files, err := readZipFileMap(raw)
@@ -913,20 +1035,81 @@ func parseDOCXBytes(raw []byte) (string, []string, error) {
 	rels := parseRelsXML(files["word/_rels/document.xml.rels"])
 
 	dec := xml.NewDecoder(bytes.NewReader(docXML))
-	var out strings.Builder
+	var rootOut strings.Builder
+	var tblStack []*docxTableState
+	var cellStack []*docxCellState
+	var rowColIdxStack []int
+
+	currentTarget := func() *strings.Builder {
+		if len(cellStack) > 0 {
+			return &cellStack[len(cellStack)-1].buf
+		}
+		if len(tblStack) > 0 {
+			return &tblStack[len(tblStack)-1].buf
+		}
+		return &rootOut
+	}
+
 	var pBuf strings.Builder
+	var rBuf strings.Builder
 
 	inP := false
+	inPPr := false
+	inPBdr := false
 	inR := false
+	inRPr := false
 	inT := false
-	inTbl := false
-	inTc := false
+	inTblPr := false
+	inTblBorders := false
+	inTblCellMar := false
+	inTcPr := false
+	inTcBorders := false
+	inTcMar := false
+	inDrawing := false
+	inHyperlink := false
+	hyperlinkURL := ""
+	var hyperlinkBuf strings.Builder
+
+	// Paragraph state
 	pStyle := ""
+	pAlign := ""
+	pSpaceBefore := -1.0
+	pSpaceAfter := -1.0
+	pLineHeight := 0.0
+	pIndLeft := 0.0
+	pIndRight := 0.0
+	pIndFirst := 0.0
+	pBgColor := ""
+	pBorders := map[string]string{}
+	pPageBreakBefore := false
 	isList := false
+
+	// Run state
+	runFont := ""
+	runSizePt := 0.0
+	runColor := ""
+	runBg := ""
 	runBold := false
 	runItalic := false
 	runUnderline := false
-	var rBuf strings.Builder
+	runStrike := false
+	runVertAlign := ""
+
+	// Drawing image dimensions (in px = emu / 9525)
+	drawWPx := 0.0
+	drawHPx := 0.0
+
+	// Page margins from sectPr (dxa -> px)
+	pgMarTopPx := 0
+	pgMarLRPx := 0
+
+	appendToPara := func(s string) {
+		if inHyperlink {
+			hyperlinkBuf.WriteString(s)
+		} else {
+			pBuf.WriteString(s)
+		}
+	}
 
 	flushRun := func() {
 		txt := rBuf.String()
@@ -934,17 +1117,45 @@ func parseDOCXBytes(raw []byte) (string, []string, error) {
 		if txt == "" {
 			return
 		}
-		esc := html.EscapeString(txt)
+		esc := docxEscapeTextPreserveSpaces(txt)
+		var styles []string
+		if runFont != "" {
+			cleanFont := strings.ReplaceAll(runFont, `"`, "")
+			styles = append(styles, fmt.Sprintf("font-family:'%s',Arial,sans-serif", cleanFont))
+		}
+		if runSizePt > 0 {
+			styles = append(styles, fmt.Sprintf("font-size:%.2gpt", runSizePt))
+		}
+		if runColor != "" {
+			styles = append(styles, "color:"+runColor)
+		}
+		if runBg != "" {
+			styles = append(styles, "background-color:"+runBg)
+		}
 		if runBold {
-			esc = "<strong>" + esc + "</strong>"
+			styles = append(styles, "font-weight:700")
 		}
 		if runItalic {
-			esc = "<em>" + esc + "</em>"
+			styles = append(styles, "font-style:italic")
 		}
-		if runUnderline {
-			esc = "<u>" + esc + "</u>"
+		if runUnderline && runStrike {
+			styles = append(styles, "text-decoration:underline line-through")
+		} else if runUnderline {
+			styles = append(styles, "text-decoration:underline")
+		} else if runStrike {
+			styles = append(styles, "text-decoration:line-through")
 		}
-		pBuf.WriteString(esc)
+
+		outChunk := esc
+		if runVertAlign == "superscript" {
+			outChunk = "<sup>" + outChunk + "</sup>"
+		} else if runVertAlign == "subscript" {
+			outChunk = "<sub>" + outChunk + "</sub>"
+		}
+		if len(styles) > 0 {
+			outChunk = `<span style="` + strings.Join(styles, ";") + `">` + outChunk + `</span>`
+		}
+		appendToPara(outChunk)
 	}
 
 	for {
@@ -956,130 +1167,658 @@ func parseDOCXBytes(raw []byte) (string, []string, error) {
 		case xml.StartElement:
 			switch t.Name.Local {
 			case "tbl":
-				inTbl = true
-				out.WriteString(`<table style="border-collapse:collapse;width:100%;margin:12px 0;">`)
+				ts := &docxTableState{
+					defaultBdr: map[string]string{},
+				}
+				tblStack = append(tblStack, ts)
+			case "tblPr":
+				if len(tblStack) > 0 {
+					inTblPr = true
+				}
+			case "tblW":
+				if inTblPr && len(tblStack) > 0 {
+					ts := tblStack[len(tblStack)-1]
+					wType := strings.ToLower(docxAttrVal(t.Attr, "type"))
+					wVal := docxAttrVal(t.Attr, "w")
+					if wType == "pct" {
+						if v, e := strconv.ParseFloat(wVal, 64); e == nil && v > 0 {
+							ts.tblWidthPct = v / 50.0
+						}
+					} else if wType == "dxa" || wType == "" {
+						if pt, ok2 := docxDxaToPt(wVal); ok2 && pt > 0 {
+							ts.tblWidthPt = pt
+						}
+					}
+				}
+			case "tblLayout":
+				if inTblPr && len(tblStack) > 0 {
+					if strings.EqualFold(docxAttrVal(t.Attr, "type"), "fixed") {
+						tblStack[len(tblStack)-1].fixedLayout = true
+					}
+				}
+			case "tblBorders":
+				if inTblPr && len(tblStack) > 0 {
+					inTblBorders = true
+				}
+			case "tblCellMar":
+				if inTblPr && len(tblStack) > 0 {
+					inTblCellMar = true
+				}
+			case "gridCol":
+				if len(tblStack) > 0 {
+					if pt, ok2 := docxDxaToPt(docxAttrVal(t.Attr, "w")); ok2 && pt > 0 {
+						tblStack[len(tblStack)-1].gridColsPt = append(tblStack[len(tblStack)-1].gridColsPt, pt)
+					}
+				}
 			case "tr":
-				if inTbl {
-					out.WriteString("<tr>")
+				if len(tblStack) > 0 {
+					rowColIdxStack = append(rowColIdxStack, 0)
+					tblStack[len(tblStack)-1].buf.WriteString("<tr>")
 				}
 			case "tc":
-				if inTbl {
-					inTc = true
-					out.WriteString(`<td style="border:1px solid #cbd5e1;padding:6px 10px;">`)
+				if len(tblStack) > 0 {
+					cIdx := 0
+					if len(rowColIdxStack) > 0 {
+						cIdx = rowColIdxStack[len(rowColIdxStack)-1]
+					}
+					cs := &docxCellState{
+						gridSpan: 1,
+						borders:  map[string]string{},
+						colIdx:   cIdx,
+					}
+					cellStack = append(cellStack, cs)
+				}
+			case "tcPr":
+				if len(cellStack) > 0 {
+					inTcPr = true
+				}
+			case "tcW":
+				if inTcPr && len(cellStack) > 0 {
+					cs := cellStack[len(cellStack)-1]
+					wType := strings.ToLower(docxAttrVal(t.Attr, "type"))
+					wVal := docxAttrVal(t.Attr, "w")
+					if wType == "pct" {
+						if v, e := strconv.ParseFloat(wVal, 64); e == nil && v > 0 {
+							cs.widthPct = v / 50.0
+						}
+					} else if wType == "dxa" || wType == "" {
+						if pt, ok2 := docxDxaToPt(wVal); ok2 && pt > 0 {
+							cs.widthPt = pt
+						}
+					}
+				}
+			case "gridSpan":
+				if inTcPr && len(cellStack) > 0 {
+					if n, e := strconv.Atoi(docxAttrVal(t.Attr, "val")); e == nil && n > 1 {
+						cellStack[len(cellStack)-1].gridSpan = n
+					}
+				}
+			case "vMerge":
+				if inTcPr && len(cellStack) > 0 {
+					v := strings.ToLower(docxAttrVal(t.Attr, "val"))
+					if v == "restart" {
+						cellStack[len(cellStack)-1].vMerge = "restart"
+					} else {
+						cellStack[len(cellStack)-1].vMerge = "continue"
+					}
+				}
+			case "vAlign":
+				if inTcPr && len(cellStack) > 0 {
+					v := strings.ToLower(docxAttrVal(t.Attr, "val"))
+					if v == "center" {
+						cellStack[len(cellStack)-1].vAlign = "middle"
+					} else if v == "bottom" || v == "top" {
+						cellStack[len(cellStack)-1].vAlign = v
+					}
+				}
+			case "tcBorders":
+				if inTcPr && len(cellStack) > 0 {
+					inTcBorders = true
+				}
+			case "tcMar":
+				if inTcPr && len(cellStack) > 0 {
+					inTcMar = true
+				}
+			case "top", "right", "bottom", "left", "insideH", "insideV":
+				side := t.Name.Local
+				if inTcBorders && len(cellStack) > 0 {
+					if bCss, ok2 := docxBorderCSS(t.Attr); ok2 {
+						cellStack[len(cellStack)-1].borders[side] = bCss
+					}
+				} else if inTblBorders && len(tblStack) > 0 {
+					if bCss, ok2 := docxBorderCSS(t.Attr); ok2 {
+						tblStack[len(tblStack)-1].defaultBdr[side] = bCss
+					}
+				} else if inPBdr && inP {
+					if bCss, ok2 := docxBorderCSS(t.Attr); ok2 && bCss != "none" {
+						pBorders[side] = bCss
+					}
+				} else if inTcMar && len(cellStack) > 0 {
+					if pt, ok2 := docxDxaToPt(docxAttrVal(t.Attr, "w")); ok2 {
+						cs := cellStack[len(cellStack)-1]
+						switch side {
+						case "top":
+							cs.padPt[0], cs.hasPad[0] = pt, true
+						case "right":
+							cs.padPt[1], cs.hasPad[1] = pt, true
+						case "bottom":
+							cs.padPt[2], cs.hasPad[2] = pt, true
+						case "left":
+							cs.padPt[3], cs.hasPad[3] = pt, true
+						}
+					}
+				} else if inTblCellMar && len(tblStack) > 0 {
+					if pt, ok2 := docxDxaToPt(docxAttrVal(t.Attr, "w")); ok2 {
+						ts := tblStack[len(tblStack)-1]
+						ts.hasDefaultPad = true
+						switch side {
+						case "top":
+							ts.defaultPadPt[0] = pt
+						case "right":
+							ts.defaultPadPt[1] = pt
+						case "bottom":
+							ts.defaultPadPt[2] = pt
+						case "left":
+							ts.defaultPadPt[3] = pt
+						}
+					}
+				}
+			case "shd":
+				fill := strings.TrimSpace(docxAttrVal(t.Attr, "fill"))
+				if fill != "" && !strings.EqualFold(fill, "auto") && !strings.EqualFold(fill, "clear") {
+					if !strings.HasPrefix(fill, "#") {
+						fill = "#" + fill
+					}
+					if inTcPr && len(cellStack) > 0 {
+						cellStack[len(cellStack)-1].bgColor = fill
+					} else if inRPr && inR {
+						runBg = fill
+					} else if inPPr && inP {
+						pBgColor = fill
+					}
 				}
 			case "p":
 				inP = true
 				pStyle = ""
+				pAlign = ""
+				pSpaceBefore = -1
+				pSpaceAfter = -1
+				pLineHeight = 0
+				pIndLeft, pIndRight, pIndFirst = 0, 0, 0
+				pBgColor = ""
+				pBorders = map[string]string{}
+				pPageBreakBefore = false
 				isList = false
 				pBuf.Reset()
-			case "pStyle":
+			case "pPr":
 				if inP {
-					for _, a := range t.Attr {
-						if a.Name.Local == "val" {
-							pStyle = strings.ToLower(a.Value)
+					inPPr = true
+				}
+			case "pBdr":
+				if inPPr {
+					inPBdr = true
+				}
+			case "pStyle":
+				if inPPr {
+					pStyle = strings.ToLower(docxAttrVal(t.Attr, "val"))
+				}
+			case "jc":
+				if inPPr {
+					switch strings.ToLower(docxAttrVal(t.Attr, "val")) {
+					case "center":
+						pAlign = "center"
+					case "right", "end":
+						pAlign = "right"
+					case "both", "distribute":
+						pAlign = "justify"
+					case "left", "start":
+						pAlign = "left"
+					}
+				}
+			case "spacing":
+				if inPPr {
+					if b := docxAttrVal(t.Attr, "before"); b != "" {
+						if pt, ok2 := docxDxaToPt(b); ok2 {
+							pSpaceBefore = pt
+						}
+					}
+					if a := docxAttrVal(t.Attr, "after"); a != "" {
+						if pt, ok2 := docxDxaToPt(a); ok2 {
+							pSpaceAfter = pt
+						}
+					}
+					if ln := docxAttrVal(t.Attr, "line"); ln != "" {
+						if lv, e := strconv.ParseFloat(ln, 64); e == nil && lv > 0 {
+							rule := strings.ToLower(docxAttrVal(t.Attr, "lineRule"))
+							if rule == "" || rule == "auto" {
+								pLineHeight = lv / 240.0
+							} else {
+								pLineHeight = -(lv / 20.0) // negative signals exact pt
+							}
 						}
 					}
 				}
+			case "ind":
+				if inPPr {
+					if v := docxAttrVal(t.Attr, "left"); v != "" {
+						if pt, ok2 := docxDxaToPt(v); ok2 {
+							pIndLeft = pt
+						}
+					}
+					if v := docxAttrVal(t.Attr, "right"); v != "" {
+						if pt, ok2 := docxDxaToPt(v); ok2 {
+							pIndRight = pt
+						}
+					}
+					if v := docxAttrVal(t.Attr, "firstLine"); v != "" {
+						if pt, ok2 := docxDxaToPt(v); ok2 {
+							pIndFirst = pt
+						}
+					}
+				}
+			case "pageBreakBefore":
+				if inPPr {
+					val := strings.ToLower(docxAttrVal(t.Attr, "val"))
+					if val != "0" && val != "false" {
+						pPageBreakBefore = true
+					}
+				}
 			case "numPr":
-				if inP {
+				if inPPr {
 					isList = true
 				}
-			case "r":
+			case "hyperlink":
 				if inP {
+					inHyperlink = true
+					hyperlinkURL = ""
+					hyperlinkBuf.Reset()
+					rid := docxAttrVal(t.Attr, "id")
+					if rid != "" {
+						if target, ok2 := rels[rid]; ok2 {
+							hyperlinkURL = target
+						}
+					}
+				}
+			case "r":
+				if inP && !inPPr {
 					inR = true
-					runBold, runItalic, runUnderline = false, false, false
+					runFont = ""
+					runSizePt = 0
+					runColor = ""
+					runBg = ""
+					runBold, runItalic, runUnderline, runStrike = false, false, false, false
+					runVertAlign = ""
 					rBuf.Reset()
 				}
-			case "b":
+			case "rPr":
 				if inR {
-					runBold = true
+					inRPr = true
+				}
+			case "rFonts":
+				if inRPr {
+					f := docxAttrVal(t.Attr, "ascii")
+					if f == "" {
+						f = docxAttrVal(t.Attr, "hAnsi")
+					}
+					if f == "" {
+						f = docxAttrVal(t.Attr, "cs")
+					}
+					if f != "" {
+						runFont = f
+					}
+				}
+			case "sz":
+				if inRPr {
+					if v, e := strconv.ParseFloat(docxAttrVal(t.Attr, "val"), 64); e == nil && v > 0 {
+						runSizePt = v / 2.0
+					}
+				}
+			case "color":
+				if inRPr {
+					c := strings.TrimSpace(docxAttrVal(t.Attr, "val"))
+					if c != "" && !strings.EqualFold(c, "auto") {
+						if !strings.HasPrefix(c, "#") {
+							c = "#" + c
+						}
+						runColor = c
+					}
+				}
+			case "highlight":
+				if inRPr {
+					if bg := docxHighlightCSS(docxAttrVal(t.Attr, "val")); bg != "" {
+						runBg = bg
+					}
+				}
+			case "b":
+				if inRPr {
+					v := strings.ToLower(docxAttrVal(t.Attr, "val"))
+					runBold = (v != "0" && v != "false")
 				}
 			case "i":
-				if inR {
-					runItalic = true
+				if inRPr {
+					v := strings.ToLower(docxAttrVal(t.Attr, "val"))
+					runItalic = (v != "0" && v != "false")
 				}
 			case "u":
+				if inRPr {
+					v := strings.ToLower(docxAttrVal(t.Attr, "val"))
+					runUnderline = (v != "none" && v != "0" && v != "false")
+				}
+			case "strike", "dstrike":
+				if inRPr {
+					v := strings.ToLower(docxAttrVal(t.Attr, "val"))
+					runStrike = (v != "0" && v != "false")
+				}
+			case "vertAlign":
+				if inRPr {
+					runVertAlign = strings.ToLower(docxAttrVal(t.Attr, "val"))
+				}
+			case "tab":
 				if inR {
-					runUnderline = true
+					rBuf.WriteString("    ")
 				}
 			case "br":
 				if inP {
 					flushRun()
-					pBuf.WriteString("<br/>")
+					if strings.EqualFold(docxAttrVal(t.Attr, "type"), "page") {
+						appendToPara(`<div class="luma-word-page-break" contenteditable="false" data-page-break="1"><span>— Разрыв страницы —</span></div>`)
+					} else {
+						appendToPara("<br/>")
+					}
 				}
 			case "t":
 				if inR {
 					inT = true
 				}
+			case "drawing":
+				if inR {
+					inDrawing = true
+					drawWPx, drawHPx = 0, 0
+				}
+			case "extent", "ext":
+				if inDrawing && drawWPx == 0 {
+					if cx, e1 := strconv.ParseFloat(docxAttrVal(t.Attr, "cx"), 64); e1 == nil && cx > 0 {
+						drawWPx = cx / 9525.0
+					}
+					if cy, e2 := strconv.ParseFloat(docxAttrVal(t.Attr, "cy"), 64); e2 == nil && cy > 0 {
+						drawHPx = cy / 9525.0
+					}
+				}
 			case "blip":
-				for _, a := range t.Attr {
-					if a.Name.Local == "embed" {
-						if target, ok2 := rels[a.Value]; ok2 {
-							mp := resolveRelTarget("word/document.xml", target)
-							if imgBytes, ok3 := files[mp]; ok3 && len(imgBytes) <= 10*1024*1024 {
-								mime := guessImageMime(mp)
-								pBuf.WriteString(`<img src="data:` + mime + `;base64,` + base64.StdEncoding.EncodeToString(imgBytes) + `" style="max-width:100%;border-radius:6px;margin:8px 0;" />`)
+				embedID := docxAttrVal(t.Attr, "embed")
+				if embedID != "" {
+					if target, ok2 := rels[embedID]; ok2 {
+						mp := resolveRelTarget("word/document.xml", target)
+						if imgBytes, ok3 := files[mp]; ok3 && len(imgBytes) <= 10*1024*1024 {
+							mime := guessImageMime(mp)
+							var imgStyle string
+							if drawWPx > 0 && drawHPx > 0 {
+								imgStyle = fmt.Sprintf("width:%.1fpx;height:%.1fpx;max-width:100%%;display:inline-block;vertical-align:middle;object-fit:contain;", drawWPx, drawHPx)
+							} else {
+								imgStyle = "max-width:100%;height:auto;display:inline-block;vertical-align:middle;"
 							}
+							appendToPara(`<img src="data:` + mime + `;base64,` + base64.StdEncoding.EncodeToString(imgBytes) + `" style="` + imgStyle + `" />`)
 						}
 					}
 				}
+			case "pgMar":
+				if ptT, ok2 := docxDxaToPt(docxAttrVal(t.Attr, "top")); ok2 && ptT > 0 {
+					pgMarTopPx = int(math.Round(ptT * 96.0 / 72.0))
+				}
+				if ptL, ok2 := docxDxaToPt(docxAttrVal(t.Attr, "left")); ok2 && ptL > 0 {
+					pgMarLRPx = int(math.Round(ptL * 96.0 / 72.0))
+				}
 			}
+
 		case xml.CharData:
 			if inT {
 				rBuf.Write(t)
 			}
+
 		case xml.EndElement:
 			switch t.Name.Local {
 			case "t":
 				inT = false
+			case "drawing":
+				inDrawing = false
+			case "rPr":
+				inRPr = false
 			case "r":
 				if inR {
 					flushRun()
 					inR = false
 				}
+			case "hyperlink":
+				if inHyperlink {
+					inHyperlink = false
+					linkInner := hyperlinkBuf.String()
+					hyperlinkBuf.Reset()
+					if hyperlinkURL != "" {
+						pBuf.WriteString(`<a href="` + html.EscapeString(hyperlinkURL) + `" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:none;">` + linkInner + `</a>`)
+					} else {
+						pBuf.WriteString(linkInner)
+					}
+				}
+			case "pBdr":
+				inPBdr = false
+			case "pPr":
+				inPPr = false
 			case "p":
 				if inP {
 					inP = false
+					dst := currentTarget()
+					if pPageBreakBefore {
+						dst.WriteString(`<div class="luma-word-page-break" contenteditable="false" data-page-break="1"><span>— Разрыв страницы —</span></div>`)
+					}
 					inner := pBuf.String()
+					var pStyles []string
+					if pSpaceBefore >= 0 {
+						pStyles = append(pStyles, fmt.Sprintf("margin-top:%.2gpt", pSpaceBefore))
+					} else {
+						pStyles = append(pStyles, "margin-top:0")
+					}
+					if pSpaceAfter >= 0 {
+						pStyles = append(pStyles, fmt.Sprintf("margin-bottom:%.2gpt", pSpaceAfter))
+					} else if len(cellStack) > 0 {
+						pStyles = append(pStyles, "margin-bottom:0")
+					} else {
+						pStyles = append(pStyles, "margin-bottom:4pt")
+					}
+					if pLineHeight > 0 {
+						pStyles = append(pStyles, fmt.Sprintf("line-height:%.2f", pLineHeight))
+					} else if pLineHeight < 0 {
+						pStyles = append(pStyles, fmt.Sprintf("line-height:%.2gpt", -pLineHeight))
+					}
+					if pAlign != "" {
+						pStyles = append(pStyles, "text-align:"+pAlign)
+					}
+					if pIndLeft > 0 {
+						pStyles = append(pStyles, fmt.Sprintf("margin-left:%.2gpt", pIndLeft))
+					}
+					if pIndRight > 0 {
+						pStyles = append(pStyles, fmt.Sprintf("margin-right:%.2gpt", pIndRight))
+					}
+					if pIndFirst != 0 {
+						pStyles = append(pStyles, fmt.Sprintf("text-indent:%.2gpt", pIndFirst))
+					}
+					if pBgColor != "" {
+						pStyles = append(pStyles, "background-color:"+pBgColor)
+					}
+					for _, side := range []string{"top", "right", "bottom", "left"} {
+						if bVal, ok2 := pBorders[side]; ok2 {
+							pStyles = append(pStyles, fmt.Sprintf("border-%s:%s", side, bVal))
+						}
+					}
+					styleAttr := ""
+					if len(pStyles) > 0 {
+						styleAttr = ` style="` + strings.Join(pStyles, ";") + `"`
+					}
+
 					if inner == "" {
-						if !inTc {
-							out.WriteString("<p><br/></p>")
+						if len(cellStack) == 0 {
+							dst.WriteString("<p" + styleAttr + "><br/></p>")
 						}
 					} else if strings.Contains(pStyle, "heading1") || pStyle == "1" || pStyle == "title" {
-						out.WriteString("<h1>" + inner + "</h1>")
+						dst.WriteString("<h1" + styleAttr + ">" + inner + "</h1>")
 					} else if strings.Contains(pStyle, "heading2") || pStyle == "2" || pStyle == "subtitle" {
-						out.WriteString("<h2>" + inner + "</h2>")
+						dst.WriteString("<h2" + styleAttr + ">" + inner + "</h2>")
 					} else if strings.Contains(pStyle, "heading3") || pStyle == "3" {
-						out.WriteString("<h3>" + inner + "</h3>")
+						dst.WriteString("<h3" + styleAttr + ">" + inner + "</h3>")
 					} else if isList {
-						out.WriteString("<p>• " + inner + "</p>")
+						dst.WriteString("<p" + styleAttr + ">• " + inner + "</p>")
 					} else {
-						out.WriteString("<p>" + inner + "</p>")
+						dst.WriteString("<p" + styleAttr + ">" + inner + "</p>")
 					}
 				}
+			case "tcBorders":
+				inTcBorders = false
+			case "tcMar":
+				inTcMar = false
+			case "tcPr":
+				inTcPr = false
 			case "tc":
-				if inTc {
-					inTc = false
-					out.WriteString("</td>")
+				if len(cellStack) > 0 && len(tblStack) > 0 {
+					cs := cellStack[len(cellStack)-1]
+					cellStack = cellStack[:len(cellStack)-1]
+					ts := tblStack[len(tblStack)-1]
+					if len(rowColIdxStack) > 0 {
+						rowColIdxStack[len(rowColIdxStack)-1] += cs.gridSpan
+					}
+					var tdStyles []string
+					// Width: explicit tcW or sum of gridCols
+					if cs.widthPt > 0 {
+						tdStyles = append(tdStyles, fmt.Sprintf("width:%.2gpt", cs.widthPt))
+					} else if cs.widthPct > 0 {
+						tdStyles = append(tdStyles, fmt.Sprintf("width:%.2f%%", cs.widthPct))
+					} else if len(ts.gridColsPt) > cs.colIdx {
+						sumPt := 0.0
+						for k := 0; k < cs.gridSpan && cs.colIdx+k < len(ts.gridColsPt); k++ {
+							sumPt += ts.gridColsPt[cs.colIdx+k]
+						}
+						if sumPt > 0 {
+							tdStyles = append(tdStyles, fmt.Sprintf("width:%.2gpt", sumPt))
+						}
+					}
+					// Vertical alignment (Word defaults table cells to top!)
+					va := cs.vAlign
+					if va == "" {
+						va = "top"
+					}
+					tdStyles = append(tdStyles, "vertical-align:"+va)
+
+					// Cell shading
+					if cs.bgColor != "" {
+						tdStyles = append(tdStyles, "background-color:"+cs.bgColor)
+					}
+
+					// Cell borders: ONLY apply borders explicitly declared by tcBorders or tblBorders (NEVER invent gray grids!)
+					for _, side := range []string{"top", "right", "bottom", "left"} {
+						if bVal, ok2 := cs.borders[side]; ok2 {
+							if bVal != "none" {
+								tdStyles = append(tdStyles, fmt.Sprintf("border-%s:%s", side, bVal))
+							} else {
+								tdStyles = append(tdStyles, fmt.Sprintf("border-%s:none", side))
+							}
+						} else if bVal, ok2 := ts.defaultBdr[side]; ok2 && bVal != "none" {
+							tdStyles = append(tdStyles, fmt.Sprintf("border-%s:%s", side, bVal))
+						} else if (side == "top" || side == "bottom") && ts.defaultBdr["insideH"] != "" && ts.defaultBdr["insideH"] != "none" {
+							tdStyles = append(tdStyles, fmt.Sprintf("border-%s:%s", side, ts.defaultBdr["insideH"]))
+						} else if (side == "left" || side == "right") && ts.defaultBdr["insideV"] != "" && ts.defaultBdr["insideV"] != "none" {
+							tdStyles = append(tdStyles, fmt.Sprintf("border-%s:%s", side, ts.defaultBdr["insideV"]))
+						}
+					}
+
+					// Cell margins (padding)
+					pad := [4]float64{2, 4, 2, 4}
+					if ts.hasDefaultPad {
+						pad = ts.defaultPadPt
+					}
+					for i := 0; i < 4; i++ {
+						if cs.hasPad[i] {
+							pad[i] = cs.padPt[i]
+						}
+					}
+					tdStyles = append(tdStyles, fmt.Sprintf("padding:%.2gpt %.2gpt %.2gpt %.2gpt", pad[0], pad[1], pad[2], pad[3]))
+
+					colspanAttr := ""
+					if cs.gridSpan > 1 {
+						colspanAttr = fmt.Sprintf(` colspan="%d"`, cs.gridSpan)
+					}
+					ts.buf.WriteString(`<td` + colspanAttr + ` style="` + strings.Join(tdStyles, ";") + `">` + cs.buf.String() + `</td>`)
 				}
 			case "tr":
-				if inTbl {
-					out.WriteString("</tr>")
+				if len(tblStack) > 0 {
+					tblStack[len(tblStack)-1].buf.WriteString("</tr>")
+					if len(rowColIdxStack) > 0 {
+						rowColIdxStack = rowColIdxStack[:len(rowColIdxStack)-1]
+					}
 				}
+			case "tblBorders":
+				inTblBorders = false
+			case "tblCellMar":
+				inTblCellMar = false
+			case "tblPr":
+				inTblPr = false
 			case "tbl":
-				if inTbl {
-					inTbl = false
-					out.WriteString("</table>")
+				if len(tblStack) > 0 {
+					ts := tblStack[len(tblStack)-1]
+					tblStack = tblStack[:len(tblStack)-1]
+					var tblStyles []string
+					tblStyles = append(tblStyles, "border-collapse:collapse", "border-spacing:0", "max-width:100%")
+					if ts.fixedLayout || len(ts.gridColsPt) > 0 {
+						tblStyles = append(tblStyles, "table-layout:fixed")
+					}
+					if ts.tblWidthPt > 0 {
+						tblStyles = append(tblStyles, fmt.Sprintf("width:%.2gpt", ts.tblWidthPt))
+					} else if ts.tblWidthPct > 0 {
+						tblStyles = append(tblStyles, fmt.Sprintf("width:%.2f%%", ts.tblWidthPct))
+					} else if len(ts.gridColsPt) > 0 {
+						sumPt := 0.0
+						for _, g := range ts.gridColsPt {
+							sumPt += g
+						}
+						if sumPt > 0 {
+							tblStyles = append(tblStyles, fmt.Sprintf("width:%.2gpt", sumPt))
+						} else {
+							tblStyles = append(tblStyles, "width:100%")
+						}
+					} else {
+						tblStyles = append(tblStyles, "width:100%")
+					}
+					tblStyles = append(tblStyles, "margin:0")
+
+					var colgroup strings.Builder
+					if len(ts.gridColsPt) > 0 {
+						colgroup.WriteString("<colgroup>")
+						for _, g := range ts.gridColsPt {
+							colgroup.WriteString(fmt.Sprintf(`<col style="width:%.2gpt"/>`, g))
+						}
+						colgroup.WriteString("</colgroup>")
+					}
+
+					dst := currentTarget()
+					dst.WriteString(`<table style="` + strings.Join(tblStyles, ";") + `">` + colgroup.String() + `<tbody>` + ts.buf.String() + `</tbody></table>`)
 				}
 			}
 		}
 	}
-	res := out.String()
+
+	res := rootOut.String()
 	if strings.TrimSpace(res) == "" {
 		res = "<p></p>"
+	} else {
+		metaAttr := ` data-docx-fidelity="1"`
+		if pgMarTopPx > 0 {
+			metaAttr += fmt.Sprintf(` data-pg-mar-top="%d"`, pgMarTopPx)
+		}
+		if pgMarLRPx > 0 {
+			metaAttr += fmt.Sprintf(` data-pg-mar-lr="%d"`, pgMarLRPx)
+		}
+		res = `<div class="luma-docx-fidelity"` + metaAttr + `>` + res + `</div>`
 	}
 	return res, nil, nil
 }
+
 
 func parseODTBytes(raw []byte) (string, error) {
 	files, err := readZipFileMap(raw)

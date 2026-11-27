@@ -1,30 +1,30 @@
 <div align="center">
 
-<img src="public/luma-fluorine-hero.jpg" alt="Luma OS 1.8 (Fluorine · F-9 · Base & Pro)" width="100%" style="border-radius: 18px;" />
+<img src="public/luma-fluorine-hero.jpg" alt="Luma OS 1.8.1 (Fluorine · F-9 · Base & Pro)" width="100%" style="border-radius: 18px;" />
 
 <br />
 
-# Luma OS 1.8 — **Fluorine · F-9 (`Base` & `Pro`)**
+# Luma OS 1.8.1 — **Fluorine · F-9 (`Base` & `Pro`)**
 
-**Флагманская настольная оболочка нового поколения для Windows 10 / 11 в двух редакциях (`Base` и `Pro` с полными правами): 4 новых 2.5D-обоев Fluorine, обновлённое ядро LumaCore 2.0 и плагины нового поколения, многослойный оптический блюр в реальном времени с бликами Fluent Reveal, адаптивная палитра Material You (Monet), 15 новых виджетов, полная настройка Панели управления мышкой/стилусом/пальцем, полноценный Luma Word в стиле Microsoft Word и быстрый запуск Windows PowerShell прямо из Поиска**
+**Флагманская настольная оболочка нового поколения для Windows 10 / 11 в двух редакциях (`Base` и `Pro` с полными правами): гибкая Панель управления в стиле One UI 9.0 / Liquid Glass с перетаскиванием, изменением размеров блоков, вертикальными ползунками и пресетами, окраска Панели управления и Панели задач под тему системы, Microsoft Word / Excel / PowerPoint на рабочем столе без ошибок запуска, системный экран блокировки по `Win + L` с реальным паролем Windows и виджетами, а также оптимизированная работа офиса**
 
 <p>
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.8"><img src="https://img.shields.io/badge/Release-v1.8%20Fluorine%20(Base%20%26%20Pro)-10b981?style=for-the-badge" alt="Release v1.8" /></a>
-  <img src="https://img.shields.io/badge/Kernel-LumaCore%202.0%20%2B%20SDK%20v4.0-06b6d4?style=for-the-badge" alt="LumaCore 2.0" />
-  <img src="https://img.shields.io/badge/Visuals-Optical%20Blur%20%2B%20Fluent%20Reveal%20%2B%20Monet-8b5cf6?style=for-the-badge" alt="Fluorine Visual Engine" />
-  <img src="https://img.shields.io/badge/Widgets-%2B15%20New%20Interactive-0ea5e9?style=for-the-badge" alt="15 New Widgets" />
-  <img src="https://img.shields.io/badge/Office-Microsoft%20Word%20Replica-185ABD?style=for-the-badge" alt="Luma Word" />
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.8.1"><img src="https://img.shields.io/badge/Release-v1.8.1%20Fluorine%20(Base%20%26%20Pro)-10b981?style=for-the-badge" alt="Release v1.8.1" /></a>
+  <img src="https://img.shields.io/badge/Control%20Panel-One%20UI%209.0%20%2F%20Liquid%20Glass-2563eb?style=for-the-badge" alt="One UI 9.0 Control Panel" />
+  <img src="https://img.shields.io/badge/Lock%20Screen-Win%2BL%20%2B%20Windows%20Auth%20%2B%20Widgets-8b5cf6?style=for-the-badge" alt="System Lock Screen" />
+  <img src="https://img.shields.io/badge/MS%20Office-Word%20%C2%B7%20Excel%20%C2%B7%20PowerPoint%20Ready-185ABD?style=for-the-badge" alt="Microsoft Office" />
+  <img src="https://img.shields.io/badge/Kernel-LumaCore%202.0.1-06b6d4?style=for-the-badge" alt="LumaCore 2.0.1" />
   <img src="https://img.shields.io/badge/Security-LumaShield%203.2%20(340%2B)-f43f5e?style=for-the-badge" alt="LumaShield 3.2" />
 </p>
 
 <h3>
-  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.8_Pro.exe">👑 Скачать LumaOS_1.8_Pro.exe (Pro · Полные права)</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.8.1_Pro.exe">👑 Скачать LumaOS_1.8.1_Pro.exe (Pro · Полные права)</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.8_Base.exe">⬇️ Скачать LumaOS_1.8_Base.exe (Base)</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.8.1_Base.exe">⬇️ Скачать LumaOS_1.8.1_Base.exe (Base)</a>
   <br />
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.8">📦 Релиз v1.8</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.8.1">📦 Релиз v1.8.1</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="PATCH_NOTES_1.8.md">📝 Патч-ноут 1.8</a>
+  <a href="PATCH_NOTES_1.8.1.md">📝 Патч-ноут 1.8.1</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="LumaOxygenConnect_Android/README.md">📱 Oxygen Connect (Android)</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
@@ -35,33 +35,31 @@
 
 > [!WARNING]
 > **⚠️ Нестабильная работа версий `1.6.4` – `1.6.6b`!**
-> Сборки **`1.6.4`**, **`1.6.5`**, **`1.6.6`** и **`1.6.6b`** работают **нестабильно** — **не используйте их**. Скачивайте актуальную версию **[Luma OS 1.8 Fluorine Pro / Base](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.8)** (или финальную стабильную сборку ветки `1.6.x` — [`LumaOS_1.6.7.exe`](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.7)).
+> Сборки **`1.6.4`**, **`1.6.5`**, **`1.6.6`** и **`1.6.6b`** работают **нестабильно** — **не используйте их**. Скачивайте актуальную версию **[Luma OS 1.8.1 Fluorine Pro / Base](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.8.1)** (или финальную стабильную сборку ветки `1.6.x` — [`LumaOS_1.6.7.exe`](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.7)).
 
 ---
 
-## Что нового в **Luma OS 1.8 (Fluorine · F-9 · `Base` & `Pro`)**
+## Что нового в **Luma OS 1.8.1 (Fluorine · F-9 · `Base` & `Pro`)**
 
-| Раздел | Ключевые возможности и улучшения 1.8 |
+| Раздел | Ключевые возможности и улучшения 1.8.1 |
 | :--- | :--- |
-| **🎨 4 новых 2.5D-обоев Fluorine** | **Cryo-Emerald**, **Crystal Prism**, **Liquid Waves** и **Glass Aurora** в высоком качестве + живые анимированные обои **Fluorine Cryo-Prism**. Все 21 прежние обои сохранены (**25 встроенных обоев** + безлимитные свои обои с диска). |
-| **🪟 Оптический блюр + Fluent Reveal + Material You (Monet)** | Живой многослойный блюр реального контента с призматическими контурами и микрозернистостью (без «пластикового» вида), спекулярные блики на границах стекла при движении курсора/стилуса и автоматическая адаптивная палитра цветов по обоям или играющей музыке. |
-| **⚙️ Ядро LumaCore 2.0 + Плагины нового поколения** | Кэшируемый скоростной API, обновлённый менеджер плагинов прямо в Настройках и безопасная кнопка **«Ускорить ОЗУ»**, освобождающая память без разрыва открытых окон. |
-| **🧩 +15 новых виджетов на рабочий стол** | Палитра Monet Live, Оптимизатор ОЗУ, Офлайн-звуки фона (Дождь/Океан/Костёр/Шум), Дыхание 4-4-4, Обратный отсчёт, Секундомер с кругами, Трекер воды, Мысль дня, Пипетка HEX, Конвертер величин, Генератор паролей, Монетка/Кубик/D20, Быстрый буфер, PowerShell Hub и Прогресс дня/недели/года. |
-| **🎛️ Полная кастомизация Панели управления + порядок** | Перетаскивайте, удаляйте и добавляйте любые кнопки и приложения (**34 элемента**) мышкой, стилусом или пальцем! Убраны лишние блоки BT / 2.4GHz и громоздкий микшер внизу — **Per-App Audio** вынесен в компактную кнопку, открывающую отдельное окно настроек звука. |
-| **📝 Luma Word в стиле Microsoft Word** | Полноценный аналог Word: синяя шапка, 7 вкладок ленты, всплывающая мини-панель при выделении текста, голосовая диктовка, режимы **Разметка A4 / Чтение / Веб / Фокус**, окно полной статистики, горячие клавиши и экспорт `.docx`/PDF. |
-| **💻 PowerShell из Поиска и меню «Пуск»** | Введите `powershell`, `ps`, `pwsh` или `повершелл` (можно сразу с командой) — и мгновенно откройте обычный Windows PowerShell или PowerShell от имени Администратора. |
+| **🎛️ Панель управления в стиле One UI 9.0 / Liquid Glass** | Полноценный конструктор на свободной 4-колоночной сетке: вход по кнопке с карандашом или долгому нажатию, плавное перетаскивание с авто-перестроением, изменение размеров блоков (`1×1`, `2×1`, `2×2`, `4×1`, `4×2`), горизонтальные и вертикальные (`1×2`) ползунки яркости/громкости, нижний выдвижной лоток скрытых модулей, ползунки прозрачности/размытия/скругления и пользовательские пресеты. |
+| **🎨 Окраска Панели управления и Панели задач по теме** | Единая синхронизация цвета стекла, контуров и акцентов Панели управления и Панели задач с текущей темой системы и палитрой обоев. |
+| **📄 Microsoft Word, Excel и PowerPoint на рабочем столе** | Добавление Word, Excel и PowerPoint (Windows) на рабочий стол в 1 клик через меню рабочего стола + полное исправление ошибки запуска «Невозможно запустить это приложение на вашем ПК». |
+| **🔐 Системный экран блокировки по `Win + L`** | Заменяет стандартную блокировку Windows на фирменный экран блокировки Luma OS в стиле активной темы и обоев, проверяет реальный пароль учётной записи Windows и поддерживает настраиваемые виджеты (Погода, Плеер, Батарея, Система, Календарь, Заметка, Уведомления, Прогресс дня). |
+| **📝 Встроенный офис** | Оптимизирована работа офиса. |
 
 ---
 
-## Сравнение редакций **Luma OS 1.8 `Base` vs `Pro`**
+## Сравнение редакций **Luma OS 1.8.1 `Base` vs `Pro`**
 
-| Функция / Права | `Luma OS 1.8 Base` | `Luma OS 1.8 Pro` |
+| Функция / Права | `Luma OS 1.8.1 Base` | `Luma OS 1.8.1 Pro` |
 | :--- | :---: | :---: |
-| **Все новинки 1.8 Fluorine (4 обоев, оптический блюр, Fluent Reveal, Monet, +15 виджетов, Word, PowerShell)** | ✅ Полностью | ✅ Полностью |
+| **Все новинки 1.8.1 (One UI 9.0 Панель управления, окраска по теме, MS Office на стол, Win+L экран блокировки, оптимизация офиса)** | ✅ Полностью | ✅ Полностью |
 | **Права в Windows** | Пользователь (без UAC) | **Полные права Администратора (UAC)** |
 | **Встроенный `Luma Photo Studio`** | До 2K · 12 шагов отмены | **До 4K · 30 шагов отмены · Pro-экспорт** |
 | **Открытие фото и папок через Luma OS** | Внутри оболочки | **Внутри оболочки + ассоциации Windows** |
-| **Панель управления (перетаскивание мышью/стилусом/пальцем + компактный Per-App Audio)** | ✅ | ✅ **Максимум опций** |
+| **Панель управления (One UI 9.0 сетка + вертикальные ползунки + пресеты)** | ✅ | ✅ **Максимум опций** |
 | **Суперустройство + Miracast + Circle to Search (ПК + Телефон)** | ✅ | ✅ **Pro-маршрутизация и игровой буст** |
 | **Расширенная защита · SwapBoost · Стоп-зарядка · Плагины LumaCore 2.0** | Базовый режим | ✅ **Все Pro-модули разблокированы** |
 

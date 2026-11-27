@@ -939,6 +939,7 @@ const (
 	hkVkRight       = 0x27
 	hkVkDown        = 0x28
 	hkVkD           = 0x44
+	hkVkL           = 0x4C
 	hkVkLWin        = 0x5B
 	hkVkRWin        = 0x5C
 	hkVkLMenu       = 0xA4
@@ -984,7 +985,7 @@ func win32KbdLLHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
 				}
 			}
 
-			// --- 1. Track Win Key & Solo Tap vs Combo (Win -> Luma Start / Win+D -> Luma Home; preserves Win+L/Shift+S/Space/E!) ---
+			// --- 1. Track Win Key & Solo Tap vs Combo (Win -> Luma Start / Win+D -> Luma Home / Win+L -> Luma Lock Screen) ---
 			if info.VkCode == hkVkLWin || info.VkCode == hkVkRWin {
 				if isDown {
 					wasDown := kbdLWinDown || kbdRWinDown
@@ -1031,7 +1032,7 @@ func win32KbdLLHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
 				// Any other key pressed while Win is held marks it as a system combo (Win+L, Win+Shift+S, Win+Space, Win+E, Win+D...)
 				kbdWinComboUsed = true
 
-				// Intercept ONLY Win+D (no Ctrl/Shift/Alt) -> instant return to Luma OS Home Desktop!
+				// Intercept Win+D (no Ctrl/Shift/Alt) -> instant return to Luma OS Home Desktop!
 				if info.VkCode == hkVkD && isWinDToLumaEnabled() && (info.Flags&hkLlkhfAltDown) == 0 {
 					ctrlState, _, _ := procHookGetAsyncKeyState.Call(hkVkControl)
 					shiftState, _, _ := procHookGetAsyncKeyState.Call(hkVkShift)
@@ -1048,7 +1049,25 @@ func win32KbdLLHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
 						return 1
 					}
 				}
-				// All other Win combos (Win+L, Win+Shift+S, Win+Space, Win+E, Win+V, Win+Arrows) pass straight to Windows!
+
+				// Luma OS 1.8.1: Intercept Win+L (no Ctrl/Shift/Alt) -> open System-Style Luma Lock Screen with Real Windows Password Auth & Widgets!
+				if info.VkCode == hkVkL && isWinLToLumaEnabled() && (info.Flags&hkLlkhfAltDown) == 0 {
+					ctrlState, _, _ := procHookGetAsyncKeyState.Call(hkVkControl)
+					shiftState, _, _ := procHookGetAsyncKeyState.Call(hkVkShift)
+					if (ctrlState&0x8000) == 0 && (shiftState&0x8000) == 0 {
+						_, _, _ = procHookKeybdEvent.Call(hkVkDummyMask, 0, 0, 0)
+						_, _, _ = procHookKeybdEvent.Call(hkVkDummyMask, 0, hkKeyeventfUp, 0)
+						go func() {
+							defer func() { _ = recover() }()
+							if lumaHwnd != 0 {
+								forceBringLumaToFront(lumaHwnd, true)
+							}
+							safeWebViewEval(wv, stopCh, `try{window.focus();}catch(e){} window.dispatchEvent(new CustomEvent('luma-win-l-lock',{detail:{source:'win_l'}}));`)
+						}()
+						return 1
+					}
+				}
+				// All other Win combos (Win+Shift+S, Win+Space, Win+E, Win+V, Win+Arrows) pass straight to Windows!
 			}
 
 			// --- 1b. Global Circle to Search Hotkey (Ctrl + Shift + Space) — works over Chrome, YouTube, Telegram & Games! ---
@@ -1178,7 +1197,10 @@ func win32KbdLLHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
 
 // startWin32AltTabHook (LumaCore 1.5.0): Installs the permanent singleton WH_KEYBOARD_LL hook (zero callback leaks).
 func startWin32AltTabHook(wv webview2.WebView, lumaHwnd uintptr, stopCh <-chan struct{}) {
-	defer func() { _ = recover() }()
+	defer func() {
+		cleanupWinLockPolicy()
+		_ = recover()
+	}()
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 

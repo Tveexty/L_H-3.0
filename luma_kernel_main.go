@@ -48,9 +48,9 @@ var embeddedDist embed.FS
 var embeddedSources embed.FS
 
 const (
-	KernelVersion       = "1.8"
+	KernelVersion       = "1.8.1"
 	KernelCodename      = "Fluorine"
-	KernelEngineVersion = "2.0.0"
+	KernelEngineVersion = "2.0.1"
 	SecurityCoreVersion = "3.2"
 	DefaultRpcPort      = 49215
 	DefaultHttpPort     = 49216
@@ -486,49 +486,59 @@ func (k *LumaKernel) LaunchTarget(id, name, target, appType, args string) (map[s
 		return nil, fmt.Errorf("empty target")
 	}
 
-	var cmd *exec.Cmd
+	pid := 0
+	launchedTarget := cleanTarget
 	if runtime.GOOS == "windows" {
 		switch strings.ToLower(cleanTarget) {
 		case "calc", "calc.exe":
-			cmd = exec.Command("calc.exe")
-		case "explorer", "explorer.exe":
-			cmd = exec.Command("explorer.exe")
-		case "taskmgr", "taskmgr.exe":
-			cmd = exec.Command("taskmgr.exe")
-		case "regedit", "regedit.exe":
-			cmd = exec.Command("cmd.exe", "/c", "start", "", "regedit.exe")
-		case "wt", "wt.exe":
-			cmd = exec.Command("cmd.exe", "/c", "start", "", "wt.exe")
-		case "cmd", "cmd.exe":
-			cmd = exec.Command("cmd.exe", "/c", "start", "cmd.exe")
-		case "shell:recyclebinfolder":
-			cmd = exec.Command("explorer.exe", "shell:RecycleBinFolder")
-		case "lock", "win+l":
-			cmd = exec.Command("rundll32.exe", "user32.dll,LockWorkStation")
-		default:
-			if strings.TrimSpace(args) != "" {
-				cmd = exec.Command("cmd.exe", "/c", "start", "", cleanTarget, args)
-			} else {
-				cmd = exec.Command("cmd.exe", "/c", "start", "", cleanTarget)
+			cmd := exec.Command("calc.exe")
+			if err := cmd.Start(); err == nil && cmd.Process != nil {
+				pid = cmd.Process.Pid
 			}
+		case "explorer", "explorer.exe":
+			cmd := exec.Command("explorer.exe")
+			if err := cmd.Start(); err == nil && cmd.Process != nil {
+				pid = cmd.Process.Pid
+			}
+		case "taskmgr", "taskmgr.exe":
+			cmd := exec.Command("taskmgr.exe")
+			if err := cmd.Start(); err == nil && cmd.Process != nil {
+				pid = cmd.Process.Pid
+			}
+		case "regedit", "regedit.exe":
+			launchedTarget, pid, _ = smartLaunchWindowsTarget("regedit.exe", name, args)
+		case "wt", "wt.exe":
+			launchedTarget, pid, _ = smartLaunchWindowsTarget("wt.exe", name, args)
+		case "cmd", "cmd.exe":
+			cmd := exec.Command("cmd.exe", "/c", "start", "cmd.exe")
+			if err := cmd.Start(); err == nil && cmd.Process != nil {
+				pid = cmd.Process.Pid
+			}
+		case "shell:recyclebinfolder":
+			cmd := exec.Command("explorer.exe", "shell:RecycleBinFolder")
+			if err := cmd.Start(); err == nil && cmd.Process != nil {
+				pid = cmd.Process.Pid
+			}
+		case "lock", "win+l":
+			triggerNativeWindowsLockTemporarily()
+		default:
+			resPath, resPid, err := smartLaunchWindowsTarget(cleanTarget, name, args)
+			if err != nil {
+				return nil, err
+			}
+			if resPath != "" {
+				launchedTarget = resPath
+			}
+			pid = resPid
 		}
 	} else {
-		if strings.HasPrefix(cleanTarget, "http://") || strings.HasPrefix(cleanTarget, "https://") {
-			cmd = exec.Command("xdg-open", cleanTarget)
-		}
-	}
-
-	pid := 0
-	if cmd != nil {
-		if err := cmd.Start(); err == nil && cmd.Process != nil {
-			pid = cmd.Process.Pid
-		}
+		launchedTarget, pid, _ = smartLaunchWindowsTarget(cleanTarget, name, args)
 	}
 
 	proc := &ActiveProcess{
 		ID:        id,
 		Name:      name,
-		Target:    cleanTarget,
+		Target:    launchedTarget,
 		StartedAt: time.Now(),
 		PID:       pid,
 	}
@@ -538,7 +548,7 @@ func (k *LumaKernel) LaunchTarget(id, name, target, appType, args string) (map[s
 		"launched": true,
 		"id":       id,
 		"name":     name,
-		"target":   cleanTarget,
+		"target":   launchedTarget,
 		"pid":      pid,
 		"os":       runtime.GOOS,
 	}, nil
@@ -702,6 +712,7 @@ func main() {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigCh
+		cleanupWinLockPolicy()
 		restoreWindowsShell()
 		os.Exit(0)
 	}()
@@ -3192,13 +3203,15 @@ func main() {
 	registerOxygen172Routes(mux, kernel)
 	registerMiracast174Routes(mux)
 	registerFluorine18Routes(mux, kernel)
+	registerOfficeApps181Routes(mux)
+	registerLock181Routes(mux)
 
-	// Serve standalone executable download for LumaOS_1.8.exe (with backward-compatible aliases)
+	// Serve standalone executable download for LumaOS_1.8.1.exe (with backward-compatible aliases)
 	serveExe := func(w http.ResponseWriter, r *http.Request) {
-		for _, candidate := range []string{"LumaOS_1.8_Pro.exe", "LumaOS_1.8.exe", "LumaOS_1.8_Base.exe", "LumaOS_1.7.5_Pro.exe", "LumaOS_1.7.5.exe", "LumaOS_1.7.5_Base.exe", "LumaOS_1.7.4_Pro.exe", "LumaOS_1.7.4.exe", "LumaOS_1.7.4_Base.exe", "LumaOS_1.7.3_Pro.exe", "LumaOS_1.7.3.exe", "LumaOS_1.7.3_Base.exe", "LumaOS_1.7.2B_Pro.exe", "LumaOS_1.7.2B.exe", "LumaOS_1.7.2B_Base.exe", "LumaOS_1.7.2_Pro.exe", "LumaOS_1.7.2.exe", "LumaOS_1.7.2_Base.exe", "LumaOS_1.7.1.exe", "LumaOS_1.7.exe", "LumaOS_1.6.7.exe", "LumaOS_1.6.6b.exe", "LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
+		for _, candidate := range []string{"LumaOS_1.8.1_Pro.exe", "LumaOS_1.8.1.exe", "LumaOS_1.8.1_Base.exe", "LumaOS_1.8_Pro.exe", "LumaOS_1.8.exe", "LumaOS_1.8_Base.exe", "LumaOS_1.7.5_Pro.exe", "LumaOS_1.7.5.exe", "LumaOS_1.7.5_Base.exe", "LumaOS_1.7.4_Pro.exe", "LumaOS_1.7.4.exe", "LumaOS_1.7.4_Base.exe", "LumaOS_1.7.3_Pro.exe", "LumaOS_1.7.3.exe", "LumaOS_1.7.3_Base.exe", "LumaOS_1.7.2B_Pro.exe", "LumaOS_1.7.2B.exe", "LumaOS_1.7.2B_Base.exe", "LumaOS_1.7.2_Pro.exe", "LumaOS_1.7.2.exe", "LumaOS_1.7.2_Base.exe", "LumaOS_1.7.1.exe", "LumaOS_1.7.exe", "LumaOS_1.6.7.exe", "LumaOS_1.6.6b.exe", "LumaOS_1.6.6.exe", "LumaOS_1.6.5.exe", "LumaOS_1.6.4.exe", "LumaOS_1.6.3.exe", "LumaOS_1.6.2b.exe", "LumaOS_1.6.2.exe", "LumaOS_1.6.1.exe", "LumaOS_1.6.exe", "LumaOS_1.5.4.exe", "LumaOS_1.5.3.exe", "LumaOS_1.5.2.exe", "LumaOS_1.5.1.exe", "LumaOS_1.5.exe", "LumaOS_1.4.exe", "LumaOS_1.3.1.exe", "LumaOS_1.3.exe", "LumaOS_1.2.3B.exe", "LumaOS_1.2.3.exe", "LumaOS_1.2.2.exe", "LumaOS_1.2.1.exe", "LumaOS_1.2.0.exe", "LumaOS_1.1.0.exe", "LumaOS_1.0.4.exe", "LumaOS_1.0.3.exe", "LumaOS_1.0.2b.exe", "LumaOS_1.0.2.exe", "LumaOS_1.0.1.exe", "LumaOS_1.0.exe"} {
 			if _, err := os.Stat(candidate); err == nil {
 				w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.8_Pro.exe"`)
+				w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.8.1_Pro.exe"`)
 				http.ServeFile(w, r, candidate)
 				return
 			}
@@ -3206,7 +3219,7 @@ func main() {
 		exePath, err := os.Executable()
 		if err == nil && strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 			w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.8_Pro.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="LumaOS_1.8.1_Pro.exe"`)
 			http.ServeFile(w, r, exePath)
 			return
 		}
@@ -3223,6 +3236,9 @@ func main() {
 			serveExe(w, r)
 		}
 	}
+	mux.HandleFunc("/LumaOS_1.8.1_Pro.exe", serveNamedExe("LumaOS_1.8.1_Pro.exe"))
+	mux.HandleFunc("/LumaOS_1.8.1_Base.exe", serveNamedExe("LumaOS_1.8.1_Base.exe"))
+	mux.HandleFunc("/LumaOS_1.8.1.exe", serveNamedExe("LumaOS_1.8.1.exe"))
 	mux.HandleFunc("/LumaOS_1.8_Pro.exe", serveNamedExe("LumaOS_1.8_Pro.exe"))
 	mux.HandleFunc("/LumaOS_1.8_Base.exe", serveNamedExe("LumaOS_1.8_Base.exe"))
 	mux.HandleFunc("/LumaOS_1.8.exe", serveNamedExe("LumaOS_1.8.exe"))
@@ -3314,14 +3330,15 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *httpPort)
 	log.Printf("=================================================================")
-	log.Printf("  %s (OXYGEN · O-8) — LUMACORE 1.6.2 & LUMASHIELD 3.2", strings.ToUpper(getEditionDisplayName()))
-	log.Printf("  - Photo Studio · Modular Panel + Scroll Actions · Стиль ОС Control Hub · SuperDevice")
+	log.Printf("  %s (FLUORINE · F-9) — LUMACORE %s & LUMASHIELD %s", strings.ToUpper(getEditionDisplayName()), KernelEngineVersion, SecurityCoreVersion)
+	log.Printf("  - One UI 9.0 / Liquid Glass Control Center · Office Fidelity · Win+L Lock · Native MS Office")
 	log.Printf("  - Oxygen Connect Android SuperHub: http://%s:%d/", detectLocalLANIP(), OxygenConnectPort)
 	log.Printf("  - Desktop Environment:             http://%s/", addr)
 	log.Printf("  - Kernel JSON-RPC 2.0 Socket:      tcp://127.0.0.1:%d", *rpcPort)
 	log.Printf("  - Real Telemetry & Security:       http://%s/api/kernel/status", addr)
 	log.Printf("=================================================================")
 
+	defer cleanupWinLockPolicy()
 	defer stopNativeIslandOverlayEngine()
 
 	if !*headless && runtime.GOOS == "windows" {

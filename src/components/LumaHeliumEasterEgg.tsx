@@ -26,7 +26,7 @@ interface HeroCardProps {
 }
 
 /**
- * Flagship sculptural 2.5D Fluorine F-9 luminous cryo-emerald glass hero banner for Luma OS 1.8 (Fluorine · F-9).
+ * Flagship sculptural 2.5D Fluorine F-9 luminous cryo-emerald glass hero banner for Luma OS 1.8.1 (Fluorine · F-9).
  */
 export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
   onTriggerEasterEgg,
@@ -87,11 +87,11 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
-        title="Нажмите, чтобы открыть встроенные мини-игры Luma OS 1.8!"
+        title="Нажмите, чтобы открыть встроенные мини-игры Luma OS 1.8.1!"
       >
         <img
           src={fluorineHeroImg}
-          alt="Luma OS 1.8 Fluorine F-9 2.5D QHD"
+          alt="Luma OS 1.8.1 Fluorine F-9 2.5D QHD"
           loading="eager"
           decoding="sync"
           draggable={false}

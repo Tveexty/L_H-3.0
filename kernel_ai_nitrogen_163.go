@@ -1144,7 +1144,7 @@ func registerNitrogen163Routes(mux *http.ServeMux, kernel *LumaKernel) {
 		if strings.TrimSpace(req.SystemPrompt) != "" {
 			sysCtx.WriteString(strings.TrimSpace(req.SystemPrompt) + "\n")
 		} else {
-			sysCtx.WriteString("Ты — Luma AI, встроенный универсальный ИИ-ассистент и программист в Luma OS 1.8 (Fluorine · LumaCore 2.0.0). Отвечай чётко, умно, без воды, с чистым Markdown для кода. Текущее время: " + time.Now().Format("2006-01-02 15:04") + ".\n")
+			sysCtx.WriteString("Ты — Luma AI, встроенный универсальный ИИ-ассистент и программист в Luma OS 1.8.1 (Fluorine · LumaCore 2.0.1). Отвечай чётко, умно, без воды, с чистым Markdown для кода. Текущее время: " + time.Now().Format("2006-01-02 15:04") + ".\n")
 		}
 		if len(memSnap.Facts) > 0 {
 			sysCtx.WriteString("Долговременная память о пользователе:\n")

@@ -125,8 +125,22 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
   const [speaking, setSpeaking] = useState(false);
 
   const editorRef = useRef<HTMLDivElement | null>(null);
+  const scrollCanvasRef = useRef<HTMLDivElement | null>(null);
   const imgInputRef = useRef<HTMLInputElement | null>(null);
   const lastExternalHtmlRef = useRef(docHtml);
+  const [measuredContentH, setMeasuredContentH] = useState(600);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const measureEditorHeight = () => {
+    const el = editorRef.current;
+    if (!el) return;
+    // Measure natural content height accurately (including tables, images, and empty lines)
+    const prevMinH = el.style.minHeight;
+    el.style.minHeight = '0px';
+    const h = Math.max(el.scrollHeight, el.offsetHeight);
+    el.style.minHeight = prevMinH;
+    setMeasuredContentH((prev) => (Math.abs(prev - h) >= 2 ? h : prev));
+  };
 
   const toggleDictation = () => {
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -166,15 +180,39 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
         editorRef.current.innerHTML = docHtml;
       }
       lastExternalHtmlRef.current = docHtml;
+      requestAnimationFrame(() => measureEditorHeight());
+      window.setTimeout(() => measureEditorHeight(), 140);
     }
   }, [docHtml]);
 
   useEffect(() => {
-    if (editorRef.current && editorRef.current.innerHTML === '') {
-      editorRef.current.innerHTML = docHtml;
+    const el = editorRef.current;
+    if (!el) return;
+    if (el.innerHTML === '') {
+      el.innerHTML = docHtml;
     }
+    requestAnimationFrame(() => measureEditorHeight());
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => {
+        requestAnimationFrame(() => measureEditorHeight());
+      });
+      ro.observe(el);
+    }
+    const onImgLoad = () => requestAnimationFrame(() => measureEditorHeight());
+    el.addEventListener('load', onImgLoad, true);
+    return () => {
+      if (ro) ro.disconnect();
+      el.removeEventListener('load', onImgLoad, true);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Re-measure whenever layout/typography parameters change
+  useEffect(() => {
+    requestAnimationFrame(() => measureEditorHeight());
+  }, [fontFamily, fontSizePx, lineHeight, columns, margins, orientation, paperSize, viewMode]);
 
   // Respond to Tell Me search bar commands
   useEffect(() => {
@@ -194,6 +232,7 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
     const next = editorRef.current.innerHTML;
     lastExternalHtmlRef.current = next;
     onChangeDocHtml(next);
+    requestAnimationFrame(() => measureEditorHeight());
   };
 
   const exec = (cmd: string, val?: string) => {
@@ -441,7 +480,38 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
     e.target.value = '';
   };
 
-  // Document live stats & headings tree
+  const pageWidthPx =
+    viewMode === 'web'
+      ? 980
+      : orientation === 'landscape'
+      ? paperSize === 'A3' ? 1120 : 980
+      : paperSize === 'A3' ? 920 : paperSize === 'A5' ? 560 : 794;
+  const pageHeightPx =
+    orientation === 'landscape'
+      ? paperSize === 'A3' ? 840 : 760
+      : paperSize === 'A3' ? 1260 : paperSize === 'A5' ? 794 : 1123;
+  const pageGapPx = 28;
+  const pageStridePx = pageHeightPx + pageGapPx;
+
+  // Detect high-fidelity imported DOCX metadata (exact Word page margins)
+  const docxMeta = useMemo(() => {
+    const isDocx = docHtml.includes('data-docx-fidelity="1"');
+    let marTop: number | null = null;
+    let marLR: number | null = null;
+    if (isDocx) {
+      const mT = docHtml.match(/data-pg-mar-top="(\d+)"/);
+      const mLR = docHtml.match(/data-pg-mar-lr="(\d+)"/);
+      if (mT) marTop = Math.max(24, Math.min(120, Number(mT[1])));
+      if (mLR) marLR = Math.max(24, Math.min(120, Number(mLR[1])));
+    }
+    return { isDocx, marTop, marLR };
+  }, [docHtml]);
+
+  const paddingPx = margins === 'narrow' ? 32 : margins === 'wide' ? 92 : 64;
+  const effectivePadTop = docxMeta.isDocx && margins === 'normal' && docxMeta.marTop ? docxMeta.marTop : paddingPx;
+  const effectivePadLR = docxMeta.isDocx && margins === 'normal' && docxMeta.marLR ? docxMeta.marLR : paddingPx;
+
+  // Document live stats, real height-based multi-page count & headings tree
   const stats = useMemo(() => {
     const tmp = document.createElement('div');
     tmp.innerHTML = docHtml;
@@ -451,26 +521,26 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
     const charsNoSpace = txt.replace(/\s/g, '').length;
     const paragraphs = Math.max(1, tmp.querySelectorAll('p, h1, h2, h3, li, blockquote').length);
     const readMin = Math.max(1, Math.ceil(words / 200));
-    const pages = Math.max(1, Math.ceil(words / 380));
+    const manualBreaks = tmp.querySelectorAll('[data-page-break="1"], .luma-word-page-break').length;
+    const usableFirstPageH = Math.max(360, pageHeightPx - effectivePadTop - 52);
+    const totalNeededH = measuredContentH + effectivePadTop + 56;
+    const pagesByHeight =
+      totalNeededH <= pageHeightPx
+        ? 1
+        : Math.max(1, Math.ceil((totalNeededH - pageHeightPx) / pageStridePx) + 1);
+    const pagesByUsable = Math.max(1, Math.ceil(Math.max(1, measuredContentH) / usableFirstPageH));
+    const pages = Math.max(1, pagesByHeight, pagesByUsable, manualBreaks + 1);
     const headings = Array.from(tmp.querySelectorAll('h1, h2, h3')).map((h, i) => ({
       id: i,
       level: Number(h.tagName[1]),
       text: h.textContent?.trim() || `Заголовок ${i + 1}`,
     }));
     return { words, chars, charsNoSpace, paragraphs, readMin, pages, headings };
-  }, [docHtml]);
+  }, [docHtml, measuredContentH, pageHeightPx, pageStridePx, effectivePadTop]);
 
   const ribbonBg = officeDark ? 'bg-[#252526] border-white/10 text-zinc-100' : 'bg-[#F3F2F1] border-[#D1D1D1] text-[#242424]';
   const tabBarBg = officeDark ? 'bg-[#1E1E1E] border-white/10' : 'bg-white border-[#E1DFDD]';
   const canvasBg = officeDark ? 'bg-[#161618]' : 'bg-[#E6E6E6]';
-
-  const pageWidthPx =
-    viewMode === 'web'
-      ? 980
-      : orientation === 'landscape'
-      ? paperSize === 'A3' ? 1120 : 980
-      : paperSize === 'A3' ? 920 : paperSize === 'A5' ? 560 : 794;
-  const paddingPx = margins === 'narrow' ? 32 : margins === 'wide' ? 92 : 64;
 
   const TABS: { id: WordRibbonTab; label: string }[] = [
     { id: 'home', label: 'Главная' },
@@ -1318,8 +1388,45 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
         {/* Center Scrollable Multi-Page A4 Word Canvas (True Page-by-Page Layout for Large Documents!) */}
         <div
           id="luma-word-scroll-canvas"
+          ref={scrollCanvasRef}
+          onScroll={(e) => {
+            const top = e.currentTarget.scrollTop;
+            const step = Math.max(120, Math.round((pageStridePx * zoom) / 100));
+            const pg = Math.max(1, Math.min(stats.pages, Math.floor((top + step * 0.35) / step) + 1));
+            setCurrentPage((prev) => (prev === pg ? prev : pg));
+          }}
           className="flex-1 min-w-0 overflow-auto flex flex-col items-center py-4 px-4"
         >
+          <style>{`
+            .luma-word-page-break {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              margin: 22px 0;
+              border-top: 2px dashed rgba(100,116,139,0.5);
+              position: relative;
+              height: 16px;
+              user-select: none;
+            }
+            .luma-word-page-break span {
+              background: #f1f5f9;
+              color: #475569;
+              font-size: 10px;
+              font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+              padding: 1px 8px;
+              border-radius: 999px;
+              margin-top: -16px;
+              border: 1px solid #cbd5e1;
+            }
+            .luma-docx-canvas .luma-docx-fidelity p { margin-top: 0; }
+            .luma-docx-canvas .luma-docx-fidelity table { border-collapse: collapse; border-spacing: 0; }
+            .luma-docx-canvas .luma-docx-fidelity td,
+            .luma-docx-canvas .luma-docx-fidelity th { box-sizing: border-box; }
+            .luma-docx-canvas .luma-docx-fidelity img { display: inline-block; max-width: 100%; margin: 0; }
+            .luma-docx-canvas .luma-docx-fidelity a { text-decoration: none; color: inherit; }
+            .luma-docx-canvas .luma-docx-fidelity a:hover { text-decoration: underline; }
+          `}</style>
+
           {/* Quick Page Navigator Bar + Manual Page Break (Ctrl+Enter) */}
           <div
             style={{ width: `${Math.round((pageWidthPx * zoom) / 100)}px` }}
@@ -1328,35 +1435,41 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
             }`}
           >
             <div className="flex items-center gap-2 font-mono">
-              <span className="font-bold text-[#185ABD]">Листы A4:</span>
+              <span className="font-bold text-[#185ABD]">Листы {paperSize}:</span>
               <span className="px-1.5 py-0.5 rounded bg-[#185ABD]/15 text-[#185ABD] font-bold">
-                {Math.max(1, stats.pages)} стр.
+                {Math.min(currentPage, stats.pages)} / {Math.max(1, stats.pages)} стр.
               </span>
               <span className="opacity-65 hidden sm:inline">· {stats.words} слов</span>
             </div>
             <div className="flex items-center gap-1.5">
-              {Array.from({ length: Math.min(8, Math.max(1, stats.pages)) }).map((_, pIdx) => (
-                <button
-                  key={pIdx}
-                  type="button"
-                  onClick={() => {
-                    const el = document.getElementById('luma-word-scroll-canvas');
-                    if (el) {
-                      const pageStep = Math.round(((1060 + 28) * zoom) / 100);
-                      el.scrollTo({ top: pIdx * pageStep, behavior: 'smooth' });
-                    }
-                  }}
-                  title={`Перейти на страницу ${pIdx + 1}`}
-                  className={`w-6 h-5 rounded text-[10px] font-mono font-bold border transition cursor-pointer ${
-                    officeDark
-                      ? 'border-white/15 hover:bg-[#185ABD] hover:text-white'
-                      : 'border-slate-300 hover:bg-[#185ABD] hover:text-white'
-                  }`}
-                >
-                  {pIdx + 1}
-                </button>
-              ))}
-              {stats.pages > 8 && <span className="text-[10px] opacity-60">…{stats.pages}</span>}
+              {Array.from({ length: Math.min(10, Math.max(1, stats.pages)) }).map((_, pIdx) => {
+                const isCurPg = pIdx + 1 === Math.min(currentPage, stats.pages);
+                return (
+                  <button
+                    key={pIdx}
+                    type="button"
+                    onClick={() => {
+                      const el = scrollCanvasRef.current || document.getElementById('luma-word-scroll-canvas');
+                      if (el) {
+                        const pageStep = Math.round((pageStridePx * zoom) / 100);
+                        el.scrollTo({ top: pIdx * pageStep, behavior: 'smooth' });
+                        setCurrentPage(pIdx + 1);
+                      }
+                    }}
+                    title={`Перейти на страницу ${pIdx + 1}`}
+                    className={`w-6 h-5 rounded text-[10px] font-mono font-bold border transition cursor-pointer ${
+                      isCurPg
+                        ? 'bg-[#185ABD] text-white border-[#185ABD]'
+                        : officeDark
+                        ? 'border-white/15 hover:bg-[#185ABD] hover:text-white'
+                        : 'border-slate-300 hover:bg-[#185ABD] hover:text-white'
+                    }`}
+                  >
+                    {pIdx + 1}
+                  </button>
+                );
+              })}
+              {stats.pages > 10 && <span className="text-[10px] opacity-60">…{stats.pages}</span>}
               {!readMode && (
                 <button
                   type="button"
@@ -1395,143 +1508,164 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
             </div>
           )}
 
-          {/* True Paginated A4 Document Stack: Visual Word Page Sheets & Realistic Desk Gaps Between Every Page */}
+          {/* True Dynamic Multi-Page A4 Sheet Stack (Automatically spawns Page 2, 3, 4... with crisp paper sheets & zoom-accurate scroll height!) */}
           {(() => {
-            const A4_PAGE_H = orientation === 'landscape' ? 760 : 1060;
-            const PAGE_GAP = 26;
-            const STRIDE = A4_PAGE_H + PAGE_GAP;
             const pageCount = Math.max(1, stats.pages);
-            const deskBg = officeDark ? '#18181b' : '#e5e7eb';
-            const totalMinHeight = pageCount * A4_PAGE_H + (pageCount - 1) * PAGE_GAP;
+            const totalSheetHeight = Math.max(
+              pageCount * pageHeightPx + (pageCount - 1) * pageGapPx,
+              measuredContentH + effectivePadTop + 72
+            );
+            const scaledOuterW = Math.round((pageWidthPx * zoom) / 100);
+            const scaledOuterH = Math.round((totalSheetHeight * zoom) / 100);
+            const sheetBorderStyle =
+              pageBorder === 'thin'
+                ? '1px solid #334155'
+                : pageBorder === 'double'
+                ? '4px double #185ABD'
+                : pageBorder === 'accent'
+                ? '3px solid #185ABD'
+                : '1px solid rgba(0,0,0,0.14)';
+
             return (
               <div
                 style={{
-                  width: `${pageWidthPx}px`,
-                  minHeight: `${totalMinHeight}px`,
-                  transform: `scale(${zoom / 100})`,
-                  transformOrigin: 'top center',
-                  backgroundColor: pageBg,
-                  color: pageText,
-                  padding: `${paddingPx}px`,
-                  // Repeating realistic page-break desk bands so large multi-page documents clearly divide into distinct A4 pages!
-                  backgroundImage:
-                    pageCount > 1
-                      ? `repeating-linear-gradient(to bottom, ${pageBg} 0px, ${pageBg} ${A4_PAGE_H}px, rgba(0,0,0,0.16) ${A4_PAGE_H}px, ${deskBg} ${A4_PAGE_H + 2}px, ${deskBg} ${STRIDE - 2}px, rgba(0,0,0,0.16) ${STRIDE - 1}px, ${pageBg} ${STRIDE}px)`
-                      : undefined,
-                  border:
-                    pageBorder === 'thin'
-                      ? '1px solid #334155'
-                      : pageBorder === 'double'
-                      ? '4px double #185ABD'
-                      : pageBorder === 'accent'
-                      ? '3px solid #185ABD'
-                      : '1px solid rgba(0,0,0,0.14)',
+                  width: `${scaledOuterW}px`,
+                  minHeight: `${scaledOuterH}px`,
                 }}
-                className="relative shadow-[0_8px_32px_rgba(0,0,0,0.22)] rounded-[2px] flex flex-col select-text transition-all"
+                className="relative shrink-0 mb-8"
               >
-                {/* Visual Page Number Footers & Sheet Separators rendered cleanly at EVERY page boundary */}
-                {Array.from({ length: pageCount }).map((_, idx) => {
-                  const pageBottomTop = idx * STRIDE + A4_PAGE_H - 28;
-                  return (
-                    <div
-                      key={`pg_marker_${idx}`}
-                      style={{ top: `${pageBottomTop}px`, left: `${paddingPx}px`, right: `${paddingPx}px` }}
-                      className="pointer-events-none absolute flex items-center justify-between text-[10px] font-mono text-slate-400/90 border-t border-slate-300/60 pt-1 select-none"
-                    >
-                      <span>{footerText || 'Luma Word 1.8'}</span>
-                      {showPageNum && (
-                        <span>
-                          Страница {idx + 1} из {pageCount}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-
-                {/* Watermark Overlay */}
-                {watermark && (
-                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
-                    <span className="text-6xl font-black tracking-widest opacity-[0.07] -rotate-35 uppercase select-none">
-                      {watermark}
-                    </span>
-                  </div>
-                )}
-
-                {/* Header */}
-                {headerText && (
-                  <div className="text-[11px] text-slate-400 border-b border-slate-200 pb-2 mb-4 flex justify-between">
-                    <span>{headerText}</span>
-                    <span>{docTitle}</span>
-                  </div>
-                )}
-
-                {/* Editable Document Body (full MS Word shortcuts + Ctrl+Enter manual page breaks + Tab indent!) */}
                 <div
-                  ref={editorRef}
-                  contentEditable={!readMode}
-                  suppressContentEditableWarning
-                  onInput={syncFromDom}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
-                      if (focusMode) setFocusMode(false);
-                      setMiniBar(null);
-                      return;
-                    }
-                    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'f' || e.key.toLowerCase() === 'h')) {
-                      e.preventDefault();
-                      setFindOpen(true);
-                      return;
-                    }
-                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-                      e.preventDefault();
-                      if (onExport) {
-                        onExport('docx');
-                      } else {
-                        onNotify?.('Luma Word', 'Документ сохранён локально', 'ok');
-                      }
-                      return;
-                    }
-                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
-                      e.preventDefault();
-                      window.print();
-                      return;
-                    }
-                    if (!readMode && (e.ctrlKey || e.metaKey)) {
-                      const k = e.key.toLowerCase();
-                      if (k === 'e') { e.preventDefault(); exec('justifyCenter'); return; }
-                      if (k === 'l') { e.preventDefault(); exec('justifyLeft'); return; }
-                      if (k === 'r') { e.preventDefault(); exec('justifyRight'); return; }
-                      if (k === 'j') { e.preventDefault(); exec('justifyFull'); return; }
-                    }
-                    if (e.key === 'Tab' && !readMode) {
-                      e.preventDefault();
-                      exec('insertHTML', '&nbsp;&nbsp;&nbsp;&nbsp;');
-                      return;
-                    }
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !readMode) {
-                      e.preventDefault();
-                      document.execCommand(
-                        'insertHTML',
-                        false,
-                        '<div class="luma-word-page-break" contenteditable="false" data-page-break="1"><span>— Разрыв страницы —</span></div><p><br/></p>'
-                      );
-                      syncFromDom();
-                    }
-                  }}
-                  onMouseUp={handleEditorMouseUp}
                   style={{
-                    fontFamily,
-                    fontSize: `${fontSizePx}px`,
-                    lineHeight,
-                    columnCount: columns,
-                    columnGap: '28px',
-                    paddingBottom: '44px',
-                    cursor: formatPainterStyle ? 'crosshair' : 'text',
+                    width: `${pageWidthPx}px`,
+                    minHeight: `${totalSheetHeight}px`,
+                    transform: `scale(${zoom / 100})`,
+                    transformOrigin: 'top left',
+                    color: pageText,
                   }}
-                  className={`flex-1 outline-none prose max-w-none [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-3 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_blockquote]:border-l-4 [&_blockquote]:border-[#185ABD] [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-3 [&_table]:w-full [&_table]:border-collapse ${
-                    trackChanges ? 'caret-rose-600' : ''
-                  } ${showNonPrinting ? '[&_p]:after:content-["¶"] [&_p]:after:text-sky-400/60 [&_p]:after:ml-1' : ''}`}
-                />
+                  className="relative flex flex-col select-text"
+                >
+                  {/* Individual Crisp A4 Paper Sheets for EVERY Page (Zero empty void after Page 1!) */}
+                  <div className="pointer-events-none absolute inset-0 z-0">
+                    {Array.from({ length: pageCount }).map((_, idx) => (
+                      <div
+                        key={`sheet_${idx}`}
+                        style={{
+                          top: `${idx * pageStridePx}px`,
+                          height: `${pageHeightPx}px`,
+                          backgroundColor: pageBg,
+                          border: sheetBorderStyle,
+                        }}
+                        className="absolute inset-x-0 rounded-[2px] shadow-[0_8px_28px_rgba(0,0,0,0.2)] overflow-hidden"
+                      >
+                        {watermark && (
+                          <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+                            <span className="text-6xl font-black tracking-widest opacity-[0.07] -rotate-35 uppercase select-none">
+                              {watermark}
+                            </span>
+                          </div>
+                        )}
+                        <div
+                          style={{ left: `${effectivePadLR}px`, right: `${effectivePadLR}px`, bottom: '12px' }}
+                          className="absolute flex items-center justify-between text-[10px] font-mono text-slate-400/90 border-t border-slate-300/60 pt-1 select-none"
+                        >
+                          <span>{footerText || 'Luma Word 1.8.1'}</span>
+                          {showPageNum && (
+                            <span>
+                              Страница {idx + 1} из {pageCount}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Header */}
+                  {headerText && (
+                    <div
+                      style={{ paddingTop: `${Math.max(16, effectivePadTop - 24)}px`, paddingLeft: `${effectivePadLR}px`, paddingRight: `${effectivePadLR}px` }}
+                      className="relative z-10 text-[11px] text-slate-400 border-b border-slate-200 pb-2 flex justify-between"
+                    >
+                      <span>{headerText}</span>
+                      <span>{docTitle}</span>
+                    </div>
+                  )}
+
+                  {/* Editable Document Body (Full 1:1 DOCX Fidelity + Unlimited Dynamic Multi-Page Flow!) */}
+                  <div
+                    ref={editorRef}
+                    contentEditable={!readMode}
+                    suppressContentEditableWarning
+                    onInput={syncFromDom}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        if (focusMode) setFocusMode(false);
+                        setMiniBar(null);
+                        return;
+                      }
+                      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'f' || e.key.toLowerCase() === 'h')) {
+                        e.preventDefault();
+                        setFindOpen(true);
+                        return;
+                      }
+                      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                        e.preventDefault();
+                        if (onExport) {
+                          onExport('docx');
+                        } else {
+                          onNotify?.('Luma Word', 'Документ сохранён локально', 'ok');
+                        }
+                        return;
+                      }
+                      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+                        e.preventDefault();
+                        window.print();
+                        return;
+                      }
+                      if (!readMode && (e.ctrlKey || e.metaKey)) {
+                        const k = e.key.toLowerCase();
+                        if (k === 'e') { e.preventDefault(); exec('justifyCenter'); return; }
+                        if (k === 'l') { e.preventDefault(); exec('justifyLeft'); return; }
+                        if (k === 'r') { e.preventDefault(); exec('justifyRight'); return; }
+                        if (k === 'j') { e.preventDefault(); exec('justifyFull'); return; }
+                      }
+                      if (e.key === 'Tab' && !readMode) {
+                        e.preventDefault();
+                        exec('insertHTML', '&nbsp;&nbsp;&nbsp;&nbsp;');
+                        return;
+                      }
+                      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !readMode) {
+                        e.preventDefault();
+                        document.execCommand(
+                          'insertHTML',
+                          false,
+                          '<div class="luma-word-page-break" contenteditable="false" data-page-break="1"><span>— Разрыв страницы —</span></div><p><br/></p>'
+                        );
+                        syncFromDom();
+                      }
+                    }}
+                    onMouseUp={handleEditorMouseUp}
+                    style={{
+                      fontFamily: docxMeta.isDocx ? 'Arial, Calibri, sans-serif' : fontFamily,
+                      fontSize: docxMeta.isDocx ? '11pt' : `${fontSizePx}px`,
+                      lineHeight: docxMeta.isDocx ? 1.15 : lineHeight,
+                      columnCount: columns,
+                      columnGap: '28px',
+                      paddingTop: `${effectivePadTop}px`,
+                      paddingLeft: `${effectivePadLR}px`,
+                      paddingRight: `${effectivePadLR}px`,
+                      paddingBottom: '56px',
+                      minHeight: `${pageHeightPx - 24}px`,
+                      cursor: formatPainterStyle ? 'crosshair' : 'text',
+                    }}
+                    className={`relative z-10 outline-none max-w-none ${
+                      docxMeta.isDocx
+                        ? 'luma-docx-canvas'
+                        : 'prose [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-3 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_blockquote]:border-l-4 [&_blockquote]:border-[#185ABD] [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-3 [&_table]:w-full [&_table]:border-collapse'
+                    } ${trackChanges ? 'caret-rose-600' : ''} ${
+                      showNonPrinting ? '[&_p]:after:content-["¶"] [&_p]:after:text-sky-400/60 [&_p]:after:ml-1' : ''
+                    }`}
+                  />
+                </div>
               </div>
             );
           })()}
@@ -1655,7 +1789,7 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
               <button type="button" onClick={() => setShowStatsModal(false)} className="cursor-pointer"><X className="w-4 h-4" /></button>
             </div>
             <div className="space-y-1.5 font-mono">
-              <div className="flex justify-between"><span className="opacity-70">Страниц (A4):</span><span className="font-bold">{stats.pages}</span></div>
+              <div className="flex justify-between"><span className="opacity-70">Страниц ({paperSize}):</span><span className="font-bold">{stats.pages}</span></div>
               <div className="flex justify-between"><span className="opacity-70">Слов:</span><span className="font-bold">{stats.words}</span></div>
               <div className="flex justify-between"><span className="opacity-70">Знаков (без пробелов):</span><span className="font-bold">{stats.charsNoSpace}</span></div>
               <div className="flex justify-between"><span className="opacity-70">Знаков (с пробелами):</span><span className="font-bold">{stats.chars}</span></div>
@@ -1676,7 +1810,7 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
       {/* AUTHENTIC MICROSOFT WORD BLUE STATUS BAR */}
       <div className="h-7 px-3 bg-[#185ABD] text-white text-[11px] flex items-center justify-between shrink-0 gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="whitespace-nowrap">Страница 1 из {stats.pages}</span>
+          <span className="whitespace-nowrap">Страница {Math.min(currentPage, stats.pages)} из {stats.pages}</span>
           <button
             type="button"
             onClick={() => setShowStatsModal(true)}

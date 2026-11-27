@@ -1636,6 +1636,88 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
     setSelectedInstalled([]);
   };
 
+  // Luma OS 1.8.1: 1-Click placement of native Windows Microsoft Word, Excel & PowerPoint onto Desktop!
+  const addMicrosoftOfficeAppsToDesktop = async (kinds: ('word' | 'excel' | 'powerpoint')[] = ['word', 'excel', 'powerpoint']) => {
+    type WinOfficeItem = {
+      id: string;
+      kind: 'word' | 'excel' | 'powerpoint';
+      name: string;
+      short_name: string;
+      exec_path: string;
+      launch_uri: string;
+      installed: boolean;
+      icon_url: string;
+    };
+    let fetched: WinOfficeItem[] = [];
+    try {
+      const r = await fetch('/api/kernel/office-apps');
+      if (r.ok) {
+        const d = await r.json();
+        if (Array.isArray(d?.apps)) fetched = d.apps;
+      }
+    } catch {}
+
+    const fallbacks: WinOfficeItem[] = [
+      { id: 'ms_word', kind: 'word', name: 'Microsoft Word', short_name: 'Word', exec_path: '', launch_uri: 'ms-word:', installed: false, icon_url: '' },
+      { id: 'ms_excel', kind: 'excel', name: 'Microsoft Excel', short_name: 'Excel', exec_path: '', launch_uri: 'ms-excel:', installed: false, icon_url: '' },
+      { id: 'ms_powerpoint', kind: 'powerpoint', name: 'Microsoft PowerPoint', short_name: 'PowerPoint', exec_path: '', launch_uri: 'ms-powerpoint:', installed: false, icon_url: '' },
+    ];
+    const source = fetched.length > 0 ? fetched : fallbacks;
+    const chosen = source.filter((a) => kinds.includes(a.kind));
+
+    const occupied = new Set<string>();
+    widgets.forEach((w) => {
+      for (let c = w.col; c < w.col + w.w; c++) {
+        for (let r = w.row; r < w.row + w.h; r++) occupied.add(`${c}:${r}`);
+      }
+    });
+    shortcuts.forEach((s) => {
+      const sw = s.w || 1;
+      const sh = s.h || 1;
+      for (let c = s.col; c < s.col + sw; c++) {
+        for (let r = s.row; r < s.row + sh; r++) occupied.add(`${c}:${r}`);
+      }
+    });
+
+    const nextFreeCell = (): { col: number; row: number } => {
+      for (let c = 1; c <= gridCols; c++) {
+        for (let r = 1; r <= totalRows; r++) {
+          if (!occupied.has(`${c}:${r}`)) {
+            occupied.add(`${c}:${r}`);
+            return { col: c, row: r };
+          }
+        }
+      }
+      return { col: 2, row: 1 };
+    };
+
+    const existingLabels = new Set(shortcuts.map((s) => s.label.toLowerCase()));
+    const created: DesktopShortcut[] = [];
+    chosen.forEach((app, idx) => {
+      if (existingLabels.has(app.name.toLowerCase())) return;
+      const cell = nextFreeCell();
+      created.push({
+        id: `sc_msoffice_${app.kind}_${Date.now()}_${idx}`,
+        kind: 'file',
+        label: app.name,
+        icon: app.kind === 'word' ? 'FileText' : app.kind === 'excel' ? 'Grid' : 'AppWindow',
+        iconUrl: app.icon_url || undefined,
+        target: app.exec_path || app.launch_uri,
+        col: cell.col,
+        row: cell.row,
+      });
+    });
+
+    if (created.length > 0) {
+      setShortcuts((prev) => [...prev, ...created]);
+      onPushToast('Microsoft Office (Windows)', `Добавлено на рабочий стол: ${created.map((c) => c.label).join(', ')}`, 'success');
+      onActivityPulse?.('Microsoft Office добавлен', created.map((c) => c.label).join(', '), 'app');
+    } else {
+      onPushToast('Microsoft Office (Windows)', 'Выбранные приложения Office уже находятся на рабочем столе', 'info');
+    }
+    setCtxMenu(null);
+  };
+
   const lastCustomSeqRef = useRef<number>(0);
   useEffect(() => {
     if (!pendingCustomWidget || pendingCustomWidget.seq === lastCustomSeqRef.current) return;
@@ -2087,6 +2169,33 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
     const hasAbsolutePath = entry.target.includes('\\') || entry.target.includes('/') || entry.target.includes(':');
     if (hasAbsolutePath) {
       const lowerTarget = entry.target.toLowerCase();
+      const lowerCombo = `${lowerTarget} ${(entry.label || '').toLowerCase()}`;
+      const detectedOfficeKind =
+        lowerTarget.startsWith('ms-word:') || lowerCombo.includes('winword') || lowerCombo.includes('wordicon') || lowerCombo.includes('microsoft word')
+          ? 'word'
+          : lowerTarget.startsWith('ms-excel:') || lowerCombo.includes('excel') || lowerCombo.includes('xlicons')
+          ? 'excel'
+          : lowerTarget.startsWith('ms-powerpoint:') || lowerCombo.includes('powerpnt') || lowerCombo.includes('powerpoint') || lowerCombo.includes('pptico')
+          ? 'powerpoint'
+          : '';
+      if (detectedOfficeKind && entry.kind === 'file') {
+        try {
+          const r = await fetch('/api/kernel/office-apps/launch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kind: detectedOfficeKind, target: entry.target }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (r.ok && d?.ok) {
+            onPushToast('Microsoft Office (Windows)', `Запущено: ${entry.label}`, 'success');
+            return;
+          }
+          onPushToast('Microsoft Office (Windows)', d?.error || `Не удалось запустить ${entry.label}`, 'warning');
+          return;
+        } catch {
+          // fallback to open-path below
+        }
+      }
       const isDesktopPhoto = /\.(png|jpe?g|webp|bmp|gif|svg|ico|avif)$/.test(lowerTarget);
       const isExecutable = /\.(exe|lnk|msi|bat|cmd|ps1|vbs|msc|cpl|appref-ms|url)$/.test(lowerTarget);
       const isFolderShortcut = entry.kind === 'disk_folder' || (!isExecutable && !/\.[a-z0-9]{1,5}$/i.test(lowerTarget));
@@ -6162,6 +6271,50 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
           ))}
 
           <div className={`my-1 border-t ${isDark ? 'border-white/10' : 'border-zinc-900/10'}`} />
+
+          {/* Luma OS 1.8.1: 1-Click Microsoft Word / Excel / PowerPoint (Windows) Desktop Placement */}
+          <div className={`px-2 py-1.5 rounded-xl space-y-1.5 ${isDark ? 'bg-white/[0.04]' : 'bg-slate-100/80'}`}>
+            <button
+              type="button"
+              onClick={() => void addMicrosoftOfficeAppsToDesktop(['word', 'excel', 'powerpoint'])}
+              className={`w-full flex items-center justify-between gap-1.5 px-1.5 py-1 rounded-lg text-left font-semibold cursor-pointer transition ${
+                isDark ? 'hover:bg-white/10 text-sky-300' : 'hover:bg-white text-blue-700'
+              }`}
+              title="Добавить Microsoft Word, Excel и PowerPoint (Windows) на рабочий стол"
+            >
+              <span className="flex items-center gap-1.5 text-[11px]">
+                <FileText className="w-3.5 h-3.5 text-[#185ABD]" />
+                <span>MS Office (Windows) на стол</span>
+              </span>
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+            <div className="grid grid-cols-3 gap-1">
+              <button
+                type="button"
+                onClick={() => void addMicrosoftOfficeAppsToDesktop(['word'])}
+                className="py-1 rounded-lg bg-[#185ABD]/20 hover:bg-[#185ABD]/35 border border-[#185ABD]/40 text-[10px] font-bold text-[#60A5FA] cursor-pointer transition"
+                title="Добавить Microsoft Word на рабочий стол"
+              >
+                + Word
+              </button>
+              <button
+                type="button"
+                onClick={() => void addMicrosoftOfficeAppsToDesktop(['excel'])}
+                className="py-1 rounded-lg bg-[#107C41]/20 hover:bg-[#107C41]/35 border border-[#107C41]/40 text-[10px] font-bold text-emerald-400 cursor-pointer transition"
+                title="Добавить Microsoft Excel на рабочий стол"
+              >
+                + Excel
+              </button>
+              <button
+                type="button"
+                onClick={() => void addMicrosoftOfficeAppsToDesktop(['powerpoint'])}
+                className="py-1 rounded-lg bg-[#C43E1C]/20 hover:bg-[#C43E1C]/35 border border-[#C43E1C]/40 text-[10px] font-bold text-orange-400 cursor-pointer transition"
+                title="Добавить Microsoft PowerPoint на рабочий стол"
+              >
+                + PPT
+              </button>
+            </div>
+          </div>
 
           {(rmbConfig?.showLensSearch ?? true) && onOpenLensSearch && (
             <button

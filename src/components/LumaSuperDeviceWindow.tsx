@@ -203,7 +203,7 @@ export const LumaSuperDeviceWindow: React.FC<LumaSuperDeviceWindowProps> = ({
             <Radio className="w-3 h-3 animate-pulse" /> Экосистема Суперустройство · {isPro ? 'PRO' : 'BASE'}
           </div>
           <h2 className="text-xl font-black tracking-tight mt-1">
-            Суперустройство Luma OS 1.8
+            Суперустройство Luma OS 1.8.1
           </h2>
           <p className={`text-xs ${muted}`}>
             Перетащите любой пузырёк устройства к центральному ПК (или нажмите на него), чтобы мгновенно объединить их в единую экосистему.

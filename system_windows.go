@@ -1496,9 +1496,8 @@ func (p *platformProbe) OpenPath(target string) error {
 	if clean == "" {
 		return fmt.Errorf("empty path")
 	}
-	cmd := exec.Command("cmd", "/C", "start", "", clean)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	return cmd.Start()
+	_, _, err := smartLaunchWindowsTarget(clean, "", "")
+	return err
 }
 
 var (
@@ -3308,7 +3307,12 @@ foreach ($r in $roots) {
       $sc = $shell.CreateShortcut($_.FullName)
       if ($sc.TargetPath -and (Test-Path $sc.TargetPath)) {
         if ($sc.TargetPath -match '(?i)unins|uninst|msiexec') { return }
-        $target = $sc.TargetPath
+        if ($sc.TargetPath -notmatch '(?i)\\Windows\\Installer\\|wordicon\.exe|xlicons\.exe|pptico\.exe|misc\.exe|outlookicon\.exe|\\WindowsApps\\') {
+          $fi = Get-Item $sc.TargetPath -ErrorAction SilentlyContinue
+          if ($fi -and $fi.Length -ge 4096) {
+            $target = $sc.TargetPath
+          }
+        }
       }
     } catch {}
     $seen[$key] = $true
@@ -3331,7 +3335,7 @@ foreach ($regPath in @(
     $key = $dn.ToLower()
     if ($seen.ContainsKey($key)) { return }
     $ico = ([string]$_.DisplayIcon).Trim() -replace ',\d+$','' -replace '"',''
-    if ($ico -and $ico -match '\.exe$' -and (Test-Path $ico)) {
+    if ($ico -and $ico -match '\.exe$' -and $ico -notmatch '(?i)\\Windows\\Installer\\|wordicon\.exe|xlicons\.exe|pptico\.exe|misc\.exe|outlookicon\.exe|unins|uninst' -and (Test-Path $ico)) {
       $seen[$key] = $true
       $apps += [PSCustomObject]@{
         name = $dn
@@ -3358,11 +3362,42 @@ foreach ($regPath in @(
 	if list == nil {
 		list = []InstalledAppItem{}
 	}
+	// Sanitize any remaining broken Office installer stubs -> replace with verified real WINWORD/EXCEL/POWERPNT!
+	for i := range list {
+		if isBrokenWindowsOfficeStubPath(list[i].ExecPath) {
+			if k := detectOfficeKindFromTarget(list[i].ExecPath, list[i].Name); k != "" {
+				if realExe := resolveRealWindowsOfficeExe(k); realExe != "" {
+					list[i].ExecPath = realExe
+				}
+			}
+		}
+	}
+
 	seenExec := map[string]bool{}
 	seenName := map[string]bool{}
 	for _, it := range list {
 		seenName[strings.ToLower(strings.TrimSpace(it.Name))] = true
 		seenExec[strings.ToLower(strings.TrimSpace(it.ExecPath))] = true
+	}
+
+	// Ensure verified native Microsoft Word, Excel, and PowerPoint ALWAYS appear cleanly with real paths!
+	for _, off := range listWindowsMicrosoftOfficeApps() {
+		if !off.Installed || off.ExecPath == "" {
+			continue
+		}
+		lk := strings.ToLower(off.Name)
+		le := strings.ToLower(off.ExecPath)
+		if seenName[lk] || seenExec[le] {
+			continue
+		}
+		seenName[lk] = true
+		seenExec[le] = true
+		list = append(list, InstalledAppItem{
+			Name:      off.Name,
+			ExecPath:  off.ExecPath,
+			Publisher: off.Publisher,
+			Source:    "office",
+		})
 	}
 
 	// Ensure core preinstalled Windows applications ALWAYS appear with their native Windows OS icons
