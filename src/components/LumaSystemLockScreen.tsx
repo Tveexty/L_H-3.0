@@ -335,7 +335,7 @@ export const LumaSystemLockScreen: React.FC<LumaSystemLockScreenProps> = ({
       <div className="relative z-10 flex items-center justify-between px-7 pt-5">
         <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border backdrop-blur-xl text-xs font-semibold ${cardGlass}`}>
           <Lock size={13} style={{ color: safeAccent }} />
-          <span>Luma OS 1.8.1 · Экран блокировки</span>
+          <span>Luma OS 1.8.2 · Экран блокировки</span>
         </div>
 
         <div className="flex items-center gap-2">

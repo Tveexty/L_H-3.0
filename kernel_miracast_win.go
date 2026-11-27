@@ -85,22 +85,57 @@ func isWirelessDisplayFeatureInstalledWin() bool {
 	return false
 }
 
-func probeWifiMiracastWin() (wifiAvail bool, miracastOK bool, adapterName string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "netsh", "wlan", "show", "drivers")
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	outBytes, err := cmd.Output()
-	if err != nil && len(outBytes) == 0 {
-		return false, false, ""
+func shellExecuteVerb(verb, target, params string) error {
+	verbPtr, _ := syscall.UTF16PtrFromString(verb)
+	filePtr, err := syscall.UTF16PtrFromString(target)
+	if err != nil {
+		return err
 	}
-	out := string(outBytes)
+	var paramsPtr *uint16
+	if params != "" {
+		paramsPtr, _ = syscall.UTF16PtrFromString(params)
+	}
+	ret, _, callErr := procMiracastShellExecW.Call(
+		0,
+		uintptr(unsafe.Pointer(verbPtr)),
+		uintptr(unsafe.Pointer(filePtr)),
+		uintptr(unsafe.Pointer(paramsPtr)),
+		0,
+		1, // SW_SHOWNORMAL
+	)
+	if ret <= 32 {
+		if callErr != nil && callErr != syscall.Errno(0) {
+			return callErr
+		}
+		return syscall.Errno(ret)
+	}
+	return nil
+}
+
+func probeWifiMiracastWin() (wifiAvail bool, miracastOK bool, adapterName string) {
+	// Luma OS 1.8.2: Use UTF-8 PowerShell wrapper first so Russian Windows CP866 output
+	// ("Имя интерфейса", "Поддержка беспроводного дисплея: Да") decodes accurately!
+	var out string
+	if psOut, err := runHiddenPowerShell(`[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; $OutputEncoding=[System.Text.Encoding]::UTF8; netsh wlan show drivers 2>&1 | Out-String`); err == nil && strings.TrimSpace(psOut) != "" {
+		out = psOut
+	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "netsh", "wlan", "show", "drivers")
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		outBytes, err := cmd.Output()
+		if err != nil && len(outBytes) == 0 {
+			return false, false, ""
+		}
+		out = string(outBytes)
+	}
+
 	lower := strings.ToLower(out)
 	if strings.TrimSpace(out) == "" ||
 		strings.Contains(lower, "there is no wireless interface") ||
 		strings.Contains(lower, "беспроводной интерфейс отсутствует") ||
-		(strings.Contains(lower, "wlan autoconfig") && strings.Contains(lower, "not running")) {
+		(strings.Contains(lower, "wlan autoconfig") && strings.Contains(lower, "not running")) ||
+		(strings.Contains(lower, "автонастройки wlan") && strings.Contains(lower, "не запущена")) {
 		return false, false, ""
 	}
 
@@ -123,6 +158,31 @@ func probeWifiMiracastWin() (wifiAvail bool, miracastOK bool, adapterName string
 		adapterName = "Wi-Fi"
 	}
 	return wifiAvail, miracastOK, adapterName
+}
+
+func installWirelessDisplayFeatureNative() MiracastActionResult {
+	if isWirelessDisplayFeatureInstalledWin() {
+		return MiracastActionResult{
+			OK:      true,
+			Action:  "install_wireless_display",
+			Message: "Компонент Windows «Беспроводной дисплей» уже установлен и готов к работе.",
+		}
+	}
+	args := `-NoProfile -ExecutionPolicy Bypass -Command "Write-Host '=== Luma OS 1.8.2: Установка компонента Windows Беспроводной дисплей ===' -ForegroundColor Cyan; DISM /Online /Add-Capability /CapabilityName:App.WirelessDisplay.Connect~~~~0.0.1.0; Write-Host ''; Write-Host 'Готово! Теперь можно закрыть это окно и нажать кнопку обновления статуса в Luma OS.' -ForegroundColor Green; Start-Sleep -Seconds 6"`
+	if err := shellExecuteVerb("runas", "powershell.exe", args); err != nil {
+		return MiracastActionResult{
+			OK:                 false,
+			Action:             "install_wireless_display",
+			InstallSettingsURI: miracastProjectSettingsURI,
+			Message:            "Не удалось запустить установку с правами администратора. Вы можете использовать встроенный Luma AirDisplay (работает без Miracast!) или открыть Параметры Windows.",
+			Error:              err.Error(),
+		}
+	}
+	return MiracastActionResult{
+		OK:      true,
+		Action:  "install_wireless_display",
+		Message: "Запущена установка компонента «Беспроводной дисплей» (DISM). Подтвердите запрос Windows и дождитесь завершения.",
+	}
 }
 
 func probeMiracastStatusNative(activeMode string) MiracastStatusInfo {

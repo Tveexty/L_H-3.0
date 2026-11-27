@@ -1451,7 +1451,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                 style={{ backgroundColor: effectiveAccent, boxShadow: `0 0 8px ${effectiveAccent}` }}
               />
               <span className="text-xs font-extrabold tracking-tight truncate">
-                Luma OS 1.8.1 {isPro ? 'Pro' : 'Base'}
+                Luma OS 1.8.2 {isPro ? 'Pro' : 'Base'}
               </span>
               {isPro && (
                 <span
@@ -1809,7 +1809,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             ) : showFeaturesModal ? (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold" style={{ color: effectiveAccent }}>Менеджер функций Luma OS 1.8.1</span>
+                  <span className="text-[11px] font-bold" style={{ color: effectiveAccent }}>Менеджер функций Luma OS 1.8.2</span>
                   <button onClick={() => setShowFeaturesModal(false)} className="text-[10px] px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 cursor-pointer">
                     Назад
                   </button>

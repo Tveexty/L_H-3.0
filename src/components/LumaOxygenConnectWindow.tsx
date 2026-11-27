@@ -179,7 +179,7 @@ export const LumaOxygenConnectWindow: React.FC<LumaOxygenConnectWindowProps> = (
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/20 border border-cyan-300/40 text-cyan-200 text-[10px] font-mono font-bold uppercase tracking-wider">
               <Sparkles className="w-3 h-3" /> Luma Oxygen Connect 1.8 · Стиль ОС · Волна и 1-Тап
             </div>
-            <h2 className="text-xl font-black tracking-tight">Подключите Android к Luma OS 1.8.1 (Fluorine)</h2>
+            <h2 className="text-xl font-black tracking-tight">Подключите Android к Luma OS 1.8.2 (Fluorine)</h2>
             <p className={`text-xs ${mutedCls}`}>
               Максимально простой 1-тап интерфейс на телефоне, ускоренный плавный тачпад, Circle to Search и фирменная полноэкранная волна Стиль ОС при каждом приёме и отправке файлов!
             </p>

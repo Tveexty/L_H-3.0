@@ -41,6 +41,14 @@ func openProjectionSettingsNative() MiracastActionResult {
 	}
 }
 
+func installWirelessDisplayFeatureNative() MiracastActionResult {
+	return MiracastActionResult{
+		OK:      true,
+		Action:  "install_wireless_display",
+		Message: "Установка компонента Windows «Беспроводной дисплей» (DISM) выполняется на Windows 10/11. Режим Luma AirDisplay уже активен и работает без Miracast!",
+	}
+}
+
 func switchDisplayProjectionModeNative(mode string) MiracastActionResult {
 	switch mode {
 	case "clone", "duplicate":

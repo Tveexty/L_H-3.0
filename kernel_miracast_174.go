@@ -97,6 +97,20 @@ func registerMiracast174Routes(mux *http.ServeMux) {
 		_ = json.NewEncoder(w).Encode(res)
 	})
 
+	// 4b. Luma OS 1.8.2: 1-Click DISM Installer for Windows Wireless Display optional feature
+	mux.HandleFunc("/api/kernel/miracast/install-wireless-display", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		res := installWirelessDisplayFeatureNative()
+		miracastMu.Lock()
+		miracastStatusTime = time.Time{} // Invalidate cache so refresh picks up newly installed feature
+		miracastMu.Unlock()
+		_ = json.NewEncoder(w).Encode(res)
+	})
+
 	// 5. Display Projection Mode Switcher (DisplaySwitch.exe /clone | /extend | /internal | /external)
 	mux.HandleFunc("/api/kernel/miracast/display-mode", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
