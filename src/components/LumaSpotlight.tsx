@@ -103,6 +103,7 @@ interface LumaSpotlightProps {
   onPrevTrack: () => void;
   onToggleTheme: () => void;
   onPowerAction: (action: 'lock' | 'sleep' | 'recycle_bin') => void;
+  onLaunchPowerShell?: (admin?: boolean, command?: string) => void;
 }
 
 // Module-level cache so Alt+R opens in 0ms without re-scanning Start Menu every time
@@ -152,6 +153,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
   onRunCommand,
   onToggleTheme,
   onPowerAction,
+  onLaunchPowerShell,
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -211,6 +213,20 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
   const openSetting = (tab: string) => {
     if (onOpenSettingsTab) onOpenSettingsTab(tab);
     else onOpenWindow('settings');
+  };
+
+  const launchPowerShell = (admin = false, command = '') => {
+    if (onLaunchPowerShell) {
+      onLaunchPowerShell(admin, command);
+      return;
+    }
+    void fetch('/api/kernel/shell/powershell', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin, command }),
+    }).catch(() => {
+      if (onRunCommand) onRunCommand('powershell');
+    });
   };
 
   const launchNativeTool = (cmd: string, title: string) => {
@@ -709,6 +725,26 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         icon: <Trash2 className="w-4 h-4" />,
         run: () => onPowerAction('recycle_bin'),
       },
+      {
+        id: 'svc_powershell_win',
+        group: 'Службы и утилиты',
+        title: 'Windows PowerShell',
+        subtitle: 'Открыть системную консоль Windows PowerShell / PowerShell 7',
+        badge: 'PS',
+        keywords: 'powershell pwsh ps повершел повершелл пауэршелл консоль shell терминал командная строка windows',
+        icon: <Terminal className="w-4 h-4 text-sky-400" />,
+        run: () => launchPowerShell(false),
+      },
+      {
+        id: 'svc_powershell_admin',
+        group: 'Службы и утилиты',
+        title: 'Windows PowerShell (От имени Администратора)',
+        subtitle: 'Запустить PowerShell с повышенными правами Администратора (UAC)',
+        badge: 'ADMIN',
+        keywords: 'powershell admin pwsh ps администратор повершелл пауэршелл uac консоль',
+        icon: <ShieldCheck className="w-4 h-4 text-amber-400" />,
+        run: () => launchPowerShell(true),
+      },
     ];
 
     return [...appItems, ...settingsItems, ...serviceItems];
@@ -740,6 +776,34 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
 
     const out: SpotlightResult[] = [...scored];
 
+    // Direct PowerShell instant match (e.g. "powershell", "ps", "pwsh", "повершелл", or "powershell ipconfig")
+    const psMatch = raw.match(/^(?:powershell(?:\.exe)?|pwsh(?:\.exe)?|ps|повершелл?|пауэршелл?)(?:\s+(.+))?$/i);
+    if (psMatch) {
+      const psCmd = (psMatch[1] || '').trim();
+      out.unshift(
+        {
+          id: `run_ps_${q}`,
+          group: 'Выполнить',
+          title: psCmd ? `PowerShell: ${psCmd}` : 'Открыть Windows PowerShell',
+          subtitle: psCmd ? 'Выполнить команду прямо в окне Windows PowerShell' : 'Запустить консоль Windows PowerShell / PowerShell 7',
+          badge: 'PS',
+          keywords: q,
+          icon: <Terminal className="w-4 h-4 text-sky-400" />,
+          run: () => launchPowerShell(false, psCmd),
+        },
+        {
+          id: `run_ps_admin_${q}`,
+          group: 'Выполнить',
+          title: psCmd ? `PowerShell (Администратор): ${psCmd}` : 'Windows PowerShell (От имени Администратора)',
+          subtitle: 'Запустить консоль с правами Администратора (UAC)',
+          badge: 'ADMIN',
+          keywords: q,
+          icon: <ShieldCheck className="w-4 h-4 text-amber-400" />,
+          run: () => launchPowerShell(true, psCmd),
+        }
+      );
+    }
+
     // Direct URL or file path / terminal command
     const isUrl = /^https?:\/\//i.test(raw) || (/^[a-z0-9-]+\.[a-z]{2,}(\/.*)?$/i.test(raw) && !raw.includes(' '));
     const isPathOrCmd = raw.includes('\\') || raw.includes(':/') || raw.endsWith('.exe') || raw.endsWith('.msc');
@@ -755,7 +819,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
         icon: <Globe className="w-4 h-4 text-sky-400" />,
         run: () => openExternalUrl(fullUrl),
       });
-    } else if (isPathOrCmd) {
+    } else if (isPathOrCmd && !psMatch) {
       out.unshift({
         id: `run_cmd_${q}`,
         group: 'Выполнить',
@@ -806,7 +870,7 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
       },
     ];
 
-    if (scored.length === 0) {
+    if (scored.length === 0 && !psMatch) {
       return [...out, ...webItems];
     }
     return [...out, webItems[0]];
@@ -875,10 +939,10 @@ export const LumaSpotlight: React.FC<LumaSpotlightProps> = ({
     >
       <div
         onMouseDown={(e) => e.stopPropagation()}
-        className={`w-full max-w-[620px] rounded-2xl border shadow-2xl overflow-hidden luma-animate-in ${
+        className={`w-full max-w-[620px] rounded-2xl border shadow-2xl overflow-hidden luma-animate-in luma-optical-glass luma-glass-edge ${
           isDark
-            ? 'bg-[#101218]/96 border-white/15 text-zinc-100'
-            : 'bg-white/96 border-zinc-900/15 text-zinc-900'
+            ? 'bg-[#101218]/92 border-white/15 text-zinc-100'
+            : 'bg-white/94 border-zinc-900/15 text-zinc-900'
         }`}
       >
         {/* Clean Minimal Search Bar */}

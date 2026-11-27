@@ -87,6 +87,7 @@ import {
 } from './LumaCustomWidgetBuilder';
 import { SmartContextMenu } from './SmartContextMenu';
 import type { QuickLookCandidate } from './LumaQuickLookModal';
+import { EXTRA_WIDGET_18_TYPES, LumaExtraWidget18Renderer } from './LumaExtraWidgets18';
 
 export { DESKTOP_WIDGET_CATALOG };
 export type { WidgetShape };
@@ -106,7 +107,8 @@ export type LiveWallpaperId =
   | 'carbon'
   | 'obsidian-gold'
   | 'nitrogen'
-  | 'aurora-ice';
+  | 'aurora-ice'
+  | 'fluorine';
 
 export type WidgetBgMode = 'theme' | 'glass' | 'dark' | 'light' | 'accent' | 'transparent' | 'custom';
 
@@ -2198,14 +2200,14 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
   const runningAppsCount = useMemo(() => apps.filter((a) => a.isRunning).length, [apps]);
   const isPixel = designStyle === 'glass';
 
-  // Design-Adaptive Surface Tokens (Theme RGB Driven!)
+  // Design-Adaptive Surface Tokens (Theme RGB Driven + Fluorine 1.8 Optical Glass & Fluent Reveal!)
   const cardCls = isPixel
     ? isDark
-      ? 'luma-widget-pixel-dark border-white/[0.14] text-slate-100 hover:border-[var(--luma-accent-border)] shadow-[0_8px_28px_rgba(0,0,0,0.28)]'
-      : 'luma-widget-pixel-light border-zinc-900/[0.14] text-slate-900 hover:border-[var(--luma-accent-border)] shadow-[0_4px_20px_rgba(25,55,109,0.08)]'
+      ? 'luma-widget-pixel-dark luma-optical-glass luma-glass-edge border-white/[0.14] text-slate-100 hover:border-[var(--luma-accent-border)] shadow-[0_8px_28px_rgba(0,0,0,0.28)]'
+      : 'luma-widget-pixel-light luma-optical-glass luma-glass-edge border-zinc-900/[0.14] text-slate-900 hover:border-[var(--luma-accent-border)] shadow-[0_4px_20px_rgba(25,55,109,0.08)]'
     : isDark
-    ? 'luma-widget-dark border-white/[0.1] text-zinc-100 hover:border-white/[0.2]'
-    : 'luma-widget-light border-zinc-900/[0.14] text-zinc-900 hover:border-zinc-900/[0.28] shadow-[0_2px_12px_rgba(0,0,0,0.05)]';
+    ? 'luma-widget-dark luma-optical-glass luma-glass-edge border-white/[0.1] text-zinc-100 hover:border-white/[0.2]'
+    : 'luma-widget-light luma-optical-glass luma-glass-edge border-zinc-900/[0.14] text-zinc-900 hover:border-zinc-900/[0.28] shadow-[0_2px_12px_rgba(0,0,0,0.05)]';
 
   const mutedCls = isDark ? 'text-zinc-400' : 'text-zinc-600';
   const subBtnCls = isDark
@@ -2254,6 +2256,20 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
   };
 
   const renderWidgetBody = (w: DesktopWidgetInstance) => {
+    if (EXTRA_WIDGET_18_TYPES.has(w.widgetType)) {
+      return (
+        <LumaExtraWidget18Renderer
+          widgetType={w.widgetType}
+          isDark={isDark}
+          mutedCls={mutedCls}
+          subBtnCls={subBtnCls}
+          ramPercent={liveSystem?.ram_percent ?? 42}
+          ramUsedGb={liveSystem?.ram_used_gb ?? 6.8}
+          ramTotalGb={liveSystem?.ram_total_gb ?? 16}
+          onShowToast={(title, msg) => onPushToast?.(title, msg || title)}
+        />
+      );
+    }
     const variant = w.variant || getWidgetDef(w.widgetType).defaultVariant;
     const isCircle = w.shape === 'circle';
     const isPill = w.shape === 'pill' || w.h === 1;

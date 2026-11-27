@@ -1,121 +1,115 @@
 <div align="center">
 
-<img src="public/luma-oxygen-hero.jpg" alt="Luma OS 1.7.5 (Oxygen · Стиль ОС · Base & Pro)" width="100%" style="border-radius: 18px;" />
+<img src="public/luma-fluorine-hero.jpg" alt="Luma OS 1.8 (Fluorine · F-9 · Base & Pro)" width="100%" style="border-radius: 18px;" />
 
 <br />
 
-# Luma OS 1.7.5 — **Oxygen · Стиль ОС (`Base` & `Pro`)**
+# Luma OS 1.8 — **Fluorine · F-9 (`Base` & `Pro`)**
 
-**Флагманская настольная оболочка для Windows 10 / 11 в двух редакциях (`Base` и `Pro` с полными правами): привычный дизайн кнопки «Пуск», Поиска и панели задач с чистыми крупными иконками приложений, выбор расположения кнопки «Пуск» (слева или по центру), скрытие модульной панели виджетов и конструктора в один клик, беспроводной второй экран по Windows Miracast, свои обои с диска, Панель управления в «Стиле ОС», Luma Photo Studio и экосистема «Суперустройство»**
+**Флагманская настольная оболочка нового поколения для Windows 10 / 11 в двух редакциях (`Base` и `Pro` с полными правами): 4 новых 2.5D-обоев Fluorine, обновлённое ядро LumaCore 2.0 и плагины нового поколения, многослойный оптический блюр в реальном времени с бликами Fluent Reveal, адаптивная палитра Material You (Monet), 15 новых виджетов, полная настройка Панели управления мышкой/стилусом/пальцем, полноценный Luma Word в стиле Microsoft Word и быстрый запуск Windows PowerShell прямо из Поиска**
 
 <p>
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.7.5"><img src="https://img.shields.io/badge/Release-v1.7.5%20(Base%20%26%20Pro)-2563eb?style=for-the-badge" alt="Release v1.7.5" /></a>
-  <img src="https://img.shields.io/badge/Start%20Button-Left%20or%20Center-10b981?style=for-the-badge" alt="Start Left or Center" />
-  <img src="https://img.shields.io/badge/Miracast-Wireless%202nd%20Screen-0ea5e9?style=for-the-badge" alt="Wireless 2nd Screen Miracast" />
-  <img src="https://img.shields.io/badge/Animations-120%2B%20FPS%20Smooth-a855f7?style=for-the-badge" alt="Smooth Animations" />
-  <img src="https://img.shields.io/badge/Apps-Luma%20Photo%20Studio%20%2B%20Player%20Hub-8b5cf6?style=for-the-badge" alt="Luma Photo Studio & Player" />
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.8"><img src="https://img.shields.io/badge/Release-v1.8%20Fluorine%20(Base%20%26%20Pro)-10b981?style=for-the-badge" alt="Release v1.8" /></a>
+  <img src="https://img.shields.io/badge/Kernel-LumaCore%202.0%20%2B%20SDK%20v4.0-06b6d4?style=for-the-badge" alt="LumaCore 2.0" />
+  <img src="https://img.shields.io/badge/Visuals-Optical%20Blur%20%2B%20Fluent%20Reveal%20%2B%20Monet-8b5cf6?style=for-the-badge" alt="Fluorine Visual Engine" />
+  <img src="https://img.shields.io/badge/Widgets-%2B15%20New%20Interactive-0ea5e9?style=for-the-badge" alt="15 New Widgets" />
+  <img src="https://img.shields.io/badge/Office-Microsoft%20Word%20Replica-185ABD?style=for-the-badge" alt="Luma Word" />
   <img src="https://img.shields.io/badge/Security-LumaShield%203.2%20(340%2B)-f43f5e?style=for-the-badge" alt="LumaShield 3.2" />
 </p>
 
 <h3>
-  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.5_Pro.exe">👑 Скачать LumaOS_1.7.5_Pro.exe (Pro · Полные права)</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.8_Pro.exe">👑 Скачать LumaOS_1.8_Pro.exe (Pro · Полные права)</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.5_Base.exe">⬇️ Скачать LumaOS_1.7.5_Base.exe (Base)</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.8_Base.exe">⬇️ Скачать LumaOS_1.8_Base.exe (Base)</a>
   <br />
-  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.7.5">📦 Релиз v1.7.5</a>
+  <a href="https://github.com/Tveexty/L_H-3.0/releases/tag/v1.8">📦 Релиз v1.8</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="PATCH_NOTES_1.7.5.md">📝 Патч-ноут 1.7.5</a>
+  <a href="PATCH_NOTES_1.8.md">📝 Патч-ноут 1.8</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="LumaOxygenConnect_Android/README.md">📱 Oxygen Connect (Android)</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="luma_ai_nitrogen/README.md">🧠 Luma Ai Nitrogen</a>
+  <a href="luma_ai_nitrogen/README.md">🧠 Luma AI</a>
 </h3>
 
 </div>
 
 > [!WARNING]
 > **⚠️ Нестабильная работа версий `1.6.4` – `1.6.6b`!**
-> Сборки **`1.6.4`**, **`1.6.5`**, **`1.6.6`** и **`1.6.6b`** работают **нестабильно** — **не используйте их**. Скачивайте актуальную версию **[Luma OS 1.7.5 Pro / Base](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.7.5)** (или финальную стабильную сборку ветки `1.6.x` — [`LumaOS_1.6.7.exe`](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.7)).
+> Сборки **`1.6.4`**, **`1.6.5`**, **`1.6.6`** и **`1.6.6b`** работают **нестабильно** — **не используйте их**. Скачивайте актуальную версию **[Luma OS 1.8 Fluorine Pro / Base](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.8)** (или финальную стабильную сборку ветки `1.6.x` — [`LumaOS_1.6.7.exe`](https://github.com/Tveexty/L_H-3.0/releases/tag/v1.6.7)).
 
 ---
 
-## Что нового в **Luma OS 1.7.5 (Oxygen · Стиль ОС · `Base` & `Pro`)**
+## Что нового в **Luma OS 1.8 (Fluorine · F-9 · `Base` & `Pro`)**
 
-| Раздел | Ключевые возможности и исправления 1.7.5 |
+| Раздел | Ключевые возможности и улучшения 1.8 |
 | :--- | :--- |
-| **↩️ Возврат привычного дизайна панели (кроме приложений)** | Приносим извинения за лишние правки дизайна панели в 1.7.4 — в 1.7.5 вернули прежний привычный дизайн кнопки **«Пуск»** (9 точек), **Поиска**, **Circle to Search**, **Папки Luma**, всего правого трея и фона панели. При этом **чистые крупные иконки приложений** без рамок и с удобным управлением ЛКМ/ПКМ сохранены! |
-| **◧ / ◫ Выбор положения кнопки «Пуск»: слева или по центру** | Переключайте расположение «Пуска» в один клик — **слева** или **по центру** панели задач (вместе с приложениями и самим меню «Пуск»). Доступно в **Настройках → Панель задач**, в **меню ПКМ по панели** и прямо в **ПКМ по кнопке «Пуск»**. |
-| **🧩 Скрытие модульной панели и конструктора** | Верхнюю модульную панель виджетов или отдельно кнопку конструктора (`⚙`) можно убрать в один клик и вернуть в любой момент. |
-| **📡 Беспроводной 2-й экран (Windows Miracast)** | Подключение ТВ, монитора или другого ПК без проводов в Панели управления («2-й экран»), Настройках → Графика и Экран и «Суперустройстве» (Источник, Приёмник и переключение «Дублировать / Расширить»). |
-| **👑 Все новинки в обеих версиях: `Base` и `Pro`** | Все обновления и исправления 1.7.5 в полном объёме включены и в **`LumaOS_1.7.5_Base.exe`** (обычная без запроса UAC), и в **`LumaOS_1.7.5_Pro.exe`** (с полными правами Администратора и Pro-возможностями). |
+| **🎨 4 новых 2.5D-обоев Fluorine** | **Cryo-Emerald**, **Crystal Prism**, **Liquid Waves** и **Glass Aurora** в высоком качестве + живые анимированные обои **Fluorine Cryo-Prism**. Все 21 прежние обои сохранены (**25 встроенных обоев** + безлимитные свои обои с диска). |
+| **🪟 Оптический блюр + Fluent Reveal + Material You (Monet)** | Живой многослойный блюр реального контента с призматическими контурами и микрозернистостью (без «пластикового» вида), спекулярные блики на границах стекла при движении курсора/стилуса и автоматическая адаптивная палитра цветов по обоям или играющей музыке. |
+| **⚙️ Ядро LumaCore 2.0 + Плагины нового поколения** | Кэшируемый скоростной API, обновлённый менеджер плагинов прямо в Настройках и безопасная кнопка **«Ускорить ОЗУ»**, освобождающая память без разрыва открытых окон. |
+| **🧩 +15 новых виджетов на рабочий стол** | Палитра Monet Live, Оптимизатор ОЗУ, Офлайн-звуки фона (Дождь/Океан/Костёр/Шум), Дыхание 4-4-4, Обратный отсчёт, Секундомер с кругами, Трекер воды, Мысль дня, Пипетка HEX, Конвертер величин, Генератор паролей, Монетка/Кубик/D20, Быстрый буфер, PowerShell Hub и Прогресс дня/недели/года. |
+| **🎛️ Полная кастомизация Панели управления + порядок** | Перетаскивайте, удаляйте и добавляйте любые кнопки и приложения (**34 элемента**) мышкой, стилусом или пальцем! Убраны лишние блоки BT / 2.4GHz и громоздкий микшер внизу — **Per-App Audio** вынесен в компактную кнопку, открывающую отдельное окно настроек звука. |
+| **📝 Luma Word в стиле Microsoft Word** | Полноценный аналог Word: синяя шапка, 7 вкладок ленты, всплывающая мини-панель при выделении текста, голосовая диктовка, режимы **Разметка A4 / Чтение / Веб / Фокус**, окно полной статистики, горячие клавиши и экспорт `.docx`/PDF. |
+| **💻 PowerShell из Поиска и меню «Пуск»** | Введите `powershell`, `ps`, `pwsh` или `повершелл` (можно сразу с командой) — и мгновенно откройте обычный Windows PowerShell или PowerShell от имени Администратора. |
 
 ---
 
-## Сравнение редакций **Luma OS 1.7.5 `Base` vs `Pro`**
+## Сравнение редакций **Luma OS 1.8 `Base` vs `Pro`**
 
-| Функция / Права | `Luma OS 1.7.5 Base` | `Luma OS 1.7.5 Pro` |
+| Функция / Права | `Luma OS 1.8 Base` | `Luma OS 1.8 Pro` |
 | :--- | :---: | :---: |
-| **Все новинки и исправления 1.7.5 (Пуск слева/по центру + Miracast)** | ✅ Полностью | ✅ Полностью |
+| **Все новинки 1.8 Fluorine (4 обоев, оптический блюр, Fluent Reveal, Monet, +15 виджетов, Word, PowerShell)** | ✅ Полностью | ✅ Полностью |
 | **Права в Windows** | Пользователь (без UAC) | **Полные права Администратора (UAC)** |
 | **Встроенный `Luma Photo Studio`** | До 2K · 12 шагов отмены | **До 4K · 30 шагов отмены · Pro-экспорт** |
 | **Открытие фото и папок через Luma OS** | Внутри оболочки | **Внутри оболочки + ассоциации Windows** |
-| **Привычная панель задач, чистые иконки, скрытие модульной панели** | ✅ | ✅ **Максимум опций** |
+| **Панель управления (перетаскивание мышью/стилусом/пальцем + компактный Per-App Audio)** | ✅ | ✅ **Максимум опций** |
 | **Суперустройство + Miracast + Circle to Search (ПК + Телефон)** | ✅ | ✅ **Pro-маршрутизация и игровой буст** |
-| **Расширенная защита · SwapBoost · Стоп-зарядка · SDK** | Базовый режим | ✅ **Все Pro-модули разблокированы** |
+| **Расширенная защита · SwapBoost · Стоп-зарядка · Плагины LumaCore 2.0** | Базовый режим | ✅ **Все Pro-модули разблокированы** |
 
 ---
 
-## Галерея обоев **Oxygen + Nitrogen (21 встроенный арт + свои обои)**
+## Галерея обоев **Fluorine 2.5D + Вся коллекция (25 встроенных артов + свои обои)**
 
-> Все **21** обои встроены прямо в `LumaOS_1.7.5_Pro.exe` и `LumaOS_1.7.5_Base.exe` (плюс безлимитное добавление своих картинок с диска).
+> Все **25** обоев встроены прямо в `LumaOS_1.8_Pro.exe` и `LumaOS_1.8_Base.exe` (плюс безлимитное добавление своих картинок с диска).
 
 <table>
   <tr>
-    <td width="33%" align="center">
-      <img src="public/luma-oxygen-hero.jpg" alt="Oxygen 2.5D Cryo-Bubbles" width="100%" />
+    <td width="50%" align="center">
+      <img src="public/luma-fluorine-hero.jpg" alt="Fluorine 2.5D Cryo-Emerald" width="100%" />
       <br />
-      <b>Oxygen — 2.5D Cryo-Bubbles (Главные)</b>
+      <b>Fluorine 1.8 — 2.5D Cryo-Emerald (Главные)</b>
     </td>
-    <td width="33%" align="center">
-      <img src="public/luma-nitrogen-hero.jpg" alt="Nitrogen 2.5D Cryo-Glass" width="100%" />
+    <td width="50%" align="center">
+      <img src="public/luma-fluorine-prism.jpg" alt="Fluorine 2.5D Crystal Prism" width="100%" />
       <br />
-      <b>Nitrogen — 2.5D Cryo-Glass</b>
-    </td>
-    <td width="33%" align="center">
-      <img src="public/luma-nitrogen-monolith.jpg" alt="Nitrogen Monolith" width="100%" />
-      <br />
-      <b>Nitrogen — N-7 Monolith</b>
+      <b>Fluorine 1.8 — 2.5D Crystal Prism</b>
     </td>
   </tr>
   <tr>
-    <td width="33%" align="center">
-      <img src="public/luma-nitrogen-aurora.jpg" alt="Nitrogen Aurora" width="100%" />
+    <td width="50%" align="center">
+      <img src="public/luma-fluorine-liquid.jpg" alt="Fluorine 2.5D Liquid Waves" width="100%" />
       <br />
-      <b>Nitrogen Aurora</b>
+      <b>Fluorine 1.8 — 2.5D Liquid Waves</b>
     </td>
-    <td width="33%" align="center">
-      <img src="public/luma-nitrogen-glacier.jpg" alt="Nitrogen Glacier" width="100%" />
+    <td width="50%" align="center">
+      <img src="public/luma-fluorine-aurora.jpg" alt="Fluorine 2.5D Glass Aurora" width="100%" />
       <br />
-      <b>Nitrogen Glacier</b>
-    </td>
-    <td width="33%" align="center">
-      <img src="public/luma-nitrogen-alpine.jpg" alt="Nitrogen Alpine" width="100%" />
-      <br />
-      <b>Nitrogen Alpine</b>
+      <b>Fluorine 1.8 — 2.5D Glass Aurora</b>
     </td>
   </tr>
 </table>
 
 ---
 
-## Скачать Luma OS (все 44 сборки сохранены)
+## Скачать Luma OS (все 47 сборок сохранены)
 
 Все исполняемые файлы полностью автономны (установка не требуется — просто скачайте и запустите):
 
 | Версия | Кодовое имя | Основные особенности | Прямая ссылка |
 | :--- | :--- | :--- | :--- |
-| **1.7.5 Pro (Рекомендуем)** | **Oxygen · Стиль ОС Pro** | `👑 Полные права` · `↩️ Прежний дизайн Пуска, Поиска и трея + чистые иконки приложений` · `◧/◫ Пуск слева или по центру` · `🧩 Скрытие модульной панели` · `📡 Miracast 2-й экран` | [**LumaOS_1.7.5_Pro.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.5_Pro.exe) · [OTA (`LumaOS_1.7.5.exe`)](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.5.exe) |
-| **1.7.5 Base** | **Oxygen · Стиль ОС Base** | `Стандартные права (без UAC)` · `Все новинки 1.7.5: привычный дизайн Пуска/Поиска/трея + чистые иконки приложений, выбор «Пуск слева / по центру», скрытие модульной панели и Miracast` | [**LumaOS_1.7.5_Base.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.5_Base.exe) |
+| **1.8 Pro (Рекомендуем)** | **Fluorine · F-9 Pro** | `👑 Полные права` · `🎨 4 новых 2.5D-обоев` · `⚙️ LumaCore 2.0 + Плагины` · `🪟 Оптический блюр + Fluent Reveal + Monet` · `🧩 +15 виджетов` · `🎛️ Панель (мышь/стилус/палец)` · `📝 Luma Word` · `💻 PowerShell из Поиска` | [**LumaOS_1.8_Pro.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.8_Pro.exe) · [OTA (`LumaOS_1.8.exe`)](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.8.exe) |
+| **1.8 Base** | **Fluorine · F-9 Base** | `Стандартные права (без UAC)` · `Все новинки 1.8 Fluorine: 4 новых 2.5D-обоев, LumaCore 2.0, оптический блюр + Fluent Reveal + Monet, +15 виджетов, перетаскивание в Панели управления, Luma Word и PowerShell из Поиска` | [**LumaOS_1.8_Base.exe**](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.8_Base.exe) |
+| **1.7.5 Pro** | **Oxygen · Стиль ОС Pro** | `↩️ Прежний дизайн Пуска, Поиска и трея + чистые иконки приложений` · `◧/◫ Пуск слева или по центру` · `🧩 Скрытие модульной панели` · `📡 Miracast 2-й экран` | [LumaOS_1.7.5_Pro.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.5_Pro.exe) · [OTA (`LumaOS_1.7.5.exe`)](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.5.exe) |
+| **1.7.5 Base** | **Oxygen · Стиль ОС Base** | `Стандартные права (без UAC)` · `Привычный дизайн Пуска/Поиска/трея + выбор «Пуск слева / по центру» и Miracast` | [LumaOS_1.7.5_Base.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.5_Base.exe) |
 | **1.7.4 Pro** | **Oxygen · Стиль ОС Pro** | `Чистые иконки приложений` · `Скрытие модульной панели и конструктора` · `Беспроводной 2-й экран Miracast` | [LumaOS_1.7.4_Pro.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.4_Pro.exe) · [OTA (`LumaOS_1.7.4.exe`)](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.4.exe) |
 | **1.7.4 Base** | **Oxygen · Стиль ОС Base** | `Стандартные права` · `Скрытие модульной панели` · `Беспроводной 2-й экран Miracast` | [LumaOS_1.7.4_Base.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.4_Base.exe) |
 | **1.7.3 Pro** | **Oxygen · Стиль ОС Pro** | `Классическая + гибкая панель с перетаскиванием и выносом на стол` · `Меню ПКМ у курсора` · `120 Гц анимации` · `Свои обои` · `Компактная Панель «Стиль ОС»` · `Окно плеера` | [LumaOS_1.7.3_Pro.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.3_Pro.exe) · [OTA (`LumaOS_1.7.3.exe`)](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.3.exe) |
@@ -127,10 +121,10 @@
 | **1.7.1** | **Oxygen · O-8** | `Волна передачи файлов Стиль ОС` · `1-Тап интерфейс телефона` · `Быстрый тачпад` · `Circle to Search` | [LumaOS_1.7.1.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.1.exe) |
 | **1.7** | **Oxygen · O-8** | `100% иконки` · `Умный автозапуск` · `Правила окон` · `Полка Drag & Drop` · `Умный буфер` · `По-приложечный звук` · `Oxygen Connect` | [LumaOS_1.7.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.7.exe) |
 | **1.6.7 (Финал 1.6.x)** | **Nitrogen · N-7** | `Фикс курсора и кликов Dynamic Island` · `Быстрый выбор файла в антивирусе без зависаний` | [LumaOS_1.6.7.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.7.exe) |
-| ~~1.6.6b~~ *(нестаб.)* | Nitrogen · N-7 | *Нестабильная ветка 1.6.4–1.6.6b (используйте 1.7.5 / 1.6.7)* | [LumaOS_1.6.6b.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.6b.exe) |
-| ~~1.6.6~~ *(нестаб.)* | Nitrogen · N-7 | *Нестабильная ветка 1.6.4–1.6.6b (используйте 1.7.5 / 1.6.7)* | [LumaOS_1.6.6.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.6.exe) |
-| ~~1.6.5~~ *(нестаб.)* | Nitrogen · N-7 | *Нестабильная ветка 1.6.4–1.6.6b (используйте 1.7.5 / 1.6.7)* | [LumaOS_1.6.5.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.5.exe) |
-| ~~1.6.4~~ *(нестаб.)* | Nitrogen · N-7 | *Нестабильная ветка 1.6.4–1.6.6b (используйте 1.7.5 / 1.6.7)* | [LumaOS_1.6.4.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.4.exe) |
+| ~~1.6.6b~~ *(нестаб.)* | Nitrogen · N-7 | *Нестабильная ветка 1.6.4–1.6.6b (используйте 1.8 / 1.6.7)* | [LumaOS_1.6.6b.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.6b.exe) |
+| ~~1.6.6~~ *(нестаб.)* | Nitrogen · N-7 | *Нестабильная ветка 1.6.4–1.6.6b (используйте 1.8 / 1.6.7)* | [LumaOS_1.6.6.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.6.exe) |
+| ~~1.6.5~~ *(нестаб.)* | Nitrogen · N-7 | *Нестабильная ветка 1.6.4–1.6.6b (используйте 1.8 / 1.6.7)* | [LumaOS_1.6.5.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.5.exe) |
+| ~~1.6.4~~ *(нестаб.)* | Nitrogen · N-7 | *Нестабильная ветка 1.6.4–1.6.6b (используйте 1.8 / 1.6.7)* | [LumaOS_1.6.4.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.4.exe) |
 | **1.6.3** | Nitrogen · N-7 | `Luma Ai Nitrogen` · `Стоп-зарядка батареи` · `Сенсор и стилус` · `Поверх окон` | [LumaOS_1.6.3.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.3.exe) |
 | **1.6.2b** | Nitrogen · N-7 | `Встроенные Wi-Fi и Bluetooth` · `Замена горячих клавиш` | [LumaOS_1.6.2b.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.2b.exe) |
 | **1.6.2** | Nitrogen · N-7 | `Luma AI 5.0` · `Обвести для поиска` · `Жесты и Спецвозможности` · `Корзина` | [LumaOS_1.6.2.exe](https://github.com/Tveexty/L_H-3.0/raw/main/LumaOS_1.6.2.exe) |
@@ -162,9 +156,9 @@
 npm install
 npm run build
 
-# Luma OS 1.7.5 Pro (полные права + все Pro-опции)
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui -X main.KernelEdition=pro" -o LumaOS_1.7.5_Pro.exe .
+# Luma OS 1.8 Pro (полные права + все Pro-опции)
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui -X main.KernelEdition=pro" -o LumaOS_1.8_Pro.exe .
 
-# Luma OS 1.7.5 Base (обычная лёгкая версия)
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui -X main.KernelEdition=base" -o LumaOS_1.7.5_Base.exe .
+# Luma OS 1.8 Base (обычная лёгкая версия)
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H=windowsgui -X main.KernelEdition=base" -o LumaOS_1.8_Base.exe .
 ```

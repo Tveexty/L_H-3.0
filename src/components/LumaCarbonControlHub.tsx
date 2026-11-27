@@ -59,6 +59,15 @@ import {
   Share2,
   Crown,
   Cast,
+  Terminal,
+  Calculator,
+  Activity,
+  Calendar,
+  Clipboard,
+  Code2,
+  Film,
+  Cpu,
+  RotateCcw,
 } from 'lucide-react';
 import {
   BluetoothDeviceItem,
@@ -264,13 +273,34 @@ interface LumaCarbonControlHubProps {
   isPro?: boolean;
   isAdmin?: boolean;
   onOpenLens?: () => void;
+  onLaunchPowerShell?: (admin?: boolean) => void;
 }
 
 const HUB_TILES_KEY = 'luma_carbon_hub_tiles_v151';
+const HUB_CIRCLES_KEY = 'luma_hub_circles_v18';
 const HUB_BT_COLLAPSED_KEY = 'luma_bt_section_collapsed_v15';
 const HUB_NOTIF_COLLAPSED_KEY = 'luma_notif_collapsed_v151';
 
-const ACCENT_SWATCHES = ['#06b6d4', '#10b981', '#6366f1', '#f43f5e', '#f59e0b', '#3b82f6'];
+const DEFAULT_CIRCLE_IDS: string[] = [
+  'per_app_audio',
+  'share',
+  'mute',
+  'rec',
+  'shot',
+  'lens',
+  'eye',
+  'photo',
+  'miracast',
+  'game',
+  'mic',
+  'island',
+  'shield',
+  'vault',
+  'theme',
+  'feats',
+];
+
+const ACCENT_SWATCHES = ['#10b981', '#06b6d4', '#6366f1', '#f43f5e', '#f59e0b', '#3b82f6'];
 
 export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   open,
@@ -337,6 +367,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   isPro = true,
   isAdmin = false,
   onOpenLens,
+  onLaunchPowerShell,
 }) => {
   const [tiles, setTiles] = useState<ControlHubTileId[]>(() => {
     try {
@@ -347,16 +378,58 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
     }
     return DEFAULT_HUB_TILES;
   });
+  const [circleIds, setCircleIds] = useState<string[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(HUB_CIRCLES_KEY) || 'null');
+      if (Array.isArray(saved) && saved.length > 0) return saved;
+    } catch {
+      // ignore
+    }
+    return DEFAULT_CIRCLE_IDS;
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(HUB_CIRCLES_KEY, JSON.stringify(circleIds));
+    } catch {
+      // ignore
+    }
+  }, [circleIds]);
+
   const [editMode, setEditMode] = useState(false);
   const [showFeaturesModal, setShowFeaturesModal] = useState(false);
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [showMiracastModal, setShowMiracastModal] = useState(false);
+  const [showPerAppAudioModal, setShowPerAppAudioModal] = useState(false);
+  const [addCatalogTab, setAddCatalogTab] = useState<'all' | 'apps' | 'controls'>('all');
+  const [dragCircleIdx, setDragCircleIdx] = useState<number | null>(null);
+  const [overCircleIdx, setOverCircleIdx] = useState<number | null>(null);
+  const dragCircleStartRef = useRef<{ idx: number; x: number; y: number; moved: boolean } | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
   const [selectedMediaId, setSelectedMediaId] = useState<string>('');
   const [scrubPosSec, setScrubPosSec] = useState<number | null>(null);
   const [activeConnectivityPicker, setActiveConnectivityPicker] = useState<'none' | 'wifi' | 'bluetooth'>('none');
   const draggingSliderRef = useRef(false);
   const volDragStartXRef = useRef<number>(0);
   const volDidDragRef = useRef<boolean>(false);
+
+  const reorderCircle = (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0) return;
+    setCircleIds((prev) => {
+      if (fromIdx >= prev.length || toIdx >= prev.length) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  };
+
+  const removeCircleId = (id: string) => {
+    setCircleIds((prev) => prev.filter((x) => x !== id));
+  };
+
+  const addCircleId = (id: string) => {
+    setCircleIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  };
 
   const formatMediaSec = (sec?: number) => {
     const s = Math.max(0, Math.floor(sec || 0));
@@ -371,13 +444,16 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
     return Math.max(0, Math.min(1, (clientX - r.left) / r.width));
   };
 
-  const [btCollapsed, setBtCollapsed] = useState<boolean>(() => {
+  const [_btCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(HUB_BT_COLLAPSED_KEY) === '1';
     } catch {
       return false;
     }
   });
+  void _btCollapsed;
+  void wirelessDevices;
+  void onRefreshWireless;
   const [notifCollapsed, setNotifCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(HUB_NOTIF_COLLAPSED_KEY) === '1';
@@ -385,10 +461,9 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       return false;
     }
   });
-  const [audioCollapsed, setAudioCollapsed] = useState(true);
   const [notifTab, setNotifTab] = useState<'all' | 'telegram' | 'system'>('all');
 
-  // Auto-close on mouse leave (paused during Edit Mode, Media Settings, Miracast, Features Manager, Slider Drag, or Wi-Fi/BT Picker!)
+  // Auto-close on mouse leave (paused during Edit Mode, Media Settings, Per-App Audio, Miracast, Features Manager, Slider Drag, or Wi-Fi/BT Picker!)
   const leaveTimerRef = useRef<number | null>(null);
   const pickingScreenRef = useRef(false);
   const handleHubMouseEnter = () => {
@@ -403,6 +478,8 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       showFeaturesModal ||
       showMediaModal ||
       showMiracastModal ||
+      showPerAppAudioModal ||
+      dragCircleIdx !== null ||
       draggingSliderRef.current ||
       activeConnectivityPicker !== 'none' ||
       pickingScreenRef.current
@@ -450,14 +527,6 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       // ignore
     }
   }, [tiles]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(HUB_BT_COLLAPSED_KEY, btCollapsed ? '1' : '0');
-    } catch {
-      // ignore
-    }
-  }, [btCollapsed]);
 
   useEffect(() => {
     try {
@@ -1141,9 +1210,9 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
         className="fixed top-3 right-3 bottom-3 z-[945] flex flex-col gap-2.5 pointer-events-none"
         style={{ width: 'clamp(330px, 24vw, 396px)' }}
       >
-        {/* UPPER HALF: Compact OS Style Control Center (zero wasted empty space!) */}
+        {/* UPPER HALF: Compact OS Style Control Center (Fluorine 1.8 Optical Glass + Full Drag/Drop Customization!) */}
         <div
-          className={`pointer-events-auto rounded-[28px] border backdrop-blur-3xl flex flex-col overflow-hidden luma-spring-panel shadow-[0_24px_70px_rgba(0,0,0,0.58)] ${
+          className={`pointer-events-auto rounded-[28px] border backdrop-blur-3xl flex flex-col overflow-hidden luma-spring-panel luma-optical-glass luma-glass-edge shadow-[0_24px_70px_rgba(0,0,0,0.58)] ${
             isDark
               ? 'bg-[#121620]/86 border-white/15 text-white'
               : 'bg-white/90 border-slate-200/90 text-slate-900'
@@ -1157,12 +1226,14 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                 setEditMode((v) => !v);
                 setShowFeaturesModal(false);
                 setShowMediaModal(false);
+                setShowMiracastModal(false);
+                setShowPerAppAudioModal(false);
                 setActiveConnectivityPicker('none');
               }}
-              title="Редактировать панель управления"
+              title="Настроить плитки (перетаскивание мышкой, стилусом или пальцем)"
               className={`w-8 h-8 rounded-full flex items-center justify-center border transition cursor-pointer ${
                 editMode
-                  ? 'bg-blue-600 text-white border-blue-400 shadow-lg shadow-blue-600/35'
+                  ? 'bg-emerald-600 text-white border-emerald-400 shadow-lg shadow-emerald-600/35'
                   : isDark
                   ? 'bg-white/[0.09] border-white/12 text-white/85 hover:bg-white/16'
                   : 'bg-slate-200/75 border-slate-300 text-slate-800 hover:bg-slate-200'
@@ -1172,12 +1243,12 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             </button>
 
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
               <span className="text-xs font-extrabold tracking-tight truncate">
-                Luma OS 1.7.5 {isPro ? 'Pro' : 'Base'}
+                Luma OS 1.8 {isPro ? 'Pro' : 'Base'}
               </span>
               {isPro && (
-                <span className="px-1.5 py-0.5 rounded-full bg-blue-600/25 border border-blue-400/40 text-sky-300 text-[9px] font-mono font-bold inline-flex items-center gap-0.5">
+                <span className="px-1.5 py-0.5 rounded-full bg-emerald-600/25 border border-emerald-400/40 text-emerald-300 text-[9px] font-mono font-bold inline-flex items-center gap-0.5">
                   <Crown size={9} className="text-amber-300" />
                   {isAdmin ? 'ADMIN' : 'PRO'}
                 </span>
@@ -1185,6 +1256,26 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             </div>
 
             <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  setEditMode(false);
+                  setShowFeaturesModal(false);
+                  setShowMediaModal(false);
+                  setShowMiracastModal(false);
+                  setActiveConnectivityPicker('none');
+                  setShowPerAppAudioModal((v) => !v);
+                }}
+                title="Per-App Audio — настройки звука по приложениям и выбор вывода"
+                className={`w-8 h-8 rounded-full flex items-center justify-center border transition cursor-pointer ${
+                  showPerAppAudioModal
+                    ? 'bg-cyan-500 text-white border-cyan-300 shadow-lg shadow-cyan-500/35'
+                    : isDark
+                    ? 'bg-white/[0.09] border-white/12 text-cyan-300 hover:bg-white/16'
+                    : 'bg-slate-200/75 border-slate-300 text-cyan-700 hover:bg-slate-200'
+                }`}
+              >
+                <Speaker size={14} />
+              </button>
               <button
                 onClick={() => {
                   onClose();
@@ -1214,7 +1305,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             {showFeaturesModal ? (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-sky-400">Менеджер функций Luma OS 1.7.5</span>
+                  <span className="text-[11px] font-bold text-emerald-400">Менеджер функций Luma OS 1.8</span>
                   <button onClick={() => setShowFeaturesModal(false)} className="text-[10px] px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 cursor-pointer">
                     Назад
                   </button>
@@ -1233,10 +1324,75 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                         <div className="text-[11px] font-semibold truncate">{feat.label}</div>
                         <div className={`text-[9px] truncate ${subText}`}>{feat.desc}</div>
                       </div>
-                      {on ? <ToggleRight size={19} className="text-blue-400 shrink-0" /> : <ToggleLeft size={19} className="text-white/30 shrink-0" />}
+                      {on ? <ToggleRight size={19} className="text-emerald-400 shrink-0" /> : <ToggleLeft size={19} className="text-white/30 shrink-0" />}
                     </button>
                   );
                 })}
+              </div>
+            ) : showPerAppAudioModal ? (
+              /* ==================== DEDICATED PER-APP AUDIO & OUTPUT SETTINGS MODAL ==================== */
+              <div className="space-y-2.5 luma-animate-in">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold text-cyan-400 flex items-center gap-1.5">
+                    <Speaker size={14} /> Per-App Audio · Звук по приложениям
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowPerAppAudioModal(false)}
+                    className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 text-[10px] font-bold cursor-pointer"
+                  >
+                    ← Назад
+                  </button>
+                </div>
+
+                <LumaPerAppAudioHub
+                  isDark={isDark}
+                  audioOutputs={audioOutputs as any}
+                  activeAudioOutputId={activeAudioOutputId}
+                  onSwitchAudioDevice={onSwitchAudioDevice}
+                  mediaSessions={mediaSessions}
+                  onMediaAction={onMediaAction}
+                />
+
+                {(audioOutputs.length > 0 || audioInputs.length > 0) && (
+                  <div className={`rounded-2xl border p-2.5 space-y-1.5 ${isDark ? 'bg-white/[0.03] border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+                    <div className="text-[10px] font-bold uppercase tracking-wider opacity-75">
+                      Устройства вывода и микрофон
+                    </div>
+                    {audioOutputs.map((dev) => (
+                      <button
+                        key={dev.id}
+                        onClick={() => onSwitchAudioDevice?.(dev.id, 'output')}
+                        className={`w-full px-2 py-1.5 rounded-xl text-left text-[10px] flex items-center justify-between border transition cursor-pointer ${
+                          dev.id === activeAudioOutputId || dev.is_default
+                            ? 'bg-cyan-500/18 border-cyan-400/40 text-cyan-200'
+                            : isDark
+                            ? 'bg-white/[0.04] border-white/10 hover:bg-white/10'
+                            : 'bg-white border-slate-200'
+                        }`}
+                      >
+                        <span className="truncate">🔊 {dev.name}</span>
+                        {(dev.id === activeAudioOutputId || dev.is_default) && <Check size={11} className="text-cyan-400 shrink-0" />}
+                      </button>
+                    ))}
+                    {audioInputs.map((dev) => (
+                      <button
+                        key={dev.id}
+                        onClick={() => onSwitchAudioDevice?.(dev.id, 'input')}
+                        className={`w-full px-2 py-1.5 rounded-xl text-left text-[10px] flex items-center justify-between border transition cursor-pointer ${
+                          dev.id === activeAudioInputId || dev.is_default
+                            ? 'bg-emerald-500/18 border-emerald-400/40 text-emerald-200'
+                            : isDark
+                            ? 'bg-white/[0.04] border-white/10 hover:bg-white/10'
+                            : 'bg-white border-slate-200'
+                        }`}
+                      >
+                        <span className="truncate">🎙 {dev.name}</span>
+                        {(dev.id === activeAudioInputId || dev.is_default) && <Check size={11} className="text-emerald-400 shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : showMiracastModal ? (
               /* ==================== WIRELESS SECOND SCREEN (MIRACAST) MODAL ==================== */
@@ -1848,194 +2004,584 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                         </div>
                       </div>
 
-                      {/* ===== COMPACT 4x4 OS STYLE CIRCULAR QUICK TOGGLES GRID ===== */}
-                      <div className="grid grid-cols-4 gap-x-1.5 gap-y-2 pt-0.5">
-                        {(
-                          [
-                            {
-                              id: 'share',
-                              label: 'Luma Share',
-                              active: true,
-                              icon: <Share2 size={18} />,
-                              onClick: () => {
-                                onClose();
-                                onOpenWindow('oxygen_connect');
-                              },
+                      {/* ===== FLUORINE 1.8 CUSTOMIZABLE POINTER-DRAGGABLE QUICK GRID (MOUSE / STYLUS / TOUCH) ===== */}
+                      {(() => {
+                        type HubCircleDef = {
+                          id: string;
+                          label: string;
+                          cat: 'controls' | 'apps';
+                          active: boolean;
+                          icon: React.ReactNode;
+                          onClick: () => void;
+                        };
+                        const allCircleCatalog: HubCircleDef[] = [
+                          {
+                            id: 'per_app_audio',
+                            label: 'Per-App Звук',
+                            cat: 'controls',
+                            active: showPerAppAudioModal,
+                            icon: <Speaker size={18} />,
+                            onClick: () => {
+                              setActiveConnectivityPicker('none');
+                              setShowFeaturesModal(false);
+                              setShowMediaModal(false);
+                              setShowMiracastModal(false);
+                              setShowPerAppAudioModal(true);
                             },
-                            {
-                              id: 'mute',
-                              label: 'Без звука',
-                              active: muted || volume === 0,
-                              icon: muted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />,
-                              onClick: onToggleMute,
+                          },
+                          {
+                            id: 'share',
+                            label: 'Luma Share',
+                            cat: 'controls',
+                            active: true,
+                            icon: <Share2 size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('oxygen_connect');
                             },
-                            {
-                              id: 'rec',
-                              label: recording ? `${Math.floor(recSeconds / 60)}:${String(recSeconds % 60).padStart(2, '0')}` : 'Запись',
-                              active: recording,
-                              icon: recording ? <Square size={16} fill="currentColor" /> : <Video size={18} />,
-                              onClick: () => (recording ? void stopRecording() : void startRecording()),
+                          },
+                          {
+                            id: 'mute',
+                            label: 'Без звука',
+                            cat: 'controls',
+                            active: muted || volume === 0,
+                            icon: muted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />,
+                            onClick: onToggleMute,
+                          },
+                          {
+                            id: 'rec',
+                            label: recording ? `${Math.floor(recSeconds / 60)}:${String(recSeconds % 60).padStart(2, '0')}` : 'Запись',
+                            cat: 'controls',
+                            active: recording,
+                            icon: recording ? <Square size={16} fill="currentColor" /> : <Video size={18} />,
+                            onClick: () => (recording ? void stopRecording() : void startRecording()),
+                          },
+                          {
+                            id: 'shot',
+                            label: 'Скриншот',
+                            cat: 'controls',
+                            active: false,
+                            icon: <Camera size={18} />,
+                            onClick: () => void handleTakeScreenshot(),
+                          },
+                          {
+                            id: 'lens',
+                            label: 'Circle AI',
+                            cat: 'controls',
+                            active: false,
+                            icon: <ScanSearch size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenLens?.();
                             },
-                            {
-                              id: 'shot',
-                              label: 'Скриншот',
-                              active: false,
-                              icon: <Camera size={18} />,
-                              onClick: () => void handleTakeScreenshot(),
+                          },
+                          {
+                            id: 'eye',
+                            label: 'Защита глаз',
+                            cat: 'controls',
+                            active: nightLightLevel > 0,
+                            icon: <Moon size={18} />,
+                            onClick: () => onNightLightChange?.(nightLightLevel > 0 ? 0 : 35),
+                          },
+                          {
+                            id: 'miracast',
+                            label: '2-й экран',
+                            cat: 'controls',
+                            active: showMiracastModal,
+                            icon: <Cast size={18} />,
+                            onClick: () => {
+                              setActiveConnectivityPicker('none');
+                              setShowFeaturesModal(false);
+                              setShowMediaModal(false);
+                              setShowPerAppAudioModal(false);
+                              setShowMiracastModal(true);
                             },
-                            {
-                              id: 'lens',
-                              label: 'Circle AI',
-                              active: false,
-                              icon: <ScanSearch size={18} />,
-                              onClick: () => {
-                                onClose();
-                                onOpenLens?.();
-                              },
+                          },
+                          {
+                            id: 'game',
+                            label: 'Игровой',
+                            cat: 'controls',
+                            active: gamingBoost,
+                            icon: <Flame size={18} />,
+                            onClick: () => onToggleGamingBoost?.(),
+                          },
+                          {
+                            id: 'mic',
+                            label: 'Микрофон',
+                            cat: 'controls',
+                            active: !micMuted,
+                            icon: micMuted ? <MicOff size={18} /> : <Mic size={18} />,
+                            onClick: () => onToggleMicMute?.(),
+                          },
+                          {
+                            id: 'island',
+                            label: 'Остров',
+                            cat: 'controls',
+                            active: dynamicIslandEnabled,
+                            icon: <Sparkles size={18} />,
+                            onClick: onToggleIsland,
+                          },
+                          {
+                            id: 'ram_opt',
+                            label: 'Ускор. ОЗУ',
+                            cat: 'controls',
+                            active: false,
+                            icon: <Zap size={18} />,
+                            onClick: () => {
+                              fetch('/api/kernel/v2/optimize', { method: 'POST' })
+                                .then((r) => r.json())
+                                .then((d) =>
+                                  onAddNotification({
+                                    source: 'system',
+                                    sender: 'LumaCore 2.0',
+                                    title: 'Оптимизация ОЗУ',
+                                    body: d?.message || 'Память и кэш успешно очищены',
+                                    unread: true,
+                                  })
+                                )
+                                .catch(() => {});
                             },
-                            {
-                              id: 'eye',
-                              label: 'Защита глаз',
-                              active: nightLightLevel > 0,
-                              icon: <Moon size={18} />,
-                              onClick: () => onNightLightChange?.(nightLightLevel > 0 ? 0 : 35),
+                          },
+                          {
+                            id: 'shield',
+                            label: 'LumaShield',
+                            cat: 'controls',
+                            active: true,
+                            icon: <ShieldCheck size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('security');
                             },
-                            {
-                              id: 'photo',
-                              label: 'Фотостудия',
-                              active: false,
-                              icon: <ImageIcon size={18} />,
-                              onClick: () => {
-                                onClose();
-                                onOpenWindow('photo_editor');
-                              },
+                          },
+                          {
+                            id: 'vault',
+                            label: 'Сейф',
+                            cat: 'controls',
+                            active: false,
+                            icon: <Shield size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenVault();
                             },
-                            {
-                              id: 'miracast',
-                              label: '2-й экран',
-                              active: showMiracastModal,
-                              icon: <Cast size={18} />,
-                              onClick: () => {
-                                setActiveConnectivityPicker('none');
-                                setShowFeaturesModal(false);
-                                setShowMediaModal(false);
-                                setShowMiracastModal(true);
-                              },
+                          },
+                          {
+                            id: 'theme',
+                            label: isDark ? 'Тёмная' : 'Светлая',
+                            cat: 'controls',
+                            active: isDark,
+                            icon: <SunMoon size={18} />,
+                            onClick: onToggleTheme,
+                          },
+                          {
+                            id: 'dual',
+                            label: '2 Панели',
+                            cat: 'controls',
+                            active: dualTaskbarMode,
+                            icon: <Layers size={18} />,
+                            onClick: onToggleDualTaskbar,
+                          },
+                          {
+                            id: 'feats',
+                            label: 'Функции',
+                            cat: 'controls',
+                            active: showFeaturesModal,
+                            icon: <Sliders size={18} />,
+                            onClick: () => setShowFeaturesModal(true),
+                          },
+                          {
+                            id: 'mouse_dpi',
+                            label: 'DPI мыши',
+                            cat: 'controls',
+                            active: false,
+                            icon: <MousePointer2 size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenMouseSettings();
                             },
-                            {
-                              id: 'game',
-                              label: 'Игровой',
-                              active: gamingBoost,
-                              icon: <Flame size={18} />,
-                              onClick: () => onToggleGamingBoost?.(),
+                          },
+                          // ===== APPS LIBRARY FOR CONTROL CENTER =====
+                          {
+                            id: 'explorer',
+                            label: 'Проводник',
+                            cat: 'apps',
+                            active: false,
+                            icon: <FolderOpen size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('explorer');
                             },
-                            {
-                              id: 'mic',
-                              label: 'Микрофон',
-                              active: !micMuted,
-                              icon: micMuted ? <MicOff size={18} /> : <Mic size={18} />,
-                              onClick: () => onToggleMicMute?.(),
+                          },
+                          {
+                            id: 'office',
+                            label: 'Luma Word',
+                            cat: 'apps',
+                            active: false,
+                            icon: <FileText size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('office');
                             },
-                            {
-                              id: 'island',
-                              label: 'Остров',
-                              active: dynamicIslandEnabled,
-                              icon: <Sparkles size={18} />,
-                              onClick: onToggleIsland,
+                          },
+                          {
+                            id: 'photo',
+                            label: 'Фотостудия',
+                            cat: 'apps',
+                            active: false,
+                            icon: <ImageIcon size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('photo_editor');
                             },
-                            {
-                              id: 'shield',
-                              label: 'LumaShield',
-                              active: true,
-                              icon: <ShieldCheck size={18} />,
-                              onClick: () => {
-                                onClose();
-                                onOpenWindow('security');
-                              },
+                          },
+                          {
+                            id: 'powershell',
+                            label: 'PowerShell',
+                            cat: 'apps',
+                            active: false,
+                            icon: <Terminal size={18} />,
+                            onClick: () => {
+                              onClose();
+                              if (onLaunchPowerShell) {
+                                onLaunchPowerShell(false);
+                              } else {
+                                fetch('/api/kernel/shell/powershell', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ admin: false }),
+                                }).catch(() => {});
+                              }
                             },
-                            {
-                              id: 'vault',
-                              label: 'Сейф',
-                              active: false,
-                              icon: <Shield size={18} />,
-                              onClick: () => {
-                                onClose();
-                                onOpenVault();
-                              },
+                          },
+                          {
+                            id: 'terminal',
+                            label: 'Терминал',
+                            cat: 'apps',
+                            active: false,
+                            icon: <Terminal size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('terminal');
                             },
-                            {
-                              id: 'theme',
-                              label: isDark ? 'Тёмная' : 'Светлая',
-                              active: isDark,
-                              icon: <SunMoon size={18} />,
-                              onClick: onToggleTheme,
+                          },
+                          {
+                            id: 'calculator',
+                            label: 'Калькулятор',
+                            cat: 'apps',
+                            active: false,
+                            icon: <Calculator size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('calculator');
                             },
-                            {
-                              id: 'dual',
-                              label: '2 Панели',
-                              active: dualTaskbarMode,
-                              icon: <Layers size={18} />,
-                              onClick: onToggleDualTaskbar,
+                          },
+                          {
+                            id: 'taskmgr',
+                            label: 'Диспетчер',
+                            cat: 'apps',
+                            active: false,
+                            icon: <Activity size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('taskmgr');
                             },
-                            {
-                              id: 'feats',
-                              label: 'Функции',
-                              active: showFeaturesModal,
-                              icon: <Sliders size={18} />,
-                              onClick: () => setShowFeaturesModal(true),
+                          },
+                          {
+                            id: 'calendar',
+                            label: 'Календарь',
+                            cat: 'apps',
+                            active: false,
+                            icon: <Calendar size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('calendar');
                             },
-                          ] as const
-                        ).map((q) => (
-                          <button
-                            key={q.id}
-                            onClick={q.onClick}
-                            className="flex flex-col items-center gap-1 group cursor-pointer"
-                          >
-                            <span
-                              className={`w-[44px] h-[44px] rounded-full flex items-center justify-center border transition-all duration-150 ${
-                                q.active
-                                  ? 'bg-[#2563eb] border-blue-400/60 text-white shadow-[0_6px_18px_rgba(37,99,235,0.42)] group-hover:brightness-110'
-                                  : isDark
-                                  ? 'bg-[#222733]/85 border-white/10 text-white/85 group-hover:bg-[#2c3344]'
-                                  : 'bg-slate-200/90 border-slate-300 text-slate-800 group-hover:bg-slate-300'
-                              }`}
-                            >
-                              {q.icon}
-                            </span>
-                            <span className="text-[9.5px] font-medium leading-tight text-center truncate w-full opacity-85">
-                              {q.label}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
+                          },
+                          {
+                            id: 'clipboard',
+                            label: 'Буфер',
+                            cat: 'apps',
+                            active: false,
+                            icon: <Clipboard size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('clipboard');
+                            },
+                          },
+                          {
+                            id: 'ai',
+                            label: 'Luma AI',
+                            cat: 'apps',
+                            active: false,
+                            icon: <Sparkles size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('ai');
+                            },
+                          },
+                          {
+                            id: 'code_studio',
+                            label: 'Code Studio',
+                            cat: 'apps',
+                            active: false,
+                            icon: <Code2 size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('code_studio');
+                            },
+                          },
+                          {
+                            id: 'cut_studio',
+                            label: 'Cut Studio',
+                            cat: 'apps',
+                            active: false,
+                            icon: <Film size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('cut_studio');
+                            },
+                          },
+                          {
+                            id: 'gamepad',
+                            label: 'Геймпад',
+                            cat: 'apps',
+                            active: false,
+                            icon: <Gamepad2 size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('gamepad');
+                            },
+                          },
+                          {
+                            id: 'uninstaller',
+                            label: 'Очистка ПО',
+                            cat: 'apps',
+                            active: false,
+                            icon: <Cpu size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('uninstaller');
+                            },
+                          },
+                          {
+                            id: 'trash',
+                            label: `Корзина${trashCount > 0 ? ` (${trashCount})` : ''}`,
+                            cat: 'apps',
+                            active: false,
+                            icon: <Trash2 size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('trash');
+                            },
+                          },
+                          {
+                            id: 'scenarios',
+                            label: 'Сценарии',
+                            cat: 'apps',
+                            active: false,
+                            icon: <Zap size={18} />,
+                            onClick: () => {
+                              onClose();
+                              onOpenWindow('scenarios');
+                            },
+                          },
+                        ];
+
+                        const catalogMap = new Map(allCircleCatalog.map((c) => [c.id, c]));
+                        const visibleCircles = circleIds
+                          .map((id) => catalogMap.get(id))
+                          .filter((x): x is HubCircleDef => Boolean(x));
+                        const availableToAdd = allCircleCatalog.filter(
+                          (c) => !circleIds.includes(c.id) && (addCatalogTab === 'all' || c.cat === addCatalogTab)
+                        );
+
+                        return (
+                          <div className="space-y-2 pt-0.5">
+                            {editMode && (
+                              <div className={`px-2.5 py-1.5 rounded-xl border text-[10px] flex items-center justify-between gap-2 ${isDark ? 'bg-emerald-500/12 border-emerald-400/30 text-emerald-200' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}>
+                                <span>Тяните мышкой, стилусом или пальцем · «×» удаляет</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setCircleIds(DEFAULT_CIRCLE_IDS)}
+                                  className="shrink-0 px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 flex items-center gap-1 cursor-pointer"
+                                  title="Сбросить набор кнопок"
+                                >
+                                  <RotateCcw size={10} /> Сброс
+                                </button>
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-4 gap-x-1.5 gap-y-2">
+                              {visibleCircles.map((q, idx) => {
+                                const isDragging = dragCircleIdx === idx;
+                                const isOver = overCircleIdx === idx && dragCircleIdx !== null && dragCircleIdx !== idx;
+                                return (
+                                  <div
+                                    key={q.id}
+                                    data-hub-circle-idx={idx}
+                                    onPointerDown={(e) => {
+                                      if ((e.target as HTMLElement).closest('button[data-remove-circle]')) return;
+                                      dragCircleStartRef.current = { idx, x: e.clientX, y: e.clientY, moved: false };
+                                      if (editMode) {
+                                        try {
+                                          e.currentTarget.setPointerCapture(e.pointerId);
+                                        } catch {}
+                                        setDragCircleIdx(idx);
+                                        setOverCircleIdx(idx);
+                                      } else {
+                                        if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
+                                        longPressTimerRef.current = window.setTimeout(() => {
+                                          setEditMode(true);
+                                          setDragCircleIdx(idx);
+                                          setOverCircleIdx(idx);
+                                        }, 430);
+                                      }
+                                    }}
+                                    onPointerMove={(e) => {
+                                      const st = dragCircleStartRef.current;
+                                      if (!st) return;
+                                      const dist = Math.hypot(e.clientX - st.x, e.clientY - st.y);
+                                      if (dist > 8) {
+                                        st.moved = true;
+                                        if (longPressTimerRef.current) {
+                                          window.clearTimeout(longPressTimerRef.current);
+                                          longPressTimerRef.current = null;
+                                        }
+                                        if (dragCircleIdx === null && editMode) {
+                                          setDragCircleIdx(st.idx);
+                                        }
+                                      }
+                                      if (dragCircleIdx !== null) {
+                                        const el = document.elementFromPoint(e.clientX, e.clientY);
+                                        const targetWrap = el?.closest('[data-hub-circle-idx]') as HTMLElement | null;
+                                        if (targetWrap) {
+                                          const tIdx = Number(targetWrap.getAttribute('data-hub-circle-idx'));
+                                          if (!Number.isNaN(tIdx) && tIdx !== overCircleIdx) {
+                                            setOverCircleIdx(tIdx);
+                                          }
+                                        }
+                                      }
+                                    }}
+                                    onPointerUp={(e) => {
+                                      if (longPressTimerRef.current) {
+                                        window.clearTimeout(longPressTimerRef.current);
+                                        longPressTimerRef.current = null;
+                                      }
+                                      const st = dragCircleStartRef.current;
+                                      dragCircleStartRef.current = null;
+                                      try {
+                                        e.currentTarget.releasePointerCapture(e.pointerId);
+                                      } catch {}
+
+                                      if (dragCircleIdx !== null && overCircleIdx !== null && dragCircleIdx !== overCircleIdx) {
+                                        reorderCircle(dragCircleIdx, overCircleIdx);
+                                      } else if (!editMode && st && !st.moved) {
+                                        q.onClick();
+                                      }
+                                      setDragCircleIdx(null);
+                                      setOverCircleIdx(null);
+                                    }}
+                                    onPointerCancel={() => {
+                                      if (longPressTimerRef.current) {
+                                        window.clearTimeout(longPressTimerRef.current);
+                                        longPressTimerRef.current = null;
+                                      }
+                                      dragCircleStartRef.current = null;
+                                      setDragCircleIdx(null);
+                                      setOverCircleIdx(null);
+                                    }}
+                                    className={`relative flex flex-col items-center gap-1 group select-none transition-transform duration-150 ${
+                                      editMode ? 'touch-none cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                                    } ${isDragging ? 'scale-110 opacity-75 z-20' : ''} ${
+                                      isOver ? 'scale-105 ring-2 ring-emerald-400/70 rounded-2xl' : ''
+                                    }`}
+                                  >
+                                    {editMode && (
+                                      <button
+                                        type="button"
+                                        data-remove-circle="1"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          removeCircleId(q.id);
+                                        }}
+                                        title={`Удалить «${q.label}»`}
+                                        className="absolute -top-1 right-1 z-30 w-4 h-4 rounded-full bg-rose-500 hover:bg-rose-400 text-white flex items-center justify-center shadow cursor-pointer"
+                                      >
+                                        <X size={10} />
+                                      </button>
+                                    )}
+                                    <span
+                                      className={`w-[44px] h-[44px] rounded-full flex items-center justify-center border transition-all duration-150 ${
+                                        q.active
+                                          ? 'bg-emerald-600 border-emerald-400/60 text-white shadow-[0_6px_18px_rgba(16,185,129,0.42)] group-hover:brightness-110'
+                                          : isDark
+                                          ? 'bg-[#222733]/85 border-white/10 text-white/85 group-hover:bg-[#2c3344]'
+                                          : 'bg-slate-200/90 border-slate-300 text-slate-800 group-hover:bg-slate-300'
+                                      }`}
+                                    >
+                                      {q.icon}
+                                    </span>
+                                    <span className="text-[9.5px] font-medium leading-tight text-center truncate w-full opacity-85">
+                                      {q.label}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Edit Mode: Categorized Add Apps & Controls Picker */}
+                            {editMode && (
+                              <div className={`p-2.5 rounded-2xl border space-y-2 ${isDark ? 'bg-emerald-500/[0.07] border-emerald-400/25' : 'bg-emerald-50 border-emerald-200'}`}>
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="text-[10px] font-bold text-emerald-400">Добавить кнопки и приложения:</span>
+                                  <div className="flex items-center gap-1">
+                                    {(
+                                      [
+                                        ['all', 'Все'],
+                                        ['apps', 'Приложения'],
+                                        ['controls', 'Система'],
+                                      ] as const
+                                    ).map(([k, lbl]) => (
+                                      <button
+                                        key={k}
+                                        type="button"
+                                        onClick={() => setAddCatalogTab(k)}
+                                        className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold border cursor-pointer ${
+                                          addCatalogTab === k
+                                            ? 'bg-emerald-500/25 border-emerald-400/50 text-emerald-200'
+                                            : 'bg-white/[0.05] border-white/10 opacity-70'
+                                        }`}
+                                      >
+                                        {lbl}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                {availableToAdd.length === 0 ? (
+                                  <div className={`text-[10px] ${subText}`}>Все элементы этой категории уже на панели!</div>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1 max-h-36 overflow-y-auto">
+                                    {availableToAdd.map((item) => (
+                                      <button
+                                        key={item.id}
+                                        type="button"
+                                        onClick={() => addCircleId(item.id)}
+                                        className={`px-2 py-1 rounded-full text-[10px] font-medium border flex items-center gap-1 cursor-pointer transition ${
+                                          isDark ? 'bg-white/[0.06] border-white/10 hover:bg-emerald-500/20 hover:border-emerald-400/40' : 'bg-white border-slate-200 hover:bg-slate-100'
+                                        }`}
+                                      >
+                                        <Plus size={10} className="text-emerald-400" /> {item.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </>
                   );
                 })()}
-
-                {/* Editable Custom Extra Tiles Section when Edit Mode is toggled */}
-                {editMode && (
-                  <div className="space-y-2 pt-1">
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {tiles.map((t, idx) => renderTileCard(t, idx))}
-                    </div>
-                    <div className={`p-2.5 rounded-2xl border space-y-1.5 ${isDark ? 'bg-blue-500/[0.08] border-blue-400/25' : 'bg-blue-50 border-blue-200'}`}>
-                      <div className="text-[10px] font-semibold text-sky-400">Добавить дополнительные плитки:</div>
-                      <div className="flex flex-wrap gap-1">
-                        {ALL_HUB_TILES.filter((x) => !tiles.includes(x.id)).map((x) => (
-                          <button
-                            key={x.id}
-                            onClick={() => toggleTileInDeck(x.id)}
-                            className={`px-2 py-1 rounded-full text-[10px] font-medium border flex items-center gap-1 cursor-pointer ${
-                              isDark ? 'bg-white/[0.06] border-white/10 hover:bg-white/15' : 'bg-white border-slate-200 hover:bg-slate-100'
-                            }`}
-                          >
-                            <Plus size={10} /> {x.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {(captureBanner || recording) && (
                   <div className={`px-3 py-2 rounded-2xl border text-[10px] flex items-center justify-between gap-2 ${isDark ? 'bg-emerald-500/12 border-emerald-400/25 text-emerald-200' : 'bg-emerald-50 border-emerald-200 text-emerald-900'}`}>
@@ -2164,107 +2710,28 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                   </button>
                 </div>
 
-                {/* Luma OS 1.7 Oxygen: Per-App Audio & Media Hub (KDE Plasma / PipeWire style!) */}
-                <LumaPerAppAudioHub
-                  isDark={isDark}
-                  audioOutputs={audioOutputs as any}
-                  activeAudioOutputId={activeAudioOutputId}
-                  onSwitchAudioDevice={onSwitchAudioDevice}
-                  mediaSessions={mediaSessions}
-                  onMediaAction={onMediaAction}
-                />
-
-                {/* Audio Output / Input Switcher inside Hub */}
-                {(audioOutputs.length > 0 || audioInputs.length > 0) && (
-                  <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-white/[0.03] border-white/10' : 'bg-slate-50 border-slate-200'}`}>
-                    <button
-                      onClick={() => setAudioCollapsed((c) => !c)}
-                      className="w-full px-2.5 py-2 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider"
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <Speaker size={12} className="text-cyan-400" />
-                        Звук · Вывод и Микрофон ({audioOutputs.length + audioInputs.length})
-                      </span>
-                      <ChevronRight size={12} className={`transition-transform ${!audioCollapsed ? 'rotate-90' : ''}`} />
-                    </button>
-                    {!audioCollapsed && (
-                      <div className="px-2.5 pb-2.5 space-y-1.5">
-                        {audioOutputs.map((dev) => (
-                          <button
-                            key={dev.id}
-                            onClick={() => onSwitchAudioDevice?.(dev.id, 'output')}
-                            className={`w-full px-2 py-1.5 rounded-xl text-left text-[10px] flex items-center justify-between border transition cursor-pointer ${
-                              dev.id === activeAudioOutputId || dev.is_default
-                                ? 'bg-cyan-500/18 border-cyan-400/40 text-cyan-200'
-                                : isDark
-                                ? 'bg-white/[0.04] border-white/10 hover:bg-white/10'
-                                : 'bg-white border-slate-200'
-                            }`}
-                          >
-                            <span className="truncate">🔊 {dev.name}</span>
-                            {(dev.id === activeAudioOutputId || dev.is_default) && <Check size={11} className="text-cyan-400 shrink-0" />}
-                          </button>
-                        ))}
-                        {audioInputs.map((dev) => (
-                          <button
-                            key={dev.id}
-                            onClick={() => onSwitchAudioDevice?.(dev.id, 'input')}
-                            className={`w-full px-2 py-1.5 rounded-xl text-left text-[10px] flex items-center justify-between border transition cursor-pointer ${
-                              dev.id === activeAudioInputId || dev.is_default
-                                ? 'bg-emerald-500/18 border-emerald-400/40 text-emerald-200'
-                                : isDark
-                                ? 'bg-white/[0.04] border-white/10 hover:bg-white/10'
-                                : 'bg-white border-slate-200'
-                            }`}
-                          >
-                            <span className="truncate">🎙 {dev.name}</span>
-                            {(dev.id === activeAudioInputId || dev.is_default) && <Check size={11} className="text-emerald-400 shrink-0" />}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Collapsible Bluetooth / 2.4GHz Peripherals Section */}
-                {enabledFeatures.wirelessScanner && (
-                  <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-white/[0.03] border-white/10' : 'bg-slate-50 border-slate-200'}`}>
-                    <div className="px-2.5 py-2 flex items-center justify-between gap-2">
-                      <button onClick={() => setBtCollapsed((c) => !c)} className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider flex-1 text-left">
-                        <ChevronRight size={12} className={`transition-transform ${!btCollapsed ? 'rotate-90' : ''}`} />
-                        <span>Устройства BT / 2.4GHz ({wirelessDevices.length})</span>
-                      </button>
-                      <div className="flex items-center gap-1.5">
-                        <button onClick={onRefreshWireless} className={`p-1 rounded-lg ${subText} hover:text-cyan-400`} title="Опросить заряд мышек IO / Ajazz / Ardor / BT"><RefreshCw size={11} /></button>
-                        <button onClick={() => setBtCollapsed((c) => !c)} className={`text-[10px] px-2 py-0.5 rounded-lg border ${isDark ? 'bg-white/[0.06] border-white/10 text-white/75' : 'bg-white border-slate-200 text-slate-600'}`}>
-                          {btCollapsed ? 'Показать' : 'Скрыть'}
-                        </button>
-                      </div>
-                    </div>
-                    {!btCollapsed && (
-                      <div className="px-2.5 pb-2.5 space-y-1.5">
-                        {wirelessDevices.length === 0 ? (
-                          <div className={`text-[10px] py-1 ${subText}`}>Нет обнаруженных беспроводных устройств</div>
-                        ) : (
-                          wirelessDevices.map((dev, i) => (
-                            <div key={`${dev.name}-${i}`} className={`px-2 py-1.5 rounded-xl flex items-center justify-between gap-2 text-[11px] ${isDark ? 'bg-white/[0.04]' : 'bg-white border border-slate-200/70'}`}>
-                              <div className="flex items-center gap-2 min-w-0">
-                                {renderWirelessIcon(dev.device_type)}
-                                <div className="min-w-0">
-                                  <div className="font-medium truncate leading-tight">{dev.name}</div>
-                                  <div className={`text-[9px] truncate ${subText}`}>{dev.transport || '2.4GHz / BT'}</div>
-                                </div>
-                              </div>
-                              <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${dev.battery_percent >= 0 ? (dev.battery_percent <= 20 ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300') : 'bg-cyan-500/15 text-cyan-300'}`}>
-                                {dev.battery_percent >= 0 ? `${dev.battery_percent}%` : 'Подкл.'}
-                              </span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {/* Compact Per-App Audio Opener Button (replaces bulky Per-App Audio & BT blocks from main body!) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveConnectivityPicker('none');
+                    setShowFeaturesModal(false);
+                    setShowMediaModal(false);
+                    setShowMiracastModal(false);
+                    setShowPerAppAudioModal(true);
+                  }}
+                  className={`w-full px-3 py-2 rounded-2xl border flex items-center justify-between gap-2 text-left transition cursor-pointer ${
+                    isDark
+                      ? 'bg-white/[0.04] border-white/10 hover:bg-cyan-500/12 hover:border-cyan-400/35 text-white/90'
+                      : 'bg-slate-50 border-slate-200 hover:bg-cyan-50 hover:border-cyan-300 text-slate-800'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 text-[11px] font-bold">
+                    <Speaker size={13} className="text-cyan-400" />
+                    Per-App Audio · Настройки звука
+                  </span>
+                  <ChevronRight size={13} className="opacity-60" />
+                </button>
               </>
             )}
           </div>
@@ -2272,7 +2739,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
 
         {/* LOWER HALF: Collapsible Unified Notification Center (Incoming Messenger Messages + OS) */}
         <div
-          className={`pointer-events-auto rounded-3xl border backdrop-blur-2xl flex flex-col overflow-hidden transition-all duration-200 luma-anim-harmony7 ${glassSurface} ${
+          className={`pointer-events-auto rounded-3xl border backdrop-blur-2xl flex flex-col overflow-hidden transition-all duration-200 luma-anim-harmony7 luma-optical-glass luma-glass-edge ${glassSurface} ${
             notifCollapsed ? 'shrink-0' : 'flex-1 min-h-[190px]'
           }`}
         >

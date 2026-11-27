@@ -16,7 +16,7 @@ import {
   Swords,
   Magnet,
 } from 'lucide-react';
-import oxygenHeroImg from '../assets/luma-oxygen-hero.jpg';
+import fluorineHeroImg from '../assets/luma-fluorine-hero.jpg';
 import { LumaOxygenPulseGame } from './LumaOxygenPulseGame';
 
 interface HeroCardProps {
@@ -26,11 +26,11 @@ interface HeroCardProps {
 }
 
 /**
- * Flagship sculptural 2.5D Oxygen O-8 luminous cryo-glass hero banner for Luma OS 1.7.5 (Oxygen · O-8).
+ * Flagship sculptural 2.5D Fluorine F-9 luminous cryo-emerald glass hero banner for Luma OS 1.8 (Fluorine · F-9).
  */
 export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
   onTriggerEasterEgg,
-  kernelVersion = '1.6.5',
+  kernelVersion = '2.0.0',
   securityVersion = '3.2',
 }) => {
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -72,7 +72,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
             handleClick();
           }
         }}
-        className="group relative block w-full h-56 sm:h-64 rounded-3xl overflow-hidden border border-cyan-300/35 shadow-xl cursor-pointer text-left select-none active:scale-[0.99] focus:outline-none"
+        className="group relative block w-full h-56 sm:h-64 rounded-3xl overflow-hidden border border-emerald-300/35 shadow-xl cursor-pointer text-left select-none active:scale-[0.99] focus:outline-none luma-glass-edge"
         style={{
           isolation: 'isolate',
           transformStyle: 'flat',
@@ -82,16 +82,16 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
           transition: tilt.hovering
             ? 'transform 0.14s ease-out, box-shadow 0.25s ease'
             : 'transform 0.52s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease',
-          backgroundColor: '#040a18',
-          backgroundImage: `url("${oxygenHeroImg}")`,
+          backgroundColor: '#041214',
+          backgroundImage: `url("${fluorineHeroImg}")`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
-        title="Нажмите, чтобы выбрать мини-игру: новая «Oxygen Pulse 2.5D» или старая классика!"
+        title="Нажмите, чтобы открыть встроенные мини-игры Luma OS 1.8!"
       >
         <img
-          src={oxygenHeroImg}
-          alt="Luma OS 1.7.5 Oxygen O-8 2.5D QHD"
+          src={fluorineHeroImg}
+          alt="Luma OS 1.8 Fluorine F-9 2.5D QHD"
           loading="eager"
           decoding="sync"
           draggable={false}
@@ -109,20 +109,20 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
         <div
           className="pointer-events-none absolute inset-0 transition-opacity duration-200 opacity-65 group-hover:opacity-100"
           style={{
-            background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.22) 0%, rgba(6,182,212,0.26) 28%, rgba(56,189,248,0.14) 48%, transparent 66%)`,
+            background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.24) 0%, rgba(16,185,129,0.28) 28%, rgba(6,182,212,0.16) 48%, transparent 66%)`,
           }}
         />
 
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#040710]/28 via-transparent to-[#03050c]/74" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#030c0e]/30 via-transparent to-[#02080a]/76" />
 
         <div className="relative z-10 flex items-center justify-between px-5 pt-4">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 border border-cyan-300/35 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 border border-emerald-300/35 text-[10px] font-mono uppercase tracking-[0.18em] text-white/95">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             LUMACORE {kernelVersion} · SHIELD {securityVersion}
           </span>
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 border border-cyan-300/35 text-[10px] font-mono text-cyan-100 group-hover:bg-white/20 transition">
-            <Sparkles className="w-3 h-3 text-cyan-300" />
-            Oxygen · 2.5D QHD · Игры
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 border border-emerald-300/35 text-[10px] font-mono text-emerald-100 group-hover:bg-white/20 transition">
+            <Sparkles className="w-3 h-3 text-emerald-300" />
+            Fluorine · 2.5D QHD · Игры
           </span>
         </div>
 
@@ -136,25 +136,25 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
           <div
             className="text-5xl sm:text-6xl font-black tracking-tight leading-none select-none transition-transform duration-300 group-hover:scale-105"
             style={{
-              backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #a5f3fc 52%, #06b6d4 100%)',
+              backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #a7f3d0 52%, #10b981 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
-              filter: 'drop-shadow(0 6px 26px rgba(6, 182, 212, 0.6))',
+              filter: 'drop-shadow(0 6px 26px rgba(16, 185, 129, 0.62))',
             }}
           >
-            1.7.5
+            1.8
           </div>
           <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">
             LumaOS
           </div>
-          <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-cyan-100/95">
-            <span>OXYGEN</span>
+          <div className="mt-1 inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.34em] text-emerald-100/95">
+            <span>FLUORINE</span>
             <span className="opacity-50">·</span>
-            <span className="text-cyan-200">O-8</span>
+            <span className="text-cyan-200">F-9</span>
           </div>
         </div>
 
-        {ripple && <div className="pointer-events-none absolute inset-0 bg-cyan-200/20 animate-ping rounded-3xl" />}
+        {ripple && <div className="pointer-events-none absolute inset-0 bg-emerald-200/20 animate-ping rounded-3xl" />}
       </div>
     </div>
   );
@@ -165,6 +165,7 @@ export const LumaBerylliumHeroCard = LumaHeliumHeroCard;
 export const LumaBoronHeroCard = LumaHeliumHeroCard;
 export const LumaNitrogenHeroCard = LumaHeliumHeroCard;
 export const LumaOxygenHeroCard = LumaHeliumHeroCard;
+export const LumaFluorineHeroCard = LumaHeliumHeroCard;
 
 // ==================== MINI-GAME ENGINE: OXYGEN PULSE 2.5D (NEW) + VANGUARD / ORBIT (CLASSIC) ====================
 
@@ -1610,14 +1611,14 @@ export const LumaHeliumEasterEggModal: React.FC<EasterEggModalProps> = ({ open, 
         <div
           className="relative flex flex-col items-center justify-center w-full max-w-2xl h-[460px] rounded-3xl overflow-hidden border border-emerald-300/20 bg-[#031216] shadow-2xl"
           style={{
-            backgroundImage: `url("${oxygenHeroImg}")`,
+            backgroundImage: `url("${fluorineHeroImg}")`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}
         >
           <img
-            src={oxygenHeroImg}
-            alt="Oxygen Awakening"
+            src={fluorineHeroImg}
+            alt="Fluorine Awakening"
             loading="eager"
             decoding="sync"
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000"

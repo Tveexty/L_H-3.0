@@ -510,7 +510,7 @@ export const DexWindow: React.FC<DexWindowProps> = React.memo(({
         style={style}
         onPointerDown={onFocus}
         onContextMenu={(e) => e.stopPropagation()}
-        className={`luma-animate-in flex flex-col overflow-hidden select-none ${
+        className={`luma-animate-in luma-optical-glass luma-glass-edge flex flex-col overflow-hidden select-none ${
           isInteracting ? '' : 'luma-win-spring-motion'
         } ${winSurface} ${
           alwaysOnTop ? 'ring-1 ring-amber-400/65 shadow-[0_24px_80px_rgba(245,158,11,0.22)]' : ''

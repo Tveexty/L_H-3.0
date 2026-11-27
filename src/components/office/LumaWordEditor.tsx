@@ -80,6 +80,7 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
   comments,
   onChangeComments,
   onNotify,
+  onExport,
   tellMeCommand,
 }) => {
   const [tab, setTab] = useState<WordRibbonTab>('home');
@@ -98,13 +99,19 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
   const [footerText, setFooterText] = useState('');
   const [showPageNum, setShowPageNum] = useState(true);
   const [showRuler, setShowRuler] = useState(true);
-  const [showNavPane, setShowNavPane] = useState(false);
+  const [showNavPane, setShowNavPane] = useState(true);
   const [showComments, setShowComments] = useState(false);
   const [showNonPrinting, setShowNonPrinting] = useState(false);
   const [readMode, setReadMode] = useState(false);
+  const [viewMode, setViewMode] = useState<'print' | 'read' | 'web'>('print');
+  const [focusMode, setFocusMode] = useState(false);
+  const [showStatsModal, setShowStatsModal] = useState(false);
   const [trackChanges, setTrackChanges] = useState(false);
   const [formatPainterStyle, setFormatPainterStyle] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
+  const [miniBar, setMiniBar] = useState<{ x: number; y: number } | null>(null);
+  const [dictating, setDictating] = useState(false);
+  const speechRecRef = useRef<any>(null);
 
   // Popovers & bars
   const [tableGridOpen, setTableGridOpen] = useState(false);
@@ -120,6 +127,37 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
   const editorRef = useRef<HTMLDivElement | null>(null);
   const imgInputRef = useRef<HTMLInputElement | null>(null);
   const lastExternalHtmlRef = useRef(docHtml);
+
+  const toggleDictation = () => {
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      onNotify?.('Word · Диктовка', 'Голосовой ввод недоступен в текущей среде', 'warn');
+      return;
+    }
+    if (dictating && speechRecRef.current) {
+      try { speechRecRef.current.stop(); } catch {}
+      setDictating(false);
+      return;
+    }
+    try {
+      const rec = new SpeechRec();
+      rec.lang = 'ru-RU';
+      rec.continuous = true;
+      rec.interimResults = false;
+      rec.onresult = (ev: any) => {
+        const res = ev.results?.[ev.results.length - 1]?.[0]?.transcript;
+        if (res) exec('insertText', `${res} `);
+      };
+      rec.onend = () => setDictating(false);
+      rec.onerror = () => setDictating(false);
+      speechRecRef.current = rec;
+      rec.start();
+      setDictating(true);
+      onNotify?.('Word · Диктовка', 'Говорите — текст будет печататься прямо на лист', 'ok');
+    } catch {
+      setDictating(false);
+    }
+  };
 
   // Sync external html loads (file import / template switch) cleanly into contentEditable without cursor jumping
   useEffect(() => {
@@ -249,13 +287,29 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
   };
 
   const handleEditorMouseUp = () => {
-    if (!formatPainterStyle) return;
     const sel = window.getSelection();
-    if (sel && !sel.isCollapsed) {
-      const txt = sel.toString();
-      insertHtml(`<span style="${formatPainterStyle}">${txt}</span>`);
-      setFormatPainterStyle(null);
+    if (formatPainterStyle) {
+      if (sel && !sel.isCollapsed) {
+        const txt = sel.toString();
+        insertHtml(`<span style="${formatPainterStyle}">${txt}</span>`);
+        setFormatPainterStyle(null);
+      }
+      setMiniBar(null);
+      return;
     }
+    if (!readMode && sel && !sel.isCollapsed && sel.toString().trim().length > 0 && editorRef.current?.contains(sel.anchorNode)) {
+      try {
+        const rect = sel.getRangeAt(0).getBoundingClientRect();
+        if (rect.width > 0) {
+          setMiniBar({
+            x: Math.max(24, Math.min(window.innerWidth - 280, rect.left + rect.width / 2 - 120)),
+            y: Math.max(54, rect.top - 44),
+          });
+          return;
+        }
+      } catch {}
+    }
+    setMiniBar(null);
   };
 
   const runFindReplace = (replaceAll: boolean) => {
@@ -395,13 +449,15 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
     const words = txt ? txt.split(/\s+/).filter(Boolean).length : 0;
     const chars = txt.length;
     const charsNoSpace = txt.replace(/\s/g, '').length;
+    const paragraphs = Math.max(1, tmp.querySelectorAll('p, h1, h2, h3, li, blockquote').length);
+    const readMin = Math.max(1, Math.ceil(words / 200));
     const pages = Math.max(1, Math.ceil(words / 380));
     const headings = Array.from(tmp.querySelectorAll('h1, h2, h3')).map((h, i) => ({
       id: i,
       level: Number(h.tagName[1]),
       text: h.textContent?.trim() || `Заголовок ${i + 1}`,
     }));
-    return { words, chars, charsNoSpace, pages, headings };
+    return { words, chars, charsNoSpace, paragraphs, readMin, pages, headings };
   }, [docHtml]);
 
   const ribbonBg = officeDark ? 'bg-[#252526] border-white/10 text-zinc-100' : 'bg-[#F3F2F1] border-[#D1D1D1] text-[#242424]';
@@ -409,7 +465,9 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
   const canvasBg = officeDark ? 'bg-[#161618]' : 'bg-[#E6E6E6]';
 
   const pageWidthPx =
-    orientation === 'landscape'
+    viewMode === 'web'
+      ? 980
+      : orientation === 'landscape'
       ? paperSize === 'A3' ? 1120 : 980
       : paperSize === 'A3' ? 920 : paperSize === 'A5' ? 560 : 794;
   const paddingPx = margins === 'narrow' ? 32 : margins === 'wide' ? 92 : 64;
@@ -425,10 +483,11 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
   ];
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 select-none">
+    <div className="flex flex-col flex-1 min-h-0 select-none relative">
       <input ref={imgInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
 
       {/* AUTHENTIC MS WORD RIBBON TABS */}
+      {!focusMode && (
       <div className={`flex items-center gap-0.5 px-3 pt-1 border-b text-xs overflow-x-auto ${tabBarBg}`}>
         {TABS.map((t) => {
           const active = tab === t.id;
@@ -452,14 +511,30 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
             </button>
           );
         })}
+        <button
+          type="button"
+          onClick={toggleDictation}
+          title="Голосовая диктовка Microsoft Word"
+          className={`ml-auto px-2.5 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition ${
+            dictating
+              ? 'bg-rose-600 text-white animate-pulse'
+              : officeDark
+              ? 'hover:bg-white/10 text-sky-300'
+              : 'hover:bg-[#EFF6FF] text-[#185ABD]'
+          }`}
+        >
+          <Volume2 className="w-3.5 h-3.5" /> {dictating ? 'Диктовка...' : 'Диктовка'}
+        </button>
         {formatPainterStyle && (
-          <span className="ml-auto px-2 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-300 text-[10px] font-bold animate-pulse">
+          <span className="ml-2 px-2 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-300 text-[10px] font-bold animate-pulse">
             Кисть формата активна — выделите текст
           </span>
         )}
       </div>
+      )}
 
       {/* AUTHENTIC MS WORD RIBBON GROUPS */}
+      {!focusMode && (
       <div className={`relative flex items-stretch overflow-x-auto border-b px-1.5 py-0.5 ${ribbonBg}`}>
         {tab === 'home' && (
           <>
@@ -1006,7 +1081,50 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
         {tab === 'view' && (
           <>
             <RibbonGroup label="Режимы просмотра" isDark={officeDark}>
-              <RibbonBigBtn icon={<BookOpen className="w-5 h-5 text-[#185ABD]" />} label="Режим чтения" active={readMode} accent={WORD_BLUE} isDark={officeDark} onClick={() => setReadMode((v) => !v)} />
+              <RibbonBigBtn
+                icon={<BookOpen className="w-5 h-5 text-[#185ABD]" />}
+                label="Разметка A4"
+                active={!readMode && viewMode === 'print'}
+                accent={WORD_BLUE}
+                isDark={officeDark}
+                onClick={() => {
+                  setReadMode(false);
+                  setViewMode('print');
+                }}
+              />
+              <RibbonBigBtn
+                icon={<BookOpen className="w-5 h-5 text-sky-600" />}
+                label="Режим чтения"
+                active={readMode}
+                accent={WORD_BLUE}
+                isDark={officeDark}
+                onClick={() => {
+                  setReadMode((v) => {
+                    const next = !v;
+                    setViewMode(next ? 'read' : 'print');
+                    return next;
+                  });
+                }}
+              />
+              <RibbonBigBtn
+                icon={<Columns className="w-5 h-5 text-emerald-600" />}
+                label="Веб-документ"
+                active={!readMode && viewMode === 'web'}
+                accent={WORD_BLUE}
+                isDark={officeDark}
+                onClick={() => {
+                  setReadMode(false);
+                  setViewMode('web');
+                }}
+              />
+              <RibbonBigBtn
+                icon={<Sparkles className="w-5 h-5 text-indigo-500" />}
+                label="Фокус"
+                active={focusMode}
+                accent={WORD_BLUE}
+                isDark={officeDark}
+                onClick={() => setFocusMode((v) => !v)}
+              />
               <RibbonBigBtn icon={<Printer className="w-5 h-5" />} label="Печать" isDark={officeDark} onClick={() => window.print()} />
             </RibbonGroup>
             <RibbonGroup label="Отображение" isDark={officeDark}>
@@ -1021,6 +1139,19 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
           </>
         )}
       </div>
+      )}
+      {focusMode && (
+        <div className="px-3 py-1 bg-[#185ABD] text-white text-[11px] flex items-center justify-between">
+          <span className="font-semibold">Режим фокусировки Word — чистый лист без отвлечений</span>
+          <button
+            type="button"
+            onClick={() => setFocusMode(false)}
+            className="px-2.5 py-0.5 rounded bg-white/15 hover:bg-white/25 font-semibold cursor-pointer"
+          >
+            Показать ленту (Esc)
+          </button>
+        </div>
+      )}
 
       {/* INTERACTIVE 10×8 TABLE PICKER POPOVER (JUST LIKE MS WORD!) */}
       {tableGridOpen && (
@@ -1307,7 +1438,7 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
                       style={{ top: `${pageBottomTop}px`, left: `${paddingPx}px`, right: `${paddingPx}px` }}
                       className="pointer-events-none absolute flex items-center justify-between text-[10px] font-mono text-slate-400/90 border-t border-slate-300/60 pt-1 select-none"
                     >
-                      <span>{footerText || 'Luma Word 1.6.7'}</span>
+                      <span>{footerText || 'Luma Word 1.8'}</span>
                       {showPageNum && (
                         <span>
                           Страница {idx + 1} из {pageCount}
@@ -1334,13 +1465,49 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
                   </div>
                 )}
 
-                {/* Editable Document Body (supports huge texts + Ctrl+Enter manual page breaks!) */}
+                {/* Editable Document Body (full MS Word shortcuts + Ctrl+Enter manual page breaks + Tab indent!) */}
                 <div
                   ref={editorRef}
                   contentEditable={!readMode}
                   suppressContentEditableWarning
                   onInput={syncFromDom}
                   onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      if (focusMode) setFocusMode(false);
+                      setMiniBar(null);
+                      return;
+                    }
+                    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'f' || e.key.toLowerCase() === 'h')) {
+                      e.preventDefault();
+                      setFindOpen(true);
+                      return;
+                    }
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                      e.preventDefault();
+                      if (onExport) {
+                        onExport('docx');
+                      } else {
+                        onNotify?.('Luma Word', 'Документ сохранён локально', 'ok');
+                      }
+                      return;
+                    }
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+                      e.preventDefault();
+                      window.print();
+                      return;
+                    }
+                    if (!readMode && (e.ctrlKey || e.metaKey)) {
+                      const k = e.key.toLowerCase();
+                      if (k === 'e') { e.preventDefault(); exec('justifyCenter'); return; }
+                      if (k === 'l') { e.preventDefault(); exec('justifyLeft'); return; }
+                      if (k === 'r') { e.preventDefault(); exec('justifyRight'); return; }
+                      if (k === 'j') { e.preventDefault(); exec('justifyFull'); return; }
+                    }
+                    if (e.key === 'Tab' && !readMode) {
+                      e.preventDefault();
+                      exec('insertHTML', '&nbsp;&nbsp;&nbsp;&nbsp;');
+                      return;
+                    }
                     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !readMode) {
                       e.preventDefault();
                       document.execCommand(
@@ -1441,28 +1608,137 @@ export const LumaWordEditor: React.FC<LumaWordEditorProps> = ({
         )}
       </div>
 
-      {/* AUTHENTIC LUMA WORD BLUE STATUS BAR */}
-      <div className="h-6 px-3 bg-[#185ABD] text-white text-[11px] flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-4">
-          <span>Страниц: {stats.pages} (A4)</span>
-          <span>Слов: {stats.words}</span>
-          <span className="hidden sm:inline">Знаков: {stats.chars} ({stats.charsNoSpace} без проб.)</span>
-          <span className="hidden md:inline">Ctrl+Enter — разрыв страницы</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => setReadMode((v) => !v)} className="hover:underline cursor-pointer">
-            {readMode ? 'Режим чтения' : 'Разметка страниц A4'}
+      {/* AUTHENTIC MS WORD FLOATING SELECTION MINI-TOOLBAR */}
+      {miniBar && !readMode && (
+        <div
+          style={{ left: `${miniBar.x}px`, top: `${miniBar.y}px` }}
+          onMouseDown={(e) => e.preventDefault()}
+          className={`fixed z-[1150] flex items-center gap-0.5 px-1.5 py-1 rounded-lg border shadow-xl ${
+            officeDark ? 'bg-[#252526] border-white/15 text-white' : 'bg-white border-[#C8C6C4] text-slate-800'
+          }`}
+        >
+          <button type="button" onClick={() => exec('bold')} className="p-1.5 rounded hover:bg-[#185ABD]/15 cursor-pointer" title="Жирный (Ctrl+B)"><Bold className="w-3.5 h-3.5" /></button>
+          <button type="button" onClick={() => exec('italic')} className="p-1.5 rounded hover:bg-[#185ABD]/15 cursor-pointer" title="Курсив (Ctrl+I)"><Italic className="w-3.5 h-3.5" /></button>
+          <button type="button" onClick={() => exec('underline')} className="p-1.5 rounded hover:bg-[#185ABD]/15 cursor-pointer" title="Подчёркнутый (Ctrl+U)"><Underline className="w-3.5 h-3.5" /></button>
+          <button type="button" onClick={() => exec('hiliteColor', '#FEF08A')} className="p-1.5 rounded hover:bg-[#185ABD]/15 cursor-pointer" title="Выделить маркером"><Highlighter className="w-3.5 h-3.5 text-amber-500" /></button>
+          <button type="button" onClick={() => exec('foreColor', '#185ABD')} className="px-1.5 py-0.5 rounded hover:bg-[#185ABD]/15 text-xs font-bold text-[#185ABD] cursor-pointer" title="Синий Word">A</button>
+          <button type="button" onClick={() => exec('foreColor', '#C00000')} className="px-1.5 py-0.5 rounded hover:bg-[#185ABD]/15 text-xs font-bold text-[#C00000] cursor-pointer" title="Красный">A</button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowComments(true);
+              setMiniBar(null);
+            }}
+            className="p-1.5 rounded hover:bg-[#185ABD]/15 cursor-pointer"
+            title="Добавить примечание"
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-[#185ABD]" />
           </button>
-          <span>|</span>
+          <button type="button" onClick={() => setMiniBar(null)} className="p-1 rounded hover:bg-black/10 cursor-pointer"><X className="w-3 h-3" /></button>
+        </div>
+      )}
+
+      {/* MS WORD CLICKABLE STATISTICS DIALOG */}
+      {showStatsModal && (
+        <div
+          className="absolute inset-0 z-[1140] bg-black/35 flex items-center justify-center p-4"
+          onClick={() => setShowStatsModal(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`w-72 rounded-xl border shadow-2xl p-4 text-xs space-y-2.5 ${
+              officeDark ? 'bg-[#252526] border-white/15 text-white' : 'bg-white border-[#C8C6C4] text-slate-900'
+            }`}
+          >
+            <div className="flex items-center justify-between border-b pb-2 border-current/10">
+              <span className="font-bold text-[#185ABD] text-sm">Статистика документа</span>
+              <button type="button" onClick={() => setShowStatsModal(false)} className="cursor-pointer"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-1.5 font-mono">
+              <div className="flex justify-between"><span className="opacity-70">Страниц (A4):</span><span className="font-bold">{stats.pages}</span></div>
+              <div className="flex justify-between"><span className="opacity-70">Слов:</span><span className="font-bold">{stats.words}</span></div>
+              <div className="flex justify-between"><span className="opacity-70">Знаков (без пробелов):</span><span className="font-bold">{stats.charsNoSpace}</span></div>
+              <div className="flex justify-between"><span className="opacity-70">Знаков (с пробелами):</span><span className="font-bold">{stats.chars}</span></div>
+              <div className="flex justify-between"><span className="opacity-70">Абзацев:</span><span className="font-bold">{stats.paragraphs}</span></div>
+              <div className="flex justify-between"><span className="opacity-70">Время чтения:</span><span className="font-bold">~{stats.readMin} мин</span></div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowStatsModal(false)}
+              className="w-full py-1.5 rounded-lg bg-[#185ABD] text-white font-semibold cursor-pointer"
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* AUTHENTIC MICROSOFT WORD BLUE STATUS BAR */}
+      <div className="h-7 px-3 bg-[#185ABD] text-white text-[11px] flex items-center justify-between shrink-0 gap-2">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="whitespace-nowrap">Страница 1 из {stats.pages}</span>
+          <button
+            type="button"
+            onClick={() => setShowStatsModal(true)}
+            title="Нажмите, чтобы открыть полную статистику Word"
+            className="hover:bg-white/15 px-1.5 py-0.5 rounded cursor-pointer whitespace-nowrap font-medium"
+          >
+            Слов: {stats.words}
+          </button>
+          <span className="hidden md:inline opacity-85 whitespace-nowrap">Русский (Россия)</span>
+          <span className="hidden lg:inline opacity-75 whitespace-nowrap">Ctrl+S · Ctrl+F · Ctrl+Enter</span>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setFocusMode((v) => !v)}
+            className={`px-1.5 py-0.5 rounded cursor-pointer ${focusMode ? 'bg-white/25 font-bold' : 'hover:bg-white/15'}`}
+            title="Режим фокусировки"
+          >
+            Фокус
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setReadMode(true);
+              setViewMode('read');
+            }}
+            className={`px-1.5 py-0.5 rounded cursor-pointer ${readMode ? 'bg-white/25 font-bold' : 'hover:bg-white/15'}`}
+          >
+            Чтение
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setReadMode(false);
+              setViewMode('print');
+            }}
+            className={`px-1.5 py-0.5 rounded cursor-pointer ${!readMode && viewMode === 'print' ? 'bg-white/25 font-bold' : 'hover:bg-white/15'}`}
+          >
+            Разметка
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setReadMode(false);
+              setViewMode('web');
+            }}
+            className={`px-1.5 py-0.5 rounded cursor-pointer hidden sm:inline ${!readMode && viewMode === 'web' ? 'bg-white/25 font-bold' : 'hover:bg-white/15'}`}
+          >
+            Веб
+          </button>
+          <span className="opacity-40">|</span>
+          <button type="button" onClick={() => setZoom((z) => Math.max(50, z - 10))} className="px-1 hover:bg-white/15 rounded cursor-pointer">−</button>
           <input
             type="range"
-            min={60}
-            max={160}
+            min={50}
+            max={200}
             step={10}
             value={zoom}
             onChange={(e) => setZoom(Number(e.target.value))}
-            className="w-20 accent-white cursor-pointer"
+            className="w-16 accent-white cursor-pointer"
           />
+          <button type="button" onClick={() => setZoom((z) => Math.min(200, z + 10))} className="px-1 hover:bg-white/15 rounded cursor-pointer">+</button>
           <span className="font-mono w-9 text-right">{zoom}%</span>
         </div>
       </div>

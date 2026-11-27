@@ -179,7 +179,7 @@ export const LumaNovaPanel: React.FC<LumaNovaPanelProps> = ({
                 N
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-extrabold leading-tight truncate">Luma Nova · 1.7.5</div>
+                <div className="text-xs font-extrabold leading-tight truncate">Luma Nova · 1.8</div>
                 <div className="text-[10px] opacity-60 font-mono truncate">Пуск · Окна · Столы · Питание</div>
               </div>
             </div>
