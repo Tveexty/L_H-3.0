@@ -161,7 +161,7 @@ export const LumaSuperDeviceWindow: React.FC<LumaSuperDeviceWindowProps> = ({
         body: JSON.stringify({ path: d.path }),
       });
       if (sr.ok) {
-        onPushToast('Суперустройство', 'Файл отправлен с полноэкранной волной HarmonyOS!', 'success');
+        onPushToast('Суперустройство', 'Файл отправлен с полноэкранной волной Стиль ОС!', 'success');
       }
     } catch {
       onPushToast('Суперустройство', 'Откройте Oxygen Connect для отправки файла', 'info');
@@ -195,14 +195,14 @@ export const LumaSuperDeviceWindow: React.FC<LumaSuperDeviceWindowProps> = ({
 
   return (
     <div className={`h-full overflow-y-auto p-4 sm:p-5 space-y-4 select-none ${isDark ? 'bg-[#080d18] text-white' : 'bg-slate-50 text-slate-900'}`}>
-      {/* Top HarmonyOS SuperDevice Header */}
+      {/* Top Стиль ОС SuperDevice Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/20 border border-blue-400/35 text-blue-300 text-[10px] font-mono font-bold uppercase tracking-wider">
             <Radio className="w-3 h-3 animate-pulse" /> Экосистема Суперустройство · {isPro ? 'PRO' : 'BASE'}
           </div>
           <h2 className="text-xl font-black tracking-tight mt-1">
-            Суперустройство Luma OS 1.7.2
+            Суперустройство Luma OS 1.7.3
           </h2>
           <p className={`text-xs ${muted}`}>
             Перетащите любой пузырёк устройства к центральному ПК (или нажмите на него), чтобы мгновенно объединить их в единую экосистему.

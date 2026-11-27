@@ -172,16 +172,16 @@ export const LumaOxygenConnectWindow: React.FC<LumaOxygenConnectWindowProps> = (
 
   return (
     <div className="h-full overflow-y-auto p-4 sm:p-5 space-y-4">
-      {/* HarmonyOS SuperDevice Hero Banner in Oxygen 2.5D style */}
+      {/* Стиль ОС SuperDevice Hero Banner in Oxygen 2.5D style */}
       <div className="p-5 rounded-3xl border border-cyan-400/35 bg-gradient-to-br from-cyan-500/20 via-blue-600/15 to-indigo-900/30 relative overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-4 relative z-10">
           <div className="space-y-1.5 max-w-xl">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/20 border border-cyan-300/40 text-cyan-200 text-[10px] font-mono font-bold uppercase tracking-wider">
-              <Sparkles className="w-3 h-3" /> Luma Oxygen Connect 1.7.1 · HarmonyOS Wave &amp; 1-Tap UI
+              <Sparkles className="w-3 h-3" /> Luma Oxygen Connect 1.7.3 · Стиль ОС · Волна и 1-Тап
             </div>
-            <h2 className="text-xl font-black tracking-tight">Подключите Android к Luma OS 1.7.1 (Oxygen)</h2>
+            <h2 className="text-xl font-black tracking-tight">Подключите Android к Luma OS 1.7.3 (Oxygen)</h2>
             <p className={`text-xs ${mutedCls}`}>
-              Максимально простой 1-тап интерфейс на телефоне, ускоренный плавный тачпад, Circle to Search и фирменная полноэкранная волна HarmonyOS при каждом приёме и отправке файлов!
+              Максимально простой 1-тап интерфейс на телефоне, ускоренный плавный тачпад, Circle to Search и фирменная полноэкранная волна Стиль ОС при каждом приёме и отправке файлов!
             </p>
             <div className="flex flex-wrap gap-2 pt-1.5">
               <button
@@ -352,12 +352,12 @@ export const LumaOxygenConnectWindow: React.FC<LumaOxygenConnectWindowProps> = (
             <ImageIcon className="w-4 h-4 text-cyan-400" />
             Входящие фото и файлы с Android ({status?.inbox?.length || 0})
           </div>
-          <span className={`text-[10px] ${mutedCls}`}>Автоматически добавляются в Полку Dropzone + Волна HarmonyOS</span>
+          <span className={`text-[10px] ${mutedCls}`}>Автоматически добавляются в Полку Dropzone + Волна Стиль ОС</span>
         </div>
 
         {!status?.inbox || status.inbox.length === 0 ? (
           <div className={`py-8 text-center text-xs ${mutedCls}`}>
-            Сфотографируйте что-нибудь в Oxygen Connect на телефоне — фото прилетит с волной HarmonyOS по всему экрану!
+            Сфотографируйте что-нибудь в Oxygen Connect на телефоне — фото прилетит с волной Стиль ОС по всему экрану!
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

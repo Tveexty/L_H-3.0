@@ -12,23 +12,27 @@ type DiskMetric struct {
 }
 
 type MediaSessionItem struct {
-	ID          string `json:"id"`
-	SourceApp   string `json:"source_app"`
-	DisplayName string `json:"display_name"`
-	Title       string `json:"title"`
-	Artist      string `json:"artist"`
-	IsPlaying   bool   `json:"is_playing"`
-	IsCurrent   bool   `json:"is_current"`
+	ID          string  `json:"id"`
+	SourceApp   string  `json:"source_app"`
+	DisplayName string  `json:"display_name"`
+	Title       string  `json:"title"`
+	Artist      string  `json:"artist"`
+	IsPlaying   bool    `json:"is_playing"`
+	IsCurrent   bool    `json:"is_current"`
+	PositionSec float64 `json:"position_sec,omitempty"`
+	DurationSec float64 `json:"duration_sec,omitempty"`
 }
 
 type MediaSessionInfo struct {
-	Available bool               `json:"available"`
-	IsPlaying bool               `json:"is_playing"`
-	Title     string             `json:"title"`
-	Artist    string             `json:"artist"`
-	SourceApp string             `json:"source_app"`
-	UpdatedAt int64              `json:"updated_at"`
-	Sessions  []MediaSessionItem `json:"sessions,omitempty"`
+	Available   bool               `json:"available"`
+	IsPlaying   bool               `json:"is_playing"`
+	Title       string             `json:"title"`
+	Artist      string             `json:"artist"`
+	SourceApp   string             `json:"source_app"`
+	PositionSec float64            `json:"position_sec,omitempty"`
+	DurationSec float64            `json:"duration_sec,omitempty"`
+	UpdatedAt   int64              `json:"updated_at"`
+	Sessions    []MediaSessionItem `json:"sessions,omitempty"`
 }
 
 type LocationInfo struct {

@@ -6273,8 +6273,21 @@ export const LumaDesktopCanvas: React.FC<LumaDesktopCanvasProps> = React.memo(({
               <span>Стиль оболочки</span>
             </span>
             <span className="text-[10px] font-mono uppercase text-[var(--luma-accent)]">
-              {designStyle === 'nova' ? 'Luma Nova' : designStyle === 'glass' ? 'Luma Glass' : 'Luma Matrix'}
+              {designStyle === 'nova' ? 'Luma Nova' : designStyle === 'glass' ? 'Стекло' : 'Классика'}
             </span>
+          </button>
+
+          <button
+            onClick={() => {
+              setCtxMenu(null);
+              window.dispatchEvent(new CustomEvent('luma-add-custom-wallpaper'));
+            }}
+            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer font-semibold ${
+              isDark ? 'hover:bg-white/10 text-sky-300' : 'hover:bg-zinc-900/10 text-sky-700'
+            }`}
+          >
+            <FileImage className="w-3.5 h-3.5 text-sky-400" />
+            <span>Добавить свои обои...</span>
           </button>
 
           {onOpenCustomWidgetBuilder && (

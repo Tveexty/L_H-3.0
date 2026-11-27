@@ -721,11 +721,11 @@ func cleanMediaPlayerDisplayName(raw string) string {
 	return clean
 }
 
-// pollMediaAndNetwork queries WinRT SMTC for ALL active media sessions across every player/browser on the device.
+// pollMediaAndNetwork queries WinRT SMTC for ALL active media sessions across every player/browser on the device (including live timeline position & duration!).
 func (p *platformProbe) pollMediaAndNetwork() {
 	script := `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$res = @{ title = ""; artist = ""; app = ""; playing = $false; hasMedia = $false; sessions = @() }
+$res = @{ title = ""; artist = ""; app = ""; playing = $false; hasMedia = $false; position_sec = 0; duration_sec = 0; sessions = @() }
 try {
   Add-Type -AssemblyName System.Runtime.WindowsRuntime | Out-Null
   $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation` + "`" + `1' })[0]
@@ -747,6 +747,7 @@ try {
     foreach ($s in $all) {
       try {
         $pb = $s.GetPlaybackInfo()
+        $tl = $s.GetTimelineProperties()
         $props = Await ($s.TryGetMediaPropertiesAsync()) ($propsType)
         $src = [string]$s.SourceAppUserModelId
         $t = ""
@@ -754,6 +755,12 @@ try {
         if ($props) {
           $t = [string]$props.Title
           $a = [string]$props.Artist
+        }
+        $posSec = 0.0
+        $durSec = 0.0
+        if ($tl) {
+          $posSec = [math]::Max(0, [math]::Round($tl.Position.TotalSeconds, 1))
+          $durSec = [math]::Max(0, [math]::Round($tl.EndTime.TotalSeconds, 1))
         }
         $pl = ($pb -and $pb.PlaybackStatus.ToString() -eq 'Playing')
         $isCur = ($curId -ne '' -and $src -eq $curId)
@@ -763,12 +770,16 @@ try {
           artist = $a
           playing = $pl
           is_current = $isCur
+          position_sec = $posSec
+          duration_sec = $durSec
         }
         if ($isCur -or (-not $res.hasMedia -and ($t -ne '' -or $a -ne ''))) {
           $res.title = $t
           $res.artist = $a
           $res.app = $src
           $res.playing = $pl
+          $res.position_sec = $posSec
+          $res.duration_sec = $durSec
           $res.hasMedia = ($t -ne '' -or $a -ne '' -or $pl)
         }
       } catch {}
@@ -783,17 +794,21 @@ $res | ConvertTo-Json -Depth 4 -Compress
 		return
 	}
 	var data struct {
-		Title    string `json:"title"`
-		Artist   string `json:"artist"`
-		App      string `json:"app"`
-		Playing  bool   `json:"playing"`
-		HasMedia bool   `json:"hasMedia"`
-		Sessions []struct {
-			SourceApp string `json:"source_app"`
-			Title     string `json:"title"`
-			Artist    string `json:"artist"`
-			Playing   bool   `json:"playing"`
-			IsCurrent bool   `json:"is_current"`
+		Title       string  `json:"title"`
+		Artist      string  `json:"artist"`
+		App         string  `json:"app"`
+		Playing     bool    `json:"playing"`
+		HasMedia    bool    `json:"hasMedia"`
+		PositionSec float64 `json:"position_sec"`
+		DurationSec float64 `json:"duration_sec"`
+		Sessions    []struct {
+			SourceApp   string  `json:"source_app"`
+			Title       string  `json:"title"`
+			Artist      string  `json:"artist"`
+			Playing     bool    `json:"playing"`
+			IsCurrent   bool    `json:"is_current"`
+			PositionSec float64 `json:"position_sec"`
+			DurationSec float64 `json:"duration_sec"`
 		} `json:"sessions"`
 	}
 	if json.Unmarshal([]byte(out), &data) != nil {
@@ -816,6 +831,8 @@ $res | ConvertTo-Json -Depth 4 -Compress
 			Artist:      artist,
 			IsPlaying:   s.Playing,
 			IsCurrent:   s.IsCurrent,
+			PositionSec: s.PositionSec,
+			DurationSec: s.DurationSec,
 		})
 	}
 
@@ -827,18 +844,22 @@ $res | ConvertTo-Json -Depth 4 -Compress
 			data.Artist = sessions[0].Artist
 			cleanApp = sessions[0].DisplayName
 			data.Playing = sessions[0].IsPlaying
+			data.PositionSec = sessions[0].PositionSec
+			data.DurationSec = sessions[0].DurationSec
 		}
 	}
 
 	p.mu.Lock()
 	p.media = MediaSessionInfo{
-		Available: data.HasMedia || len(sessions) > 0,
-		IsPlaying: data.Playing,
-		Title:     strings.TrimSpace(data.Title),
-		Artist:    strings.TrimSpace(data.Artist),
-		SourceApp: strings.TrimSpace(cleanApp),
-		UpdatedAt: time.Now().Unix(),
-		Sessions:  sessions,
+		Available:   data.HasMedia || len(sessions) > 0,
+		IsPlaying:   data.Playing,
+		Title:       strings.TrimSpace(data.Title),
+		Artist:      strings.TrimSpace(data.Artist),
+		SourceApp:   strings.TrimSpace(cleanApp),
+		PositionSec: data.PositionSec,
+		DurationSec: data.DurationSec,
+		UpdatedAt:   time.Now().Unix(),
+		Sessions:    sessions,
 	}
 	p.mu.Unlock()
 }
@@ -1218,27 +1239,44 @@ func (p *platformProbe) RefreshMediaSessions() MediaSessionInfo {
 	return p.media
 }
 
-// ControlMediaSession sends play/pause/play_pause/next/prev directly to a specific open Windows media player via WinRT SMTC!
+// ControlMediaSession sends play/pause/playpause/next/prev/seek_back/seek_forward/seek_to:<sec> directly to a specific open Windows media player (or current session) via WinRT SMTC!
 func (p *platformProbe) ControlMediaSession(sourceApp, action string) (MediaSessionInfo, error) {
 	act := strings.ToLower(strings.TrimSpace(action))
 	method := ""
-	switch act {
-	case "play":
+	seekExpr := ""
+	switch {
+	case act == "play":
 		method = "TryPlayAsync"
-	case "pause":
+	case act == "pause":
 		method = "TryPauseAsync"
-	case "play_pause", "toggle":
+	case act == "play_pause" || act == "playpause" || act == "toggle":
 		method = "TryTogglePlayPauseAsync"
-	case "next":
+	case act == "next":
 		method = "TrySkipNextAsync"
-	case "prev", "previous":
+	case act == "prev" || act == "previous":
 		method = "TrySkipPreviousAsync"
+	case act == "seek_back" || act == "rewind":
+		seekExpr = `$tl=$s.GetTimelineProperties(); if($tl){ $ns=[int64]([math]::Max(0, ($tl.Position.TotalSeconds - 10) * 10000000)); Await ($s.TryChangePlaybackPositionAsync($ns)) ([bool]) | Out-Null }`
+	case act == "seek_forward" || act == "forward":
+		seekExpr = `$tl=$s.GetTimelineProperties(); if($tl){ $max=$tl.EndTime.TotalSeconds; $tgt=$tl.Position.TotalSeconds + 10; if($max -gt 0 -and $tgt -gt $max){ $tgt=$max }; $ns=[int64]([math]::Max(0, $tgt * 10000000)); Await ($s.TryChangePlaybackPositionAsync($ns)) ([bool]) | Out-Null }`
+	case strings.HasPrefix(act, "seek_to:"):
+		secStr := strings.TrimSpace(strings.TrimPrefix(act, "seek_to:"))
+		if secVal, err := strconv.ParseFloat(secStr, 64); err == nil && secVal >= 0 {
+			seekExpr = fmt.Sprintf(`$ns=[int64](%.2f * 10000000); Await ($s.TryChangePlaybackPositionAsync($ns)) ([bool]) | Out-Null`, secVal)
+		} else {
+			return p.media, fmt.Errorf("invalid seek target: %s", action)
+		}
 	default:
 		return p.media, fmt.Errorf("unknown media action: %s", action)
 	}
 	target := strings.ReplaceAll(strings.TrimSpace(sourceApp), "'", "''")
-	if target == "" {
+	if target == "" && seekExpr == "" {
 		return p.ControlMedia(act)
+	}
+
+	actionCode := seekExpr
+	if actionCode == "" {
+		actionCode = fmt.Sprintf(`Await ($s.%s()) ([bool]) | Out-Null`, method)
 	}
 
 	script := fmt.Sprintf(`
@@ -1256,18 +1294,23 @@ try {
   $mgr = Await ($mgrType::RequestAsync()) ($mgrType)
   if ($mgr) {
     $want = '%s'.ToLower()
-    foreach ($s in $mgr.GetSessions()) {
-      $id = ([string]$s.SourceAppUserModelId).ToLower()
-      if ($id -eq $want -or $id.Contains($want) -or $want.Contains($id)) {
-        Await ($s.%s()) ([bool]) | Out-Null
-        break
+    $hit = $null
+    if ($want -ne '') {
+      foreach ($cand in $mgr.GetSessions()) {
+        $id = ([string]$cand.SourceAppUserModelId).ToLower()
+        if ($id -eq $want -or $id.Contains($want) -or $want.Contains($id)) { $hit = $cand; break }
       }
+    }
+    if (-not $hit) { $hit = $mgr.GetCurrentSession() }
+    if ($hit) {
+      $s = $hit
+      %s
     }
   }
 } catch {}
-`, target, method)
+`, target, actionCode)
 	_, _ = runHiddenPowerShell(script)
-	time.Sleep(180 * time.Millisecond)
+	time.Sleep(150 * time.Millisecond)
 	p.pollMediaAndNetwork()
 	p.mu.RLock()
 	defer p.mu.RUnlock()

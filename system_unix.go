@@ -402,14 +402,21 @@ func (p *platformProbe) SetPowerPlan(plan string) error {
 }
 
 func (p *platformProbe) ControlMedia(action string) (MediaSessionInfo, error) {
+	act := strings.ToLower(strings.TrimSpace(action))
 	if _, err := exec.LookPath("playerctl"); err == nil {
-		switch strings.ToLower(strings.TrimSpace(action)) {
-		case "play_pause", "play", "pause":
+		switch {
+		case act == "play_pause" || act == "playpause" || act == "play" || act == "pause" || act == "toggle":
 			_ = exec.Command("playerctl", "play-pause").Run()
-		case "next":
+		case act == "next":
 			_ = exec.Command("playerctl", "next").Run()
-		case "prev", "previous":
+		case act == "prev" || act == "previous":
 			_ = exec.Command("playerctl", "previous").Run()
+		case act == "seek_back" || act == "rewind":
+			_ = exec.Command("playerctl", "position", "10-").Run()
+		case act == "seek_forward" || act == "forward":
+			_ = exec.Command("playerctl", "position", "10+").Run()
+		case strings.HasPrefix(act, "seek_to:"):
+			_ = exec.Command("playerctl", "position", strings.TrimPrefix(act, "seek_to:")).Run()
 		}
 		p.pollMPRISMedia()
 	}

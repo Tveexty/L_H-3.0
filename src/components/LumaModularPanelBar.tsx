@@ -303,7 +303,7 @@ export const LumaModularPanelBar: React.FC<LumaModularPanelBarProps> = ({
             key={id}
             {...commonProps}
             onClick={onOpenSuperDevice}
-            title="Суперустройство (Экосистема HarmonyOS) · Перетащите для перестановки"
+            title="Суперустройство (Экосистема Стиль ОС) · Перетащите для перестановки"
             className={`${wrapCls} !bg-blue-600/25 !border-blue-400/45 text-sky-200`}
           >
             <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center">

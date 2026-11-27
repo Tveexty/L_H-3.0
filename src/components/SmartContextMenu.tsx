@@ -12,9 +12,10 @@ interface SmartContextMenuProps {
 }
 
 /**
- * Viewport-clamped context menu container (Luma OS 1.5.1).
- * Automatically measures its exact rendered width/height and flips/clamps
- * inside [padding, viewport - size - padding] so NO menu ever overflows off-screen.
+ * Viewport-clamped context menu container (Luma OS 1.7.3).
+ * Anchors right next to cursor (flipping cleanly upward when right-clicking the bottom taskbar
+ * or leftward near the right edge) and re-measures via ResizeObserver so NO menu ever jumps
+ * to the center of the screen or overflows off-screen.
  */
 export const SmartContextMenu: React.FC<SmartContextMenuProps> = ({
   x,
@@ -27,9 +28,10 @@ export const SmartContextMenu: React.FC<SmartContextMenuProps> = ({
   children,
 }) => {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>({
+  const [pos, setPos] = useState<{ left: number; top: number; origin: string; ready: boolean }>({
     left: x,
     top: y,
+    origin: 'top left',
     ready: false,
   });
 
@@ -37,32 +39,44 @@ export const SmartContextMenu: React.FC<SmartContextMenuProps> = ({
     const compute = () => {
       const el = ref.current;
       if (!el) return;
-      const rect = el.getBoundingClientRect();
+      const w = el.offsetWidth || el.getBoundingClientRect().width || 240;
+      const h = el.offsetHeight || el.getBoundingClientRect().height || 220;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      const w = rect.width || 220;
-      const h = rect.height || 200;
 
-      // Flip left if overflowing right edge, then hard-clamp inside viewport
+      // Anchor horizontally at cursor; flip left only if overflowing right edge
+      let flippedX = false;
       let left = x;
       if (left + w + padding > vw) {
         left = x - w;
+        flippedX = true;
       }
       left = Math.max(padding, Math.min(left, vw - w - padding));
 
-      // Flip upward if overflowing bottom edge (crucial for bottom taskbar right-clicks!), then hard-clamp
+      // Anchor vertically at cursor; flip cleanly ABOVE cursor when near bottom (taskbar RMB!)
+      let flippedY = false;
       let top = y;
       if (top + h + padding > vh) {
-        top = y - h;
+        top = y - h - 6;
+        flippedY = true;
       }
       top = Math.max(padding, Math.min(top, vh - h - padding));
 
-      setPos({ left, top, ready: true });
+      const origin = `${flippedY ? 'bottom' : 'top'} ${flippedX ? 'right' : 'left'}`;
+      setPos({ left, top, origin, ready: true });
     };
 
     compute();
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && ref.current) {
+      ro = new ResizeObserver(compute);
+      ro.observe(ref.current);
+    }
     window.addEventListener('resize', compute);
-    return () => window.removeEventListener('resize', compute);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', compute);
+    };
   }, [x, y, padding]);
 
   return (
@@ -74,6 +88,7 @@ export const SmartContextMenu: React.FC<SmartContextMenuProps> = ({
         position: 'fixed',
         left: pos.left,
         top: pos.top,
+        transformOrigin: pos.origin,
         zIndex,
         maxHeight: `calc(100vh - ${padding * 2}px)`,
         maxWidth: `calc(100vw - ${padding * 2}px)`,

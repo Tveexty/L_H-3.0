@@ -768,7 +768,7 @@ func registerOxygen172Routes(mux *http.ServeMux, kernel *LumaKernel) {
 				msg = fmt.Sprintf("Bluetooth-мост Суперустройства активирован для «%s»", req.Name)
 			}
 		case "phone":
-			msg = "Мост Oxygen Connect (Android SuperHub) активен — готово к мгновенной передаче с волной HarmonyOS!"
+			msg = "Мост Oxygen Connect активен — готово к мгновенной передаче с волной Стиль ОС!"
 		case "display":
 			msg = "Открыты параметры экранов и KWin-правила окон"
 		case "ai":
@@ -779,6 +779,150 @@ func registerOxygen172Routes(mux *http.ServeMux, kernel *LumaKernel) {
 			"message": msg,
 			"status":  buildSuperDeviceSnapshot(kernel),
 		})
+	})
+
+	// 8. Persistent Custom User Wallpapers Gallery (Pictures/LumaWallpapers — zero localStorage 5MB quota limit!)
+	mux.HandleFunc("/api/kernel/wallpapers/custom", func(w http.ResponseWriter, r *http.Request) {
+		home, _ := os.UserHomeDir()
+		if home == "" {
+			home = os.TempDir()
+		}
+		dir := filepath.Join(home, "Pictures", "LumaWallpapers")
+		_ = os.MkdirAll(dir, 0o755)
+
+		// Direct image serving via GET/HEAD /api/kernel/wallpapers/custom?name=<filename>
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			if qName := strings.TrimSpace(r.URL.Query().Get("name")); qName != "" {
+				safe := filepath.Base(qName)
+				full := filepath.Join(dir, safe)
+				if info, err := os.Stat(full); err == nil && !info.IsDir() {
+					w.Header().Set("Cache-Control", "public, max-age=31536000")
+					http.ServeFile(w, r, full)
+					return
+				}
+				http.NotFound(w, r)
+				return
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+		listWallpapers := func() []map[string]interface{} {
+			entries, _ := os.ReadDir(dir)
+			items := make([]map[string]interface{}, 0, len(entries))
+			for i := len(entries) - 1; i >= 0; i-- {
+				ent := entries[i]
+				if ent.IsDir() {
+					continue
+				}
+				name := ent.Name()
+				ext := strings.ToLower(filepath.Ext(name))
+				if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" && ext != ".gif" && ext != ".bmp" && ext != ".avif" {
+					continue
+				}
+				full := filepath.Join(dir, name)
+				var size int64
+				if fi, err := ent.Info(); err == nil {
+					size = fi.Size()
+				}
+				url := "/api/kernel/wallpapers/custom?name=" + urlQueryEscapeSimple(name)
+				items = append(items, map[string]interface{}{
+					"name": name,
+					"path": full,
+					"url":  url,
+					"size": size,
+				})
+			}
+			return items
+		}
+
+		switch r.Method {
+		case http.MethodPost:
+			var req struct {
+				Name        string `json:"name"`
+				FileName    string `json:"file_name"`
+				DataURL     string `json:"data_url"`
+				ImageBase64 string `json:"image_base64"`
+			}
+			if err := json.NewDecoder(io.LimitReader(r.Body, 48<<20)).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			rawB64 := strings.TrimSpace(req.DataURL)
+			if rawB64 == "" {
+				rawB64 = strings.TrimSpace(req.ImageBase64)
+			}
+			ext := ".jpg"
+			if strings.HasPrefix(rawB64, "data:image/png") {
+				ext = ".png"
+			} else if strings.HasPrefix(rawB64, "data:image/webp") {
+				ext = ".webp"
+			} else if strings.HasPrefix(rawB64, "data:image/gif") {
+				ext = ".gif"
+			} else if strings.HasPrefix(rawB64, "data:image/avif") {
+				ext = ".avif"
+			}
+			if idx := strings.Index(rawB64, ","); idx >= 0 {
+				rawB64 = rawB64[idx+1:]
+			}
+			data, err := base64.StdEncoding.DecodeString(rawB64)
+			if err != nil || len(data) == 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "некорректное изображение"})
+				return
+			}
+			inName := strings.TrimSpace(req.Name)
+			if inName == "" {
+				inName = strings.TrimSpace(req.FileName)
+			}
+			safeName := filepath.Base(inName)
+			if safeName == "" || safeName == "." || safeName == "/" {
+				safeName = fmt.Sprintf("wallpaper_%d%s", time.Now().Unix(), ext)
+			}
+			safeName = strings.NewReplacer("/", "_", "\\", "_", "..", "_", ":", "_", "*", "_", "?", "_", "\"", "_", "<", "_", ">", "_", "|", "_").Replace(safeName)
+			if filepath.Ext(safeName) == "" {
+				safeName += ext
+			}
+			outName := fmt.Sprintf("%d_%s", time.Now().Unix(), safeName)
+			outPath := filepath.Join(dir, outName)
+			if err := os.WriteFile(outPath, data, 0o644); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+			items := listWallpapers()
+			url := "/api/kernel/wallpapers/custom?name=" + urlQueryEscapeSimple(outName)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":         true,
+				"name":       outName,
+				"path":       outPath,
+				"url":        url,
+				"count":      len(items),
+				"wallpapers": items,
+				"items":      items,
+			})
+		case http.MethodDelete:
+			name := filepath.Base(strings.TrimSpace(r.URL.Query().Get("name")))
+			if name != "" && name != "." && name != "/" {
+				_ = os.Remove(filepath.Join(dir, name))
+			}
+			items := listWallpapers()
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":         true,
+				"count":      len(items),
+				"wallpapers": items,
+				"items":      items,
+			})
+		default:
+			items := listWallpapers()
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":         true,
+				"count":      len(items),
+				"wallpapers": items,
+				"items":      items,
+			})
+		}
 	})
 }
 

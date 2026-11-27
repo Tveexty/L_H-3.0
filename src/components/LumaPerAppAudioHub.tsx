@@ -34,6 +34,8 @@ export interface MediaPlayerSessionMini {
   artist: string;
   is_playing: boolean;
   is_current?: boolean;
+  position_sec?: number;
+  duration_sec?: number;
 }
 
 interface LumaPerAppAudioHubProps {

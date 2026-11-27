@@ -239,7 +239,7 @@ interface LumaCarbonControlHubProps {
   activeAudioInputId?: string;
   onSwitchAudioDevice?: (id: string, kind: 'output' | 'input') => void;
   mediaSessions?: MediaPlayerSessionMini[];
-  onMediaAction?: (action: 'playpause' | 'next' | 'prev', sessionId?: string) => void;
+  onMediaAction?: (action: 'playpause' | 'next' | 'prev' | 'seek_back' | 'seek_forward' | string, sessionId?: string) => void;
   onPickAccentColor?: (hex: string) => void;
   wirelessDevices: WirelessDeviceItem[];
   onRefreshWireless: () => void;
@@ -345,7 +345,27 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   });
   const [editMode, setEditMode] = useState(false);
   const [showFeaturesModal, setShowFeaturesModal] = useState(false);
+  const [showMediaModal, setShowMediaModal] = useState(false);
+  const [selectedMediaId, setSelectedMediaId] = useState<string>('');
+  const [scrubPosSec, setScrubPosSec] = useState<number | null>(null);
   const [activeConnectivityPicker, setActiveConnectivityPicker] = useState<'none' | 'wifi' | 'bluetooth'>('none');
+  const draggingSliderRef = useRef(false);
+  const volDragStartXRef = useRef<number>(0);
+  const volDidDragRef = useRef<boolean>(false);
+
+  const formatMediaSec = (sec?: number) => {
+    const s = Math.max(0, Math.floor(sec || 0));
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return `${m}:${String(rem).padStart(2, '0')}`;
+  };
+
+  const computeCapsulePercent = (clientX: number, el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0) return 0;
+    return Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+  };
+
   const [btCollapsed, setBtCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(HUB_BT_COLLAPSED_KEY) === '1';
@@ -363,7 +383,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   const [audioCollapsed, setAudioCollapsed] = useState(true);
   const [notifTab, setNotifTab] = useState<'all' | 'telegram' | 'system'>('all');
 
-  // Auto-close on mouse leave (paused during Edit Mode, Features Manager, Screen Picker, or Wi-Fi/BT Picker!)
+  // Auto-close on mouse leave (paused during Edit Mode, Media Settings, Features Manager, Slider Drag, or Wi-Fi/BT Picker!)
   const leaveTimerRef = useRef<number | null>(null);
   const pickingScreenRef = useRef(false);
   const handleHubMouseEnter = () => {
@@ -373,14 +393,26 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
     }
   };
   const handleHubMouseLeave = () => {
-    if (editMode || showFeaturesModal || activeConnectivityPicker !== 'none' || pickingScreenRef.current) return;
+    if (
+      editMode ||
+      showFeaturesModal ||
+      showMediaModal ||
+      draggingSliderRef.current ||
+      activeConnectivityPicker !== 'none' ||
+      pickingScreenRef.current
+    ) {
+      return;
+    }
     if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current);
     leaveTimerRef.current = window.setTimeout(() => {
       onClose();
     }, 280);
   };
   useEffect(() => {
-    if (!open) setActiveConnectivityPicker('none');
+    if (!open) {
+      setActiveConnectivityPicker('none');
+      setShowMediaModal(false);
+    }
   }, [open]);
   useEffect(() => {
     return () => {
@@ -1087,27 +1119,28 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
         onMouseEnter={handleHubMouseEnter}
         onMouseLeave={handleHubMouseLeave}
         className="fixed top-3 right-3 bottom-3 z-[945] flex flex-col gap-2.5 pointer-events-none"
-        style={{ width: 'clamp(340px, 26vw, 440px)' }}
+        style={{ width: 'clamp(330px, 24vw, 396px)' }}
       >
-        {/* UPPER HALF: HarmonyOS / Oxygen Cryo-Glass Control Center (modeled directly on reference!) */}
+        {/* UPPER HALF: Compact OS Style Control Center (zero wasted empty space!) */}
         <div
-          className={`pointer-events-auto rounded-[32px] border backdrop-blur-3xl flex flex-col overflow-hidden luma-spring-panel shadow-[0_28px_80px_rgba(0,0,0,0.6)] ${
+          className={`pointer-events-auto rounded-[28px] border backdrop-blur-3xl flex flex-col overflow-hidden luma-spring-panel shadow-[0_24px_70px_rgba(0,0,0,0.58)] ${
             isDark
-              ? 'bg-[#121620]/84 border-white/15 text-white'
-              : 'bg-white/88 border-slate-200/90 text-slate-900'
+              ? 'bg-[#121620]/86 border-white/15 text-white'
+              : 'bg-white/90 border-slate-200/90 text-slate-900'
           }`}
-          style={{ height: notifCollapsed ? 'calc(100% - 62px)' : '64vh', minHeight: 410 }}
+          style={{ maxHeight: notifCollapsed ? 'calc(100% - 54px)' : '68vh' }}
         >
-          {/* Top Floating Circular Edit & Settings Row (exact HarmonyOS layout) */}
-          <div className="px-4 pt-3.5 pb-2 flex items-center justify-between gap-2 shrink-0">
+          {/* Top Compact Header Row */}
+          <div className="px-3.5 pt-2.5 pb-1.5 flex items-center justify-between gap-2 shrink-0">
             <button
               onClick={() => {
                 setEditMode((v) => !v);
                 setShowFeaturesModal(false);
+                setShowMediaModal(false);
                 setActiveConnectivityPicker('none');
               }}
               title="Редактировать панель управления"
-              className={`w-9 h-9 rounded-full flex items-center justify-center border transition cursor-pointer ${
+              className={`w-8 h-8 rounded-full flex items-center justify-center border transition cursor-pointer ${
                 editMode
                   ? 'bg-blue-600 text-white border-blue-400 shadow-lg shadow-blue-600/35'
                   : isDark
@@ -1115,13 +1148,13 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                   : 'bg-slate-200/75 border-slate-300 text-slate-800 hover:bg-slate-200'
               }`}
             >
-              {editMode ? <Check size={15} /> : <Pencil size={15} />}
+              {editMode ? <Check size={14} /> : <Pencil size={14} />}
             </button>
 
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
               <span className="text-xs font-extrabold tracking-tight truncate">
-                Luma OS 1.7.2 {isPro ? 'Pro' : 'Base'}
+                Luma OS 1.7.3 {isPro ? 'Pro' : 'Base'}
               </span>
               {isPro && (
                 <span className="px-1.5 py-0.5 rounded-full bg-blue-600/25 border border-blue-400/40 text-sky-300 text-[9px] font-mono font-bold inline-flex items-center gap-0.5">
@@ -1131,37 +1164,37 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => {
                   onClose();
                   onOpenWindow('settings');
                 }}
                 title="Настройки Luma OS"
-                className={`w-9 h-9 rounded-full flex items-center justify-center border transition cursor-pointer ${
+                className={`w-8 h-8 rounded-full flex items-center justify-center border transition cursor-pointer ${
                   isDark
                     ? 'bg-white/[0.09] border-white/12 text-white/85 hover:bg-white/16'
                     : 'bg-slate-200/75 border-slate-300 text-slate-800 hover:bg-slate-200'
                 }`}
               >
-                <Settings size={15} />
+                <Settings size={14} />
               </button>
               <button
                 onClick={onClose}
-                className={`w-8 h-8 rounded-full flex items-center justify-center cursor-pointer ${subText} hover:bg-white/10`}
+                className={`w-7 h-7 rounded-full flex items-center justify-center cursor-pointer ${subText} hover:bg-white/10`}
                 title="Закрыть (Tab / Esc)"
               >
-                <X size={15} />
+                <X size={14} />
               </button>
             </div>
           </div>
 
-          {/* Scrollable HarmonyOS Control Center Content */}
-          <div className="flex-1 overflow-y-auto px-3.5 pb-3.5 space-y-2.5">
+          {/* Scrollable Compact OS Style Control Center Content */}
+          <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
             {showFeaturesModal ? (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-sky-400">Менеджер функций Luma OS 1.7.2</span>
+                  <span className="text-[11px] font-bold text-sky-400">Менеджер функций Luma OS 1.7.3</span>
                   <button onClick={() => setShowFeaturesModal(false)} className="text-[10px] px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 cursor-pointer">
                     Назад
                   </button>
@@ -1172,7 +1205,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                     <button
                       key={feat.key}
                       onClick={() => onToggleFeature(feat.key)}
-                      className={`w-full p-2.5 rounded-2xl border flex items-center justify-between gap-2 text-left transition cursor-pointer ${
+                      className={`w-full p-2 rounded-2xl border flex items-center justify-between gap-2 text-left transition cursor-pointer ${
                         isDark ? 'bg-white/[0.05] border-white/10 hover:bg-white/[0.09]' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
@@ -1180,19 +1213,288 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                         <div className="text-[11px] font-semibold truncate">{feat.label}</div>
                         <div className={`text-[9px] truncate ${subText}`}>{feat.desc}</div>
                       </div>
-                      {on ? <ToggleRight size={20} className="text-blue-400 shrink-0" /> : <ToggleLeft size={20} className="text-white/30 shrink-0" />}
+                      {on ? <ToggleRight size={19} className="text-blue-400 shrink-0" /> : <ToggleLeft size={19} className="text-white/30 shrink-0" />}
                     </button>
                   );
                 })}
               </div>
+            ) : showMediaModal ? (
+              /* ==================== FULL MEDIA PLAYER & AUDIO SETTINGS MODAL (OPENED ON PLAYER CLICK!) ==================== */
+              (() => {
+                const activeSession =
+                  mediaSessions.find((s) => s.id === selectedMediaId || s.source_app === selectedMediaId) ||
+                  mediaSessions.find((s) => s.is_playing) ||
+                  mediaSessions[0];
+                const targetApp = activeSession?.source_app || activeSession?.id;
+                const dur = Math.max(0, activeSession?.duration_sec || 0);
+                const curPos = scrubPosSec !== null ? scrubPosSec : Math.max(0, activeSession?.position_sec || 0);
+                const progressPct = dur > 0 ? Math.max(0, Math.min(100, (curPos / dur) * 100)) : 0;
+
+                return (
+                  <div className="space-y-2.5 luma-animate-in">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-extrabold text-sky-400 flex items-center gap-1.5">
+                        <Speaker size={14} /> Плеер и настройки звука
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowMediaModal(false)}
+                        className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 text-[10px] font-bold cursor-pointer"
+                      >
+                        ← Назад
+                      </button>
+                    </div>
+
+                    {/* Multi-session player selector */}
+                    {mediaSessions.length > 1 && (
+                      <div className="flex flex-wrap gap-1">
+                        {mediaSessions.map((s) => {
+                          const isSel = activeSession && (s.id === activeSession.id || s.source_app === activeSession.source_app);
+                          return (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => setSelectedMediaId(s.source_app || s.id)}
+                              className={`px-2 py-1 rounded-full text-[10px] font-semibold border cursor-pointer transition ${
+                                isSel
+                                  ? 'bg-blue-600 border-blue-400 text-white'
+                                  : isDark
+                                  ? 'bg-white/[0.06] border-white/10 text-white/75 hover:bg-white/15'
+                                  : 'bg-slate-100 border-slate-200 text-slate-700'
+                              }`}
+                            >
+                              {s.is_playing ? '▶ ' : ''}{s.display_name || s.source_app}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Now Playing Hero Card + Seek Timeline + Transport */}
+                    <div className={`p-3 rounded-[22px] border space-y-2.5 ${isDark ? 'bg-[#1d2331]/90 border-white/12' : 'bg-slate-100 border-slate-200'}`}>
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600/40 via-sky-500/30 to-violet-500/30 border border-white/15 flex items-center justify-center shrink-0">
+                          <Speaker size={22} className="text-sky-200" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-extrabold truncate">
+                            {activeSession?.title || 'Ничего не воспроизводится'}
+                          </div>
+                          <div className={`text-[10px] truncate ${subText}`}>
+                            {activeSession?.artist || activeSession?.display_name || 'Системный медиаплеер'}
+                          </div>
+                          <div className="text-[9px] font-mono text-sky-400 mt-0.5">
+                            {activeSession?.display_name || 'Медиа ПК'} · {activeSession?.is_playing ? 'Играет' : 'На паузе'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Interactive Seek / Scrubbing Timeline Bar */}
+                      <div className="space-y-1">
+                        <div
+                          onPointerDown={(e) => {
+                            if (dur <= 0) return;
+                            e.currentTarget.setPointerCapture(e.pointerId);
+                            draggingSliderRef.current = true;
+                            const pct = computeCapsulePercent(e.clientX, e.currentTarget);
+                            setScrubPosSec(pct * dur);
+                          }}
+                          onPointerMove={(e) => {
+                            if (!draggingSliderRef.current || dur <= 0) return;
+                            const pct = computeCapsulePercent(e.clientX, e.currentTarget);
+                            setScrubPosSec(pct * dur);
+                          }}
+                          onPointerUp={(e) => {
+                            if (!draggingSliderRef.current) return;
+                            draggingSliderRef.current = false;
+                            try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+                            if (dur > 0) {
+                              const pct = computeCapsulePercent(e.clientX, e.currentTarget);
+                              const sec = Math.round(pct * dur);
+                              setScrubPosSec(null);
+                              onMediaAction?.(`seek_to:${sec}`, targetApp);
+                            }
+                          }}
+                          title={dur > 0 ? 'Перетащите для перемотки трека' : 'Перемотка кнопками -10с / +10с'}
+                          className={`relative h-5 flex items-center touch-none ${dur > 0 ? 'cursor-ew-resize' : 'cursor-default opacity-65'}`}
+                        >
+                          <div className={`w-full h-2 rounded-full overflow-hidden ${isDark ? 'bg-white/12' : 'bg-slate-300'}`}>
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-sky-400 to-blue-500 transition-[width] duration-75"
+                              style={{ width: `${progressPct}%` }}
+                            />
+                          </div>
+                          {dur > 0 && (
+                            <span
+                              className="absolute w-3.5 h-3.5 rounded-full bg-white shadow-md border-2 border-blue-500 -translate-x-1/2 pointer-events-none"
+                              style={{ left: `${progressPct}%` }}
+                            />
+                          )}
+                        </div>
+                        <div className={`flex items-center justify-between text-[10px] font-mono ${subText}`}>
+                          <span>{formatMediaSec(curPos)}</span>
+                          <span>{dur > 0 ? formatMediaSec(dur) : '--:--'}</span>
+                        </div>
+                      </div>
+
+                      {/* Transport Controls: -10s · Prev · Play/Pause · Next · +10s */}
+                      <div className="flex items-center justify-between gap-1 px-1">
+                        <button
+                          type="button"
+                          onClick={() => onMediaAction?.('seek_back', targetApp)}
+                          title="Перемотать назад на 10 сек"
+                          className={`px-2 py-1.5 rounded-full text-[10px] font-mono font-bold cursor-pointer transition ${isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-white border border-slate-200 hover:bg-slate-200'}`}
+                        >
+                          -10с
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onMediaAction?.('prev', targetApp)}
+                          title="Предыдущий трек"
+                          className="p-2 rounded-full hover:bg-white/15 cursor-pointer transition"
+                        >
+                          <SkipBack size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onMediaAction?.('playpause', targetApp)}
+                          title="Пуск / Пауза"
+                          className="w-10 h-10 rounded-full bg-[#2563eb] hover:bg-blue-500 text-white shadow-lg shadow-blue-600/40 flex items-center justify-center cursor-pointer transition"
+                        >
+                          {activeSession?.is_playing ? <Pause size={18} /> : <Play size={18} className="ml-0.5" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onMediaAction?.('next', targetApp)}
+                          title="Следующий трек"
+                          className="p-2 rounded-full hover:bg-white/15 cursor-pointer transition"
+                        >
+                          <SkipForward size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onMediaAction?.('seek_forward', targetApp)}
+                          title="Перемотать вперёд на 10 сек"
+                          className={`px-2 py-1.5 rounded-full text-[10px] font-mono font-bold cursor-pointer transition ${isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-white border border-slate-200 hover:bg-slate-200'}`}
+                        >
+                          +10с
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Full-Width Pointer-Capture Master Volume Bar + Presets */}
+                    <div className="space-y-1.5">
+                      <div
+                        onPointerDown={(e) => {
+                          e.currentTarget.setPointerCapture(e.pointerId);
+                          draggingSliderRef.current = true;
+                          volDragStartXRef.current = e.clientX;
+                          volDidDragRef.current = false;
+                          const val = Math.round(computeCapsulePercent(e.clientX, e.currentTarget) * 100);
+                          onVolumeChange(val);
+                        }}
+                        onPointerMove={(e) => {
+                          if (!draggingSliderRef.current) return;
+                          if (Math.abs(e.clientX - volDragStartXRef.current) > 4) volDidDragRef.current = true;
+                          const val = Math.round(computeCapsulePercent(e.clientX, e.currentTarget) * 100);
+                          onVolumeChange(val);
+                        }}
+                        onPointerUp={(e) => {
+                          draggingSliderRef.current = false;
+                          try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+                        }}
+                        onWheel={(e) => {
+                          e.preventDefault();
+                          onVolumeChange(Math.max(0, Math.min(100, (muted ? 0 : volume) + (e.deltaY < 0 ? 4 : -4))));
+                        }}
+                        className={`relative h-11 rounded-full border overflow-hidden flex items-center cursor-ew-resize select-none touch-none ${
+                          isDark ? 'bg-[#222733]/90 border-white/12' : 'bg-slate-100 border-slate-200'
+                        }`}
+                      >
+                        <div
+                          className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-500/55 to-sky-400/55 pointer-events-none"
+                          style={{ width: `${muted ? 0 : Math.max(4, volume)}%` }}
+                        />
+                        <button
+                          type="button"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={onToggleMute}
+                          className="relative z-10 ml-3 p-1 text-white cursor-pointer"
+                          title="Вкл / Выкл звук"
+                        >
+                          {muted || volume === 0 ? <VolumeX size={17} className="text-rose-300" /> : <Volume2 size={17} />}
+                        </button>
+                        <span className="relative z-10 ml-2 text-[11px] font-bold pointer-events-none">Общая громкость</span>
+                        <span className="relative z-10 ml-auto mr-3.5 text-[11px] font-mono font-bold pointer-events-none">
+                          {muted ? 'MUTE' : `${volume}%`}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-5 gap-1">
+                        {[0, 25, 50, 75, 100].map((v) => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => (v === 0 ? onToggleMute() : onVolumeChange(v))}
+                            className={`py-1 rounded-full text-[10px] font-mono font-bold border cursor-pointer transition ${
+                              !muted && Math.abs(volume - v) <= 3
+                                ? 'bg-blue-600 border-blue-400 text-white'
+                                : isDark
+                                ? 'bg-white/[0.06] border-white/10 hover:bg-white/15'
+                                : 'bg-slate-100 border-slate-200 hover:bg-slate-200'
+                            }`}
+                          >
+                            {v === 0 ? 'Mute' : `${v}%`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Quick Audio Output Switcher inside Media Modal */}
+                    {audioOutputs.length > 0 && (
+                      <div className="space-y-1">
+                        <div className={`text-[10px] font-bold uppercase tracking-wider px-1 ${subText}`}>Устройство вывода</div>
+                        <div className="space-y-1 max-h-28 overflow-y-auto">
+                          {audioOutputs.map((dev) => (
+                            <button
+                              key={dev.id}
+                              type="button"
+                              onClick={() => onSwitchAudioDevice?.(dev.id, 'output')}
+                              className={`w-full px-2.5 py-1.5 rounded-xl text-left text-[11px] flex items-center justify-between border transition cursor-pointer ${
+                                dev.id === activeAudioOutputId || dev.is_default
+                                  ? 'bg-blue-600/25 border-blue-400/50 text-sky-200 font-bold'
+                                  : isDark
+                                  ? 'bg-white/[0.05] border-white/10 hover:bg-white/10'
+                                  : 'bg-white border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              <span className="truncate">🔊 {dev.name}</span>
+                              {(dev.id === activeAudioOutputId || dev.is_default) && <Check size={12} className="text-sky-300 shrink-0" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Per-App Audio Mixer inside Media Modal */}
+                    <LumaPerAppAudioHub
+                      isDark={isDark}
+                      audioOutputs={audioOutputs as any}
+                      activeAudioOutputId={activeAudioOutputId}
+                      onSwitchAudioDevice={onSwitchAudioDevice}
+                      mediaSessions={mediaSessions}
+                      onMediaAction={onMediaAction}
+                    />
+                  </div>
+                );
+              })()
             ) : (
               <>
-                {/* ===== ROW 1-2: HARMONYOS MEDIA CARD (LEFT) + WI-FI & BLUETOOTH BLUE-CIRCLE CAPSULES (RIGHT) ===== */}
+                {/* ===== ROW 1-2: COMPACT MEDIA CARD (LEFT — CLICK OPENS PLAYER SETTINGS!) + TIGHT WI-FI & BT CAPSULES (RIGHT) ===== */}
                 {(() => {
                   const primaryMedia = mediaSessions.find((s) => s.is_playing) || mediaSessions[0];
                   const pillSurface = isDark
-                    ? 'bg-[#222733]/82 border-white/10 hover:bg-[#2a3040]/90'
-                    : 'bg-slate-100/90 border-slate-200 hover:bg-slate-200/80';
+                    ? 'bg-[#222733]/85 border-white/10 hover:bg-[#2a3040]/92'
+                    : 'bg-slate-100/92 border-slate-200 hover:bg-slate-200/80';
                   const activeBtDev =
                     bluetoothStatus?.devices?.find((d) => d.connected)?.name ||
                     wirelessDevices.find((w) => w.connected)?.name ||
@@ -1200,69 +1502,78 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
 
                   return (
                     <>
-                      <div className="grid grid-cols-2 gap-2.5">
-                        {/* Left 2-Row Media Player Card */}
+                      <div className="grid grid-cols-2 gap-2 items-stretch">
+                        {/* Left Compact Media Player Card (Click card -> Full Media Settings with Seek & Volume!) */}
                         <div
+                          onClick={() => setShowMediaModal(true)}
                           onWheel={(e) => {
                             e.preventDefault();
                             onMediaAction?.(e.deltaY > 0 ? 'next' : 'prev', primaryMedia?.source_app || primaryMedia?.id);
                           }}
-                          title="Медиаплеер · Колесо мыши: переключение треков"
-                          className={`rounded-[26px] border p-3 flex flex-col justify-between min-h-[120px] transition ${pillSurface}`}
+                          title="Нажмите для открытия настроек плеера (перемотка, громкость, вывод) · Колесо: треки"
+                          className={`rounded-[22px] border p-2.5 flex flex-col justify-between h-[104px] cursor-pointer transition ${pillSurface}`}
                         >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="relative w-11 h-11 rounded-2xl bg-gradient-to-br from-white/15 to-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                              <Speaker size={18} className="text-white/80" />
-                              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 text-black flex items-center justify-center text-[8px] font-black shadow">
+                          <div className="flex items-center justify-between gap-1.5">
+                            <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-white/15 to-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                              <Speaker size={15} className="text-white/85" />
+                              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 text-black flex items-center justify-center text-[7px] font-black shadow">
                                 ♪
                               </span>
                             </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[11px] font-bold truncate leading-tight">
+                                {primaryMedia?.title || 'Не воспроизводится'}
+                              </div>
+                              <div className={`text-[9px] truncate ${subText}`}>
+                                {primaryMedia?.artist || primaryMedia?.display_name || 'Нажмите для плеера'}
+                              </div>
+                            </div>
                             <button
-                              onClick={() => setAudioCollapsed((v) => !v)}
-                              title="Аудиовыходы и Per-App Микшер"
-                              className="w-7 h-7 rounded-full bg-white/10 hover:bg-blue-600 text-white/85 flex items-center justify-center cursor-pointer transition"
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowMediaModal(true);
+                              }}
+                              title="Настройки плеера, перемотка и звук"
+                              className="w-6 h-6 rounded-full bg-white/10 hover:bg-blue-600 text-white/85 flex items-center justify-center cursor-pointer transition shrink-0"
                             >
-                              <Radio size={13} />
+                              <Sliders size={11} />
                             </button>
                           </div>
 
-                          <div className="my-1.5 min-w-0">
-                            <div className="text-[11px] font-bold truncate">
-                              {primaryMedia?.title || 'Не воспроизводится'}
-                            </div>
-                            <div className={`text-[9px] truncate ${subText}`}>
-                              {primaryMedia?.artist || primaryMedia?.display_name || 'Медиа ПК'}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between px-1">
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center justify-between px-1 pt-1"
+                          >
                             <button
+                              type="button"
                               onClick={() => onMediaAction?.('prev', primaryMedia?.source_app || primaryMedia?.id)}
-                              className="p-1 opacity-70 hover:opacity-100 cursor-pointer transition"
+                              className="p-1 opacity-75 hover:opacity-100 cursor-pointer transition"
                               title="Предыдущий трек"
                             >
-                              <SkipBack size={15} />
+                              <SkipBack size={14} />
                             </button>
                             <button
+                              type="button"
                               onClick={() => onMediaAction?.('playpause', primaryMedia?.source_app || primaryMedia?.id)}
-                              className="w-8 h-8 rounded-full bg-white/12 hover:bg-blue-600 text-white flex items-center justify-center cursor-pointer transition"
+                              className="w-7 h-7 rounded-full bg-white/14 hover:bg-blue-600 text-white flex items-center justify-center cursor-pointer transition"
                               title="Пуск / Пауза"
                             >
-                              {primaryMedia?.is_playing ? <Pause size={15} /> : <Play size={15} className="ml-0.5" />}
+                              {primaryMedia?.is_playing ? <Pause size={13} /> : <Play size={13} className="ml-0.5" />}
                             </button>
                             <button
+                              type="button"
                               onClick={() => onMediaAction?.('next', primaryMedia?.source_app || primaryMedia?.id)}
-                              className="p-1 opacity-70 hover:opacity-100 cursor-pointer transition"
+                              className="p-1 opacity-75 hover:opacity-100 cursor-pointer transition"
                               title="Следующий трек"
                             >
-                              <SkipForward size={15} />
+                              <SkipForward size={14} />
                             </button>
                           </div>
                         </div>
 
-                        {/* Right Stacked Wi-Fi + Bluetooth Rounded Capsules (Exact HarmonyOS blue circle style!) */}
-                        <div className="flex flex-col gap-2.5 justify-between">
-                          {/* Wi-Fi Capsule (LMB toggle, RMB native network picker with password) */}
+                        {/* Right Tightly Stacked Wi-Fi + Bluetooth Capsules (Zero empty gap between them!) */}
+                        <div className="flex flex-col gap-2">
                           <button
                             onClick={() => onToggleWifi?.(!wifiEnabled)}
                             onContextMenu={(e) => {
@@ -1272,12 +1583,12 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                               onRefreshWifi?.(true);
                             }}
                             title="Wi-Fi · ЛКМ: Вкл/Выкл · ПКМ: список сетей и пароль"
-                            className={`h-[54px] px-2.5 rounded-full border flex items-center gap-2.5 text-left cursor-pointer transition ${
+                            className={`h-[48px] px-2 rounded-full border flex items-center gap-2 text-left cursor-pointer transition ${
                               activeConnectivityPicker === 'wifi' ? 'ring-2 ring-blue-400 ' + pillSurface : pillSurface
                             }`}
                           >
                             <span
-                              className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition shadow-md ${
+                              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition shadow-md ${
                                 wifiEnabled || wifiConnected
                                   ? 'bg-[#2563eb] text-white shadow-blue-600/40'
                                   : isDark
@@ -1285,15 +1596,14 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                                   : 'bg-slate-300 text-slate-600'
                               }`}
                             >
-                              <Wifi size={18} />
+                              <Wifi size={16} />
                             </span>
                             <div className="min-w-0 flex-1 pr-1">
-                              <div className="text-[11px] font-bold truncate">{wifiName || 'Wi-Fi'}</div>
+                              <div className="text-[11px] font-bold truncate leading-tight">{wifiName || 'Wi-Fi'}</div>
                               <div className={`text-[9px] truncate ${subText}`}>ПКМ — сети</div>
                             </div>
                           </button>
 
-                          {/* Bluetooth Capsule (LMB toggle, RMB native device picker) */}
                           <button
                             onClick={() => onToggleBluetooth(!bluetoothEnabled)}
                             onContextMenu={(e) => {
@@ -1303,12 +1613,12 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                               onRefreshBluetooth?.(true);
                             }}
                             title="Bluetooth · ЛКМ: Вкл/Выкл · ПКМ: список устройств"
-                            className={`h-[54px] px-2.5 rounded-full border flex items-center gap-2.5 text-left cursor-pointer transition ${
+                            className={`h-[48px] px-2 rounded-full border flex items-center gap-2 text-left cursor-pointer transition ${
                               activeConnectivityPicker === 'bluetooth' ? 'ring-2 ring-blue-400 ' + pillSurface : pillSurface
                             }`}
                           >
                             <span
-                              className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition shadow-md ${
+                              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition shadow-md ${
                                 bluetoothEnabled
                                   ? 'bg-[#2563eb] text-white shadow-blue-600/40'
                                   : isDark
@@ -1316,17 +1626,17 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                                   : 'bg-slate-300 text-slate-600'
                               }`}
                             >
-                              <Bluetooth size={18} />
+                              <Bluetooth size={16} />
                             </span>
                             <div className="min-w-0 flex-1 pr-1">
-                              <div className="text-[11px] font-bold truncate">{activeBtDev}</div>
+                              <div className="text-[11px] font-bold truncate leading-tight">{activeBtDev}</div>
                               <div className={`text-[9px] truncate ${subText}`}>ПКМ — устройства</div>
                             </div>
                           </button>
                         </div>
                       </div>
 
-                      {/* Inline 100% Native Luma OS Wi-Fi & Bluetooth Picker (opened via RMB!) */}
+                      {/* Inline Native Wi-Fi & Bluetooth Picker (opened via RMB!) */}
                       {activeConnectivityPicker === 'wifi' && (
                         <LumaWifiPickerPanel
                           isDark={isDark}
@@ -1336,7 +1646,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                           onToggleRadio={(en) => onToggleWifi?.(en)}
                           onConnect={
                             onConnectWifi ||
-                            (async () => ({ ok: false, error: 'Сервис Wi-Fi LumaCore недоступен' }))
+                            (async () => ({ ok: false, error: 'Сервис Wi-Fi недоступен' }))
                           }
                           onDisconnect={onDisconnectWifi || (async () => {})}
                           onClose={() => setActiveConnectivityPicker('none')}
@@ -1352,122 +1662,153 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                           onToggleRadio={(en) => onToggleBluetooth(en)}
                           onDeviceAction={
                             onBluetoothDeviceAction ||
-                            (async () => ({ ok: false, error: 'Сервис Bluetooth LumaCore недоступен' }))
+                            (async () => ({ ok: false, error: 'Сервис Bluetooth недоступен' }))
                           }
                           onClose={() => setActiveConnectivityPicker('none')}
                         />
                       )}
 
-                      {/* ===== ROW 3-4: SUPERDEVICE & DND CAPSULES (LEFT) + THICK BRIGHTNESS & VOLUME PILL SLIDERS (RIGHT) ===== */}
-                      <div className="grid grid-cols-2 gap-2.5">
-                        {/* Left Column: Суперустройство + Не беспокоить */}
-                        <div className="flex flex-col gap-2.5">
+                      {/* ===== ROW 3-4: SUPERDEVICE & DND (LEFT) + FULL-HITBOX POINTER-CAPTURE BRIGHTNESS & VOLUME CAPSULES (RIGHT) ===== */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex flex-col gap-2">
                           <button
                             onClick={() => {
                               onClose();
                               onOpenWindow('superdevice');
                             }}
                             title="Суперустройство — единая экосистема устройств Luma OS"
-                            className={`h-[50px] px-2.5 rounded-full border flex items-center gap-2.5 text-left cursor-pointer transition ${pillSurface}`}
+                            className={`h-[44px] px-2 rounded-full border flex items-center gap-2 text-left cursor-pointer transition ${pillSurface}`}
                           >
-                            <span className="w-9 h-9 rounded-full bg-white/10 border border-white/15 text-sky-300 flex items-center justify-center shrink-0">
-                              <Radio size={17} />
+                            <span className="w-8 h-8 rounded-full bg-white/10 border border-white/15 text-sky-300 flex items-center justify-center shrink-0">
+                              <Radio size={15} />
                             </span>
-                            <div className="min-w-0 leading-tight">
-                              <div className="text-[11px] font-bold truncate">Суперуст-</div>
-                              <div className="text-[11px] font-bold truncate">ройство</div>
-                            </div>
+                            <span className="text-[11px] font-bold truncate pr-1">Суперустройство</span>
                           </button>
 
                           <button
                             onClick={onToggleDnd}
                             title="Режим «Не беспокоить»"
-                            className={`h-[50px] px-2.5 rounded-full border flex items-center gap-2.5 text-left cursor-pointer transition ${pillSurface}`}
+                            className={`h-[44px] px-2 rounded-full border flex items-center gap-2 text-left cursor-pointer transition ${pillSurface}`}
                           >
                             <span
-                              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition ${
+                              className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition ${
                                 dnd ? 'bg-[#2563eb] text-white shadow-md shadow-blue-600/40' : 'bg-white/10 text-white/80'
                               }`}
                             >
-                              <Moon size={16} />
+                              <Moon size={15} />
                             </span>
-                            <span className="text-[11px] font-bold truncate">Не беспокоить</span>
+                            <span className="text-[11px] font-bold truncate pr-1">Не беспокоить</span>
                           </button>
                         </div>
 
-                        {/* Right Column: Thick HarmonyOS Pill Sliders (Brightness + Volume, Drag AND Scroll Wheel!) */}
-                        <div className="flex flex-col gap-2.5">
-                          {/* Brightness Capsule Slider */}
+                        {/* Right Column: 100% Full-Hitbox Pointer-Capture Sliders (ZERO vertical offset!) */}
+                        <div className="flex flex-col gap-2">
+                          {/* Brightness Capsule — drag anywhere on entire capsule! */}
                           <div
+                            onPointerDown={(e) => {
+                              e.currentTarget.setPointerCapture(e.pointerId);
+                              draggingSliderRef.current = true;
+                              const pct = computeCapsulePercent(e.clientX, e.currentTarget);
+                              onBrightnessChange(Math.round(25 + pct * 75));
+                            }}
+                            onPointerMove={(e) => {
+                              if (!draggingSliderRef.current) return;
+                              const pct = computeCapsulePercent(e.clientX, e.currentTarget);
+                              onBrightnessChange(Math.round(25 + pct * 75));
+                            }}
+                            onPointerUp={(e) => {
+                              draggingSliderRef.current = false;
+                              try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+                            }}
+                            onPointerCancel={() => {
+                              draggingSliderRef.current = false;
+                            }}
                             onWheel={(e) => {
                               e.preventDefault();
                               onBrightnessChange(Math.max(25, Math.min(100, brightness + (e.deltaY < 0 ? 5 : -5))));
                             }}
-                            title={`Яркость: ${brightness}% · Перетаскивайте или крутите колесо мыши`}
-                            className={`relative h-[50px] rounded-full border overflow-hidden flex items-center ${pillSurface}`}
+                            title={`Яркость: ${brightness}% · Потяните в любом месте полоски или крутите колесо`}
+                            className={`relative h-[44px] rounded-full border overflow-hidden flex items-center cursor-ew-resize select-none touch-none ${pillSurface}`}
                           >
                             <div
-                              className="absolute inset-y-0 left-0 bg-gradient-to-r from-white/30 to-white/45 transition-all duration-100 pointer-events-none"
-                              style={{ width: `${Math.max(12, brightness)}%` }}
+                              className="absolute inset-y-0 left-0 bg-gradient-to-r from-white/32 to-white/48 pointer-events-none"
+                              style={{ width: `${Math.max(12, ((brightness - 25) / 75) * 100)}%` }}
                             />
-                            <Sun size={18} className="relative z-10 ml-3.5 text-white drop-shadow shrink-0 pointer-events-none" />
-                            <input
-                              type="range"
-                              min={25}
-                              max={100}
-                              value={brightness}
-                              onChange={(e) => onBrightnessChange(Number(e.target.value))}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-20"
-                            />
-                            <span className="relative z-10 ml-auto mr-3 text-[10px] font-mono font-bold opacity-80 pointer-events-none">
+                            <Sun size={16} className="relative z-10 ml-3 text-white drop-shadow shrink-0 pointer-events-none" />
+                            <span className="relative z-10 ml-auto mr-3 text-[10px] font-mono font-bold opacity-90 pointer-events-none">
                               {brightness}%
                             </span>
                           </div>
 
-                          {/* Volume Capsule Slider */}
+                          {/* Volume Capsule — drag anywhere (even starting on icon!); short click on icon toggles Mute */}
                           <div
+                            onPointerDown={(e) => {
+                              e.currentTarget.setPointerCapture(e.pointerId);
+                              draggingSliderRef.current = true;
+                              volDragStartXRef.current = e.clientX;
+                              volDidDragRef.current = false;
+                              const r = e.currentTarget.getBoundingClientRect();
+                              const clickedIcon = e.clientX - r.left <= 38;
+                              if (!clickedIcon) {
+                                const val = Math.round(computeCapsulePercent(e.clientX, e.currentTarget) * 100);
+                                onVolumeChange(val);
+                              }
+                            }}
+                            onPointerMove={(e) => {
+                              if (!draggingSliderRef.current) return;
+                              if (Math.abs(e.clientX - volDragStartXRef.current) > 4) {
+                                volDidDragRef.current = true;
+                              }
+                              if (volDidDragRef.current) {
+                                const val = Math.round(computeCapsulePercent(e.clientX, e.currentTarget) * 100);
+                                onVolumeChange(val);
+                              }
+                            }}
+                            onPointerUp={(e) => {
+                              const wasDrag = volDidDragRef.current;
+                              const r = e.currentTarget.getBoundingClientRect();
+                              const releasedOnIcon = e.clientX - r.left <= 38;
+                              draggingSliderRef.current = false;
+                              volDidDragRef.current = false;
+                              try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+                              if (!wasDrag && releasedOnIcon) {
+                                onToggleMute();
+                              }
+                            }}
+                            onPointerCancel={() => {
+                              draggingSliderRef.current = false;
+                              volDidDragRef.current = false;
+                            }}
                             onWheel={(e) => {
                               e.preventDefault();
                               onVolumeChange(Math.max(0, Math.min(100, (muted ? 0 : volume) + (e.deltaY < 0 ? 4 : -4))));
                             }}
-                            title={`Громкость: ${muted ? 0 : volume}% · Перетаскивайте или крутите колесо мыши`}
-                            className={`relative h-[50px] rounded-full border overflow-hidden flex items-center ${pillSurface}`}
+                            title={`Громкость: ${muted ? 0 : volume}% · Потяните в любом месте полоски, клик по иконке — без звука`}
+                            className={`relative h-[44px] rounded-full border overflow-hidden flex items-center cursor-ew-resize select-none touch-none ${pillSurface}`}
                           >
                             <div
-                              className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-500/40 to-white/45 transition-all duration-100 pointer-events-none"
-                              style={{ width: `${Math.max(muted ? 0 : 10, muted ? 0 : volume)}%` }}
+                              className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-500/45 to-white/48 pointer-events-none"
+                              style={{ width: `${muted ? 0 : Math.max(volume > 0 ? 10 : 0, volume)}%` }}
                             />
-                            <button
-                              onClick={onToggleMute}
-                              className="relative z-30 ml-3 text-white drop-shadow shrink-0 cursor-pointer p-1"
-                              title="Без звука"
-                            >
-                              {muted || volume === 0 ? <VolumeX size={18} className="text-rose-300" /> : <Volume2 size={18} />}
-                            </button>
-                            <input
-                              type="range"
-                              min={0}
-                              max={100}
-                              value={muted ? 0 : volume}
-                              onChange={(e) => onVolumeChange(Number(e.target.value))}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-20"
-                            />
-                            <span className="relative z-10 ml-auto mr-3 text-[10px] font-mono font-bold opacity-80 pointer-events-none">
+                            <span className="relative z-10 ml-3 text-white drop-shadow shrink-0 pointer-events-none">
+                              {muted || volume === 0 ? <VolumeX size={16} className="text-rose-300" /> : <Volume2 size={16} />}
+                            </span>
+                            <span className="relative z-10 ml-auto mr-3 text-[10px] font-mono font-bold opacity-90 pointer-events-none">
                               {muted ? 'MUTE' : `${volume}%`}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* ===== 4x4 HARMONYOS CIRCULAR QUICK TOGGLES GRID (EXACT REFERENCE STYLE!) ===== */}
-                      <div className="grid grid-cols-4 gap-x-2 gap-y-3 pt-1">
+                      {/* ===== COMPACT 4x4 OS STYLE CIRCULAR QUICK TOGGLES GRID ===== */}
+                      <div className="grid grid-cols-4 gap-x-1.5 gap-y-2 pt-0.5">
                         {(
                           [
                             {
                               id: 'share',
                               label: 'Luma Share',
                               active: true,
-                              icon: <Share2 size={20} />,
+                              icon: <Share2 size={18} />,
                               onClick: () => {
                                 onClose();
                                 onOpenWindow('oxygen_connect');
@@ -1477,28 +1818,28 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                               id: 'mute',
                               label: 'Без звука',
                               active: muted || volume === 0,
-                              icon: muted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />,
+                              icon: muted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />,
                               onClick: onToggleMute,
                             },
                             {
                               id: 'rec',
                               label: recording ? `${Math.floor(recSeconds / 60)}:${String(recSeconds % 60).padStart(2, '0')}` : 'Запись',
                               active: recording,
-                              icon: recording ? <Square size={18} fill="currentColor" /> : <Video size={20} />,
+                              icon: recording ? <Square size={16} fill="currentColor" /> : <Video size={18} />,
                               onClick: () => (recording ? void stopRecording() : void startRecording()),
                             },
                             {
                               id: 'shot',
                               label: 'Скриншот',
                               active: false,
-                              icon: <Camera size={20} />,
+                              icon: <Camera size={18} />,
                               onClick: () => void handleTakeScreenshot(),
                             },
                             {
                               id: 'lens',
                               label: 'Circle AI',
                               active: false,
-                              icon: <ScanSearch size={20} />,
+                              icon: <ScanSearch size={18} />,
                               onClick: () => {
                                 onClose();
                                 onOpenLens?.();
@@ -1508,14 +1849,14 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                               id: 'eye',
                               label: 'Защита глаз',
                               active: nightLightLevel > 0,
-                              icon: <Moon size={20} />,
+                              icon: <Moon size={18} />,
                               onClick: () => onNightLightChange?.(nightLightLevel > 0 ? 0 : 35),
                             },
                             {
                               id: 'photo',
                               label: 'Фотостудия',
                               active: false,
-                              icon: <ImageIcon size={20} />,
+                              icon: <ImageIcon size={18} />,
                               onClick: () => {
                                 onClose();
                                 onOpenWindow('photo_editor');
@@ -1525,7 +1866,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                               id: 'explorer',
                               label: 'Проводник',
                               active: false,
-                              icon: <FolderOpen size={20} />,
+                              icon: <FolderOpen size={18} />,
                               onClick: () => {
                                 onClose();
                                 onOpenWindow('explorer');
@@ -1535,28 +1876,28 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                               id: 'game',
                               label: 'Игровой',
                               active: gamingBoost,
-                              icon: <Flame size={20} />,
+                              icon: <Flame size={18} />,
                               onClick: () => onToggleGamingBoost?.(),
                             },
                             {
                               id: 'mic',
                               label: 'Микрофон',
                               active: !micMuted,
-                              icon: micMuted ? <MicOff size={20} /> : <Mic size={20} />,
+                              icon: micMuted ? <MicOff size={18} /> : <Mic size={18} />,
                               onClick: () => onToggleMicMute?.(),
                             },
                             {
                               id: 'island',
                               label: 'Остров',
                               active: dynamicIslandEnabled,
-                              icon: <Sparkles size={20} />,
+                              icon: <Sparkles size={18} />,
                               onClick: onToggleIsland,
                             },
                             {
                               id: 'shield',
                               label: 'LumaShield',
                               active: true,
-                              icon: <ShieldCheck size={20} />,
+                              icon: <ShieldCheck size={18} />,
                               onClick: () => {
                                 onClose();
                                 onOpenWindow('security');
@@ -1566,7 +1907,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                               id: 'vault',
                               label: 'Сейф',
                               active: false,
-                              icon: <Shield size={20} />,
+                              icon: <Shield size={18} />,
                               onClick: () => {
                                 onClose();
                                 onOpenVault();
@@ -1576,21 +1917,21 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                               id: 'theme',
                               label: isDark ? 'Тёмная' : 'Светлая',
                               active: isDark,
-                              icon: <SunMoon size={20} />,
+                              icon: <SunMoon size={18} />,
                               onClick: onToggleTheme,
                             },
                             {
                               id: 'dual',
                               label: '2 Панели',
                               active: dualTaskbarMode,
-                              icon: <Layers size={20} />,
+                              icon: <Layers size={18} />,
                               onClick: onToggleDualTaskbar,
                             },
                             {
                               id: 'feats',
                               label: 'Функции',
                               active: showFeaturesModal,
-                              icon: <Sliders size={20} />,
+                              icon: <Sliders size={18} />,
                               onClick: () => setShowFeaturesModal(true),
                             },
                           ] as const
@@ -1598,12 +1939,12 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                           <button
                             key={q.id}
                             onClick={q.onClick}
-                            className="flex flex-col items-center gap-1.5 group cursor-pointer"
+                            className="flex flex-col items-center gap-1 group cursor-pointer"
                           >
                             <span
-                              className={`w-[50px] h-[50px] rounded-full flex items-center justify-center border transition-all duration-200 ${
+                              className={`w-[44px] h-[44px] rounded-full flex items-center justify-center border transition-all duration-150 ${
                                 q.active
-                                  ? 'bg-[#2563eb] border-blue-400/60 text-white shadow-[0_8px_22px_rgba(37,99,235,0.45)] group-hover:brightness-110'
+                                  ? 'bg-[#2563eb] border-blue-400/60 text-white shadow-[0_6px_18px_rgba(37,99,235,0.42)] group-hover:brightness-110'
                                   : isDark
                                   ? 'bg-[#222733]/85 border-white/10 text-white/85 group-hover:bg-[#2c3344]'
                                   : 'bg-slate-200/90 border-slate-300 text-slate-800 group-hover:bg-slate-300'
@@ -1611,7 +1952,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                             >
                               {q.icon}
                             </span>
-                            <span className="text-[10px] font-medium leading-tight text-center truncate w-full opacity-85">
+                            <span className="text-[9.5px] font-medium leading-tight text-center truncate w-full opacity-85">
                               {q.label}
                             </span>
                           </button>

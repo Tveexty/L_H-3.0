@@ -62,14 +62,14 @@ interface LumaNovaPanelProps {
   onToggleDnd: () => void;
   onToggleNightLight: () => void;
   onOpenSettings: () => void;
+  onSwitchToClassic?: () => void;
   onPowerAction: (action: 'lock' | 'sleep' | 'restart' | 'shutdown') => void;
 }
 
 /**
- * Luma OS 1.6.1 (Nitrogen) — Native "Luma Nova" System Style Top-Right Indicator Pill & Compact Control/Launcher Panel.
+ * Luma OS 1.7.3 (Oxygen) — Native "Luma Nova" System Style Top-Right Indicator Pill & Compact Control/Launcher Panel.
  * Shown when DesignStyle === 'nova' (with Start button cleanly removed from the taskbar!).
- * Clicking the top-right Battery / Wi-Fi / Language pill (or pressing Win key in Luma Nova style) opens this sleek panel
- * containing: Compact Start/App Launcher, Desktop Window Switcher, Alt+R trigger, Workspaces, Sound/Brightness & Power.
+ * Includes 1-click return to Classic taskbar so you never get stuck in Nova mode.
  */
 export const LumaNovaPanel: React.FC<LumaNovaPanelProps> = ({
   open,
@@ -104,6 +104,7 @@ export const LumaNovaPanel: React.FC<LumaNovaPanelProps> = ({
   onToggleDnd,
   onToggleNightLight,
   onOpenSettings,
+  onSwitchToClassic,
   onPowerAction,
 }) => {
   const [search, setSearch] = useState('');
@@ -171,18 +172,31 @@ export const LumaNovaPanel: React.FC<LumaNovaPanelProps> = ({
               : 'bg-[#f4f7fb]/95 border-slate-300 text-slate-900'
           }`}
         >
-          {/* Header: Luma Nova Nitrogen Brand + Alt+R + Settings + Close */}
+          {/* Header: Luma Nova Brand + 1-Click Classic Switch + Alt+R + Settings + Close */}
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-sky-400 via-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md font-black text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-sky-400 via-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md font-black text-xs shrink-0">
                 N
               </div>
-              <div>
-                <div className="text-xs font-extrabold leading-tight">Luma Nova · Nitrogen</div>
-                <div className="text-[10px] opacity-60 font-mono">Пуск · Окна · Столы · Питание</div>
+              <div className="min-w-0">
+                <div className="text-xs font-extrabold leading-tight truncate">Luma Nova · 1.7.3</div>
+                <div className="text-[10px] opacity-60 font-mono truncate">Пуск · Окна · Столы · Питание</div>
               </div>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 shrink-0">
+              {onSwitchToClassic && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onSwitchToClassic();
+                  }}
+                  title="Вернуть классическую панель задач"
+                  className="px-2 py-1 rounded-full bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-white border border-emerald-400/35 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition"
+                >
+                  Классика
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
