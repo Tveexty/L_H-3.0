@@ -202,14 +202,14 @@ export const KernelUIPanel: React.FC<{
       : liveSystem.device_model
     : 'Luma PC Workstation x64';
 
-  const exeDownloadName = isPro ? 'LumaOS_1.7.4_Pro.exe' : 'LumaOS_1.7.4_Base.exe';
+  const exeDownloadName = isPro ? 'LumaOS_1.7.5_Pro.exe' : 'LumaOS_1.7.5_Base.exe';
 
   return (
     <div className="space-y-4">
-      {/* Flagship Sculpted 2.5D Oxygen 1.7.4 Hero Artwork — Click for Easter Egg Mini-Games! */}
+      {/* Flagship Sculpted 2.5D Oxygen 1.7.5 Hero Artwork — Click for Easter Egg Mini-Games! */}
       <LumaHeliumHeroCard
         onTriggerEasterEgg={() => onTriggerEasterEgg?.()}
-        kernelVersion={liveSystem?.kernel_engine_version || '1.6.4'}
+        kernelVersion={liveSystem?.kernel_engine_version || '1.6.5'}
         securityVersion="3.2"
       />
 
@@ -225,10 +225,10 @@ export const KernelUIPanel: React.FC<{
                 ЯДРО UI · LUMA OXYGEN · СТИЛЬ ОС
               </div>
               <div className="text-lg font-extrabold tracking-tight truncate">
-                Luma OS 1.7.4 (Oxygen · {isPro ? 'Pro' : 'Base'})
+                Luma OS 1.7.5 (Oxygen · {isPro ? 'Pro' : 'Base'})
               </div>
               <div className={`text-xs font-mono truncate ${mutedCls}`}>
-                LumaCore {liveSystem?.kernel_engine_version || '1.6.4'} · LumaShield 3.2 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
+                LumaCore {liveSystem?.kernel_engine_version || '1.6.5'} · LumaShield 3.2 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
               </div>
             </div>
           </div>
@@ -293,23 +293,23 @@ export const KernelUIPanel: React.FC<{
           {/* 3. Версия ПО */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия ПО</div>
-            <div className="text-sm font-mono font-bold">1.7.4 (Oxygen · Стиль ОС)</div>
+            <div className="text-sm font-mono font-bold">1.7.5 (Oxygen · Стиль ОС)</div>
           </div>
 
-          {/* 4. Версия Ядра (1.6.4) */}
+          {/* 4. Версия Ядра (1.6.5) */}
           <div className={`p-3.5 rounded-xl border space-y-1.5 ${isDark ? 'bg-black/25 border-white/[0.08]' : 'bg-black/[0.03] border-zinc-900/10'}`}>
             <div className={`text-[10px] font-mono uppercase tracking-wider ${mutedCls}`}>Версия Ядра</div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-mono font-bold text-[var(--luma-accent)]">
-                {liveSystem?.kernel_engine_version || '1.6.4'}
+                {liveSystem?.kernel_engine_version || '1.6.5'}
               </span>
-              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore {liveSystem?.kernel_engine_version || '1.6.4'} · Zero-WMI</span>
+              <span className={`text-[10px] font-mono ${mutedCls}`}>LumaCore {liveSystem?.kernel_engine_version || '1.6.5'} · Zero-WMI</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Developer Mode & Administrator (UAC) Elevation Controls — Luma OS 1.7.4 Oxygen */}
+      {/* Developer Mode & Administrator (UAC) Elevation Controls — Luma OS 1.7.5 Oxygen */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
         <div className={`p-4 rounded-2xl border space-y-2.5 ${surfaceCls}`}>
           <div className="flex items-center justify-between gap-2">

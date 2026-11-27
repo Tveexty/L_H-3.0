@@ -26,11 +26,11 @@ interface HeroCardProps {
 }
 
 /**
- * Flagship sculptural 2.5D Oxygen O-8 luminous cryo-glass hero banner for Luma OS 1.7.4 (Oxygen · O-8).
+ * Flagship sculptural 2.5D Oxygen O-8 luminous cryo-glass hero banner for Luma OS 1.7.5 (Oxygen · O-8).
  */
 export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
   onTriggerEasterEgg,
-  kernelVersion = '1.6.4',
+  kernelVersion = '1.6.5',
   securityVersion = '3.2',
 }) => {
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -91,7 +91,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
       >
         <img
           src={oxygenHeroImg}
-          alt="Luma OS 1.7.4 Oxygen O-8 2.5D QHD"
+          alt="Luma OS 1.7.5 Oxygen O-8 2.5D QHD"
           loading="eager"
           decoding="sync"
           draggable={false}
@@ -142,7 +142,7 @@ export const LumaHeliumHeroCard: React.FC<HeroCardProps> = ({
               filter: 'drop-shadow(0 6px 26px rgba(6, 182, 212, 0.6))',
             }}
           >
-            1.7.4
+            1.7.5
           </div>
           <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-wide text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">
             LumaOS

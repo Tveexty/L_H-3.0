@@ -234,7 +234,7 @@ func getOxygenConnectStatusSnapshot() map[string]interface{} {
 func hostDeviceName() string {
 	h, err := os.Hostname()
 	if err != nil || h == "" {
-		return "Luma OS 1.7.4 (Oxygen)"
+		return "Luma OS 1.7.5 (Oxygen)"
 	}
 	return h
 }
@@ -955,7 +955,7 @@ const oxygenConnectMobileHTML = `<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#040a16"/>
 <link rel="manifest" href="/manifest.json"/>
-<title>Oxygen Connect · Luma OS 1.7.4</title>
+<title>Oxygen Connect · Luma OS 1.7.5</title>
 <style>
   :root{--accent:#06b6d4;--accent2:#38bdf8;--bg:#040a16;--card:rgba(14,25,46,.78);--border:rgba(125,211,252,.22)}
   *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;-webkit-tap-highlight-color:transparent}

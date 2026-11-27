@@ -1174,7 +1174,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
               <span className="text-xs font-extrabold tracking-tight truncate">
-                Luma OS 1.7.4 {isPro ? 'Pro' : 'Base'}
+                Luma OS 1.7.5 {isPro ? 'Pro' : 'Base'}
               </span>
               {isPro && (
                 <span className="px-1.5 py-0.5 rounded-full bg-blue-600/25 border border-blue-400/40 text-sky-300 text-[9px] font-mono font-bold inline-flex items-center gap-0.5">
@@ -1214,7 +1214,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             {showFeaturesModal ? (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-sky-400">Менеджер функций Luma OS 1.7.4</span>
+                  <span className="text-[11px] font-bold text-sky-400">Менеджер функций Luma OS 1.7.5</span>
                   <button onClick={() => setShowFeaturesModal(false)} className="text-[10px] px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 cursor-pointer">
                     Назад
                   </button>
