@@ -58,6 +58,7 @@ import {
   ScanSearch,
   Share2,
   Crown,
+  Cast,
 } from 'lucide-react';
 import {
   BluetoothDeviceItem,
@@ -67,6 +68,7 @@ import {
   WifiStatusSnapshot,
 } from './LumaConnectivityPicker';
 import { LumaPerAppAudioHub, MediaPlayerSessionMini } from './LumaPerAppAudioHub';
+import { LumaMiracastPanel } from './LumaMiracastPanel';
 
 export interface CarbonNotificationItem {
   id: string;
@@ -99,6 +101,7 @@ export interface HubAudioEndpoint {
 export type ControlHubTileId =
   | 'wifi'
   | 'bluetooth'
+  | 'miracast'
   | 'dnd'
   | 'theme'
   | 'night_light'
@@ -122,6 +125,7 @@ export type ControlHubTileId =
 export const ALL_HUB_TILES: { id: ControlHubTileId; label: string; desc: string }[] = [
   { id: 'wifi', label: 'Wi-Fi', desc: 'Сеть · ПКМ — список и пароль' },
   { id: 'bluetooth', label: 'Bluetooth', desc: 'ПКМ — список устройств' },
+  { id: 'miracast', label: '2-й экран (Miracast)', desc: 'Беспроводной дисплей · Источник и Приёмник' },
   { id: 'dnd', label: 'Не беспокоить', desc: 'Приглушить звук и всплывающие окна' },
   { id: 'theme', label: 'Тема', desc: 'Светлая / Тёмная' },
   { id: 'night_light', label: 'Ночной свет', desc: 'Защита глаз от синего' },
@@ -346,6 +350,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   const [editMode, setEditMode] = useState(false);
   const [showFeaturesModal, setShowFeaturesModal] = useState(false);
   const [showMediaModal, setShowMediaModal] = useState(false);
+  const [showMiracastModal, setShowMiracastModal] = useState(false);
   const [selectedMediaId, setSelectedMediaId] = useState<string>('');
   const [scrubPosSec, setScrubPosSec] = useState<number | null>(null);
   const [activeConnectivityPicker, setActiveConnectivityPicker] = useState<'none' | 'wifi' | 'bluetooth'>('none');
@@ -383,7 +388,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   const [audioCollapsed, setAudioCollapsed] = useState(true);
   const [notifTab, setNotifTab] = useState<'all' | 'telegram' | 'system'>('all');
 
-  // Auto-close on mouse leave (paused during Edit Mode, Media Settings, Features Manager, Slider Drag, or Wi-Fi/BT Picker!)
+  // Auto-close on mouse leave (paused during Edit Mode, Media Settings, Miracast, Features Manager, Slider Drag, or Wi-Fi/BT Picker!)
   const leaveTimerRef = useRef<number | null>(null);
   const pickingScreenRef = useRef(false);
   const handleHubMouseEnter = () => {
@@ -397,6 +402,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
       editMode ||
       showFeaturesModal ||
       showMediaModal ||
+      showMiracastModal ||
       draggingSliderRef.current ||
       activeConnectivityPicker !== 'none' ||
       pickingScreenRef.current
@@ -412,6 +418,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
     if (!open) {
       setActiveConnectivityPicker('none');
       setShowMediaModal(false);
+      setShowMiracastModal(false);
     }
   }, [open]);
   useEffect(() => {
@@ -1002,6 +1009,18 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
         active = powerPlan === 'saver' || powerPlan === 'powersaver';
         onClick = onTogglePowerSaver;
         break;
+      case 'miracast':
+        icon = <Cast size={14} />;
+        label = '2-й экран';
+        sub = 'Miracast';
+        active = showMiracastModal;
+        onClick = () => {
+          setActiveConnectivityPicker('none');
+          setShowFeaturesModal(false);
+          setShowMediaModal(false);
+          setShowMiracastModal((v) => !v);
+        };
+        break;
       case 'features_mgr':
         icon = <Sliders size={14} />;
         label = 'Функции';
@@ -1009,6 +1028,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
         active = showFeaturesModal;
         onClick = () => {
           setActiveConnectivityPicker('none');
+          setShowMiracastModal(false);
           setShowFeaturesModal((v) => !v);
         };
         break;
@@ -1154,7 +1174,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
               <span className="text-xs font-extrabold tracking-tight truncate">
-                Luma OS 1.7.3 {isPro ? 'Pro' : 'Base'}
+                Luma OS 1.7.4 {isPro ? 'Pro' : 'Base'}
               </span>
               {isPro && (
                 <span className="px-1.5 py-0.5 rounded-full bg-blue-600/25 border border-blue-400/40 text-sky-300 text-[9px] font-mono font-bold inline-flex items-center gap-0.5">
@@ -1194,7 +1214,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             {showFeaturesModal ? (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-sky-400">Менеджер функций Luma OS 1.7.3</span>
+                  <span className="text-[11px] font-bold text-sky-400">Менеджер функций Luma OS 1.7.4</span>
                   <button onClick={() => setShowFeaturesModal(false)} className="text-[10px] px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 cursor-pointer">
                     Назад
                   </button>
@@ -1217,6 +1237,34 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                     </button>
                   );
                 })}
+              </div>
+            ) : showMiracastModal ? (
+              /* ==================== WIRELESS SECOND SCREEN (MIRACAST) MODAL ==================== */
+              <div className="space-y-2.5 luma-animate-in">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold text-sky-400 flex items-center gap-1.5">
+                    <Cast size={14} /> 2-й экран · Miracast
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowMiracastModal(false)}
+                    className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 text-[10px] font-bold cursor-pointer"
+                  >
+                    ← Назад
+                  </button>
+                </div>
+                <LumaMiracastPanel
+                  mode="compact"
+                  onNotify={(msg) =>
+                    onAddNotification({
+                      source: 'system',
+                      sender: 'Miracast · 2-й экран',
+                      title: 'Беспроводной дисплей',
+                      body: msg,
+                      unread: true,
+                    })
+                  }
+                />
               </div>
             ) : showMediaModal ? (
               /* ==================== FULL MEDIA PLAYER & AUDIO SETTINGS MODAL (OPENED ON PLAYER CLICK!) ==================== */
@@ -1863,13 +1911,15 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                               },
                             },
                             {
-                              id: 'explorer',
-                              label: 'Проводник',
-                              active: false,
-                              icon: <FolderOpen size={18} />,
+                              id: 'miracast',
+                              label: '2-й экран',
+                              active: showMiracastModal,
+                              icon: <Cast size={18} />,
                               onClick: () => {
-                                onClose();
-                                onOpenWindow('explorer');
+                                setActiveConnectivityPicker('none');
+                                setShowFeaturesModal(false);
+                                setShowMediaModal(false);
+                                setShowMiracastModal(true);
                               },
                             },
                             {

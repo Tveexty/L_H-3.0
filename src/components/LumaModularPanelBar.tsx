@@ -43,6 +43,7 @@ export interface ModularPanelConfig {
   enabled: boolean;
   position: 'top' | 'bottom';
   scrollActions: boolean;
+  showBuilderButton?: boolean;
   order: ModularBlockId[];
   hidden: ModularBlockId[];
 }
@@ -67,6 +68,7 @@ export const DEFAULT_MODULAR_PANEL_CONFIG: ModularPanelConfig = {
   enabled: true,
   position: 'top',
   scrollActions: true,
+  showBuilderButton: true,
   order: [
     'superdevice',
     'circle_search',
@@ -586,7 +588,7 @@ export const LumaModularPanelBar: React.FC<LumaModularPanelBarProps> = ({
             key={id}
             {...commonProps}
             onClick={onOpenEditionSettings}
-            title={isPro ? 'Luma OS 1.7.2 Pro · Полные права и Pro-функции' : 'Luma OS 1.7.2 Base · Сравнить с версией Pro'}
+            title={isPro ? 'Luma OS 1.7.4 Pro · Полные права и Pro-функции' : 'Luma OS 1.7.4 Base · Сравнить с версией Pro'}
             className={`${wrapCls} ${
               isPro
                 ? '!bg-gradient-to-r !from-blue-600/35 !to-cyan-500/30 !border-sky-400/50 text-sky-200'
@@ -603,6 +605,7 @@ export const LumaModularPanelBar: React.FC<LumaModularPanelBarProps> = ({
   };
 
   const isTop = config.position === 'top';
+  const showBuilderBtn = config.showBuilderButton !== false;
 
   return (
     <>
@@ -621,15 +624,34 @@ export const LumaModularPanelBar: React.FC<LumaModularPanelBarProps> = ({
         >
           {visibleBlocks.map((id) => renderBlock(id))}
 
-          {/* Modular Bar Customizer Trigger */}
+          {/* Modular Bar Customizer Trigger (can be hidden independently) */}
+          {showBuilderBtn && (
+            <button
+              onClick={() => setBuilderOpen((v) => !v)}
+              title="Конструктор модульной панели (перетаскивание блоков, верх/низ, скрытие)"
+              className={`w-7 h-7 rounded-full border flex items-center justify-center cursor-pointer shrink-0 transition ${
+                builderOpen ? 'bg-blue-600 border-blue-500 text-white' : pillBase
+              }`}
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {/* 1-Click Hide Modular Panel */}
           <button
-            onClick={() => setBuilderOpen((v) => !v)}
-            title="Конструктор модульной панели (перетаскивание блоков, верх/низ, Scroll Actions)"
-            className={`w-7 h-7 rounded-full border flex items-center justify-center cursor-pointer shrink-0 transition ${
-              builderOpen ? 'bg-blue-600 border-blue-500 text-white' : pillBase
-            }`}
+            onClick={() => {
+              setBuilderOpen(false);
+              onChangeConfig({ ...config, enabled: false });
+              onPushToast(
+                'Модульная панель скрыта',
+                'Её всегда можно вернуть в Настройках → Панель задач или через ПКМ по панели задач.',
+                'info'
+              );
+            }}
+            title="Убрать модульную панель (вернуть: Настройки → Панель задач или ПКМ по панели)"
+            className={`w-6 h-6 rounded-full border flex items-center justify-center cursor-pointer shrink-0 opacity-60 hover:opacity-100 hover:border-rose-400/50 hover:text-rose-300 transition ${pillBase}`}
           >
-            <Settings2 className="w-3.5 h-3.5" />
+            <X className="w-3 h-3" />
           </button>
         </div>
       </div>
@@ -638,14 +660,14 @@ export const LumaModularPanelBar: React.FC<LumaModularPanelBarProps> = ({
       {builderOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`fixed ${isTop ? 'top-12' : 'bottom-[110px]'} right-4 z-[9500] w-[350px] max-w-[92vw] rounded-[28px] border backdrop-blur-3xl p-4 shadow-[0_28px_80px_rgba(0,0,0,0.65)] space-y-3 ${
+          className={`fixed ${isTop ? 'top-12' : 'bottom-[110px]'} right-4 z-[9500] w-[356px] max-w-[92vw] rounded-[28px] border backdrop-blur-3xl p-4 shadow-[0_28px_80px_rgba(0,0,0,0.65)] space-y-3 ${
             isDark ? 'bg-[#121722]/94 border-white/15 text-white' : 'bg-white/95 border-slate-200 text-slate-900'
           }`}
         >
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs font-black">Конструктор модульной панели</div>
-              <div className="text-[10px] opacity-60">Перетаскивайте блоки или включайте/отключайте</div>
+              <div className="text-[10px] opacity-60">Перетаскивайте блоки или скройте панель целиком</div>
             </div>
             <button onClick={() => setBuilderOpen(false)} className="p-1.5 rounded-full hover:bg-white/10 cursor-pointer">
               <X className="w-4 h-4" />
@@ -685,8 +707,32 @@ export const LumaModularPanelBar: React.FC<LumaModularPanelBarProps> = ({
             />
           </label>
 
+          <label className={`p-2.5 rounded-2xl border flex items-center justify-between gap-2 cursor-pointer ${isDark ? 'bg-white/[0.04] border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+            <div>
+              <div className="text-[11px] font-bold">Показывать кнопку конструктора (⚙)</div>
+              <div className="text-[10px] opacity-60">Скройте шестерёнку, если настройка больше не нужна</div>
+            </div>
+            <input
+              type="checkbox"
+              checked={showBuilderBtn}
+              onChange={(e) => {
+                const nextShow = e.target.checked;
+                onChangeConfig({ ...config, showBuilderButton: nextShow });
+                if (!nextShow) {
+                  setBuilderOpen(false);
+                  onPushToast(
+                    'Кнопка конструктора скрыта',
+                    'Вернуть кнопку конструктора можно в Настройках → Панель задач.',
+                    'info'
+                  );
+                }
+              }}
+              className="w-4 h-4 accent-blue-600"
+            />
+          </label>
+
           {/* Draggable Blocks List */}
-          <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+          <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
             {config.order.map((bid) => {
               const meta = ALL_MODULAR_BLOCKS.find((m) => m.id === bid);
               if (!meta) return null;
@@ -721,6 +767,22 @@ export const LumaModularPanelBar: React.FC<LumaModularPanelBarProps> = ({
               );
             })}
           </div>
+
+          {/* Remove Modular Panel Entirely */}
+          <button
+            onClick={() => {
+              setBuilderOpen(false);
+              onChangeConfig({ ...config, enabled: false });
+              onPushToast(
+                'Модульная панель отключена',
+                'Включить обратно можно в Настройках → Панель задач или ПКМ по панели задач.',
+                'info'
+              );
+            }}
+            className="w-full py-2 px-3 rounded-xl border border-rose-500/35 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 text-[11px] font-bold transition cursor-pointer"
+          >
+            Убрать модульную панель целиком
+          </button>
 
           <div className="flex items-center justify-between pt-1">
             <button

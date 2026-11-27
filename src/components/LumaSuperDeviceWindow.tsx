@@ -16,6 +16,7 @@ import {
   Volume2,
   Wifi,
 } from 'lucide-react';
+import { LumaMiracastPanel } from './LumaMiracastPanel';
 
 export interface SuperDeviceNode {
   id: string;
@@ -202,7 +203,7 @@ export const LumaSuperDeviceWindow: React.FC<LumaSuperDeviceWindowProps> = ({
             <Radio className="w-3 h-3 animate-pulse" /> Экосистема Суперустройство · {isPro ? 'PRO' : 'BASE'}
           </div>
           <h2 className="text-xl font-black tracking-tight mt-1">
-            Суперустройство Luma OS 1.7.3
+            Суперустройство Luma OS 1.7.4
           </h2>
           <p className={`text-xs ${muted}`}>
             Перетащите любой пузырёк устройства к центральному ПК (или нажмите на него), чтобы мгновенно объединить их в единую экосистему.
@@ -429,6 +430,12 @@ export const LumaSuperDeviceWindow: React.FC<LumaSuperDeviceWindowProps> = ({
           <div className={`text-[10px] ${muted}`}>Визуальный поиск AI</div>
         </button>
       </div>
+
+      {/* Wireless Second Screen (Miracast) in SuperDevice Ecosystem */}
+      <LumaMiracastPanel
+        mode="compact"
+        onNotify={(msg) => onPushToast('2-й экран (Miracast)', msg, 'info')}
+      />
 
       {/* Connected Hardware Directory */}
       <div className={`p-3.5 rounded-2xl border space-y-2 ${cardCls}`}>
