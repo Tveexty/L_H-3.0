@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Wifi,
   WifiOff,
@@ -19,6 +19,7 @@ import {
   BatteryCharging,
   Power,
   Unplug,
+  Plus,
 } from 'lucide-react';
 
 export interface WifiNetworkItem {
@@ -80,7 +81,7 @@ interface WifiPickerProps {
     password?: string
   ) => Promise<{ ok: boolean; needs_password?: boolean; message?: string; error?: string }>;
   onDisconnect: () => Promise<void>;
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 const SignalBars: React.FC<{ signal: number; active?: boolean }> = ({ signal, active }) => {
@@ -119,6 +120,18 @@ export const LumaWifiPickerPanel: React.FC<WifiPickerProps> = ({
   const [showPass, setShowPass] = useState(false);
   const [busySsid, setBusySsid] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [showHiddenForm, setShowHiddenForm] = useState(false);
+  const [hiddenSsid, setHiddenSsid] = useState('');
+  const [hiddenPass, setHiddenPass] = useState('');
+
+  // Luma OS 1.8.3: Auto follow-up read 2.3s after panel mounts so slow 5 GHz / 6 GHz beacons appear automatically!
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      onRefresh(false);
+    }, 2300);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const shellCls = isDark
     ? 'bg-[#0b101b]/95 border-cyan-400/30 text-white'
@@ -213,7 +226,9 @@ export const LumaWifiPickerPanel: React.FC<WifiPickerProps> = ({
           ) : (
             <WifiOff className="w-3.5 h-3.5 text-rose-400 shrink-0" />
           )}
-          <span className="text-[11px] font-bold truncate">Сети Wi-Fi</span>
+          <span className="text-[11px] font-bold truncate">
+            Сети Wi-Fi {networks.length > 0 ? `(${networks.length})` : ''}
+          </span>
           {status?.connected && status.active_ssid && (
             <span className="px-1.5 py-0.5 rounded-md text-[9px] font-mono bg-emerald-500/20 text-emerald-400 truncate max-w-[110px]">
               {status.active_ssid}
@@ -239,19 +254,21 @@ export const LumaWifiPickerPanel: React.FC<WifiPickerProps> = ({
             type="button"
             onClick={() => onRefresh(true)}
             disabled={loading}
-            title="Сканировать сети Wi-Fi"
+            title="Глубокое сканирование всех сетей Wi-Fi (2.4 / 5 / 6 ГГц)"
             className={`p-1 rounded-lg border transition cursor-pointer ${itemCls}`}
           >
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin text-cyan-400' : ''}`} />
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Закрыть список Wi-Fi"
-            className={`p-1 rounded-lg border transition cursor-pointer ${itemCls}`}
-          >
-            <X className="w-3 h-3" />
-          </button>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              title="Закрыть список Wi-Fi"
+              className={`p-1 rounded-lg border transition cursor-pointer ${itemCls}`}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -407,6 +424,85 @@ export const LumaWifiPickerPanel: React.FC<WifiPickerProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Luma OS 1.8.3: Connect to Hidden / Non-Broadcast Wi-Fi Network */}
+      {enabled && (
+        <div className={`pt-1.5 border-t ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
+          {!showHiddenForm ? (
+            <button
+              type="button"
+              onClick={() => setShowHiddenForm(true)}
+              className={`w-full py-1.5 rounded-xl border text-[10px] font-semibold inline-flex items-center justify-center gap-1 transition cursor-pointer ${itemCls}`}
+            >
+              <Plus className="w-3 h-3 text-cyan-400" />
+              Подключиться к скрытой сети (ввести SSID вручную)
+            </button>
+          ) : (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const ssid = hiddenSsid.trim();
+                if (!ssid) {
+                  setFeedback({ kind: 'err', text: 'Введите имя скрытой сети (SSID)' });
+                  return;
+                }
+                setFeedback(null);
+                setBusySsid(ssid);
+                try {
+                  const res = await onConnect(ssid, hiddenPass);
+                  if (res.ok) {
+                    setShowHiddenForm(false);
+                    setHiddenSsid('');
+                    setHiddenPass('');
+                    setFeedback({ kind: 'ok', text: res.message || `Подключено к ${ssid}` });
+                  } else {
+                    setFeedback({ kind: 'err', text: res.error || 'Не удалось подключиться к скрытой сети' });
+                  }
+                } finally {
+                  setBusySsid(null);
+                }
+              }}
+              className="space-y-1.5"
+            >
+              <input
+                type="text"
+                value={hiddenSsid}
+                onChange={(e) => setHiddenSsid(e.target.value)}
+                placeholder="Имя скрытой сети (SSID)..."
+                className={`w-full px-2.5 py-1.5 rounded-lg border text-[11px] outline-none ${inputCls}`}
+              />
+              <input
+                type="password"
+                value={hiddenPass}
+                onChange={(e) => setHiddenPass(e.target.value)}
+                placeholder="Пароль (оставьте пустым для открытой сети)..."
+                className={`w-full px-2.5 py-1.5 rounded-lg border text-[11px] outline-none ${inputCls}`}
+              />
+              <div className="flex justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowHiddenForm(false);
+                    setHiddenSsid('');
+                    setHiddenPass('');
+                  }}
+                  className={`px-2 py-1 rounded-lg border text-[10px] cursor-pointer ${itemCls}`}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  disabled={Boolean(busySsid) || !hiddenSsid.trim()}
+                  className="px-2.5 py-1 rounded-lg bg-[var(--luma-accent)] text-white text-[10px] font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                >
+                  {busySsid && <Loader2 className="w-3 h-3 animate-spin" />}
+                  Подключить
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       )}
     </div>

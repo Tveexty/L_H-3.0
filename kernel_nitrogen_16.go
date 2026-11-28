@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -279,109 +278,10 @@ func discoverSteamLibraries(extraDirs ...string) []string {
 	return libs
 }
 
-// parseSteamACFManifests parses all real appmanifest_*.acf files in Steam libraries to detect active downloads,
-// unpacking/staging, paused updates, or errors directly on the Steam Dock icon!
+// parseSteamACFManifests delegates to the upgraded 1.8.3 real-time Steam download tracker
+// (Windows Registry Updating flags + top-level ACF + content_log.txt tail + live steam.exe I/O counters).
 func parseSteamACFManifests(extraDirs ...string) []DockProgressTask {
-	libs := discoverSteamLibraries(extraDirs...)
-	tasks := make([]DockProgressTask, 0, 4)
-	seenApp := map[string]bool{}
-
-	for _, saDir := range libs {
-		matches, err := filepath.Glob(filepath.Join(saDir, "appmanifest_*.acf"))
-		if err != nil {
-			continue
-		}
-		for _, mf := range matches {
-			raw, err2 := os.ReadFile(mf)
-			if err2 != nil {
-				continue
-			}
-			kv := map[string]string{}
-			for _, m := range acfKVRe.FindAllStringSubmatch(string(raw), -1) {
-				if len(m) >= 3 {
-					kv[strings.ToLower(m[1])] = m[2]
-				}
-			}
-			appID := kv["appid"]
-			if appID == "" || seenApp[appID] {
-				continue
-			}
-			stateFlags, _ := strconv.Atoi(kv["stateflags"])
-			bytesToDL, _ := strconv.ParseInt(kv["bytestodownload"], 10, 64)
-			bytesDL, _ := strconv.ParseInt(kv["bytesdownloaded"], 10, 64)
-			bytesToStage, _ := strconv.ParseInt(kv["bytestostage"], 10, 64)
-			bytesStaged, _ := strconv.ParseInt(kv["bytesstaged"], 10, 64)
-
-			// StateFlags == 4 alone means Fully Installed & idle — skip!
-			// Also skip idle update-queued (StateFlags=2) manifests with 0 bytes scheduled so ghost "0%" pills never appear!
-			isDownloading := (stateFlags&1024) != 0 && (bytesToDL > 0 && bytesDL < bytesToDL)
-			if !isDownloading && bytesToDL > 0 && bytesDL < bytesToDL && (stateFlags&4) == 0 {
-				isDownloading = true
-			}
-			isStaging := ((stateFlags&2048) != 0 || (stateFlags&65536) != 0 || (stateFlags&16) != 0) && (bytesToStage > 0 || bytesToDL > 0)
-			if !isStaging && bytesToStage > 0 && bytesStaged < bytesToStage {
-				isStaging = true
-			}
-			isPaused := (stateFlags&512) != 0 && (bytesToDL > 0 || bytesToStage > 0)
-			isErr := (stateFlags & 32768) != 0
-
-			if !isDownloading && !isStaging && !isPaused && !isErr {
-				continue
-			}
-			seenApp[appID] = true
-			name := kv["name"]
-			if name == "" {
-				name = "Steam App #" + appID
-			}
-
-			state := "active"
-			detail := "Загрузка Steam"
-			var pct float64
-			var done, total int64
-
-			if bytesToDL > 0 {
-				done, total = bytesDL, bytesToDL
-				pct = (float64(bytesDL) / float64(bytesToDL)) * 100.0
-			}
-			if isStaging && (bytesToDL == 0 || bytesDL >= bytesToDL) {
-				state = "extracting"
-				detail = "Распаковка / установка файлов"
-				if bytesToStage > 0 {
-					done, total = bytesStaged, bytesToStage
-					pct = (float64(bytesStaged) / float64(bytesToStage)) * 100.0
-				}
-			}
-			if isPaused {
-				state = "paused"
-				detail = "Загрузка приостановлена"
-			}
-			if (stateFlags & 32768) != 0 {
-				state = "error"
-				detail = "Ошибка проверки / диска Steam"
-			}
-			if pct < 0 {
-				pct = 0
-			}
-			if pct > 100 {
-				pct = 100
-			}
-
-			tasks = append(tasks, DockProgressTask{
-				ID:         "steam_" + appID,
-				AppKey:     "steam",
-				AppName:    "Steam",
-				Title:      name,
-				Source:     "steam",
-				State:      state,
-				Percent:    math.Round(pct*10) / 10,
-				BytesDone:  done,
-				BytesTotal: total,
-				Detail:     detail,
-				UpdatedAt:  time.Now().UnixMilli(),
-			})
-		}
-	}
-	return tasks
+	return collectSteamDownloads183(extraDirs...)
 }
 
 // scanBrowserPartialDownloads detects active browser, torrent, Telegram, and direct downloads in real time.

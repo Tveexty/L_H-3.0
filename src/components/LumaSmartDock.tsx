@@ -47,10 +47,11 @@ export interface SmartDockStatus {
   checked_at: string;
 }
 
-// ---- Filter out idle 0% phantom tasks unless explicitly paused or errored ----
+// ---- Filter out idle 0% phantom tasks unless explicitly paused, errored, or actively downloading in Steam ----
 function isRealVisibleTask(t: DockProgressTask | null | undefined): t is DockProgressTask {
   if (!t || t.state === 'done') return false;
   if (t.state === 'paused' || t.state === 'error') return true;
+  if (t.source === 'steam' && (t.state === 'active' || t.state === 'extracting')) return true;
   return (t.percent || 0) > 0 || (t.bytes_done || 0) > 0 || (t.speed_mb_s || 0) > 0;
 }
 
@@ -773,9 +774,13 @@ export const LumaSmartDockStacks: React.FC<LumaSmartDockStacksProps> = ({
                       <div className="mt-1.5 h-1.5 rounded-full bg-slate-800/80 overflow-hidden">
                         <div className={`h-full rounded-full transition-all duration-300 ${barCls}`} style={{ width: `${Math.max(4, Math.min(100, t.percent))}%` }} />
                       </div>
-                      <div className="mt-1 flex items-center justify-between text-[10px] opacity-60">
-                        <span>{t.app_name} · {stLabel}</span>
-                        <span>{t.speed_mb_s > 0 ? `${t.speed_mb_s.toFixed(1)} МБ/с` : t.detail || ''}</span>
+                      <div className="mt-1 flex items-center justify-between gap-2 text-[10px] opacity-70">
+                        <span className="shrink-0">{t.app_name} · {stLabel}</span>
+                        <span className="truncate text-right font-mono">
+                          {t.speed_mb_s > 0
+                            ? `${t.speed_mb_s.toFixed(1)} МБ/с${t.detail ? ` · ${t.detail}` : ''}`
+                            : t.detail || ''}
+                        </span>
                       </div>
                     </div>
                   );

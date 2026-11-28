@@ -129,15 +129,15 @@ export const BUILTIN_ONEUI_PRESETS: OneUIPanelPreset[] = [
       { id: 'media', size: '2x2' },
       { id: 'brightness', size: '1x2' },
       { id: 'volume', size: '1x2' },
+      { id: 'ethernet', size: '2x1' },
       { id: 'superdevice', size: '2x1' },
-      { id: 'dnd', size: '2x1' },
+      { id: 'dnd', size: '1x1' },
       { id: 'per_app_audio', size: '1x1' },
       { id: 'miracast', size: '1x1' },
       { id: 'shot', size: '1x1' },
       { id: 'rec', size: '1x1' },
       { id: 'lens', size: '1x1' },
       { id: 'eye', size: '1x1' },
-      { id: 'game', size: '1x1' },
       { id: 'lock_screen', size: '1x1' },
       { id: 'sys_monitor', size: '4x1' },
     ],
@@ -158,6 +158,7 @@ export const BUILTIN_ONEUI_PRESETS: OneUIPanelPreset[] = [
     blocks: [
       { id: 'media', size: '2x2' },
       { id: 'wifi', size: '2x1' },
+      { id: 'ethernet', size: '2x1' },
       { id: 'bluetooth', size: '2x1' },
       { id: 'brightness', size: '2x1' },
       { id: 'volume', size: '2x1' },
@@ -189,7 +190,7 @@ export const BUILTIN_ONEUI_PRESETS: OneUIPanelPreset[] = [
     blocks: [
       { id: 'sys_monitor', size: '4x2' },
       { id: 'game', size: '2x1' },
-      { id: 'mic', size: '2x1' },
+      { id: 'ethernet', size: '2x1' },
       { id: 'volume', size: '4x1' },
       { id: 'brightness', size: '4x1' },
       { id: 'media', size: '4x2' },
@@ -203,6 +204,7 @@ export const BUILTIN_ONEUI_PRESETS: OneUIPanelPreset[] = [
 
 export const ALLOWED_SIZES_BY_BLOCK: Record<string, OneUIPanelBlockSize[]> = {
   wifi: ['1x1', '2x1', '2x2'],
+  ethernet: ['1x1', '2x1', '2x2'],
   bluetooth: ['1x1', '2x1', '2x2'],
   media: ['2x1', '2x2', '4x2'],
   brightness: ['2x1', '4x1', '1x2'],
@@ -250,7 +252,7 @@ export function blockGridClass(size: OneUIPanelBlockSize): string {
 export function createDefaultOneUIPanelState(): OneUIPanelState {
   const base = BUILTIN_ONEUI_PRESETS[0];
   return {
-    version: 1,
+    version: 2,
     blocks: base.blocks.map((b) => ({ ...b })),
     visual: { ...base.visual },
     activePresetId: base.id,
@@ -267,9 +269,16 @@ export function loadOneUIPanelState(): OneUIPanelState {
       return createDefaultOneUIPanelState();
     }
     const def = createDefaultOneUIPanelState();
+    const blocks = parsed.blocks.filter((b) => b && typeof b.id === 'string' && typeof b.size === 'string');
+    const prevVersion = Number(parsed.version ?? 1);
+    if (prevVersion < 2 && !blocks.some((b) => b.id === 'ethernet')) {
+      const insertAfter = blocks.findIndex((b) => b.id === 'bluetooth');
+      const idx = insertAfter >= 0 ? insertAfter + 1 : Math.min(2, blocks.length);
+      blocks.splice(idx, 0, { id: 'ethernet', size: '2x1' });
+    }
     return {
-      version: 1,
-      blocks: parsed.blocks.filter((b) => b && typeof b.id === 'string' && typeof b.size === 'string'),
+      version: 2,
+      blocks,
       visual: {
         ...def.visual,
         ...(parsed.visual || {}),

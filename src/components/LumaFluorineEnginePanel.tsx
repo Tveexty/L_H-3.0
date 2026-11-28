@@ -279,7 +279,7 @@ export const LumaCore2PluginsPanel: React.FC<{ isDark: boolean; onToast?: (title
           action: 'install',
           plugin: {
             name: newName.trim(),
-            description: newDesc.trim() || 'Пользовательский плагин Luma OS 1.8.2b',
+            description: newDesc.trim() || 'Пользовательский плагин Luma OS 1.8.3',
             category: 'automation',
             author: 'Пользователь',
           },

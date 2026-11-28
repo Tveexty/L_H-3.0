@@ -202,7 +202,7 @@ export const KernelUIPanel: React.FC<{
       : liveSystem.device_model
     : 'Luma PC Workstation x64';
 
-  const exeDownloadName = isPro ? 'LumaOS_1.8.2b_Pro.exe' : 'LumaOS_1.8.2b_Base.exe';
+  const exeDownloadName = isPro ? 'LumaOS_1.8.3_Pro.exe' : 'LumaOS_1.8.3_Base.exe';
 
   return (
     <div className="space-y-4">
@@ -225,7 +225,7 @@ export const KernelUIPanel: React.FC<{
                 ЯДРО UI · LUMA FLUORINE · СТИЛЬ ОС
               </div>
               <div className="text-lg font-extrabold tracking-tight truncate">
-                Luma OS 1.8.2b (Fluorine · {isPro ? 'Pro' : 'Base'})
+                Luma OS 1.8.3 (Fluorine · {isPro ? 'Pro' : 'Base'})
               </div>
               <div className={`text-xs font-mono truncate ${mutedCls}`}>
                 LumaCore {liveSystem?.kernel_engine_version || '2.0.0'} · SDK v4.0 · LumaShield 3.2 · {kernelConnected ? 'IPC ONLINE 127.0.0.1:49215' : 'STANDALONE'}
@@ -326,7 +326,7 @@ export const KernelUIPanel: React.FC<{
         </div>
       </div>
 
-      {/* Developer Mode & Administrator (UAC) Elevation Controls — Luma OS 1.8.2b Fluorine */}
+      {/* Developer Mode & Administrator (UAC) Elevation Controls — Luma OS 1.8.3 Fluorine */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
         <div className={`p-4 rounded-2xl border space-y-2.5 ${surfaceCls}`}>
           <div className="flex items-center justify-between gap-2">

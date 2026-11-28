@@ -14,6 +14,7 @@ import {
   Bell,
   BellOff,
   Bluetooth,
+  Cable,
   Calculator,
   Calendar,
   Check,
@@ -168,6 +169,7 @@ import {
   LumaWifiPickerPanel,
   WifiStatusSnapshot,
 } from './components/LumaConnectivityPicker';
+import { EthernetStatusSnapshot, LumaEthernetPanel } from './components/LumaEthernetPanel';
 import {
   CarbonNotificationItem,
   LumaCarbonControlHub,
@@ -348,6 +350,7 @@ type SettingsTabId =
   | 'language'
   | 'shell_mode'
   | 'luma'
+  | 'network'
   | 'bluetooth'
   | 'power'
   | 'graphics'
@@ -1507,21 +1510,36 @@ export default function App() {
 
   useEffect(() => {
     let alive = true;
+    let timerId: number | null = null;
     const pollSmartDock = async () => {
-      if (document.hidden) return;
+      let hasActiveTask = false;
       try {
         const r = await fetch('/api/kernel/dock/status');
         if (r.ok && alive) {
           const d: SmartDockStatus = await r.json();
-          if (d?.ok) setSmartDock(d);
+          if (d?.ok) {
+            setSmartDock(d);
+            hasActiveTask = Array.isArray(d.tasks) && d.tasks.some((t) => t.state !== 'done');
+          }
         }
       } catch { /* ignore */ }
+      if (!alive) return;
+      // 1000ms live tick while Steam/browser download is active; 1500ms visible idle; 3000ms hidden idle
+      const nextDelay = hasActiveTask ? 1000 : document.hidden ? 3000 : 1500;
+      timerId = window.setTimeout(() => void pollSmartDock(), nextDelay);
     };
+    const onVisible = () => {
+      if (!document.hidden && alive) {
+        if (timerId !== null) window.clearTimeout(timerId);
+        void pollSmartDock();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
     void pollSmartDock();
-    const id = window.setInterval(() => void pollSmartDock(), 2500);
     return () => {
       alive = false;
-      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+      if (timerId !== null) window.clearTimeout(timerId);
     };
   }, []);
 
@@ -1647,9 +1665,9 @@ export default function App() {
     {
       id: 'notif_oxygen_welcome_175',
       source: 'system',
-      appName: 'Luma OS 1.8.2b',
-      sender: 'Luma OS 1.8.2b Fluorine',
-      title: 'Добро пожаловать в Luma OS 1.8.2b (Fluorine · Стиль ОС)!',
+      appName: 'Luma OS 1.8.3',
+      sender: 'Luma OS 1.8.3 Fluorine',
+      title: 'Добро пожаловать в Luma OS 1.8.3 (Fluorine · Стиль ОС)!',
       body: 'Вернули привычный дизайн Пуска, Поиска и элементов панели задач (оставив чистые иконки приложений) · Добавлен выбор положения кнопки «Пуск» — слева или по центру · Скрытие модульной панели и беспроводной 2-й экран Miracast.',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       dateLabel: 'Сегодня',
@@ -1735,7 +1753,7 @@ export default function App() {
     can_elevate: boolean;
   }>({
     edition: 'pro',
-    edition_label: 'Luma OS 1.8.2b Pro',
+    edition_label: 'Luma OS 1.8.3 Pro',
     is_pro: true,
     is_admin: false,
     full_rights: false,
@@ -1803,9 +1821,10 @@ export default function App() {
   const [controlCenterOpen, setControlCenterOpen] = useState<boolean>(false);
   const [wifiStatus, setWifiStatus] = useState<WifiStatusSnapshot | null>(null);
   const [wifiLoading, setWifiLoading] = useState<boolean>(false);
+  const [ethernetStatus, setEthernetStatus] = useState<EthernetStatusSnapshot | null>(null);
   const [btStatus, setBtStatus] = useState<BluetoothStatusSnapshot | null>(null);
   const [btLoading, setBtLoading] = useState<boolean>(false);
-  const [ccConnectivityPicker, setCcConnectivityPicker] = useState<'none' | 'wifi' | 'bluetooth'>('none');
+  const [ccConnectivityPicker, setCcConnectivityPicker] = useState<'none' | 'wifi' | 'ethernet' | 'bluetooth'>('none');
 
   // Apply Touch & Stylus CSS class + enable touch long-press => right-click context menu globally
   useEffect(() => {
@@ -2054,7 +2073,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.8.2b (Fluorine · F-9) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.8.3 (Fluorine · F-9) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -2087,7 +2106,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.8.2b (Fluorine · F-9)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.8.3 (Fluorine · F-9)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -2102,8 +2121,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 2.0.2b',
-      message: 'Инициализация оболочки Luma OS 1.8.2b (Fluorine · F-9), LumaCore 2.0.2b, LumaShield 3.2 Zero-Freeze и AI 5.0',
+      source: 'LumaCore 2.0.3',
+      message: 'Инициализация оболочки Luma OS 1.8.3 (Fluorine · F-9), LumaCore 2.0.3, LumaShield 3.2 Zero-Freeze и AI 5.0',
       level: 'success',
     },
   ]);
@@ -2396,7 +2415,7 @@ export default function App() {
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 16.4,
           target_version: '1.8 (Fluorine · Стиль ОС)',
-          message: 'Соединение с репозиторием GitHub и проверка обновления Luma OS 1.8.2b...',
+          message: 'Соединение с репозиторием GitHub и проверка обновления Luma OS 1.8.3...',
         },
       },
       {
@@ -2409,7 +2428,7 @@ export default function App() {
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 27.6,
           target_version: '1.8 (Fluorine · Стиль ОС)',
-          message: 'Загрузка сборки LumaOS_1.8.2b_Pro.exe (Классическая и гибкая панель задач + 120 Гц анимации)...',
+          message: 'Загрузка сборки LumaOS_1.8.3_Pro.exe (Классическая и гибкая панель задач + 120 Гц анимации)...',
         },
       },
       {
@@ -2450,7 +2469,7 @@ export default function App() {
           speed_mbps: 0,
           target_version: '1.8 (Fluorine · Стиль ОС)',
           sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
-          message: 'Сборка Luma OS 1.8.2b проверена и готова к мгновенному запуску!',
+          message: 'Сборка Luma OS 1.8.3 проверена и готова к мгновенному запуску!',
         },
       },
     ];
@@ -4473,7 +4492,7 @@ export default function App() {
           void pollHostWindows();
         }
       } catch {
-        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 2.0.2b', 'warning');
+        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 2.0.3', 'warning');
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4688,7 +4707,7 @@ export default function App() {
   executeGestureRef.current = executeGestureAction;
 
   useEffect(() => {
-    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 2.0.2b WM_INPUT + SSE fallback)
+    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 2.0.3 WM_INPUT + SSE fallback)
     let lastNativeFireAt = 0;
     let lastNativeKey = '';
     const dispatchMappedGesture = (gestureName: string, sourceTag: string) => {
@@ -5089,7 +5108,7 @@ export default function App() {
   const altTabEntries: AltTabEntry[] = useMemo(() => {
     const lumaTitles: Partial<Record<DexWinId, string>> = {
       apps: 'Приложения', explorer: 'Проводник', taskmgr: 'Диспетчер задач', terminal: 'Терминал',
-      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 2.0.2b', settings: 'Настройки', plugins: 'Расширения',
+      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 2.0.3', settings: 'Настройки', plugins: 'Расширения',
       island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma Ai Nitrogen', utilities: 'Службы ОС',
       calculator: 'Калькулятор', calendar: 'Календарь', trash: 'Корзина', scenarios: 'Сценарии',
       code_studio: 'Code Studio Pro', cut_studio: 'Cut Studio Pro', office: 'Luma Office Pro',
@@ -5723,7 +5742,7 @@ export default function App() {
         pushToast('Питание', d?.detail || `Выполнено: ${action}`, 'info');
       }
     } catch {
-      pushToast('Питание', 'Доступно при запуске LumaOS_1.8.2b_Pro.exe', 'info');
+      pushToast('Питание', 'Доступно при запуске LumaOS_1.8.3_Pro.exe', 'info');
     }
   };
 
@@ -5771,7 +5790,7 @@ export default function App() {
         );
       }
     } catch {
-      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.8.2b_Pro.exe)', 'info');
+      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.8.3_Pro.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -5869,7 +5888,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 2.0.2b' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 2.0.3' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5891,6 +5910,49 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const fetchEthernetStatus = useCallback(async () => {
+    try {
+      const r = await fetch('/api/kernel/ethernet/status');
+      if (r.ok) {
+        const d: EthernetStatusSnapshot = await r.json();
+        setEthernetStatus(d);
+      }
+    } catch {
+      // ignore offline
+    }
+  }, []);
+
+  const handleToggleEthernet = useCallback(
+    async (explicitNext?: boolean, adapterName?: string) => {
+      const targetName = adapterName || ethernetStatus?.primary_name || '';
+      const current = Boolean(ethernetStatus?.any_enabled);
+      const next = typeof explicitNext === 'boolean' ? explicitNext : !current;
+      try {
+        const r = await fetch('/api/kernel/ethernet/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: targetName, enabled: next }),
+        });
+        const d = await r.json();
+        if (d?.status) setEthernetStatus(d.status);
+        else void fetchEthernetStatus();
+        if (d?.ok) {
+          pushToast(
+            'Проводной интернет (LAN)',
+            d.message || (next ? 'Проводной адаптер включён' : 'Проводной адаптер отключён'),
+            next ? 'success' : 'info'
+          );
+        } else {
+          pushToast('Проводной интернет (LAN)', d?.error || 'Не удалось переключить Ethernet', 'warning');
+        }
+      } catch {
+        pushToast('Проводной интернет (LAN)', 'Нет связи с ядром LumaCore 2.0.3', 'warning');
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ethernetStatus, fetchEthernetStatus]
+  );
 
   const fetchBluetoothDevices = useCallback(async (activeScan = false) => {
     setBtLoading(true);
@@ -5961,7 +6023,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 2.0.2b' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 2.0.3' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5970,18 +6032,20 @@ export default function App() {
 
   useEffect(() => {
     void fetchWifiStatus(false);
+    void fetchEthernetStatus();
     void fetchBluetoothDevices();
-  }, [fetchWifiStatus, fetchBluetoothDevices]);
+  }, [fetchWifiStatus, fetchEthernetStatus, fetchBluetoothDevices]);
 
   useEffect(() => {
-    if (controlCenterOpen || carbonHubOpen) {
+    if (controlCenterOpen || carbonHubOpen || (windows.settings.open && settingsTab === 'network')) {
       void fetchWifiStatus(false);
+      void fetchEthernetStatus();
       void fetchBluetoothDevices();
     }
     if (!controlCenterOpen) {
       setCcConnectivityPicker('none');
     }
-  }, [controlCenterOpen, carbonHubOpen, fetchWifiStatus, fetchBluetoothDevices]);
+  }, [controlCenterOpen, carbonHubOpen, windows.settings.open, settingsTab, fetchWifiStatus, fetchEthernetStatus, fetchBluetoothDevices]);
 
   // Emergency Hotkey Ctrl+Alt+Shift+W to restore Windows Taskbar anytime
   useEffect(() => {
@@ -6752,7 +6816,7 @@ export default function App() {
         }
       })
       .catch(() => {
-        pushToast('Windows PowerShell', 'Запуск доступен в приложении LumaOS_1.8.2b_Pro.exe / Base.exe', 'info');
+        pushToast('Windows PowerShell', 'Запуск доступен в приложении LumaOS_1.8.3_Pro.exe / Base.exe', 'info');
       });
   };
 
@@ -7163,7 +7227,7 @@ export default function App() {
     ? { label: 'Обновление OS', percent: updateProgress.percent }
     : null;
 
-  // Sync Dynamic Island Always-On-Top Native Win32 Overlay configuration to LumaCore 2.0.2b
+  // Sync Dynamic Island Always-On-Top Native Win32 Overlay configuration to LumaCore 2.0.3
   useEffect(() => {
     const payload = {
       enabled: dynamicIslandEnabled,
@@ -8571,7 +8635,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 2.0.2b`,
+                        sub: `${ramLoad}% занято · LumaCore 2.0.3`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -8597,8 +8661,8 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
-                      ['Версия ПО', '1.8 (Fluorine · Стиль ОС)'],
-                      ['Версия Ядра', 'LumaCore 2.0.2b (1.8.1)'],
+                      ['Версия ПО', '1.8.3 (Fluorine · Стиль ОС)'],
+                      ['Версия Ядра', 'LumaCore 2.0.3 (1.8.3)'],
                       ['Безопасность', `LumaShield 3.2 (${kernelDiag?.security_rules ?? 340}+ правил)`],
                       ['Developer SDK', `v3.0 (${kernelDiag?.sdk_themes ?? Object.keys(customThemes).length} тем / ${kernelDiag?.sdk_plugins ?? plugins.length} плаг.)`],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
@@ -9093,7 +9157,7 @@ export default function App() {
         <div style={{ display: isWinVisible('superdevice') ? 'contents' : 'none' }}>
           <DexWindow
             id="superdevice"
-            title="Суперустройство · Экосистема Luma OS 1.8.2b"
+            title="Суперустройство · Экосистема Luma OS 1.8.3"
             subtitle="Стиль ОС · Перетащите устройство на ПК для объединения в экосистему"
             icon={<Radio className="w-4 h-4 text-blue-400" />}
             isDark={isDark}
@@ -9132,7 +9196,7 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.8.2b (Fluorine · Стиль ОС · LumaCore 2.0.2b · LumaShield 3.2)"
+          subtitle="Luma OS 1.8.3 (Fluorine · Стиль ОС · LumaCore 2.0.3 · LumaShield 3.2)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -9190,6 +9254,7 @@ export default function App() {
                     ['appearance', t('tabThemes', 'Темы, Luma Nova и Обои'), <Sliders className="w-4 h-4 shrink-0" />, 'темы обои fluorine 1.8 oxygen nitrogen nova matrix glass стиль живые анимации виджеты прозрачность фон акцент шрифт масштаб blur скругление wallpaper theme'],
                     ['taskbar', t('tabTaskbar', 'Панель задач · Папка Luma'), <LayoutPanelLeft className="w-4 h-4 shrink-0" />, 'панель задач папка luma система скрыть добавить перетащить автоскрытие клавиша win умный dock стеки загрузки наведение буфер обмена cpu ram полный экран модульная панель конструктор taskbar'],
                     ['storage', t('tabStorage', 'Виртуальная память и Диски'), <HardDrive className="w-4 h-4 shrink-0" />, 'память виртуальная swapboost 2 4 6 гб pagefile ssd tbw озу ram диски накопители проводник скрытые файлы storage disk files'],
+                    ['network', 'Сеть · Провод и Wi-Fi', <Cable className="w-4 h-4 shrink-0" />, 'сеть интернет провод ethernet кабель lan wi-fi wifi беспроводная сеть роутер dns ip ipv4 dhcp шлюз маска отключить проводной'],
                     ['bluetooth', t('tabBluetooth', 'Bluetooth и 2.4GHz'), <Bluetooth className="w-4 h-4 shrink-0" />, 'bluetooth блютуз беспроводные мышь клавиатура наушники 2.4ghz радиоканал заряд процент адаптер устройства'],
                     ['apps_list', t('apps', 'Приложения и иконки'), <AppWindow className="w-4 h-4 shrink-0" />, 'приложения иконки размер увеличить редактировать программы список удалить свойства apps'],
                     ['notifications', t('notifications', 'Уведомления'), <Bell className="w-4 h-4 shrink-0" />, 'уведомления оповещения справа звук баннеры dnd не беспокоить журнал notifications'],
@@ -9282,7 +9347,7 @@ export default function App() {
                     onNotify={(msg) => pushToast('Беспроводной 2-й экран (Miracast)', msg, 'info')}
                   />
 
-                  {/* 0. LumaCore 2.0.2b True Zero-WMI & Zero-PowerShell Engine Banner */}
+                  {/* 0. LumaCore 2.0.3 True Zero-WMI & Zero-PowerShell Engine Banner */}
                   <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -10086,7 +10151,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.8.2b_Pro.exe).
+                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.8.3_Pro.exe).
                   </div>
                 </div>
               )}
@@ -11003,6 +11068,52 @@ export default function App() {
                 </div>
               )}
 
+              {settingsTab === 'network' && (
+                <div className="space-y-5">
+                  <div className={`p-4 rounded-2xl border ${surfaceCls}`}>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div>
+                        <h3 className="text-sm font-black flex items-center gap-2">
+                          <Cable className="w-4 h-4 text-emerald-400" />
+                          Проводной интернет (Ethernet / LAN)
+                        </h3>
+                        <p className={`text-[11px] mt-0.5 ${mutedCls}`}>
+                          Мгновенное отключение и включение сетевого кабеля, настройка DHCP / статического IPv4, быстрые DNS-пресеты и диагностика.
+                        </p>
+                      </div>
+                    </div>
+                    <LumaEthernetPanel
+                      mode="full"
+                      isDark={isDark}
+                      externalStatus={ethernetStatus}
+                      onStatusChange={setEthernetStatus}
+                      onNotify={(msg) => pushToast('Проводной интернет (LAN)', msg, 'info')}
+                    />
+                  </div>
+
+                  <div className={`p-4 rounded-2xl border ${surfaceCls}`}>
+                    <div className="mb-3">
+                      <h3 className="text-sm font-black flex items-center gap-2">
+                        <Wifi className="w-4 h-4 text-cyan-400" />
+                        Беспроводные сети Wi-Fi (2.4 / 5 / 6 ГГц + скрытые сети)
+                      </h3>
+                      <p className={`text-[11px] mt-0.5 ${mutedCls}`}>
+                        Полное многоканальное сканирование всех ближайших точек доступа без потерь и ручное подключение к скрытым сетям.
+                      </p>
+                    </div>
+                    <LumaWifiPickerPanel
+                      isDark={isDark}
+                      status={wifiStatus}
+                      loading={wifiLoading}
+                      onRefresh={(rescan) => void fetchWifiStatus(Boolean(rescan))}
+                      onToggleRadio={(en) => void handleToggleWifi(en)}
+                      onConnect={handleConnectWifi}
+                      onDisconnect={handleDisconnectWifi}
+                    />
+                  </div>
+                </div>
+              )}
+
               {settingsTab === 'bluetooth' && (
                 <BluetoothSettingsPanel
                   surfaceCls={surfaceCls}
@@ -11092,14 +11203,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.8.2b (Fluorine)',
-                        message: 'Система оповещений Luma OS 1.8.2b (Fluorine) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.8.3 (Fluorine)',
+                        message: 'Система оповещений Luma OS 1.8.3 (Fluorine) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.8.2b (Fluorine)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.8.3 (Fluorine)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -11111,7 +11222,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.8.2b (Fluorine · F-9) · LumaCore 2.0.2b</div>
+                      <div className="text-sm font-bold">Luma OS 1.8.3 (Fluorine · F-9) · LumaCore 2.0.3</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -11189,7 +11300,7 @@ export default function App() {
                           </span>
                         </div>
                         <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
-                          Нативная капсула LumaCore 2.0.2b остаётся прилипшей к выбранной части экрана поверх Google Chrome, игр, Telegram и всех программ Windows без перехвата фокуса
+                          Нативная капсула LumaCore 2.0.3 остаётся прилипшей к выбранной части экрана поверх Google Chrome, игр, Telegram и всех программ Windows без перехвата фокуса
                         </div>
                       </div>
                       <StatusPill active={islandPinOverAllWindows} />
@@ -11627,7 +11738,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Luma OS 1.8.2b (Fluorine): Optical Glass Blur + Fluent Reveal + Material You (Monet) Controls */}
+                  {/* Luma OS 1.8.3 (Fluorine): Optical Glass Blur + Fluent Reveal + Material You (Monet) Controls */}
                   <LumaFluorineVisualPanel
                     isDark={isDark}
                     opticalBlur={fluorineOpticalBlur}
@@ -12933,7 +13044,7 @@ export default function App() {
                           <button
                             onClick={async () => {
                               const r = await fetch('/api/kernel/edition/elevate', { method: 'POST' }).catch(() => null);
-                              if (r?.ok) pushToast('Luma OS 1.8.2b Pro', 'Запрошен перезапуск с полными правами Администратора (UAC)', 'success');
+                              if (r?.ok) pushToast('Luma OS 1.8.3 Pro', 'Запрошен перезапуск с полными правами Администратора (UAC)', 'success');
                             }}
                             className="px-3 py-2 rounded-xl bg-amber-500 text-black text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
                           >
@@ -12941,15 +13052,15 @@ export default function App() {
                           </button>
                         )}
                         <a
-                          href="/LumaOS_1.8.2b_Pro.exe"
-                          download="LumaOS_1.8.2b_Pro.exe"
+                          href="/LumaOS_1.8.3_Pro.exe"
+                          download="LumaOS_1.8.3_Pro.exe"
                           className="px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                         >
                           <Download className="w-3.5 h-3.5" /> Pro EXE
                         </a>
                         <a
-                          href="/LumaOS_1.8.2b_Base.exe"
-                          download="LumaOS_1.8.2b_Base.exe"
+                          href="/LumaOS_1.8.3_Base.exe"
+                          download="LumaOS_1.8.3_Base.exe"
                           className={`px-3 py-2 rounded-xl border text-xs font-mono font-bold inline-flex items-center gap-1.5 ${btnCls}`}
                         >
                           <Download className="w-3.5 h-3.5" /> Base EXE
@@ -12958,7 +13069,7 @@ export default function App() {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-[11px]">
                       <div className={`p-3 rounded-xl border ${!editionInfo.is_pro ? 'border-sky-400/60 bg-sky-500/10' : 'border-white/10 bg-white/[0.03]'}`}>
-                        <div className="font-black text-xs mb-1">Luma OS 1.8.2b Base (Обычная)</div>
+                        <div className="font-black text-xs mb-1">Luma OS 1.8.3 Base (Обычная)</div>
                         <ul className={`space-y-0.5 ${mutedCls}`}>
                           <li>• Все новинки 1.8 Fluorine: 4 новых 2.5D-обоев, оптический блюр, Fluent Reveal, Monet, 15 новых виджетов, Word-редактор и PowerShell</li>
                           <li>• Беспроводной 2-й экран Miracast (Источник, Приёмник, Дублировать / Расширить)</li>
@@ -12968,7 +13079,7 @@ export default function App() {
                       </div>
                       <div className={`p-3 rounded-xl border ${editionInfo.is_pro ? 'border-blue-400/70 bg-blue-600/15' : 'border-white/10 bg-white/[0.03]'}`}>
                         <div className="font-black text-xs mb-1 flex items-center gap-1.5">
-                          <Crown className="w-3.5 h-3.5 text-amber-300" /> Luma OS 1.8.2b Pro (Полные права + Макс. опции)
+                          <Crown className="w-3.5 h-3.5 text-amber-300" /> Luma OS 1.8.3 Pro (Полные права + Макс. опции)
                         </div>
                         <ul className={`space-y-0.5 ${mutedCls}`}>
                           <li>• Все новинки 1.8 Fluorine + LumaCore 2.0, SDK v4.0 плагины, Miracast и полные права Администратора</li>
@@ -17361,7 +17472,7 @@ export default function App() {
               {!startSearch.trim() && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                    <span className={mutedCls}>Luma OS 1.8.2b (Fluorine · F-9)</span>
+                    <span className={mutedCls}>Luma OS 1.8.3 (Fluorine · F-9)</span>
                     <div className="flex items-center gap-1.5">
                       {enabledFeatures.privateVault && (
                         <button
@@ -17374,7 +17485,7 @@ export default function App() {
                           🔒 Приватный стол
                         </button>
                       )}
-                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 2.0.2b</span>
+                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 2.0.3</span>
                     </div>
                   </div>
                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
@@ -17528,7 +17639,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.8.2b (Fluorine)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.8.3 (Fluorine)'}
                   </div>
                 </div>
               </div>
@@ -17653,7 +17764,7 @@ export default function App() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.8 (FLUORINE · F-9)</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-wider">LUMA OS 1.8.3 (FLUORINE · F-9)</span>
             <span className={`text-[10px] font-mono ${mutedCls}`}>
               {liveSystem?.location?.city || 'LOCAL'}
             </span>
@@ -17708,6 +17819,60 @@ export default function App() {
                     }`}
                   >
                     <ChevronRight className={`w-3.5 h-3.5 transition-transform ${wfOpen ? 'rotate-90' : ''}`} />
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* Native Luma OS Wired Ethernet Tile (LMB disable/enable · RMB or chevron -> IP / DNS settings) */}
+            {(() => {
+              const ethAvail = ethernetStatus ? ethernetStatus.available : true;
+              const ethOn = Boolean(ethernetStatus?.any_enabled);
+              const ethConn = Boolean(ethernetStatus?.any_connected);
+              const ethOpen = ccConnectivityPicker === 'ethernet';
+              const openEthPanel = (e: React.MouseEvent) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setCcConnectivityPicker((p) => {
+                  const next = p === 'ethernet' ? 'none' : 'ethernet';
+                  if (next === 'ethernet') void fetchEthernetStatus();
+                  return next;
+                });
+              };
+              return (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => void handleToggleEthernet(!ethOn)}
+                  onContextMenu={openEthPanel}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void handleToggleEthernet(!ethOn); } }}
+                  title="ЛКМ — откл/вкл проводной интернет · ПКМ или → — IP / DNS настройки"
+                  className={`p-2.5 rounded-xl border flex items-center justify-between gap-1.5 text-left transition cursor-pointer select-none ${
+                    ethOpen
+                      ? 'bg-[var(--luma-accent)] border-emerald-300 text-white font-semibold shadow-md'
+                      : ethOn && ethAvail
+                      ? 'bg-[var(--luma-accent)] border-[var(--luma-accent)] text-white font-semibold'
+                      : btnCls
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Cable className="w-3.5 h-3.5 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="truncate leading-tight">{ethernetStatus?.primary_name || 'Провод (LAN)'}</div>
+                      <div className={`text-[9px] font-mono truncate ${ethOn && ethAvail ? 'text-white/75' : mutedCls}`}>
+                        {!ethAvail ? 'Нет адаптера' : !ethOn ? 'Откл · ПКМ' : ethConn ? (ethernetStatus?.primary_speed || 'Подкл.') : 'Без кабеля'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openEthPanel}
+                    title="Настройки проводного интернета (IP / DNS)"
+                    className={`p-0.5 rounded-md shrink-0 cursor-pointer transition ${
+                      ethOn && ethAvail ? 'hover:bg-black/20 text-white/90' : 'hover:bg-white/15 opacity-75'
+                    }`}
+                  >
+                    <ChevronRight className={`w-3.5 h-3.5 transition-transform ${ethOpen ? 'rotate-90' : ''}`} />
                   </button>
                 </div>
               );
@@ -17797,7 +17962,7 @@ export default function App() {
             ))}
           </div>
 
-          {/* Inline 100% Native Luma OS Wi-Fi / Bluetooth Picker (opened via RMB or tile chevron) */}
+          {/* Inline 100% Native Luma OS Wi-Fi / Ethernet / Bluetooth Picker (opened via RMB or tile chevron) */}
           {ccConnectivityPicker === 'wifi' && (
             <LumaWifiPickerPanel
               isDark={isDark}
@@ -17807,6 +17972,17 @@ export default function App() {
               onToggleRadio={(en) => void handleToggleWifi(en)}
               onConnect={handleConnectWifi}
               onDisconnect={handleDisconnectWifi}
+              onClose={() => setCcConnectivityPicker('none')}
+            />
+          )}
+
+          {ccConnectivityPicker === 'ethernet' && (
+            <LumaEthernetPanel
+              mode="compact"
+              isDark={isDark}
+              externalStatus={ethernetStatus}
+              onStatusChange={setEthernetStatus}
+              onNotify={(msg) => pushToast('Проводной интернет (LAN)', msg, 'info')}
               onClose={() => setCcConnectivityPicker('none')}
             />
           )}
@@ -18351,6 +18527,10 @@ export default function App() {
         onRefreshWifi={(rescan) => void fetchWifiStatus(Boolean(rescan))}
         onConnectWifi={handleConnectWifi}
         onDisconnectWifi={handleDisconnectWifi}
+        ethernetStatus={ethernetStatus}
+        onToggleEthernet={(en) => void handleToggleEthernet(en)}
+        onRefreshEthernet={() => void fetchEthernetStatus()}
+        onEthernetStatusChange={setEthernetStatus}
         bluetoothEnabled={btStatus ? btStatus.enabled : hubBluetoothEnabled}
         bluetoothStatus={btStatus}
         bluetoothLoading={btLoading}
@@ -18549,7 +18729,7 @@ export default function App() {
         }}
         onUnlock={() => {
           setSystemLockOpen(false);
-          triggerIslandPulse('Экран разблокирован', 'Добро пожаловать в Luma OS 1.8.2b', 'system');
+          triggerIslandPulse('Экран разблокирован', 'Добро пожаловать в Luma OS 1.8.3', 'system');
         }}
         onSleep={() => {
           void handleExecutePowerAction('sleep');
@@ -19013,7 +19193,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.8.2b (Fluorine · F-9) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
+                  Luma OS 1.8.3 (Fluorine · F-9) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
                 </div>
               </div>
             </div>

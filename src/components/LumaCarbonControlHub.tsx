@@ -71,6 +71,7 @@ import {
   Lock,
   Minus,
   Save,
+  Cable,
 } from 'lucide-react';
 import {
   BluetoothDeviceItem,
@@ -79,6 +80,7 @@ import {
   LumaWifiPickerPanel,
   WifiStatusSnapshot,
 } from './LumaConnectivityPicker';
+import type { EthernetStatusSnapshot } from './LumaEthernetPanel';
 import { LumaPerAppAudioHub, MediaPlayerSessionMini } from './LumaPerAppAudioHub';
 import { LumaMiracastPanel } from './LumaMiracastPanel';
 import { LumaOneUIGridBody } from './LumaOneUIGridBody';
@@ -125,6 +127,7 @@ export interface HubAudioEndpoint {
 
 export type ControlHubTileId =
   | 'wifi'
+  | 'ethernet'
   | 'bluetooth'
   | 'miracast'
   | 'dnd'
@@ -149,6 +152,7 @@ export type ControlHubTileId =
 
 export const ALL_HUB_TILES: { id: ControlHubTileId; label: string; desc: string }[] = [
   { id: 'wifi', label: 'Wi-Fi', desc: 'Сеть · ПКМ — список и пароль' },
+  { id: 'ethernet', label: 'Провод (LAN)', desc: 'Откл./Вкл. кабеля · ПКМ — IP/DNS' },
   { id: 'bluetooth', label: 'Bluetooth', desc: 'ПКМ — список устройств' },
   { id: 'miracast', label: '2-й экран (Miracast)', desc: 'Беспроводной дисплей · Источник и Приёмник' },
   { id: 'dnd', label: 'Не беспокоить', desc: 'Приглушить звук и всплывающие окна' },
@@ -174,6 +178,7 @@ export const ALL_HUB_TILES: { id: ControlHubTileId; label: string; desc: string 
 
 export const DEFAULT_HUB_TILES: ControlHubTileId[] = [
   'wifi',
+  'ethernet',
   'bluetooth',
   'dnd',
   'night_light',
@@ -230,6 +235,10 @@ interface LumaCarbonControlHubProps {
     password?: string
   ) => Promise<{ ok: boolean; needs_password?: boolean; message?: string; error?: string }>;
   onDisconnectWifi?: () => Promise<void>;
+  ethernetStatus?: EthernetStatusSnapshot | null;
+  onToggleEthernet?: (enabled?: boolean) => void;
+  onRefreshEthernet?: () => void;
+  onEthernetStatusChange?: (status: EthernetStatusSnapshot) => void;
   bluetoothEnabled: boolean;
   bluetoothStatus?: BluetoothStatusSnapshot | null;
   bluetoothLoading?: boolean;
@@ -336,6 +345,10 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   onRefreshWifi,
   onConnectWifi,
   onDisconnectWifi,
+  ethernetStatus = null,
+  onToggleEthernet,
+  onRefreshEthernet,
+  onEthernetStatusChange,
   bluetoothEnabled,
   bluetoothStatus = null,
   bluetoothLoading = false,
@@ -433,7 +446,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
   const [isGridDragging, setIsGridDragging] = useState(false);
   const [selectedMediaId, setSelectedMediaId] = useState<string>('');
   const [scrubPosSec, setScrubPosSec] = useState<number | null>(null);
-  const [activeConnectivityPicker, setActiveConnectivityPicker] = useState<'none' | 'wifi' | 'bluetooth'>('none');
+  const [activeConnectivityPicker, setActiveConnectivityPicker] = useState<'none' | 'wifi' | 'ethernet' | 'bluetooth'>('none');
   const draggingSliderRef = useRef(false);
   const volDragStartXRef = useRef<number>(0);
   const volDidDragRef = useRef<boolean>(false);
@@ -1027,6 +1040,34 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
         onOpenList = onContextMenu;
         break;
       }
+      case 'ethernet': {
+        const ethOn = Boolean(ethernetStatus?.any_enabled);
+        const ethConn = Boolean(ethernetStatus?.any_connected);
+        icon = <Cable size={14} />;
+        label = ethernetStatus?.primary_name || 'Провод (LAN)';
+        sub = !ethOn ? 'Откл · ПКМ' : ethConn ? (ethernetStatus?.primary_speed || 'Подключено') : 'Кабель · ПКМ';
+        active = ethOn;
+        tileTitle = 'ЛКМ — откл/вкл проводной интернет · ПКМ — IP / DNS настройки';
+        onClick = () => {
+          if (onToggleEthernet) onToggleEthernet(!ethOn);
+          else {
+            setActiveConnectivityPicker((p) => (p === 'ethernet' ? 'none' : 'ethernet'));
+            onRefreshEthernet?.();
+          }
+        };
+        onContextMenu = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setShowFeaturesModal(false);
+          setActiveConnectivityPicker((p) => {
+            const next = p === 'ethernet' ? 'none' : 'ethernet';
+            if (next === 'ethernet') onRefreshEthernet?.();
+            return next;
+          });
+        };
+        onOpenList = onContextMenu;
+        break;
+      }
       case 'bluetooth': {
         const btOn = bluetoothStatus ? bluetoothStatus.enabled : bluetoothEnabled;
         const connectedDev = bluetoothStatus?.devices?.find((d) => d.connected);
@@ -1226,6 +1267,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
 
     const isPickerOpenForTile =
       (id === 'wifi' && activeConnectivityPicker === 'wifi') ||
+      (id === 'ethernet' && activeConnectivityPicker === 'ethernet') ||
       (id === 'bluetooth' && activeConnectivityPicker === 'bluetooth');
 
     return (
@@ -1451,7 +1493,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                 style={{ backgroundColor: effectiveAccent, boxShadow: `0 0 8px ${effectiveAccent}` }}
               />
               <span className="text-xs font-extrabold tracking-tight truncate">
-                Luma OS 1.8.2b {isPro ? 'Pro' : 'Base'}
+                Luma OS 1.8.3 {isPro ? 'Pro' : 'Base'}
               </span>
               {isPro && (
                 <span
@@ -1809,7 +1851,7 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
             ) : showFeaturesModal ? (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold" style={{ color: effectiveAccent }}>Менеджер функций Luma OS 1.8.2b</span>
+                  <span className="text-[11px] font-bold" style={{ color: effectiveAccent }}>Менеджер функций Luma OS 1.8.3</span>
                   <button onClick={() => setShowFeaturesModal(false)} className="text-[10px] px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 cursor-pointer">
                     Назад
                   </button>
@@ -2222,6 +2264,10 @@ export const LumaCarbonControlHub: React.FC<LumaCarbonControlHubProps> = ({
                 onRefreshWifi={onRefreshWifi}
                 onConnectWifi={onConnectWifi}
                 onDisconnectWifi={onDisconnectWifi}
+                ethernetStatus={ethernetStatus}
+                onToggleEthernet={onToggleEthernet}
+                onRefreshEthernet={onRefreshEthernet}
+                onEthernetStatusChange={onEthernetStatusChange}
                 bluetoothEnabled={bluetoothEnabled}
                 bluetoothStatus={bluetoothStatus}
                 bluetoothLoading={bluetoothLoading}

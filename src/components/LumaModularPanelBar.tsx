@@ -588,7 +588,7 @@ export const LumaModularPanelBar: React.FC<LumaModularPanelBarProps> = ({
             key={id}
             {...commonProps}
             onClick={onOpenEditionSettings}
-            title={isPro ? 'Luma OS 1.8.2b Pro · Полные права и Pro-функции' : 'Luma OS 1.8.2b Base · Сравнить с версией Pro'}
+            title={isPro ? 'Luma OS 1.8.3 Pro · Полные права и Pro-функции' : 'Luma OS 1.8.3 Base · Сравнить с версией Pro'}
             className={`${wrapCls} ${
               isPro
                 ? '!bg-gradient-to-r !from-blue-600/35 !to-cyan-500/30 !border-sky-400/50 text-sky-200'

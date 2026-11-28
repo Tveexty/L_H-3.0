@@ -3,10 +3,12 @@ import {
   Activity,
   BellOff,
   Bluetooth,
+  Cable,
   Calculator,
   Calendar,
   Camera,
   Cast,
+  ChevronRight,
   Clipboard,
   Code2,
   Cpu,
@@ -56,6 +58,7 @@ import {
   LumaWifiPickerPanel,
   WifiStatusSnapshot,
 } from './LumaConnectivityPicker';
+import { EthernetStatusSnapshot, LumaEthernetPanel } from './LumaEthernetPanel';
 import type { MediaPlayerSessionMini } from './LumaPerAppAudioHub';
 import type { WirelessDeviceItem } from './LumaCarbonControlHub';
 import {
@@ -93,6 +96,10 @@ export interface LumaOneUIGridBodyProps {
     password?: string
   ) => Promise<{ ok: boolean; needs_password?: boolean; message?: string; error?: string }>;
   onDisconnectWifi?: () => Promise<void>;
+  ethernetStatus?: EthernetStatusSnapshot | null;
+  onToggleEthernet?: (enabled?: boolean) => void;
+  onRefreshEthernet?: () => void;
+  onEthernetStatusChange?: (status: EthernetStatusSnapshot) => void;
   bluetoothEnabled: boolean;
   bluetoothStatus: BluetoothStatusSnapshot | null;
   bluetoothLoading: boolean;
@@ -104,8 +111,8 @@ export interface LumaOneUIGridBodyProps {
     pin?: string
   ) => Promise<{ ok: boolean; needs_pin?: boolean; message?: string; error?: string }>;
   wirelessDevices: WirelessDeviceItem[];
-  activeConnectivityPicker: 'none' | 'wifi' | 'bluetooth';
-  onSetActiveConnectivityPicker: (v: 'none' | 'wifi' | 'bluetooth') => void;
+  activeConnectivityPicker: 'none' | 'wifi' | 'ethernet' | 'bluetooth';
+  onSetActiveConnectivityPicker: (v: 'none' | 'wifi' | 'ethernet' | 'bluetooth') => void;
   // System controls
   dnd: boolean;
   onToggleDnd: () => void;
@@ -167,6 +174,7 @@ interface OneUIModuleDef {
   icon: React.ReactNode;
   onClick?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
+  onOpenPicker?: (e: React.MouseEvent) => void;
 }
 
 const computeHorizontalPct = (clientX: number, el: HTMLElement) => {
@@ -205,6 +213,10 @@ export const LumaOneUIGridBody: React.FC<LumaOneUIGridBodyProps> = (props) => {
     onRefreshWifi,
     onConnectWifi,
     onDisconnectWifi,
+    ethernetStatus,
+    onToggleEthernet,
+    onRefreshEthernet,
+    onEthernetStatusChange,
     bluetoothEnabled,
     bluetoothStatus,
     bluetoothLoading,
@@ -279,6 +291,17 @@ export const LumaOneUIGridBody: React.FC<LumaOneUIGridBodyProps> = (props) => {
     wirelessDevices.find((w) => w.connected)?.name ||
     (bluetoothEnabled ? 'Bluetooth вкл.' : 'Выкл.');
 
+  const ethEnabled = Boolean(ethernetStatus?.any_enabled);
+  const ethConnected = Boolean(ethernetStatus?.any_connected);
+  const ethAvailable = ethernetStatus ? ethernetStatus.available : true;
+  const ethStatusLabel = !ethAvailable
+    ? 'Нет адаптера'
+    : !ethEnabled
+    ? 'Отключён'
+    : ethConnected
+    ? ethernetStatus?.primary_speed || ethernetStatus?.primary_ip || 'Подключено'
+    : 'Без кабеля';
+
   const tileAlpha = Math.max(0.24, Math.min(0.92, (vis.opacity / 100) * 0.88));
   const tileSurfaceStyle = (active: boolean): React.CSSProperties => ({
     borderRadius: `${vis.radiusPx}px`,
@@ -297,6 +320,30 @@ export const LumaOneUIGridBody: React.FC<LumaOneUIGridBodyProps> = (props) => {
     boxShadow: active ? `0 8px 22px ${hexToRgba(effectiveAccent, 0.36)}` : undefined,
   });
 
+  const openWifiPicker = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const next = activeConnectivityPicker === 'wifi' ? 'none' : 'wifi';
+    onSetActiveConnectivityPicker(next);
+    if (next === 'wifi') onRefreshWifi?.(true);
+  };
+
+  const openEthernetPicker = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const next = activeConnectivityPicker === 'ethernet' ? 'none' : 'ethernet';
+    onSetActiveConnectivityPicker(next);
+    if (next === 'ethernet') onRefreshEthernet?.();
+  };
+
+  const openBluetoothPicker = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const next = activeConnectivityPicker === 'bluetooth' ? 'none' : 'bluetooth';
+    onSetActiveConnectivityPicker(next);
+    if (next === 'bluetooth') onRefreshBluetooth?.(true);
+  };
+
   const MODULE_CATALOG: OneUIModuleDef[] = [
     {
       id: 'wifi',
@@ -306,12 +353,26 @@ export const LumaOneUIGridBody: React.FC<LumaOneUIGridBodyProps> = (props) => {
       active: Boolean(wifiEnabled || wifiConnected),
       icon: <Wifi size={16} />,
       onClick: () => onToggleWifi?.(!wifiEnabled),
-      onContextMenu: (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onSetActiveConnectivityPicker(activeConnectivityPicker === 'wifi' ? 'none' : 'wifi');
-        onRefreshWifi?.(true);
+      onContextMenu: openWifiPicker,
+      onOpenPicker: openWifiPicker,
+    },
+    {
+      id: 'ethernet',
+      label: ethernetStatus?.primary_name || 'Провод (LAN)',
+      status: ethStatusLabel,
+      cat: 'widgets',
+      active: ethEnabled && ethAvailable,
+      icon: <Cable size={16} />,
+      onClick: () => {
+        if (onToggleEthernet) {
+          onToggleEthernet(!ethEnabled);
+        } else {
+          onSetActiveConnectivityPicker(activeConnectivityPicker === 'ethernet' ? 'none' : 'ethernet');
+          onRefreshEthernet?.();
+        }
       },
+      onContextMenu: openEthernetPicker,
+      onOpenPicker: openEthernetPicker,
     },
     {
       id: 'bluetooth',
@@ -321,12 +382,8 @@ export const LumaOneUIGridBody: React.FC<LumaOneUIGridBodyProps> = (props) => {
       active: bluetoothEnabled,
       icon: <Bluetooth size={16} />,
       onClick: () => onToggleBluetooth(!bluetoothEnabled),
-      onContextMenu: (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onSetActiveConnectivityPicker(activeConnectivityPicker === 'bluetooth' ? 'none' : 'bluetooth');
-        onRefreshBluetooth?.(true);
-      },
+      onContextMenu: openBluetoothPicker,
+      onOpenPicker: openBluetoothPicker,
     },
     {
       id: 'media',
@@ -1149,7 +1206,7 @@ export const LumaOneUIGridBody: React.FC<LumaOneUIGridBodyProps> = (props) => {
         onClick={() => !editMode && def.onClick?.()}
         onContextMenu={def.onContextMenu}
         className={`w-full h-full px-2.5 py-2 flex items-center gap-2 text-left cursor-pointer ${def.active ? 'text-white' : ''}`}
-        title={`${def.label}${def.status ? ` · ${def.status}` : ''}`}
+        title={`${def.label}${def.status ? ` · ${def.status}` : ''}${def.onOpenPicker ? ' · ПКМ или → для настроек' : ''}`}
       >
         <span
           className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border border-white/12"
@@ -1169,6 +1226,23 @@ export const LumaOneUIGridBody: React.FC<LumaOneUIGridBodyProps> = (props) => {
             <div className={`text-[9px] truncate ${def.active ? 'text-white/80' : subText}`}>{def.status}</div>
           )}
         </div>
+        {!editMode && def.onOpenPicker && (
+          <button
+            type="button"
+            data-block-ctrl="picker"
+            onClick={def.onOpenPicker}
+            title="Настройки и выбор"
+            className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition cursor-pointer ${
+              def.active
+                ? 'bg-white/15 hover:bg-white/25 text-white'
+                : isDark
+                ? 'bg-white/8 hover:bg-white/16 text-white/75'
+                : 'bg-slate-200/80 hover:bg-slate-300 text-slate-700'
+            }`}
+          >
+            <ChevronRight size={13} />
+          </button>
+        )}
       </div>
     );
   };
@@ -1212,6 +1286,15 @@ export const LumaOneUIGridBody: React.FC<LumaOneUIGridBodyProps> = (props) => {
           onToggleRadio={(en) => onToggleWifi?.(en)}
           onConnect={onConnectWifi || (async () => ({ ok: false, error: 'Сервис Wi-Fi недоступен' }))}
           onDisconnect={onDisconnectWifi || (async () => {})}
+          onClose={() => onSetActiveConnectivityPicker('none')}
+        />
+      )}
+      {activeConnectivityPicker === 'ethernet' && (
+        <LumaEthernetPanel
+          mode="compact"
+          isDark={isDark}
+          externalStatus={ethernetStatus}
+          onStatusChange={onEthernetStatusChange}
           onClose={() => onSetActiveConnectivityPicker('none')}
         />
       )}

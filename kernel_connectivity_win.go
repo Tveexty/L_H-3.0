@@ -14,27 +14,37 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
 )
 
-// ==================== LUMA OS 1.6.3: WINDOWS NATIVE WI-FI (WLANAPI + NETSH) & FULL BLUETOOTH DISCOVERY (BTHPROPS) ====================
-// Uses Win32 wlanapi.dll WlanScan + UTF-8 netsh wlan (chcp 65001) + pure Win32 bthprops.cpl BluetoothFindFirstDevice
-// to list ALL nearby, paired, and connected devices — ZERO RequestAccessAsync, ZERO ms-settings, ZERO NewCallback!
+// ==================== LUMA OS 1.8.3: NATIVE WI-FI (WLANAPI AVAILABLE + BSS LIST + NETSH) & BLUETOOTH DISCOVERY ====================
+// Uses Win32 wlanapi.dll (WlanScan + WlanGetAvailableNetworkList + WlanGetNetworkBssList) merged with UTF-8 netsh
+// and a 30-second anti-flicker cache so 100% of 2.4/5/6 GHz Wi-Fi networks ALWAYS appear reliably!
 
 var (
-	wlanApiDLL             = syscall.NewLazyDLL("wlanapi.dll")
-	procWlanOpenHandle     = wlanApiDLL.NewProc("WlanOpenHandle")
-	procWlanCloseHandle    = wlanApiDLL.NewProc("WlanCloseHandle")
-	procWlanEnumInterfaces = wlanApiDLL.NewProc("WlanEnumInterfaces")
-	procWlanScan           = wlanApiDLL.NewProc("WlanScan")
-	procWlanFreeMemory     = wlanApiDLL.NewProc("WlanFreeMemory")
+	wlanApiDLL                      = syscall.NewLazyDLL("wlanapi.dll")
+	procWlanOpenHandle              = wlanApiDLL.NewProc("WlanOpenHandle")
+	procWlanCloseHandle             = wlanApiDLL.NewProc("WlanCloseHandle")
+	procWlanEnumInterfaces          = wlanApiDLL.NewProc("WlanEnumInterfaces")
+	procWlanScan                    = wlanApiDLL.NewProc("WlanScan")
+	procWlanGetAvailableNetworkList = wlanApiDLL.NewProc("WlanGetAvailableNetworkList")
+	procWlanGetNetworkBssList       = wlanApiDLL.NewProc("WlanGetNetworkBssList")
+	procWlanFreeMemory              = wlanApiDLL.NewProc("WlanFreeMemory")
 
-	bthPropsDLL                 = syscall.NewLazyDLL("bthprops.cpl")
-	procBtFindFirstDevice       = bthPropsDLL.NewProc("BluetoothFindFirstDevice")
-	procBtFindNextDevice        = bthPropsDLL.NewProc("BluetoothFindNextDevice")
-	procBtFindDeviceClose       = bthPropsDLL.NewProc("BluetoothFindDeviceClose")
+	bthPropsDLL           = syscall.NewLazyDLL("bthprops.cpl")
+	procBtFindFirstDevice = bthPropsDLL.NewProc("BluetoothFindFirstDevice")
+	procBtFindNextDevice  = bthPropsDLL.NewProc("BluetoothFindNextDevice")
+	procBtFindDeviceClose = bthPropsDLL.NewProc("BluetoothFindDeviceClose")
+
+	wifiScanCacheMu sync.Mutex
+	wifiLastScanAt  time.Time
+	wifiRecentCache = map[string]struct {
+		item   WifiNetworkItem
+		seenAt time.Time
+	}{}
 )
 
 type winWlanGUID struct {
@@ -56,8 +66,135 @@ type winWlanInterfaceList struct {
 	InterfaceInfo [1]winWlanInterfaceInfo
 }
 
-// triggerWin32WlanScan triggers a real hardware 802.11 active scan so ALL nearby Wi-Fi APs appear immediately.
-func triggerWin32WlanScan() {
+type winDot11SSID struct {
+	SSIDLength uint32
+	SSID       [32]byte
+}
+
+// Exact Windows x64 WLAN_AVAILABLE_NETWORK layout (628 bytes)
+type winWlanAvailableNetwork struct {
+	ProfileName          [256]uint16
+	Dot11Ssid            winDot11SSID
+	Dot11BssType         uint32
+	NumberOfBssids       uint32
+	NetworkConnectable   int32
+	NotConnectableReason uint32
+	NumberOfPhyTypes     uint32
+	Dot11PhyTypes        [8]uint32
+	MorePhyTypes         int32
+	SignalQuality        uint32
+	SecurityEnabled      int32
+	DefaultAuthAlgo      uint32
+	DefaultCipherAlgo    uint32
+	Flags                uint32
+	Reserved             uint32
+}
+
+type winWlanAvailableNetworkList struct {
+	NumberOfItems uint32
+	Index         uint32
+	Network       [1]winWlanAvailableNetwork
+}
+
+// Exact Windows x64 WLAN_BSS_ENTRY layout (360 bytes)
+type winWlanBssEntry struct {
+	Dot11Ssid             winDot11SSID
+	PhyID                 uint32
+	Dot11Bssid            [6]byte
+	_                     [2]byte
+	Dot11BssType          uint32
+	Dot11BssPhyType       uint32
+	Rssi                  int32
+	LinkQuality           uint32
+	InRegDomain           byte
+	_                     byte
+	BeaconPeriod          uint16
+	_                     [4]byte // align Timestamp to 8 bytes (offset 72)
+	Timestamp             uint64
+	HostTimestamp         uint64
+	CapabilityInformation uint16
+	_                     [2]byte
+	ChCenterFrequency     uint32
+	RateSetLength         uint32
+	RateSet               [126]uint16
+	IeOffset              uint32
+	IeSize                uint32
+}
+
+type winWlanBssList struct {
+	TotalSize     uint32
+	NumberOfItems uint32
+	Entries       [1]winWlanBssEntry
+}
+
+func decodeDot11SSID(s winDot11SSID) string {
+	n := int(s.SSIDLength)
+	if n <= 0 || n > 32 {
+		return ""
+	}
+	raw := s.SSID[:n]
+	// Ignore null-only hidden beacon placeholders
+	allZero := true
+	for _, b := range raw {
+		if b != 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero {
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
+}
+
+func wlanAuthAlgoLabel(algo uint32, secEnabled bool) string {
+	if !secEnabled || algo == 1 {
+		return "Открытая"
+	}
+	switch algo {
+	case 2:
+		return "WEP"
+	case 3, 4:
+		return "WPA-Personal"
+	case 6:
+		return "WPA2-Enterprise"
+	case 7:
+		return "WPA2-Personal"
+	case 8:
+		return "WPA3-Enterprise"
+	case 9, 10, 11:
+		return "WPA3-Personal"
+	default:
+		return "WPA2/WPA3"
+	}
+}
+
+func wlanFreqToBand(khz uint32) string {
+	switch {
+	case khz >= 5900000:
+		return "6 GHz"
+	case khz >= 4900000:
+		return "5 GHz"
+	case khz > 0:
+		return "2.4 GHz"
+	default:
+		return ""
+	}
+}
+
+func rssiToPercent(rssi int32) int {
+	if rssi >= -50 {
+		return 100
+	}
+	if rssi <= -100 {
+		return 0
+	}
+	return int((rssi + 100) * 2)
+}
+
+// triggerWin32WlanScan triggers a real hardware 802.11 active scan across ALL WLAN adapters.
+// Wait duration adapts so slow 5 GHz / 6 GHz channels finish responding before we read the list!
+func triggerWin32WlanScan(waitDur time.Duration) {
 	var negotiated uint32
 	var hClient uintptr
 	if r, _, _ := procWlanOpenHandle.Call(2, 0, uintptr(unsafe.Pointer(&negotiated)), uintptr(unsafe.Pointer(&hClient))); r != 0 || hClient == 0 {
@@ -82,7 +219,205 @@ func triggerWin32WlanScan() {
 		iface := (*winWlanInterfaceInfo)(unsafe.Pointer(base + uintptr(i)*stride))
 		_, _, _ = procWlanScan.Call(hClient, uintptr(unsafe.Pointer(&iface.InterfaceGuid)), 0, 0, 0)
 	}
-	time.Sleep(850 * time.Millisecond)
+	wifiScanCacheMu.Lock()
+	wifiLastScanAt = time.Now()
+	wifiScanCacheMu.Unlock()
+	if waitDur > 0 {
+		time.Sleep(waitDur)
+	}
+}
+
+// collectWin32WlanNetworks reads BOTH WlanGetAvailableNetworkList (flags=0x3) AND WlanGetNetworkBssList
+// directly from wlanapi.dll so 100% of nearby 2.4/5/6 GHz APs & UTF-8/Cyrillic SSIDs are discovered!
+func collectWin32WlanNetworks(bySSID map[string]*WifiNetworkItem, savedMap map[string]bool) (foundIface bool, activeSSID string, activeSignal int, connected bool) {
+	var negotiated uint32
+	var hClient uintptr
+	if r, _, _ := procWlanOpenHandle.Call(2, 0, uintptr(unsafe.Pointer(&negotiated)), uintptr(unsafe.Pointer(&hClient))); r != 0 || hClient == 0 {
+		return false, "", 0, false
+	}
+	defer procWlanCloseHandle.Call(hClient, 0)
+
+	var ifListPtr uintptr
+	if r, _, _ := procWlanEnumInterfaces.Call(hClient, 0, uintptr(unsafe.Pointer(&ifListPtr))); r != 0 || ifListPtr == 0 {
+		return false, "", 0, false
+	}
+	defer procWlanFreeMemory.Call(ifListPtr)
+
+	hdr := (*winWlanInterfaceList)(unsafe.Pointer(ifListPtr))
+	ifCount := hdr.NumberOfItems
+	if ifCount > 8 {
+		ifCount = 8
+	}
+	if ifCount > 0 {
+		foundIface = true
+	}
+
+	ifBase := uintptr(unsafe.Pointer(&hdr.InterfaceInfo[0]))
+	ifStride := unsafe.Sizeof(winWlanInterfaceInfo{})
+
+	for i := uint32(0); i < ifCount; i++ {
+		iface := (*winWlanInterfaceInfo)(unsafe.Pointer(ifBase + uintptr(i)*ifStride))
+		if iface.State == 1 { // wlan_interface_state_connected
+			connected = true
+		}
+
+		// Source 1: WlanGetAvailableNetworkList (include all adhoc + manual/hidden profiles: flags = 3)
+		var availPtr uintptr
+		if r, _, _ := procWlanGetAvailableNetworkList.Call(
+			hClient,
+			uintptr(unsafe.Pointer(&iface.InterfaceGuid)),
+			3,
+			0,
+			uintptr(unsafe.Pointer(&availPtr)),
+		); r == 0 && availPtr != 0 {
+			al := (*winWlanAvailableNetworkList)(unsafe.Pointer(availPtr))
+			nItems := al.NumberOfItems
+			if nItems > 256 {
+				nItems = 256
+			}
+			nBase := uintptr(unsafe.Pointer(&al.Network[0]))
+			nStride := unsafe.Sizeof(winWlanAvailableNetwork{})
+			for j := uint32(0); j < nItems; j++ {
+				netItem := (*winWlanAvailableNetwork)(unsafe.Pointer(nBase + uintptr(j)*nStride))
+				ssid := decodeDot11SSID(netItem.Dot11Ssid)
+				if ssid == "" {
+					prof := strings.TrimSpace(syscall.UTF16ToString(netItem.ProfileName[:]))
+					if prof != "" && (netItem.Flags&1) != 0 {
+						ssid = prof
+					} else {
+						continue
+					}
+				}
+				sig := int(netItem.SignalQuality)
+				if sig > 100 {
+					sig = 100
+				}
+				isConn := (netItem.Flags & 1) != 0
+				hasProf := (netItem.Flags&2) != 0 || savedMap[ssid]
+				sec := netItem.SecurityEnabled != 0 && netItem.DefaultAuthAlgo != 1
+				auth := wlanAuthAlgoLabel(netItem.DefaultAuthAlgo, sec)
+
+				band := "2.4 GHz"
+				for p := uint32(0); p < netItem.NumberOfPhyTypes && p < 8; p++ {
+					pt := netItem.Dot11PhyTypes[p]
+					// 5=ofdm(5G), 8=vht(5G), 10=he(Wi-Fi 6), 11=eht(Wi-Fi 7)
+					if pt == 5 || pt == 8 || pt == 10 || pt == 11 {
+						band = "5 GHz"
+						break
+					}
+				}
+
+				if isConn {
+					connected = true
+					activeSSID = ssid
+					if sig > activeSignal {
+						activeSignal = sig
+					}
+				}
+
+				if ex, ok := bySSID[ssid]; ok {
+					if sig > ex.Signal {
+						ex.Signal = sig
+					}
+					if isConn {
+						ex.Connected = true
+					}
+					if hasProf {
+						ex.Saved = true
+					}
+					if ex.Auth == "" {
+						ex.Auth = auth
+						ex.Secured = sec
+					}
+					if band == "5 GHz" && ex.Band == "2.4 GHz" {
+						ex.Band = band
+					}
+				} else {
+					bySSID[ssid] = &WifiNetworkItem{
+						SSID:      ssid,
+						Signal:    sig,
+						Secured:   sec,
+						Auth:      auth,
+						Band:      band,
+						Connected: isConn,
+						Saved:     hasProf,
+					}
+				}
+			}
+			_, _, _ = procWlanFreeMemory.Call(availPtr)
+		}
+
+		// Source 2: WlanGetNetworkBssList — raw 802.11 BSSID beacons (catches ALL 2.4/5/6 GHz APs!)
+		var bssPtr uintptr
+		if r, _, _ := procWlanGetNetworkBssList.Call(
+			hClient,
+			uintptr(unsafe.Pointer(&iface.InterfaceGuid)),
+			0, // NULL = ALL SSIDs
+			3, // dot11_BSS_type_any
+			0,
+			0,
+			uintptr(unsafe.Pointer(&bssPtr)),
+		); r == 0 && bssPtr != 0 {
+			bl := (*winWlanBssList)(unsafe.Pointer(bssPtr))
+			bItems := bl.NumberOfItems
+			if bItems > 512 {
+				bItems = 512
+			}
+			bBase := uintptr(unsafe.Pointer(&bl.Entries[0]))
+			bStride := unsafe.Sizeof(winWlanBssEntry{})
+			for j := uint32(0); j < bItems; j++ {
+				ent := (*winWlanBssEntry)(unsafe.Pointer(bBase + uintptr(j)*bStride))
+				ssid := decodeDot11SSID(ent.Dot11Ssid)
+				if ssid == "" {
+					continue
+				}
+				sig := int(ent.LinkQuality)
+				if sig <= 0 && ent.Rssi < 0 {
+					sig = rssiToPercent(ent.Rssi)
+				}
+				if sig > 100 {
+					sig = 100
+				}
+				bssid := fmt.Sprintf("%02X:%02X:%02X:%02X:%02X:%02X",
+					ent.Dot11Bssid[0], ent.Dot11Bssid[1], ent.Dot11Bssid[2],
+					ent.Dot11Bssid[3], ent.Dot11Bssid[4], ent.Dot11Bssid[5])
+				band := wlanFreqToBand(ent.ChCenterFrequency)
+				sec := (ent.CapabilityInformation & 0x0010) != 0 // 802.11 Privacy bit
+				auth := "Открытая"
+				if sec {
+					auth = "WPA2/WPA3"
+				}
+
+				if ex, ok := bySSID[ssid]; ok {
+					if sig > ex.Signal {
+						ex.Signal = sig
+					}
+					if ex.BSSID == "" {
+						ex.BSSID = bssid
+					}
+					if band == "6 GHz" || (band == "5 GHz" && ex.Band != "6 GHz") {
+						ex.Band = band
+					}
+				} else {
+					if band == "" {
+						band = "2.4 GHz"
+					}
+					bySSID[ssid] = &WifiNetworkItem{
+						SSID:      ssid,
+						Signal:    sig,
+						Secured:   sec,
+						Auth:      auth,
+						Band:      band,
+						Connected: connected && strings.EqualFold(ssid, activeSSID),
+						Saved:     savedMap[ssid],
+						BSSID:     bssid,
+					}
+				}
+			}
+			_, _, _ = procWlanFreeMemory.Call(bssPtr)
+		}
+	}
+	return foundIface, activeSSID, activeSignal, connected
 }
 
 // Win32 BLUETOOTH_DEVICE_SEARCH_PARAMS (packed layout matching bthapis.h on amd64)
@@ -343,13 +678,28 @@ func getWifiStatusNative(rescan bool) WifiStatusSnapshot {
 	}
 
 	if rescan {
-		// Real hardware 802.11 active scan via wlanapi.dll so ALL nearby networks refresh immediately!
-		triggerWin32WlanScan()
+		// Full 1.8s hardware 802.11 active scan across 2.4 GHz, 5 GHz & 6 GHz channels so NO router is missed!
+		triggerWin32WlanScan(1800 * time.Millisecond)
+	} else {
+		wifiScanCacheMu.Lock()
+		stale := time.Since(wifiLastScanAt) > 12*time.Second
+		wifiScanCacheMu.Unlock()
+		if stale {
+			// Refresh hardware scan in background so subsequent polls have 100% fresh APs without blocking UI
+			go triggerWin32WlanScan(0)
+		}
 	}
 
 	ifaceOut, ifaceErr := runNetshUTF8(3500*time.Millisecond, "wlan", "show", "interfaces")
 	lowerIface := strings.ToLower(ifaceOut)
-	if ifaceErr != nil && (strings.Contains(lowerIface, "no wireless interface") || strings.Contains(lowerIface, "беспроводной интерфейс отсутствует") || strings.Contains(lowerIface, "служба автонастройки")) {
+
+	profilesOut, _ := runNetshUTF8(3*time.Second, "wlan", "show", "profiles")
+	savedMap := parseSavedWifiProfiles(profilesOut)
+
+	bySSID := make(map[string]*WifiNetworkItem)
+	wlanFound, wlanActiveSSID, wlanActiveSig, wlanConn := collectWin32WlanNetworks(bySSID, savedMap)
+
+	if !wlanFound && ifaceErr != nil && (strings.Contains(lowerIface, "no wireless interface") || strings.Contains(lowerIface, "беспроводной интерфейс отсутствует") || strings.Contains(lowerIface, "служба автонастройки")) {
 		snap.Available = false
 		snap.Enabled = false
 		snap.Error = "Адаптер Wi-Fi не обнаружен или служба WLAN отключена"
@@ -357,7 +707,7 @@ func getWifiStatusNative(rescan bool) WifiStatusSnapshot {
 	}
 
 	radioOff := false
-	hasIface := false
+	hasIface := wlanFound
 	for _, line := range strings.Split(ifaceOut, "\n") {
 		idx := strings.Index(line, ":")
 		if idx <= 0 {
@@ -395,20 +745,33 @@ func getWifiStatusNative(rescan bool) WifiStatusSnapshot {
 		}
 	}
 
-	snap.Available = hasIface || snap.ActiveSSID != ""
+	if wlanConn && !snap.Connected {
+		snap.Connected = true
+	}
+	if wlanActiveSSID != "" && snap.ActiveSSID == "" {
+		snap.ActiveSSID = wlanActiveSSID
+	}
+	if wlanActiveSig > snap.Signal {
+		snap.Signal = wlanActiveSig
+	}
+
+	snap.Available = hasIface || snap.ActiveSSID != "" || len(bySSID) > 0
 	snap.Enabled = snap.Available && !radioOff
 	if !snap.Enabled {
 		snap.Connected = false
 		snap.ActiveSSID = ""
+		wifiScanCacheMu.Lock()
+		wifiRecentCache = map[string]struct {
+			item   WifiNetworkItem
+			seenAt time.Time
+		}{}
+		wifiScanCacheMu.Unlock()
 		return snap
 	}
 
-	profilesOut, _ := runNetshUTF8(3*time.Second, "wlan", "show", "profiles")
-	savedMap := parseSavedWifiProfiles(profilesOut)
-
+	// Source 3: Merge UTF-8 netsh wlan show networks mode=bssid (catches extra BSSID/channel hints)
 	netsOut, _ := runNetshUTF8(4500*time.Millisecond, "wlan", "show", "networks", "mode=bssid")
-	ssidRe := regexp.MustCompile(`(?i)^SSID\s+\d+\s*:\s*(.*)$`)
-	bySSID := make(map[string]*WifiNetworkItem)
+	ssidRe := regexp.MustCompile(`(?i)^\s*SSID\s+\d+\s*:\s*(.*)$`)
 	var current *WifiNetworkItem
 
 	for _, rawLine := range strings.Split(netsOut, "\n") {
@@ -449,7 +812,9 @@ func getWifiStatusNative(rescan bool) WifiStatusSnapshot {
 
 		switch {
 		case strings.Contains(key, "authentication") || strings.Contains(key, "проверка подлинности"):
-			current.Auth = val
+			if val != "" && (current.Auth == "" || current.Auth == "WPA2/WPA3") {
+				current.Auth = val
+			}
 			isOpen := strings.Contains(valLow, "open") || strings.Contains(valLow, "открыт") || valLow == ""
 			current.Secured = !isOpen
 		case key == "signal" || key == "сигнал":
@@ -462,26 +827,30 @@ func getWifiStatusNative(rescan bool) WifiStatusSnapshot {
 				current.BSSID = val
 			}
 		case key == "channel" || key == "канал":
-			if ch, err := strconv.Atoi(strings.Fields(val)[0]); err == nil {
-				if ch > 14 {
-					current.Band = "5 GHz"
-				} else {
-					current.Band = "2.4 GHz"
+			fields := strings.Fields(val)
+			if len(fields) > 0 {
+				if ch, err := strconv.Atoi(fields[0]); err == nil {
+					if ch > 14 && current.Band != "6 GHz" {
+						current.Band = "5 GHz"
+					} else if ch > 0 && current.Band == "" {
+						current.Band = "2.4 GHz"
+					}
 				}
 			}
 		case strings.Contains(key, "band") || strings.Contains(key, "диапазон"):
 			if strings.Contains(valLow, "6") {
 				current.Band = "6 GHz"
-			} else if strings.Contains(valLow, "5") {
+			} else if strings.Contains(valLow, "5") && current.Band != "6 GHz" {
 				current.Band = "5 GHz"
 			}
 		}
 	}
 
-	// Ensure active connected SSID is always present even if hidden from scan cache
+	// Ensure active connected SSID is always present
 	if snap.Connected && snap.ActiveSSID != "" {
 		if existing, ok := bySSID[snap.ActiveSSID]; ok {
 			existing.Connected = true
+			existing.Saved = true
 			if existing.Signal == 0 && snap.Signal > 0 {
 				existing.Signal = snap.Signal
 			}
@@ -498,7 +867,33 @@ func getWifiStatusNative(rescan bool) WifiStatusSnapshot {
 		}
 	}
 
-	// Include saved profiles that are currently in range or recently known if list is small
+	// Source 4: Anti-flicker 30-second recent-scan cache so nearby routers on busy channels NEVER randomly vanish!
+	now := time.Now()
+	wifiScanCacheMu.Lock()
+	for ssid, item := range bySSID {
+		if item.Saved || savedMap[ssid] {
+			item.Saved = true
+		}
+		item.Connected = snap.Connected && strings.EqualFold(ssid, snap.ActiveSSID)
+		wifiRecentCache[ssid] = struct {
+			item   WifiNetworkItem
+			seenAt time.Time
+		}{item: *item, seenAt: now}
+	}
+	for ssid, cached := range wifiRecentCache {
+		if now.Sub(cached.seenAt) > 30*time.Second {
+			delete(wifiRecentCache, ssid)
+			continue
+		}
+		if _, exists := bySSID[ssid]; !exists {
+			copyItem := cached.item
+			copyItem.Connected = snap.Connected && strings.EqualFold(ssid, snap.ActiveSSID)
+			copyItem.Saved = copyItem.Saved || savedMap[ssid]
+			bySSID[ssid] = &copyItem
+		}
+	}
+	wifiScanCacheMu.Unlock()
+
 	list := make([]WifiNetworkItem, 0, len(bySSID))
 	for _, item := range bySSID {
 		list = append(list, *item)
@@ -576,6 +971,7 @@ func buildWindowsWifiProfileXML(ssid, password, auth string) string {
 			<hex>%s</hex>
 			<name>%s</name>
 		</SSID>
+		<nonBroadcast>true</nonBroadcast>
 	</SSIDConfig>
 	<connectionType>ESS</connectionType>
 	<connectionMode>auto</connectionMode>
@@ -604,6 +1000,7 @@ func buildWindowsWifiProfileXML(ssid, password, auth string) string {
 			<hex>%s</hex>
 			<name>%s</name>
 		</SSID>
+		<nonBroadcast>true</nonBroadcast>
 	</SSIDConfig>
 	<connectionType>ESS</connectionType>
 	<connectionMode>auto</connectionMode>
