@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"io"
 	"log"
 	"math/big"
@@ -19,21 +21,25 @@ import (
 	"time"
 )
 
-// ==================== LUMA OS 1.8.2: UNIVERSAL SECOND SCREEN ENGINE («LUMA AIRDISPLAY 2.0») ====================
+// ==================== LUMA OS 1.8.2: TURBO 60 FPS UNIVERSAL SECOND SCREEN ENGINE («LUMA AIRDISPLAY 2.0») ====================
 // Works under ANY circumstances — zero Miracast, zero Wi-Fi Direct, zero external drivers required!
 // Works over Wi-Fi, Ethernet, Hotspot, or USB tethering with ANY phone, tablet, iPad, laptop, Mac, PC, or Smart TV.
+// Turbo 60 FPS Pipeline: Persistent CreateDIBSection + SRCCOPY BitBlt/StretchBlt + parallel BGRA->YCbCr420
+// + multi-core JPEG encoder worker pool + pre-framed single-write MJPEG + event broadcast + TCP_NODELAY + 1ms timer.
 
 const (
 	SecondScreenPort      = 49225
 	SecondScreenBeaconUDP = 49226
+	ssMJPEGBoundary       = "lumaframeboundary182"
+	ssIncomingBoundary    = "lumaincoming182"
 )
 
 type SecondScreenConfig struct {
 	Enabled      bool   `json:"enabled"`
 	MonitorMode  string `json:"monitor_mode"` // primary | mon_1 | mon_2 | ... | all | right_half | left_half | virtual_board
-	FPS          int    `json:"fps"`          // 15 | 24 | 30 | 60
-	MaxWidth     int    `json:"max_width"`    // 960 | 1280 | 1600 | 1920
-	Quality      int    `json:"quality"`      // 50..92
+	FPS          int    `json:"fps"`          // 15 | 24 | 30 | 45 | 60
+	MaxWidth     int    `json:"max_width"`    // 0 (Native 1:1) | 960 | 1280 | 1600 | 1920
+	Quality      int    `json:"quality"`      // 55..98 (default 86 — crisp high bitrate!)
 	AllowInput   bool   `json:"allow_input"`  // Touch / Mouse / Keyboard control from 2nd screen
 	RequirePIN   bool   `json:"require_pin"`
 	PIN          string `json:"pin"`
@@ -69,6 +75,31 @@ type SecondScreenWorkspaceState struct {
 	UpdatedAt   int64    `json:"updated_at"`
 }
 
+type ssEncodeJob struct {
+	seq     uint64
+	img     *image.YCbCr
+	outW    int
+	outH    int
+	rect    [4]int
+	quality int
+}
+
+type noDelayListener struct {
+	*net.TCPListener
+}
+
+func (l noDelayListener) Accept() (net.Conn, error) {
+	tc, err := l.AcceptTCP()
+	if err != nil {
+		return nil, err
+	}
+	_ = tc.SetNoDelay(true)
+	_ = tc.SetKeepAlive(true)
+	_ = tc.SetKeepAlivePeriod(30 * time.Second)
+	_ = tc.SetWriteBuffer(2 * 1024 * 1024)
+	return tc, nil
+}
+
 type SecondScreenEngine struct {
 	mu           sync.RWMutex
 	cfg          SecondScreenConfig
@@ -78,18 +109,35 @@ type SecondScreenEngine struct {
 	hostName     string
 	activeRect   [4]int // x, y, w, h of currently captured source
 	latestFrame  []byte
+	latestPacket []byte // Pre-framed MJPEG multipart chunk for single-write zero-overhead fan-out
 	frameW       int
 	frameH       int
 	frameSeq     uint64
+	frameNotify  chan struct{}
 	actualFPS    float64
 	lastBitrateK int
 	clients      map[string]*SecondScreenClientInfo
 	viewersCount int32
 
+	// Monitor geometry cache (avoids calling Win32 EnumDisplayMonitors on every frame!)
+	monMu    sync.RWMutex
+	monCache []MonitorInfo
+	monAt    time.Time
+
+	// Reusable pools & metrics for multi-core Turbo encoder
+	ycbcrPool  sync.Pool
+	bufPool    sync.Pool
+	pubMu      sync.Mutex
+	pubFrames  int
+	pubBytes   int
+	pubWindowT time.Time
+
 	// Universal Receiver (Incoming stream pushed from ANY Phone / Laptop / Mac / PC via /send!)
 	inMu         sync.RWMutex
 	inFrame      []byte
+	inPacket     []byte
 	inSeq        uint64
+	inNotify     chan struct{}
 	inSenderName string
 	inSenderIP   string
 	inLastAt     time.Time
@@ -127,17 +175,20 @@ func getSecondScreenEngine(k *LumaKernel) *SecondScreenEngine {
 			cfg: SecondScreenConfig{
 				Enabled:     false,
 				MonitorMode: "primary",
-				FPS:         30,
-				MaxWidth:    1280,
-				Quality:     74,
+				FPS:         60,   // Turbo 60 FPS out of the box!
+				MaxWidth:    1600, // Crisp HD+/900p default (supports 960/1280/1600/1920/Native 0)
+				Quality:     86,   // High bitrate crisp text & colors (55..98)
 				AllowInput:  true,
 				RequirePIN:  false,
 				PIN:         generate4DigitPIN(),
 			},
-			lanIP:    detectLocalLANIP(),
-			hostName: hostDeviceName(),
-			clients:  map[string]*SecondScreenClientInfo{},
-			peers:    map[string]*SecondScreenPeer{},
+			lanIP:       detectLocalLANIP(),
+			hostName:    hostDeviceName(),
+			clients:     map[string]*SecondScreenClientInfo{},
+			peers:       map[string]*SecondScreenPeer{},
+			frameNotify: make(chan struct{}),
+			inNotify:    make(chan struct{}),
+			pubWindowT:  time.Now(),
 			workspace: SecondScreenWorkspaceState{
 				Title:       "Расширенный стол Luma OS",
 				Note:        "Сюда можно отправлять заметки, ссылки и следить за системой, пока основной экран свободен.",
@@ -147,6 +198,12 @@ func getSecondScreenEngine(k *LumaKernel) *SecondScreenEngine {
 				UpdatedAt:   time.Now().Unix(),
 			},
 			kernel: k,
+		}
+		secondScreenEng.bufPool = sync.Pool{
+			New: func() interface{} {
+				b := bytes.NewBuffer(make([]byte, 0, 256*1024))
+				return b
+			},
 		}
 		go secondScreenEng.startLANServer()
 		go secondScreenEng.startLANPeerDiscovery()
@@ -162,8 +219,25 @@ func (e *SecondScreenEngine) refreshNetworkInfo() string {
 	return ip
 }
 
-func (e *SecondScreenEngine) resolveCaptureRect(mode string) (x, y, w, h int) {
+func (e *SecondScreenEngine) getMonitorsCached(force bool) []MonitorInfo {
+	e.monMu.RLock()
+	if !force && len(e.monCache) > 0 && time.Since(e.monAt) < 3*time.Second {
+		mons := e.monCache
+		e.monMu.RUnlock()
+		return mons
+	}
+	e.monMu.RUnlock()
+
 	mons := listMonitorsOS()
+	e.monMu.Lock()
+	e.monCache = mons
+	e.monAt = time.Now()
+	e.monMu.Unlock()
+	return mons
+}
+
+func (e *SecondScreenEngine) resolveCaptureRect(mode string) (x, y, w, h int) {
+	mons := e.getMonitorsCached(false)
 	if len(mons) == 0 {
 		return 0, 0, 1920, 1080
 	}
@@ -213,6 +287,59 @@ func (e *SecondScreenEngine) resolveCaptureRect(mode string) (x, y, w, h int) {
 	}
 }
 
+func buildMJPEGPacket(boundary string, jpg []byte) []byte {
+	hdr := fmt.Sprintf("--%s\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n", boundary, len(jpg))
+	pkt := make([]byte, len(hdr)+len(jpg)+2)
+	copy(pkt, hdr)
+	copy(pkt[len(hdr):], jpg)
+	pkt[len(pkt)-2] = '\r'
+	pkt[len(pkt)-1] = '\n'
+	return pkt
+}
+
+func (e *SecondScreenEngine) publishEncodedFrame(seq uint64, jpg []byte, outW, outH int, rect [4]int) {
+	pkt := buildMJPEGPacket(ssMJPEGBoundary, jpg)
+
+	e.mu.Lock()
+	if seq <= e.frameSeq {
+		// Out-of-order older encode finished after a newer frame; drop to keep motion crisp
+		e.mu.Unlock()
+		return
+	}
+	e.latestFrame = jpg
+	e.latestPacket = pkt
+	e.frameW = outW
+	e.frameH = outH
+	e.activeRect = rect
+	e.frameSeq = seq
+	oldNotify := e.frameNotify
+	e.frameNotify = make(chan struct{})
+	e.mu.Unlock()
+
+	// Wake every connected MJPEG viewer immediately (<0.05ms)!
+	close(oldNotify)
+
+	// Rolling 500ms FPS & Bitrate telemetry
+	e.pubMu.Lock()
+	e.pubFrames++
+	e.pubBytes += len(jpg)
+	if el := time.Since(e.pubWindowT); el >= 500*time.Millisecond {
+		fps := float64(e.pubFrames) / el.Seconds()
+		kbps := int(float64(e.pubBytes*8) / 1000.0 / el.Seconds())
+		e.pubFrames = 0
+		e.pubBytes = 0
+		e.pubWindowT = time.Now()
+		e.pubMu.Unlock()
+
+		e.mu.Lock()
+		e.actualFPS = float64(int(fps*10)) / 10.0
+		e.lastBitrateK = kbps
+		e.mu.Unlock()
+		return
+	}
+	e.pubMu.Unlock()
+}
+
 func (e *SecondScreenEngine) ensureCaptureLoopRunning() {
 	e.mu.Lock()
 	if e.captureStop != nil {
@@ -223,9 +350,54 @@ func (e *SecondScreenEngine) ensureCaptureLoopRunning() {
 	e.captureStop = stop
 	e.mu.Unlock()
 
+	// Spin up multi-core parallel JPEG encoder workers (2..4 workers) so 1080p 60 FPS encodes concurrently!
+	workers := runtime.NumCPU() / 2
+	if workers < 2 {
+		workers = 2
+	}
+	if workers > 4 {
+		workers = 4
+	}
+	jobCh := make(chan ssEncodeJob, workers)
+
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer func() { _ = recover() }()
+			for {
+				select {
+				case <-stop:
+					return
+				case job, ok := <-jobCh:
+					if !ok {
+						return
+					}
+					buf := e.bufPool.Get().(*bytes.Buffer)
+					buf.Reset()
+					q := job.quality
+					if q < 50 || q > 98 {
+						q = 86
+					}
+					err := jpeg.Encode(buf, job.img, &jpeg.Options{Quality: q})
+					// Return YCbCr buffer immediately to pool for zero-GC reuse
+					e.ycbcrPool.Put(job.img)
+					if err == nil && buf.Len() > 0 {
+						jpg := make([]byte, buf.Len())
+						copy(jpg, buf.Bytes())
+						e.bufPool.Put(buf)
+						e.publishEncodedFrame(job.seq, jpg, job.outW, job.outH, job.rect)
+					} else {
+						e.bufPool.Put(buf)
+					}
+				}
+			}
+		}()
+	}
+
+	// Capture producer goroutine with 1ms Windows high-res timer & drift-free pacing
 	go func() {
 		defer func() {
 			_ = recover()
+			setSecondScreenHighResTimer(false)
 			e.mu.Lock()
 			if e.captureStop == stop {
 				e.captureStop = nil
@@ -233,9 +405,9 @@ func (e *SecondScreenEngine) ensureCaptureLoopRunning() {
 			e.mu.Unlock()
 		}()
 
-		var fpsFrames int
-		fpsStart := time.Now()
-		var bytesWindow int
+		var seqGen uint64
+		highResOn := false
+		nextTick := time.Now()
 
 		for {
 			select {
@@ -251,11 +423,19 @@ func (e *SecondScreenEngine) ensureCaptureLoopRunning() {
 
 			// Zero-CPU idle when streaming is disabled AND no viewer is connected!
 			if !cfg.Enabled && viewers <= 0 {
-				time.Sleep(250 * time.Millisecond)
+				if highResOn {
+					setSecondScreenHighResTimer(false)
+					highResOn = false
+				}
+				e.mu.Lock()
+				e.actualFPS = 0
+				e.lastBitrateK = 0
+				e.mu.Unlock()
+				time.Sleep(200 * time.Millisecond)
+				nextTick = time.Now()
 				continue
 			}
 
-			// If enabled with 0 active viewers, keep warm at 2 FPS so preview & instant join work with <1% CPU
 			targetFPS := cfg.FPS
 			if targetFPS < 10 {
 				targetFPS = 15
@@ -264,44 +444,67 @@ func (e *SecondScreenEngine) ensureCaptureLoopRunning() {
 				targetFPS = 60
 			}
 			if viewers <= 0 {
-				targetFPS = 2
-			}
-			frameDur := time.Second / time.Duration(targetFPS)
-			t0 := time.Now()
-
-			rx, ry, rw, rh := e.resolveCaptureRect(cfg.MonitorMode)
-			jpg, outW, outH, err := captureSecondScreenRectJPEG(rx, ry, rw, rh, cfg.MaxWidth, cfg.Quality)
-			if err == nil && len(jpg) > 0 {
-				e.mu.Lock()
-				e.latestFrame = jpg
-				e.frameW = outW
-				e.frameH = outH
-				e.activeRect = [4]int{rx, ry, rw, rh}
-				e.frameSeq++
-				e.mu.Unlock()
-
-				fpsFrames++
-				bytesWindow += len(jpg)
-				if el := time.Since(fpsStart); el >= time.Second {
-					fps := float64(fpsFrames) / el.Seconds()
-					kbps := int(float64(bytesWindow*8) / 1000.0 / el.Seconds())
-					e.mu.Lock()
-					e.actualFPS = float64(int(fps*10)) / 10.0
-					e.lastBitrateK = kbps
-					e.mu.Unlock()
-					fpsFrames = 0
-					bytesWindow = 0
-					fpsStart = time.Now()
+				// Keep warm at 6 FPS when enabled with 0 connected viewers so joining is instant with <2% CPU
+				targetFPS = 6
+				if highResOn {
+					setSecondScreenHighResTimer(false)
+					highResOn = false
 				}
+			} else if !highResOn {
+				setSecondScreenHighResTimer(true)
+				highResOn = true
+				nextTick = time.Now()
 			}
 
-			elapsed := time.Since(t0)
-			if elapsed < frameDur {
+			frameDur := time.Second / time.Duration(targetFPS)
+			now := time.Now()
+			if wait := nextTick.Sub(now); wait > 0 {
+				if wait > frameDur {
+					wait = frameDur
+					nextTick = now.Add(wait)
+				}
 				select {
 				case <-stop:
 					return
-				case <-time.After(frameDur - elapsed):
+				case <-time.After(wait):
 				}
+			}
+			nextTick = nextTick.Add(frameDur)
+			if time.Since(nextTick) > 2*frameDur {
+				nextTick = time.Now().Add(frameDur)
+			}
+
+			// Acquire pooled YCbCr buffer
+			var reuse *image.YCbCr
+			if v := e.ycbcrPool.Get(); v != nil {
+				reuse, _ = v.(*image.YCbCr)
+			}
+
+			rx, ry, rw, rh := e.resolveCaptureRect(cfg.MonitorMode)
+			img, outW, outH, err := captureSecondScreenRectYCbCr(rx, ry, rw, rh, cfg.MaxWidth, reuse)
+			if err != nil || img == nil {
+				if reuse != nil {
+					e.ycbcrPool.Put(reuse)
+				}
+				time.Sleep(15 * time.Millisecond)
+				continue
+			}
+
+			seqGen++
+			job := ssEncodeJob{
+				seq:     seqGen,
+				img:     img,
+				outW:    outW,
+				outH:    outH,
+				rect:    [4]int{rx, ry, rw, rh},
+				quality: cfg.Quality,
+			}
+
+			// Non-blocking submit: if all encoder workers are saturated, drop this frame instead of queueing lag!
+			select {
+			case jobCh <- job:
+			default:
+				e.ycbcrPool.Put(img)
 			}
 		}
 	}()
@@ -327,21 +530,25 @@ func (e *SecondScreenEngine) SetConfig(patch map[string]interface{}) SecondScree
 	}
 	if v, ok := patch["max_width"].(float64); ok {
 		mw := int(v)
-		if mw < 640 {
-			mw = 960
+		if mw <= 0 {
+			e.cfg.MaxWidth = 0 // Native 1:1 full resolution!
+		} else {
+			if mw < 640 {
+				mw = 960
+			}
+			if mw > 3840 {
+				mw = 3840
+			}
+			e.cfg.MaxWidth = mw
 		}
-		if mw > 2560 {
-			mw = 1920
-		}
-		e.cfg.MaxWidth = mw
 	}
 	if v, ok := patch["quality"].(float64); ok {
 		q := int(v)
-		if q < 40 {
-			q = 50
+		if q < 50 {
+			q = 55
 		}
-		if q > 95 {
-			q = 92
+		if q > 98 {
+			q = 98
 		}
 		e.cfg.Quality = q
 	}
@@ -373,7 +580,7 @@ func (e *SecondScreenEngine) SetConfig(patch map[string]interface{}) SecondScree
 
 func (e *SecondScreenEngine) StatusSnapshot() map[string]interface{} {
 	ip := e.refreshNetworkInfo()
-	mons := listMonitorsOS()
+	mons := e.getMonitorsCached(false)
 
 	now := time.Now().Unix()
 	e.mu.Lock()
@@ -421,30 +628,30 @@ func (e *SecondScreenEngine) StatusSnapshot() map[string]interface{} {
 	senderURL := fmt.Sprintf("http://%s:%d/send", ip, SecondScreenPort)
 
 	return map[string]interface{}{
-		"ok":                 true,
-		"server_up":          up,
-		"listen_error":       lerr,
-		"host":               host,
-		"lan_ip":             ip,
-		"port":               SecondScreenPort,
-		"viewer_url":         viewerURL,
-		"sender_url":         senderURL,
-		"config":             cfg,
-		"monitors":           mons,
-		"actual_fps":         fps,
-		"bitrate_kbps":       kbps,
-		"stream_width":       fw,
-		"stream_height":      fh,
-		"connected_clients":  activeClients,
-		"viewers_count":      atomic.LoadInt32(&e.viewersCount),
-		"incoming_active":    inActive,
-		"incoming_sender":    inSender,
-		"incoming_ip":        inIP,
-		"incoming_fps":       inFPS,
-		"incoming_seq":       inSeq,
-		"peers":              peerList,
-		"workspace":          ws,
-		"os":                 runtime.GOOS,
+		"ok":                true,
+		"server_up":         up,
+		"listen_error":      lerr,
+		"host":              host,
+		"lan_ip":            ip,
+		"port":              SecondScreenPort,
+		"viewer_url":        viewerURL,
+		"sender_url":        senderURL,
+		"config":            cfg,
+		"monitors":          mons,
+		"actual_fps":        fps,
+		"bitrate_kbps":      kbps,
+		"stream_width":      fw,
+		"stream_height":     fh,
+		"connected_clients": activeClients,
+		"viewers_count":     atomic.LoadInt32(&e.viewersCount),
+		"incoming_active":   inActive,
+		"incoming_sender":   inSender,
+		"incoming_ip":       inIP,
+		"incoming_fps":      inFPS,
+		"incoming_seq":      inSeq,
+		"peers":             peerList,
+		"workspace":         ws,
+		"os":                runtime.GOOS,
 	}
 }
 
@@ -517,47 +724,46 @@ func (e *SecondScreenEngine) serveMJPEGStream(w http.ResponseWriter, r *http.Req
 	atomic.AddInt32(&e.viewersCount, 1)
 	defer atomic.AddInt32(&e.viewersCount, -1)
 
-	const boundary = "lumaframeboundary182"
-	w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary="+boundary)
+	w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary="+ssMJPEGBoundary)
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	flusher, _ := w.(http.Flusher)
 	var lastSeq uint64
+	lastTouch := time.Now()
 	ctx := r.Context()
 
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
 		e.mu.RLock()
 		seq := e.frameSeq
-		frame := e.latestFrame
+		pkt := e.latestPacket
+		notifyCh := e.frameNotify
 		e.mu.RUnlock()
 
-		if len(frame) > 0 && seq != lastSeq {
+		if len(pkt) > 0 && seq != lastSeq {
 			lastSeq = seq
-			e.touchClient(r)
-			header := fmt.Sprintf("--%s\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n", boundary, len(frame))
-			if _, err := w.Write([]byte(header)); err != nil {
-				return
+			if time.Since(lastTouch) >= 2*time.Second {
+				e.touchClient(r)
+				lastTouch = time.Now()
 			}
-			if _, err := w.Write(frame); err != nil {
-				return
-			}
-			if _, err := w.Write([]byte("\r\n")); err != nil {
+			// Single zero-fragmentation syscall write!
+			if _, err := w.Write(pkt); err != nil {
 				return
 			}
 			if flusher != nil {
 				flusher.Flush()
 			}
-		} else {
-			time.Sleep(16 * time.Millisecond)
+			continue
+		}
+
+		// Instant event-driven wakeup (<0.05ms latency, zero 16ms polling sleep!)
+		select {
+		case <-ctx.Done():
+			return
+		case <-notifyCh:
 		}
 	}
 }
@@ -577,15 +783,16 @@ func (e *SecondScreenEngine) serveSingleFrame(w http.ResponseWriter, r *http.Req
 
 	if len(frame) == 0 {
 		rx, ry, rw, rh := e.resolveCaptureRect(cfg.MonitorMode)
-		if jpg, ow, oh, err := captureSecondScreenRectJPEG(rx, ry, rw, rh, cfg.MaxWidth, cfg.Quality); err == nil {
-			frame = jpg
-			e.mu.Lock()
-			e.latestFrame = jpg
-			e.frameW = ow
-			e.frameH = oh
-			e.activeRect = [4]int{rx, ry, rw, rh}
-			e.frameSeq++
-			e.mu.Unlock()
+		if img, ow, oh, err := captureSecondScreenRectYCbCr(rx, ry, rw, rh, cfg.MaxWidth, nil); err == nil && img != nil {
+			var buf bytes.Buffer
+			q := cfg.Quality
+			if q < 50 || q > 98 {
+				q = 86
+			}
+			if jpeg.Encode(&buf, img, &jpeg.Options{Quality: q}) == nil && buf.Len() > 0 {
+				frame = buf.Bytes()
+				e.publishEncodedFrame(1, frame, ow, oh, [4]int{rx, ry, rw, rh})
+			}
 		}
 	}
 	if len(frame) == 0 {
@@ -651,9 +858,11 @@ func (e *SecondScreenEngine) handlePushIncomingFrame(w http.ResponseWriter, r *h
 		sender = "Устройство (" + ip + ")"
 	}
 
+	pkt := buildMJPEGPacket(ssIncomingBoundary, jpg)
 	now := time.Now()
 	e.inMu.Lock()
 	e.inFrame = jpg
+	e.inPacket = pkt
 	e.inSeq++
 	e.inSenderName = sender
 	e.inSenderIP = ip
@@ -666,16 +875,20 @@ func (e *SecondScreenEngine) handlePushIncomingFrame(w http.ResponseWriter, r *h
 	}
 	e.inLastAt = now
 	e.inFrameCount++
+	oldInNotify := e.inNotify
+	e.inNotify = make(chan struct{})
 	e.inMu.Unlock()
+
+	close(oldInNotify)
 
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write([]byte(`{"ok":true}`))
 }
 
 func (e *SecondScreenEngine) serveIncomingMJPEG(w http.ResponseWriter, r *http.Request) {
-	const boundary = "lumaincoming182"
-	w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary="+boundary)
+	w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary="+ssIncomingBoundary)
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	flusher, _ := w.(http.Flusher)
@@ -683,33 +896,27 @@ func (e *SecondScreenEngine) serveIncomingMJPEG(w http.ResponseWriter, r *http.R
 	ctx := r.Context()
 
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
 		e.inMu.RLock()
 		seq := e.inSeq
-		frame := e.inFrame
+		pkt := e.inPacket
+		notifyCh := e.inNotify
 		e.inMu.RUnlock()
 
-		if len(frame) > 0 && seq != lastSeq {
+		if len(pkt) > 0 && seq != lastSeq {
 			lastSeq = seq
-			hdr := fmt.Sprintf("--%s\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n", boundary, len(frame))
-			if _, err := w.Write([]byte(hdr)); err != nil {
-				return
-			}
-			if _, err := w.Write(frame); err != nil {
-				return
-			}
-			if _, err := w.Write([]byte("\r\n")); err != nil {
+			if _, err := w.Write(pkt); err != nil {
 				return
 			}
 			if flusher != nil {
 				flusher.Flush()
 			}
-		} else {
-			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-notifyCh:
 		}
 	}
 }
@@ -737,14 +944,16 @@ func (e *SecondScreenEngine) handleRemoteInput(w http.ResponseWriter, r *http.Re
 	}
 
 	var req struct {
-		Action string  `json:"action"` // move | click | dblclick | rclick | down | up | scroll | text | key
-		NX     float64 `json:"nx"`     // 0..1 normalized X inside captured monitor rect
-		NY     float64 `json:"ny"`     // 0..1 normalized Y inside captured monitor rect
-		DX     int     `json:"dx"`     // relative move dx (trackpad mode)
-		DY     int     `json:"dy"`     // relative move dy (trackpad mode)
-		Delta  int     `json:"delta"`  // wheel delta
-		Text   string  `json:"text"`
-		Key    string  `json:"key"`
+		Action string   `json:"action"` // move | click | dblclick | rclick | down | up | scroll | text | key
+		NX     *float64 `json:"nx"`     // 0..1 normalized X inside captured monitor rect
+		NY     *float64 `json:"ny"`     // 0..1 normalized Y inside captured monitor rect
+		X      *float64 `json:"x"`      // alias for nx
+		Y      *float64 `json:"y"`      // alias for ny
+		DX     int      `json:"dx"`     // relative move dx (trackpad mode)
+		DY     int      `json:"dy"`     // relative move dy (trackpad mode)
+		Delta  int      `json:"delta"`  // wheel delta
+		Text   string   `json:"text"`
+		Key    string   `json:"key"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 16*1024)).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -752,12 +961,24 @@ func (e *SecondScreenEngine) handleRemoteInput(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	nx, ny := 0.5, 0.5
+	if req.NX != nil {
+		nx = *req.NX
+	} else if req.X != nil {
+		nx = *req.X
+	}
+	if req.NY != nil {
+		ny = *req.NY
+	} else if req.Y != nil {
+		ny = *req.Y
+	}
+
 	if rect[2] <= 0 || rect[3] <= 0 {
 		rx, ry, rw, rh := e.resolveCaptureRect(mode)
 		rect = [4]int{rx, ry, rw, rh}
 	}
-	absX := rect[0] + int(req.NX*float64(rect[2]))
-	absY := rect[1] + int(req.NY*float64(rect[3]))
+	absX := rect[0] + int(nx*float64(rect[2]))
+	absY := rect[1] + int(ny*float64(rect[3]))
 	injectSecondScreenInput(req.Action, absX, absY, req.DX, req.DY, req.Delta, req.Text, req.Key)
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
 }
@@ -814,9 +1035,11 @@ func (e *SecondScreenEngine) startLANServer() {
 			"allow_input":  cfg.AllowInput,
 			"monitor_mode": cfg.MonitorMode,
 			"fps":          cfg.FPS,
+			"max_width":    cfg.MaxWidth,
+			"quality":      cfg.Quality,
 			"actual_fps":   fps,
 			"bitrate_kbps": kbps,
-			"monitors":     listMonitorsOS(),
+			"monitors":     e.getMonitorsCached(false),
 			"workspace":    ws,
 			"cpu_percent":  cpuPct,
 			"ram_percent":  ramPct,
@@ -826,7 +1049,8 @@ func (e *SecondScreenEngine) startLANServer() {
 	mux.HandleFunc("/api/client-config", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		if r.Method != http.MethodPost {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		if !e.verifyPIN(r) {
@@ -835,7 +1059,6 @@ func (e *SecondScreenEngine) startLANServer() {
 		}
 		var patch map[string]interface{}
 		if err := json.NewDecoder(r.Body).Decode(&patch); err == nil {
-			// Allow client to switch monitor_mode, fps, max_width, quality cleanly
 			safePatch := map[string]interface{}{}
 			for _, k := range []string{"monitor_mode", "fps", "max_width", "quality"} {
 				if v, ok := patch[k]; ok {
@@ -848,7 +1071,15 @@ func (e *SecondScreenEngine) startLANServer() {
 	})
 
 	addr := fmt.Sprintf("0.0.0.0:%d", SecondScreenPort)
-	ln, err := net.Listen("tcp", addr)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
+	if err != nil {
+		e.mu.Lock()
+		e.serverUp = false
+		e.listenErr = err.Error()
+		e.mu.Unlock()
+		return
+	}
+	tcpLn, err := net.ListenTCP("tcp", tcpAddr)
 	if err != nil {
 		e.mu.Lock()
 		e.serverUp = false
@@ -861,13 +1092,12 @@ func (e *SecondScreenEngine) startLANServer() {
 	e.serverUp = true
 	e.listenErr = ""
 	e.mu.Unlock()
-	log.Printf("[Luma AirDisplay 1.8.2] Universal Second Screen Server online on http://%s:%d/ (and /send)", e.lanIP, SecondScreenPort)
-	_ = http.Serve(ln, mux)
+	log.Printf("[Luma AirDisplay 1.8.2 Turbo 60FPS] Universal Second Screen Server online on http://%s:%d/ (and /send)", e.lanIP, SecondScreenPort)
+	_ = http.Serve(noDelayListener{tcpLn}, mux)
 }
 
 // startLANPeerDiscovery broadcasts and listens for other Luma OS PCs on the local network (UDP :49226)
 func (e *SecondScreenEngine) startLANPeerDiscovery() {
-	// Listener
 	go func() {
 		defer func() { _ = recover() }()
 		pc, err := net.ListenPacket("udp4", fmt.Sprintf(":%d", SecondScreenBeaconUDP))
@@ -895,7 +1125,6 @@ func (e *SecondScreenEngine) startLANPeerDiscovery() {
 		}
 	}()
 
-	// Broadcaster (only broadcasts while Second Screen streaming or receiver is open!)
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
@@ -918,7 +1147,7 @@ func (e *SecondScreenEngine) startLANPeerDiscovery() {
 			Port:      SecondScreenPort,
 			Streaming: streaming,
 			Receiving: receiving,
-			Monitors:  len(listMonitorsOS()),
+			Monitors:  len(e.getMonitorsCached(false)),
 		})
 		conn, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: net.IPv4bcast, Port: SecondScreenBeaconUDP})
 		if err == nil {
@@ -982,7 +1211,6 @@ func registerSecondScreen182Routes(mux *http.ServeMux, k *LumaKernel) {
 		_, _ = w.Write([]byte(svg))
 	})
 
-	// Local preview & incoming receiver endpoints on main kernel port
 	mux.HandleFunc("/api/kernel/second-screen/preview.jpg", eng.serveSingleFrame)
 	mux.HandleFunc("/api/kernel/second-screen/incoming.mjpeg", eng.serveIncomingMJPEG)
 	mux.HandleFunc("/api/kernel/second-screen/incoming.jpg", func(w http.ResponseWriter, r *http.Request) {
@@ -999,7 +1227,6 @@ func registerSecondScreen182Routes(mux *http.ServeMux, k *LumaKernel) {
 	})
 	mux.HandleFunc("/api/kernel/second-screen/push-frame", eng.handlePushIncomingFrame)
 
-	// Proxy another Luma OS PC's stream & input into THIS PC's Receiver cleanly (avoids CORS/mixed issues!)
 	mux.HandleFunc("/api/kernel/second-screen/remote-stream", func(w http.ResponseWriter, r *http.Request) {
 		host := strings.TrimSpace(r.URL.Query().Get("host"))
 		pin := strings.TrimSpace(r.URL.Query().Get("pin"))
@@ -1032,7 +1259,7 @@ func registerSecondScreen182Routes(mux *http.ServeMux, k *LumaKernel) {
 		}
 		w.WriteHeader(resp.StatusCode)
 		flusher, _ := w.(http.Flusher)
-		buf := make([]byte, 32*1024)
+		buf := make([]byte, 64*1024)
 		for {
 			n, rerr := resp.Body.Read(buf)
 			if n > 0 {
@@ -1086,7 +1313,7 @@ func registerSecondScreen182Routes(mux *http.ServeMux, k *LumaKernel) {
 	})
 }
 
-// ==================== EMBEDDED HTML5 SECOND SCREEN VIEWER (OPENED ON ANY PHONE / TABLET / LAPTOP / TV) ====================
+// ==================== EMBEDDED HTML5 TURBO 60 FPS SECOND SCREEN VIEWER ====================
 
 const secondScreenViewerHTML = `<!DOCTYPE html>
 <html lang="ru">
@@ -1095,12 +1322,12 @@ const secondScreenViewerHTML = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#050811"/>
-<title>Luma AirDisplay · 2-й экран</title>
+<title>Luma AirDisplay · 2-й экран 60 FPS</title>
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
   html,body{margin:0;padding:0;width:100%;height:100%;background:#04070f;color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden}
   #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#04070f;touch-action:none}
-  #screenImg{max-width:100%;max-height:100%;object-fit:contain;display:block;transition:transform .2s ease}
+  #screenImg{max-width:100%;max-height:100%;object-fit:contain;display:block;transition:transform .2s ease;will-change:transform}
   #screenImg.fill{width:100%;height:100%;object-fit:cover}
   #virtualBoard{position:fixed;inset:0;display:none;padding:24px;overflow:auto;background:radial-gradient(circle at 20% 15%,rgba(16,185,129,.22),transparent 45%),radial-gradient(circle at 80% 85%,rgba(56,189,248,.22),transparent 50%),#060b16}
   .vb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;max-width:1100px;margin:48px auto 0}
@@ -1121,7 +1348,7 @@ const secondScreenViewerHTML = `<!DOCTYPE html>
 <body>
 <div id="showBarHit" onclick="toggleBar(true)"></div>
 <div id="toolbar">
-  <span style="font-weight:900;font-size:12px;color:#34d399;padding:0 4px">Luma 2-й экран</span>
+  <span style="font-weight:900;font-size:12px;color:#34d399;padding:0 4px">Luma Turbo</span>
   <span id="stats">Подключение...</span>
   <select id="monSel" class="btn" onchange="changeMon(this.value)">
     <option value="primary">Монитор 1</option>
@@ -1129,16 +1356,27 @@ const secondScreenViewerHTML = `<!DOCTYPE html>
     <option value="all">Все мониторы</option>
     <option value="virtual_board">Виртуальный стол</option>
   </select>
+  <select id="qualSel" class="btn" onchange="changeQuality(this.value)" title="Битрейт и чёткость">
+    <option value="72">Эконом</option>
+    <option value="86" selected>Высокий</option>
+    <option value="93">Макс HD</option>
+    <option value="96">Ультра</option>
+  </select>
+  <select id="fpsSel" class="btn" onchange="changeFps(this.value)" title="Частота кадров">
+    <option value="30">30 FPS</option>
+    <option value="45">45 FPS</option>
+    <option value="60" selected>60 FPS</option>
+  </select>
   <button id="inputBtn" class="btn active" onclick="cycleInputMode()">👆 Тач</button>
   <button class="btn" onclick="openKbd()">⌨️</button>
   <button id="fitBtn" class="btn" onclick="toggleFit()">⛶ Вписать</button>
-  <button class="btn" onclick="rotateScreen()">↻ 0°</button>
+  <button class="btn" onclick="rotateScreen(this)">↻ 0°</button>
   <button class="btn" onclick="toggleFS()">⛶ Экран</button>
   <button class="btn" onclick="toggleBar(false)">✕</button>
 </div>
 
 <div id="stage">
-  <img id="screenImg" alt="Luma Second Screen" draggable="false"/>
+  <img id="screenImg" alt="Luma Second Screen" decoding="async" draggable="false"/>
 </div>
 
 <div id="virtualBoard">
@@ -1186,7 +1424,7 @@ const secondScreenViewerHTML = `<!DOCTYPE html>
 
 <script>
 let pin = localStorage.getItem('luma_ss_pin') || '';
-let inputMode = 'touch'; // touch | trackpad | view
+let inputMode = 'touch';
 let rot = 0;
 let fillMode = false;
 let barTimer = null;
@@ -1217,10 +1455,10 @@ function toggleFit(){
   document.getElementById('screenImg').classList.toggle('fill', fillMode);
   document.getElementById('fitBtn').textContent = fillMode ? '⛶ Заполнить' : '⛶ Вписать';
 }
-function rotateScreen(){
+function rotateScreen(btn){
   rot = (rot + 90) % 360;
   document.getElementById('screenImg').style.transform = rot ? ('rotate('+rot+'deg)') : '';
-  event.target.textContent = '↻ ' + rot + '°';
+  if(btn) btn.textContent = '↻ ' + rot + '°';
 }
 function cycleInputMode(){
   const order = ['touch','trackpad','view'];
@@ -1244,6 +1482,14 @@ async function changeMon(val){
     st.style.display = 'flex';
   }
   await fetch('/api/client-config'+qp(), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({monitor_mode:val})}).catch(()=>{});
+}
+async function changeQuality(val){
+  const q = Number(val) || 86;
+  await fetch('/api/client-config'+qp(), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quality:q})}).catch(()=>{});
+}
+async function changeFps(val){
+  const f = Number(val) || 60;
+  await fetch('/api/client-config'+qp(), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fps:f})}).catch(()=>{});
 }
 function sendInput(payload){
   if(inputMode === 'view') return;
@@ -1327,7 +1573,7 @@ async function pollInfo(init){
       document.getElementById('pinModal').style.display='flex';
       return;
     }
-    const fps = d.actual_fps ? (d.actual_fps + ' FPS') : (d.fps + ' FPS');
+    const fps = d.actual_fps ? (Math.round(d.actual_fps) + ' FPS') : (d.fps + ' FPS');
     const mbps = d.bitrate_kbps ? (' · ' + (d.bitrate_kbps/1000).toFixed(1) + ' Мбит/с') : '';
     document.getElementById('stats').textContent = (d.host||'ПК') + ' · ' + fps + mbps;
     if(init){
@@ -1343,6 +1589,12 @@ async function pollInfo(init){
         const o = document.createElement('option'); o.value=v; o.textContent=lbl; sel.appendChild(o);
       });
       sel.value = d.monitor_mode || 'primary';
+      if(d.fps) document.getElementById('fpsSel').value = String(d.fps);
+      if(d.quality){
+        const qSel = document.getElementById('qualSel');
+        const closest = [72,86,93,96].reduce((a,b)=>Math.abs(b-d.quality)<Math.abs(a-d.quality)?b:a);
+        qSel.value = String(closest);
+      }
       if(d.monitor_mode === 'virtual_board'){
         document.getElementById('virtualBoard').style.display='block';
         document.getElementById('stage').style.display='none';
@@ -1368,14 +1620,14 @@ setInterval(()=>{
   document.getElementById('vbDate').textContent = now.toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'});
 }, 1000);
 pollInfo(true);
-setInterval(()=>pollInfo(false), 3000);
+setInterval(()=>pollInfo(false), 2000);
 resetBarTimer();
 requestWake();
 </script>
 </body>
 </html>`
 
-// ==================== EMBEDDED HTML5 UNIVERSAL SENDER (TURNS THIS PC INTO A 2ND SCREEN FOR ANY DEVICE!) ====================
+// ==================== EMBEDDED HTML5 TURBO UNIVERSAL SENDER (TURNS THIS PC INTO A 2ND SCREEN!) ====================
 
 const secondScreenSenderHTML = `<!DOCTYPE html>
 <html lang="ru">
@@ -1383,7 +1635,7 @@ const secondScreenSenderHTML = `<!DOCTYPE html>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#050811"/>
-<title>Отправить экран на Luma OS</title>
+<title>Отправить экран на Luma OS (Turbo 60 FPS)</title>
 <style>
   *{box-sizing:border-box}
   body{margin:0;min-height:100vh;background:radial-gradient(circle at 25% 15%,rgba(56,189,248,.22),transparent 45%),#060a14;color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;padding:18px}
@@ -1400,21 +1652,21 @@ const secondScreenSenderHTML = `<!DOCTYPE html>
 <body>
 <div class="card">
   <div>
-    <div style="font-size:11px;font-weight:800;color:#34d399;text-transform:uppercase;letter-spacing:1px">Luma AirDisplay · Приёмник ПК</div>
+    <div style="font-size:11px;font-weight:800;color:#34d399;text-transform:uppercase;letter-spacing:1px">Luma AirDisplay Turbo · Приёмник ПК</div>
     <h2 style="margin:6px 0 4px;font-size:20px">Транслировать на экран ПК</h2>
-    <div style="font-size:12px;opacity:.75">Работает без Miracast и без установки приложений — прямо из браузера с ноутбука, ПК, Mac или телефона.</div>
+    <div style="font-size:12px;opacity:.75">Работает без Miracast и без установки приложений — высокий битрейт и до 60 FPS прямо из браузера.</div>
   </div>
   <input id="devName" placeholder="Имя этого устройства (например: Ноутбук / Телефон)" value="Второе устройство"/>
   <div class="row">
     <select id="fpsSel">
-      <option value="15">15 FPS (Эко)</option>
-      <option value="24" selected>24 FPS (Плавно)</option>
-      <option value="30">30 FPS (Макс)</option>
+      <option value="30">30 FPS</option>
+      <option value="45">45 FPS</option>
+      <option value="60" selected>60 FPS (Turbo)</option>
     </select>
     <select id="resSel">
-      <option value="960">960p</option>
-      <option value="1280" selected>720p HD</option>
-      <option value="1600">1080p FullHD</option>
+      <option value="1280">720p HD</option>
+      <option value="1600" selected>900p HD+</option>
+      <option value="1920">1080p FullHD</option>
     </select>
   </div>
   <button id="btnScreen" class="btn" onclick="startCapture('screen')">🖥️ Транслировать мой экран на ПК</button>
@@ -1425,15 +1677,15 @@ const secondScreenSenderHTML = `<!DOCTYPE html>
   <div id="status">Готово к подключению</div>
 </div>
 <script>
-let stream = null, running = false, sent = 0;
+let stream = null, running = false, sent = 0, inFlight = 0;
 async function startCapture(kind){
   stopCapture();
   const st = document.getElementById('status');
   try{
     if(kind === 'screen' && navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia){
-      stream = await navigator.mediaDevices.getDisplayMedia({video:{frameRate:30}, audio:false});
+      stream = await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:60,max:60}}, audio:false});
     } else if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false});
+      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',frameRate:{ideal:60}}, audio:false});
     } else {
       st.textContent = 'Браузер ограничил захват экрана по HTTP. Откройте в Chrome/Edge на ПК или используйте камеру.';
       return;
@@ -1447,7 +1699,7 @@ async function startCapture(kind){
   v.style.display = 'block';
   await v.play();
   document.getElementById('btnStop').style.display = 'block';
-  running = true; sent = 0;
+  running = true; sent = 0; inFlight = 0;
   stream.getTracks()[0].onended = stopCapture;
   loopSend();
 }
@@ -1461,29 +1713,33 @@ function stopCapture(){
 async function loopSend(){
   const v = document.getElementById('preview');
   const c = document.getElementById('capCanvas');
-  const ctx = c.getContext('2d');
+  const ctx = c.getContext('2d', {alpha:false});
   const sender = document.getElementById('devName').value || 'Устройство';
   while(running){
     const t0 = performance.now();
-    const fps = Number(document.getElementById('fpsSel').value) || 24;
-    const maxW = Number(document.getElementById('resSel').value) || 1280;
-    if(v.videoWidth > 0 && v.videoHeight > 0){
+    const fps = Number(document.getElementById('fpsSel').value) || 60;
+    const maxW = Number(document.getElementById('resSel').value) || 1600;
+    if(v.videoWidth > 0 && v.videoHeight > 0 && inFlight < 2){
       const scale = Math.min(1, maxW / v.videoWidth);
-      c.width = Math.round(v.videoWidth * scale);
-      c.height = Math.round(v.videoHeight * scale);
-      ctx.drawImage(v, 0, 0, c.width, c.height);
-      const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.72));
+      const nw = Math.round(v.videoWidth * scale);
+      const nh = Math.round(v.videoHeight * scale);
+      if(c.width !== nw || c.height !== nh){ c.width = nw; c.height = nh; }
+      ctx.drawImage(v, 0, 0, nw, nh);
+      const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.86));
       if(blob && running){
-        try{
-          await fetch('/api/push-frame', {method:'POST', headers:{'Content-Type':'image/jpeg','X-Luma-Sender':sender}, body:blob});
-          sent++;
-          document.getElementById('status').textContent = 'Идёт трансляция · ' + c.width + '×' + c.height + ' · кадров: ' + sent;
-        }catch(e){
-          document.getElementById('status').textContent = 'Переподключение к ПК...';
-        }
+        inFlight++;
+        fetch('/api/push-frame', {method:'POST', headers:{'Content-Type':'image/jpeg','X-Luma-Sender':sender}, body:blob})
+          .then(()=>{
+            sent++;
+            document.getElementById('status').textContent = 'Turbo поток · ' + nw + '×' + nh + ' · кадров: ' + sent;
+          })
+          .catch(()=>{
+            document.getElementById('status').textContent = 'Переподключение к ПК...';
+          })
+          .finally(()=>{ inFlight--; });
       }
     }
-    const wait = Math.max(8, Math.round(1000/fps) - (performance.now()-t0));
+    const wait = Math.max(4, Math.round(1000/fps) - (performance.now()-t0));
     await new Promise(r => setTimeout(r, wait));
   }
 }

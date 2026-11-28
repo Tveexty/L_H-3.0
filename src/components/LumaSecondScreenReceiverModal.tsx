@@ -444,6 +444,7 @@ export const LumaSecondScreenReceiverModal: React.FC<LumaSecondScreenReceiverMod
               ref={remoteImgRef}
               src={remoteStreamUrl}
               alt="Экран удалённого ПК Luma OS"
+              decoding="async"
               draggable={false}
               onError={() =>
                 setRemoteError(
@@ -457,32 +458,32 @@ export const LumaSecondScreenReceiverModal: React.FC<LumaSecondScreenReceiverMod
                 const pt = getNormalizedCoords(e);
                 if (!pt) return;
                 draggingRef.current = true;
-                void sendRemoteInput({ action: 'down', x: pt.x, y: pt.y });
+                void sendRemoteInput({ action: 'down', nx: pt.x, ny: pt.y });
               }}
               onMouseMove={(e) => {
                 if (!controlEnabled || !draggingRef.current) return;
                 const now = Date.now();
-                if (now - lastMoveSentRef.current < 32) return;
+                if (now - lastMoveSentRef.current < 16) return;
                 lastMoveSentRef.current = now;
                 const pt = getNormalizedCoords(e);
-                if (pt) void sendRemoteInput({ action: 'move', x: pt.x, y: pt.y });
+                if (pt) void sendRemoteInput({ action: 'move', nx: pt.x, ny: pt.y });
               }}
               onMouseUp={(e) => {
                 if (!controlEnabled || !draggingRef.current) return;
                 draggingRef.current = false;
                 const pt = getNormalizedCoords(e);
-                if (pt) void sendRemoteInput({ action: 'up', x: pt.x, y: pt.y });
+                if (pt) void sendRemoteInput({ action: 'up', nx: pt.x, ny: pt.y });
               }}
               onDoubleClick={(e) => {
                 if (!controlEnabled) return;
                 const pt = getNormalizedCoords(e);
-                if (pt) void sendRemoteInput({ action: 'dblclick', x: pt.x, y: pt.y });
+                if (pt) void sendRemoteInput({ action: 'dblclick', nx: pt.x, ny: pt.y });
               }}
               onContextMenu={(e) => {
                 e.preventDefault();
                 if (!controlEnabled) return;
                 const pt = getNormalizedCoords(e);
-                if (pt) void sendRemoteInput({ action: 'rclick', x: pt.x, y: pt.y });
+                if (pt) void sendRemoteInput({ action: 'rclick', nx: pt.x, ny: pt.y });
               }}
               onWheel={(e) => {
                 if (!controlEnabled) return;

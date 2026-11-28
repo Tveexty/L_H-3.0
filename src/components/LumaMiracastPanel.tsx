@@ -365,8 +365,10 @@ export const LumaMiracastPanel: React.FC<LumaMiracastPanelProps> = ({
   const ssMonitors = ssStatus?.monitors || [];
   const connectedClients = ssStatus?.connected_clients || [];
   const currentMonitorMode = ssStatus?.config?.monitor_mode || 'primary';
-  const currentFps = ssStatus?.config?.fps || 30;
-  const currentWidth = ssStatus?.config?.max_width || 1280;
+  const currentFps = ssStatus?.config?.fps || 60;
+  const currentWidth = ssStatus?.config?.max_width ?? 1600;
+  const currentQuality = ssStatus?.config?.quality || 86;
+  const bitrateMbps = ((ssStatus?.bitrate_kbps || 0) / 1000).toFixed(1);
   const allowInput = ssStatus?.config?.allow_input ?? true;
   const requirePin = ssStatus?.config?.require_pin ?? false;
   const currentPin = ssStatus?.config?.pin || '----';
@@ -629,13 +631,13 @@ export const LumaMiracastPanel: React.FC<LumaMiracastPanelProps> = ({
 
                     <div className="flex flex-wrap gap-1.5 text-[10px] text-white/70">
                       <span className="px-2 py-0.5 rounded-lg bg-white/[0.06] border border-white/10">
-                        {ssStatus?.stream_width || currentWidth}×{ssStatus?.stream_height || 720}
+                        {ssStatus?.stream_width || (currentWidth || 1920)}×{ssStatus?.stream_height || 1080}
                       </span>
-                      <span className="px-2 py-0.5 rounded-lg bg-white/[0.06] border border-white/10">
+                      <span className="px-2 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-400/25 text-emerald-100 font-bold">
                         {Math.round(ssStatus?.actual_fps || 0)} / {currentFps} FPS
                       </span>
-                      <span className="px-2 py-0.5 rounded-lg bg-white/[0.06] border border-white/10">
-                        {ssStatus?.bitrate_kbps || 0} КБ/с
+                      <span className="px-2 py-0.5 rounded-lg bg-sky-500/15 border border-sky-400/25 text-sky-100 font-bold">
+                        {bitrateMbps} Мбит/с · Q{currentQuality}
                       </span>
                       {requirePin && (
                         <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 border border-amber-300/35 text-amber-100 font-bold">
@@ -726,52 +728,89 @@ export const LumaMiracastPanel: React.FC<LumaMiracastPanelProps> = ({
                   </div>
                 )}
 
-                {/* Stream Quality, FPS, Input & PIN Controls */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-white/10">
-                  <div className="space-y-1">
-                    <div className="text-[10px] font-bold text-white/60">Частота кадров</div>
-                    <div className="flex gap-1">
-                      {[15, 24, 30, 60].map((fps) => (
-                        <button
-                          key={fps}
-                          type="button"
-                          onClick={() => void patchSecondScreenConfig({ fps })}
-                          className={`flex-1 py-1 rounded-lg text-[10.5px] font-bold border ${
-                            currentFps === fps
-                              ? 'border-sky-300/45 bg-sky-500/25 text-white'
-                              : 'border-white/10 bg-white/[0.04] text-white/65 hover:text-white'
-                          }`}
-                        >
-                          {fps}
-                        </button>
-                      ))}
+                {/* Stream Quality, Bitrate, FPS & Resolution Controls */}
+                <div className="space-y-2 pt-2 border-t border-white/10">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <div className="text-[10px] font-bold text-white/60">
+                        Частота кадров (Turbo 60 FPS)
+                      </div>
+                      <div className="flex gap-1">
+                        {[24, 30, 45, 60].map((fps) => (
+                          <button
+                            key={fps}
+                            type="button"
+                            onClick={() => void patchSecondScreenConfig({ fps })}
+                            className={`flex-1 py-1 rounded-lg text-[10.5px] font-bold border ${
+                              currentFps === fps
+                                ? 'border-emerald-300/50 bg-emerald-500/25 text-white'
+                                : 'border-white/10 bg-white/[0.04] text-white/65 hover:text-white'
+                            }`}
+                          >
+                            {fps}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="text-[10px] font-bold text-white/60">Разрешение</div>
+                      <div className="flex gap-1">
+                        {[
+                          { w: 1280, label: '720p' },
+                          { w: 1600, label: '900p' },
+                          { w: 1920, label: '1080p' },
+                          { w: 0, label: 'Натив' },
+                        ].map((resOpt) => (
+                          <button
+                            key={resOpt.w}
+                            type="button"
+                            onClick={() =>
+                              void patchSecondScreenConfig({ max_width: resOpt.w })
+                            }
+                            className={`flex-1 py-1 rounded-lg text-[10.5px] font-bold border ${
+                              currentWidth === resOpt.w
+                                ? 'border-sky-300/45 bg-sky-500/25 text-white'
+                                : 'border-white/10 bg-white/[0.04] text-white/65 hover:text-white'
+                            }`}
+                          >
+                            {resOpt.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <div className="text-[10px] font-bold text-white/60">Разрешение</div>
-                    <div className="flex gap-1">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="font-bold text-white/60">Битрейт и чёткость картинки</span>
+                      <span className="text-sky-200/85 font-mono">{bitrateMbps} Мбит/с</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1">
                       {[
-                        { w: 960, label: '540p' },
-                        { w: 1280, label: '720p' },
-                        { w: 1600, label: '900p' },
-                        { w: 1920, label: '1080p' },
-                      ].map((resOpt) => (
-                        <button
-                          key={resOpt.w}
-                          type="button"
-                          onClick={() =>
-                            void patchSecondScreenConfig({ max_width: resOpt.w })
-                          }
-                          className={`flex-1 py-1 rounded-lg text-[10.5px] font-bold border ${
-                            currentWidth === resOpt.w
-                              ? 'border-sky-300/45 bg-sky-500/25 text-white'
-                              : 'border-white/10 bg-white/[0.04] text-white/65 hover:text-white'
-                          }`}
-                        >
-                          {resOpt.label}
-                        </button>
-                      ))}
+                        { q: 72, label: 'Эконом' },
+                        { q: 86, label: 'Высокий' },
+                        { q: 93, label: 'Макс HD' },
+                        { q: 96, label: 'Ультра' },
+                      ].map((qOpt) => {
+                        const isSel = Math.abs(currentQuality - qOpt.q) <= 3;
+                        return (
+                          <button
+                            key={qOpt.q}
+                            type="button"
+                            onClick={() =>
+                              void patchSecondScreenConfig({ quality: qOpt.q })
+                            }
+                            className={`py-1 rounded-lg text-[10.5px] font-bold border ${
+                              isSel
+                                ? 'border-cyan-300/50 bg-cyan-500/25 text-white'
+                                : 'border-white/10 bg-white/[0.04] text-white/65 hover:text-white'
+                            }`}
+                          >
+                            {qOpt.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
