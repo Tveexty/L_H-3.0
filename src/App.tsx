@@ -1647,9 +1647,9 @@ export default function App() {
     {
       id: 'notif_oxygen_welcome_175',
       source: 'system',
-      appName: 'Luma OS 1.8.2',
-      sender: 'Luma OS 1.8.2 Fluorine',
-      title: 'Добро пожаловать в Luma OS 1.8.2 (Fluorine · Стиль ОС)!',
+      appName: 'Luma OS 1.8.2b',
+      sender: 'Luma OS 1.8.2b Fluorine',
+      title: 'Добро пожаловать в Luma OS 1.8.2b (Fluorine · Стиль ОС)!',
       body: 'Вернули привычный дизайн Пуска, Поиска и элементов панели задач (оставив чистые иконки приложений) · Добавлен выбор положения кнопки «Пуск» — слева или по центру · Скрытие модульной панели и беспроводной 2-й экран Miracast.',
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
       dateLabel: 'Сегодня',
@@ -1735,7 +1735,7 @@ export default function App() {
     can_elevate: boolean;
   }>({
     edition: 'pro',
-    edition_label: 'Luma OS 1.8.2 Pro',
+    edition_label: 'Luma OS 1.8.2b Pro',
     is_pro: true,
     is_admin: false,
     full_rights: false,
@@ -2054,7 +2054,7 @@ export default function App() {
       : [
           {
             id: 'clip_init_1',
-            text: 'Luma OS 1.8.2 (Fluorine · F-9) — Буфер обмена Luma Island готов к работе',
+            text: 'Luma OS 1.8.2b (Fluorine · F-9) — Буфер обмена Luma Island готов к работе',
             pinned: false,
             time: 'сейчас',
           },
@@ -2087,7 +2087,7 @@ export default function App() {
   const [githubRepoUrl, setGithubRepoUrl] = useState<string>(
     savedState?.githubRepoUrl || 'https://github.com/Tveexty/L_H-3.0'
   );
-  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.8.2 (Fluorine · F-9)');
+  const [githubUpdateStatus, setGithubUpdateStatus] = useState<string>('Установлена сборка Luma OS 1.8.2b (Fluorine · F-9)');
   const [checkingGithub, setCheckingGithub] = useState<boolean>(false);
   const [diagnosticsTime, setDiagnosticsTime] = useState<string>('Готово к проверке');
   const [cryptoKeyVersion, setCryptoKeyVersion] = useState<number>(1);
@@ -2102,8 +2102,8 @@ export default function App() {
     {
       id: 'ev_boot',
       time: new Date().toLocaleTimeString('ru-RU'),
-      source: 'LumaCore 2.0.2',
-      message: 'Инициализация оболочки Luma OS 1.8.2 (Fluorine · F-9), LumaCore 2.0.2, LumaShield 3.2 Zero-Freeze и AI 5.0',
+      source: 'LumaCore 2.0.2b',
+      message: 'Инициализация оболочки Luma OS 1.8.2b (Fluorine · F-9), LumaCore 2.0.2b, LumaShield 3.2 Zero-Freeze и AI 5.0',
       level: 'success',
     },
   ]);
@@ -2396,7 +2396,7 @@ export default function App() {
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 16.4,
           target_version: '1.8 (Fluorine · Стиль ОС)',
-          message: 'Соединение с репозиторием GitHub и проверка обновления Luma OS 1.8.2...',
+          message: 'Соединение с репозиторием GitHub и проверка обновления Luma OS 1.8.2b...',
         },
       },
       {
@@ -2409,7 +2409,7 @@ export default function App() {
           total_bytes: 35.0 * 1024 * 1024,
           speed_mbps: 27.6,
           target_version: '1.8 (Fluorine · Стиль ОС)',
-          message: 'Загрузка сборки LumaOS_1.8.2_Pro.exe (Классическая и гибкая панель задач + 120 Гц анимации)...',
+          message: 'Загрузка сборки LumaOS_1.8.2b_Pro.exe (Классическая и гибкая панель задач + 120 Гц анимации)...',
         },
       },
       {
@@ -2450,7 +2450,7 @@ export default function App() {
           speed_mbps: 0,
           target_version: '1.8 (Fluorine · Стиль ОС)',
           sha256: 'e9f2c84a71b04d35e82a6f913c5d2e8a',
-          message: 'Сборка Luma OS 1.8.2 проверена и готова к мгновенному запуску!',
+          message: 'Сборка Luma OS 1.8.2b проверена и готова к мгновенному запуску!',
         },
       },
     ];
@@ -4473,7 +4473,7 @@ export default function App() {
           void pollHostWindows();
         }
       } catch {
-        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 2.0.2', 'warning');
+        pushToast('Поверх всех окон', 'Требуется запущенное ядро LumaCore 2.0.2b', 'warning');
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4688,7 +4688,7 @@ export default function App() {
   executeGestureRef.current = executeGestureAction;
 
   useEffect(() => {
-    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 2.0.2 WM_INPUT + SSE fallback)
+    // 1. Native Win32 Precision Touchpad HID Bridge (dispatched by LumaCore 2.0.2b WM_INPUT + SSE fallback)
     let lastNativeFireAt = 0;
     let lastNativeKey = '';
     const dispatchMappedGesture = (gestureName: string, sourceTag: string) => {
@@ -5089,7 +5089,7 @@ export default function App() {
   const altTabEntries: AltTabEntry[] = useMemo(() => {
     const lumaTitles: Partial<Record<DexWinId, string>> = {
       apps: 'Приложения', explorer: 'Проводник', taskmgr: 'Диспетчер задач', terminal: 'Терминал',
-      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 2.0.2', settings: 'Настройки', plugins: 'Расширения',
+      tracker: 'Трекер сессий', kernel: 'Ядро LumaCore 2.0.2b', settings: 'Настройки', plugins: 'Расширения',
       island: 'Dynamic Island', spaces: 'Рабочие столы', ai: 'Luma Ai Nitrogen', utilities: 'Службы ОС',
       calculator: 'Калькулятор', calendar: 'Календарь', trash: 'Корзина', scenarios: 'Сценарии',
       code_studio: 'Code Studio Pro', cut_studio: 'Cut Studio Pro', office: 'Luma Office Pro',
@@ -5723,7 +5723,7 @@ export default function App() {
         pushToast('Питание', d?.detail || `Выполнено: ${action}`, 'info');
       }
     } catch {
-      pushToast('Питание', 'Доступно при запуске LumaOS_1.8.2_Pro.exe', 'info');
+      pushToast('Питание', 'Доступно при запуске LumaOS_1.8.2b_Pro.exe', 'info');
     }
   };
 
@@ -5771,7 +5771,7 @@ export default function App() {
         );
       }
     } catch {
-      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.8.2_Pro.exe)', 'info');
+      pushToast('Оболочка Windows', 'Настройки сохранены (активируются в LumaOS_1.8.2b_Pro.exe)', 'info');
     } finally {
       setShellModeSaving(false);
     }
@@ -5869,7 +5869,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 2.0.2' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 2.0.2b' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5961,7 +5961,7 @@ export default function App() {
           error: d?.error,
         };
       } catch {
-        return { ok: false, error: 'Нет связи с ядром LumaCore 2.0.2' };
+        return { ok: false, error: 'Нет связи с ядром LumaCore 2.0.2b' };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -6752,7 +6752,7 @@ export default function App() {
         }
       })
       .catch(() => {
-        pushToast('Windows PowerShell', 'Запуск доступен в приложении LumaOS_1.8.2_Pro.exe / Base.exe', 'info');
+        pushToast('Windows PowerShell', 'Запуск доступен в приложении LumaOS_1.8.2b_Pro.exe / Base.exe', 'info');
       });
   };
 
@@ -7163,7 +7163,7 @@ export default function App() {
     ? { label: 'Обновление OS', percent: updateProgress.percent }
     : null;
 
-  // Sync Dynamic Island Always-On-Top Native Win32 Overlay configuration to LumaCore 2.0.2
+  // Sync Dynamic Island Always-On-Top Native Win32 Overlay configuration to LumaCore 2.0.2b
   useEffect(() => {
     const payload = {
       enabled: dynamicIslandEnabled,
@@ -8571,7 +8571,7 @@ export default function App() {
                       {
                         label: 'Оперативная память (Live)',
                         val: liveSystem ? `${liveSystem.ram_used_gb.toFixed(1)} / ${liveSystem.ram_total_gb.toFixed(1)} ГБ` : `${ramLoad}%`,
-                        sub: `${ramLoad}% занято · LumaCore 2.0.2`,
+                        sub: `${ramLoad}% занято · LumaCore 2.0.2b`,
                         hist: ramHistory,
                       },
                     ].map((g) => {
@@ -8598,7 +8598,7 @@ export default function App() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                     {[
                       ['Версия ПО', '1.8 (Fluorine · Стиль ОС)'],
-                      ['Версия Ядра', 'LumaCore 2.0.2 (1.8.1)'],
+                      ['Версия Ядра', 'LumaCore 2.0.2b (1.8.1)'],
                       ['Безопасность', `LumaShield 3.2 (${kernelDiag?.security_rules ?? 340}+ правил)`],
                       ['Developer SDK', `v3.0 (${kernelDiag?.sdk_themes ?? Object.keys(customThemes).length} тем / ${kernelDiag?.sdk_plugins ?? plugins.length} плаг.)`],
                       ['Шина IPC', kernelConnected ? '127.0.0.1:49215' : 'STANDALONE'],
@@ -9093,7 +9093,7 @@ export default function App() {
         <div style={{ display: isWinVisible('superdevice') ? 'contents' : 'none' }}>
           <DexWindow
             id="superdevice"
-            title="Суперустройство · Экосистема Luma OS 1.8.2"
+            title="Суперустройство · Экосистема Luma OS 1.8.2b"
             subtitle="Стиль ОС · Перетащите устройство на ПК для объединения в экосистему"
             icon={<Radio className="w-4 h-4 text-blue-400" />}
             isDark={isDark}
@@ -9132,7 +9132,7 @@ export default function App() {
         <DexWindow
           id="settings"
           title={t('settings', 'Настройки системы')}
-          subtitle="Luma OS 1.8.2 (Fluorine · Стиль ОС · LumaCore 2.0.2 · LumaShield 3.2)"
+          subtitle="Luma OS 1.8.2b (Fluorine · Стиль ОС · LumaCore 2.0.2b · LumaShield 3.2)"
           icon={<Settings className="w-4 h-4" />}
           isDark={isDark}
           designStyle={designStyle}
@@ -9282,7 +9282,7 @@ export default function App() {
                     onNotify={(msg) => pushToast('Беспроводной 2-й экран (Miracast)', msg, 'info')}
                   />
 
-                  {/* 0. LumaCore 2.0.2 True Zero-WMI & Zero-PowerShell Engine Banner */}
+                  {/* 0. LumaCore 2.0.2b True Zero-WMI & Zero-PowerShell Engine Banner */}
                   <div className={`p-4 rounded-2xl border space-y-3 ${surfaceCls}`}>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -10086,7 +10086,7 @@ export default function App() {
                   </div>
 
                   <div className={`p-3 rounded-xl border font-mono text-[11px] ${btnCls}`}>
-                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.8.2_Pro.exe).
+                    Экстренное восстановление панели и жестов Windows: <span className="text-[var(--luma-accent)] font-bold">Ctrl + Alt + Shift + W</span> (также всё автоматически возвращается при любом закрытии LumaOS_1.8.2b_Pro.exe).
                   </div>
                 </div>
               )}
@@ -11092,14 +11092,14 @@ export default function App() {
                         id: `notif_${Date.now()}`,
                         app: 'LumaCore',
                         icon: 'Bell',
-                        title: 'Проверка уведомлений Luma OS 1.8.2 (Fluorine)',
-                        message: 'Система оповещений Luma OS 1.8.2 (Fluorine) работает штатно.',
+                        title: 'Проверка уведомлений Luma OS 1.8.2b (Fluorine)',
+                        message: 'Система оповещений Luma OS 1.8.2b (Fluorine) работает штатно.',
                         time: tStr,
                         unread: true,
                       },
                       ...prev,
                     ]);
-                    pushToast('Luma OS 1.8.2 (Fluorine)', 'Тестовое уведомление доставлено', 'success');
+                    pushToast('Luma OS 1.8.2b (Fluorine)', 'Тестовое уведомление доставлено', 'success');
                   }}
                   surfaceCls={surfaceCls}
                   btnCls={btnCls}
@@ -11111,7 +11111,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${surfaceCls}`}>
                     <div>
-                      <div className="text-sm font-bold">Luma OS 1.8.2 (Fluorine · F-9) · LumaCore 2.0.2</div>
+                      <div className="text-sm font-bold">Luma OS 1.8.2b (Fluorine · F-9) · LumaCore 2.0.2b</div>
                       <div className={`text-xs font-mono ${mutedCls}`}>
                         {liveSystem?.os_name || 'Luma Runtime'} · {customDeviceName || liveSystem?.hostname || 'host'} · IPC 127.0.0.1:49215
                       </div>
@@ -11189,7 +11189,7 @@ export default function App() {
                           </span>
                         </div>
                         <div className={`text-[11px] mt-0.5 ${mutedCls}`}>
-                          Нативная капсула LumaCore 2.0.2 остаётся прилипшей к выбранной части экрана поверх Google Chrome, игр, Telegram и всех программ Windows без перехвата фокуса
+                          Нативная капсула LumaCore 2.0.2b остаётся прилипшей к выбранной части экрана поверх Google Chrome, игр, Telegram и всех программ Windows без перехвата фокуса
                         </div>
                       </div>
                       <StatusPill active={islandPinOverAllWindows} />
@@ -11627,7 +11627,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Luma OS 1.8.2 (Fluorine): Optical Glass Blur + Fluent Reveal + Material You (Monet) Controls */}
+                  {/* Luma OS 1.8.2b (Fluorine): Optical Glass Blur + Fluent Reveal + Material You (Monet) Controls */}
                   <LumaFluorineVisualPanel
                     isDark={isDark}
                     opticalBlur={fluorineOpticalBlur}
@@ -12933,7 +12933,7 @@ export default function App() {
                           <button
                             onClick={async () => {
                               const r = await fetch('/api/kernel/edition/elevate', { method: 'POST' }).catch(() => null);
-                              if (r?.ok) pushToast('Luma OS 1.8.2 Pro', 'Запрошен перезапуск с полными правами Администратора (UAC)', 'success');
+                              if (r?.ok) pushToast('Luma OS 1.8.2b Pro', 'Запрошен перезапуск с полными правами Администратора (UAC)', 'success');
                             }}
                             className="px-3 py-2 rounded-xl bg-amber-500 text-black text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
                           >
@@ -12941,15 +12941,15 @@ export default function App() {
                           </button>
                         )}
                         <a
-                          href="/LumaOS_1.8.2_Pro.exe"
-                          download="LumaOS_1.8.2_Pro.exe"
+                          href="/LumaOS_1.8.2b_Pro.exe"
+                          download="LumaOS_1.8.2b_Pro.exe"
                           className="px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-mono font-bold inline-flex items-center gap-1.5"
                         >
                           <Download className="w-3.5 h-3.5" /> Pro EXE
                         </a>
                         <a
-                          href="/LumaOS_1.8.2_Base.exe"
-                          download="LumaOS_1.8.2_Base.exe"
+                          href="/LumaOS_1.8.2b_Base.exe"
+                          download="LumaOS_1.8.2b_Base.exe"
                           className={`px-3 py-2 rounded-xl border text-xs font-mono font-bold inline-flex items-center gap-1.5 ${btnCls}`}
                         >
                           <Download className="w-3.5 h-3.5" /> Base EXE
@@ -12958,7 +12958,7 @@ export default function App() {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-[11px]">
                       <div className={`p-3 rounded-xl border ${!editionInfo.is_pro ? 'border-sky-400/60 bg-sky-500/10' : 'border-white/10 bg-white/[0.03]'}`}>
-                        <div className="font-black text-xs mb-1">Luma OS 1.8.2 Base (Обычная)</div>
+                        <div className="font-black text-xs mb-1">Luma OS 1.8.2b Base (Обычная)</div>
                         <ul className={`space-y-0.5 ${mutedCls}`}>
                           <li>• Все новинки 1.8 Fluorine: 4 новых 2.5D-обоев, оптический блюр, Fluent Reveal, Monet, 15 новых виджетов, Word-редактор и PowerShell</li>
                           <li>• Беспроводной 2-й экран Miracast (Источник, Приёмник, Дублировать / Расширить)</li>
@@ -12968,7 +12968,7 @@ export default function App() {
                       </div>
                       <div className={`p-3 rounded-xl border ${editionInfo.is_pro ? 'border-blue-400/70 bg-blue-600/15' : 'border-white/10 bg-white/[0.03]'}`}>
                         <div className="font-black text-xs mb-1 flex items-center gap-1.5">
-                          <Crown className="w-3.5 h-3.5 text-amber-300" /> Luma OS 1.8.2 Pro (Полные права + Макс. опции)
+                          <Crown className="w-3.5 h-3.5 text-amber-300" /> Luma OS 1.8.2b Pro (Полные права + Макс. опции)
                         </div>
                         <ul className={`space-y-0.5 ${mutedCls}`}>
                           <li>• Все новинки 1.8 Fluorine + LumaCore 2.0, SDK v4.0 плагины, Miracast и полные права Администратора</li>
@@ -17361,7 +17361,7 @@ export default function App() {
               {!startSearch.trim() && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em]">
-                    <span className={mutedCls}>Luma OS 1.8.2 (Fluorine · F-9)</span>
+                    <span className={mutedCls}>Luma OS 1.8.2b (Fluorine · F-9)</span>
                     <div className="flex items-center gap-1.5">
                       {enabledFeatures.privateVault && (
                         <button
@@ -17374,7 +17374,7 @@ export default function App() {
                           🔒 Приватный стол
                         </button>
                       )}
-                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 2.0.2</span>
+                      <span className="text-[var(--luma-accent)] font-bold">LumaCore 2.0.2b</span>
                     </div>
                   </div>
                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
@@ -17528,7 +17528,7 @@ export default function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{customDeviceName || liveSystem?.hostname || 'Luma Desktop'}</div>
                   <div className={`text-[10px] font-mono truncate ${mutedCls}`}>
-                    {liveSystem?.location?.city || 'Luma OS 1.8.2 (Fluorine)'}
+                    {liveSystem?.location?.city || 'Luma OS 1.8.2b (Fluorine)'}
                   </div>
                 </div>
               </div>
@@ -18549,7 +18549,7 @@ export default function App() {
         }}
         onUnlock={() => {
           setSystemLockOpen(false);
-          triggerIslandPulse('Экран разблокирован', 'Добро пожаловать в Luma OS 1.8.2', 'system');
+          triggerIslandPulse('Экран разблокирован', 'Добро пожаловать в Luma OS 1.8.2b', 'system');
         }}
         onSleep={() => {
           void handleExecutePowerAction('sleep');
@@ -19013,7 +19013,7 @@ export default function App() {
                   {t('multitasking', 'Обзор окон и Мультизадачность')} · {t('desktopLabel', 'Стол')} {activeDesktop}
                 </div>
                 <div className="text-xs font-mono text-zinc-400">
-                  Luma OS 1.8.2 (Fluorine · F-9) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
+                  Luma OS 1.8.2b (Fluorine · F-9) · Space — Luma Peek · Alt+W — Обзор · 📌 Поверх окон
                 </div>
               </div>
             </div>

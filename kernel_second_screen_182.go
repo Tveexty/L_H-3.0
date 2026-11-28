@@ -1092,7 +1092,7 @@ func (e *SecondScreenEngine) startLANServer() {
 	e.serverUp = true
 	e.listenErr = ""
 	e.mu.Unlock()
-	log.Printf("[Luma AirDisplay 1.8.2 Turbo 60FPS] Universal Second Screen Server online on http://%s:%d/ (and /send)", e.lanIP, SecondScreenPort)
+	log.Printf("[Luma AirDisplay 1.8.2b Turbo 60FPS] Universal Second Screen Server online on http://%s:%d/ (and /send)", e.lanIP, SecondScreenPort)
 	_ = http.Serve(noDelayListener{tcpLn}, mux)
 }
 

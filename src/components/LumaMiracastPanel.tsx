@@ -415,7 +415,7 @@ export const LumaMiracastPanel: React.FC<LumaMiracastPanelProps> = ({
               <div className="text-[13px] font-extrabold text-white tracking-tight truncate flex items-center gap-1.5">
                 <span>Второй экран · Luma AirDisplay</span>
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-400/20 border border-emerald-300/30 text-emerald-200">
-                  1.8.2
+                  1.8.2b
                 </span>
               </div>
               <div className="text-[10px] text-white/60 truncate">
